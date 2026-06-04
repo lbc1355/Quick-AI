@@ -101,10 +101,22 @@ export class FileStore {
       if (existsSync(this.filePath)) {
         const fileContent = readFileSync(this.filePath, 'utf-8')
         const parsed = JSON.parse(fileContent)
+        // Merge skills uniquely by trigger to ensure new default skills are loaded
+        const mergedSkills = [...DEFAULT_STORAGE.skills]
+        if (parsed.skills && Array.isArray(parsed.skills)) {
+          parsed.skills.forEach((oldSkill: any) => {
+            const hasDuplicate = mergedSkills.some((s) => s.trigger === oldSkill.trigger)
+            if (!hasDuplicate) {
+              mergedSkills.push(oldSkill)
+            }
+          })
+        }
+
         // Merge defaults to prevent breaking changes on old versions
         return {
           ...DEFAULT_STORAGE,
           ...parsed,
+          skills: mergedSkills,
           settings: { ...DEFAULT_STORAGE.settings, ...(parsed.settings || {}) }
         }
       }
