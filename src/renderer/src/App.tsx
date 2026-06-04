@@ -18,6 +18,7 @@ interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  reasoning_content?: string
   files?: Array<{ name: string; content: string; type: string }>
 }
 
@@ -78,6 +79,9 @@ function App(): React.JSX.Element {
   // Editing state
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
+
+  // Collapse / Expand state for Reasoning Blocks (message ID -> boolean)
+  const [expandedReasoningIds, setExpandedReasoningIds] = useState<Record<string, boolean>>({})
 
   // Skills & History Autocomplete state
   const [skills, setSkills] = useState<Skill[]>([])
@@ -481,10 +485,14 @@ function App(): React.JSX.Element {
     const assistantMsg: Message = {
       id: assistantMsgId,
       role: 'assistant',
-      content: ''
+      content: '',
+      reasoning_content: ''
     }
     currentSession.messages.push(assistantMsg)
     setSessions([...currentSessions])
+
+    // Expand reasoning block by default when generating R1 content
+    setExpandedReasoningIds((prev) => ({ ...prev, [assistantMsgId]: true }))
 
     // Load full messages block
     const apiMessages: any[] = []
@@ -546,6 +554,7 @@ function App(): React.JSX.Element {
       const decoder = new TextDecoder('utf-8')
       let buffer = ''
       let accumulatedText = ''
+      let accumulatedReasoning = ''
 
       if (!reader) throw new Error('Failed to get readable stream reader')
 
@@ -565,10 +574,32 @@ function App(): React.JSX.Element {
           if (cleanLine.startsWith('data: ')) {
             try {
               const json = JSON.parse(cleanLine.substring(6))
+              const reasoningContent = json.choices[0]?.delta?.reasoning_content || ''
               const content = json.choices[0]?.delta?.content || ''
+
+              if (reasoningContent) {
+                accumulatedReasoning += reasoningContent
+                setSessions((prevSessions) =>
+                  prevSessions.map((s) => {
+                    if (s.id === activeSessionId) {
+                      return {
+                        ...s,
+                        messages: s.messages.map((m) => {
+                          if (m.id === assistantMsgId) {
+                            return { ...m, reasoning_content: accumulatedReasoning }
+                          }
+                          return m
+                        }),
+                        lastActiveTime: Date.now()
+                      }
+                    }
+                    return s
+                  })
+                )
+              }
+
               if (content) {
                 accumulatedText += content
-                // Live update sessions state
                 setSessions((prevSessions) =>
                   prevSessions.map((s) => {
                     if (s.id === activeSessionId) {
@@ -757,6 +788,27 @@ function App(): React.JSX.Element {
     }
   }
 
+  // Parse reasoning process from either official API properties or local Ollama `<think>` tags
+  const parseThinkTags = (content: string, reasoningContent?: string) => {
+    let finalContent = content
+    let finalReasoning = reasoningContent || ''
+
+    if (content.includes('<think>')) {
+      const parts = content.split('</think>')
+      if (parts.length > 1) {
+        // Thinking completed
+        finalReasoning = parts[0].replace('<think>', '').trim()
+        finalContent = parts.slice(1).join('').trim()
+      } else {
+        // Thinking in progress
+        finalReasoning = content.replace('<think>', '').trim()
+        finalContent = ''
+      }
+    }
+
+    return { content: finalContent, reasoning: finalReasoning }
+  }
+
   // Custom text formatter
   const renderMessageContent = (text: string) => {
     if (!text) return null
@@ -940,56 +992,116 @@ function App(): React.JSX.Element {
           ) : (
             /* Scrollable Conversation History */
             <div className="messages-container">
-              {activeSession?.messages.map((msg, idx) => (
-                <div key={msg.id} className={`message-bubble ${msg.role}`}>
-                  <div className={`avatar ${msg.role}`}>
-                    {msg.role === 'user' ? 'U' : 'AI'}
-                  </div>
-                  <div className="message-content-wrapper">
-                    {editingMessageId === msg.id ? (
-                      <div className="message-edit-container">
-                        <textarea className="message-edit-textarea" value={editingText} onChange={(e) => setEditingText(e.target.value)} />
-                        <div className="message-edit-actions">
-                          <button className="edit-btn cancel" onClick={() => setEditingMessageId(null)}>取消</button>
-                          <button className="edit-btn save" onClick={() => handleSaveEdit(msg.id)}>保存并重发</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="message-text">
-                          {msg.files && msg.files.length > 0 && (
-                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
-                              {msg.files.map((f, fileIdx) => (
-                                <div key={fileIdx} style={{ fontSize: '11px', background: 'rgba(255, 255, 255, 0.08)', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <Paperclip size={10} />
-                                  <span>{f.name}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {renderMessageContent(msg.content)}
-                        </div>
+              {activeSession?.messages.map((msg, idx) => {
+                // Parse think tags dynamically from content
+                const { content: displayContent, reasoning: displayReasoning } = parseThinkTags(msg.content, msg.reasoning_content)
+                const isExpanded = expandedReasoningIds[msg.id] !== false
+                
+                const toggleReasoning = () => {
+                  setExpandedReasoningIds((prev) => ({
+                    ...prev,
+                    [msg.id]: !isExpanded
+                  }))
+                }
 
-                        {!isGenerating && (
-                          <div className="message-actions" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                            {msg.role === 'user' ? (
-                              <button className="msg-action-btn" onClick={() => handleStartEdit(msg)}>
-                                <Edit size={10} />
-                                <span>编辑</span>
-                              </button>
+                return (
+                  <div key={msg.id} className={`message-bubble ${msg.role}`}>
+                    <div className={`avatar ${msg.role}`}>
+                      {msg.role === 'user' ? 'U' : 'AI'}
+                    </div>
+                    <div className="message-content-wrapper" style={{ maxWidth: '100%' }}>
+                      {editingMessageId === msg.id ? (
+                        <div className="message-edit-container">
+                          <textarea className="message-edit-textarea" value={editingText} onChange={(e) => setEditingText(e.target.value)} />
+                          <div className="message-edit-actions">
+                            <button className="edit-btn cancel" onClick={() => setEditingMessageId(null)}>取消</button>
+                            <button className="edit-btn save" onClick={() => handleSaveEdit(msg.id)}>保存并重发</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="message-text">
+                            {msg.files && msg.files.length > 0 && (
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                                {msg.files.map((f, fileIdx) => (
+                                  <div key={fileIdx} style={{ fontSize: '11px', background: 'rgba(255, 255, 255, 0.08)', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <Paperclip size={10} />
+                                    <span>{f.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Thinking/Reasoning block rendering (DeepSeek R1 style) */}
+                            {displayReasoning && (
+                              <div className="reasoning-block" style={{ marginBottom: '10px' }}>
+                                <div 
+                                  onClick={toggleReasoning}
+                                  style={{ 
+                                    fontSize: '12px', 
+                                    color: '#60a5fa', 
+                                    cursor: 'pointer', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '6px',
+                                    userSelect: 'none',
+                                    marginBottom: '6px',
+                                    fontWeight: '600'
+                                  }}
+                                >
+                                  <Sparkles size={11} style={{ animation: isGenerating && !displayContent ? 'spin 3s linear infinite' : 'none' }} />
+                                  <span>{isGenerating && !displayContent ? '正在思考中..' : (isExpanded ? '思考过程 (收起)' : '思考过程 (展开)')}</span>
+                                </div>
+                                {isExpanded && (
+                                  <div style={{ 
+                                    fontSize: '12px', 
+                                    color: '#8b949e', 
+                                    borderLeft: '2px solid rgba(96, 165, 250, 0.35)', 
+                                    paddingLeft: '10px', 
+                                    marginLeft: '4px',
+                                    fontStyle: 'italic',
+                                    whiteSpace: 'pre-wrap',
+                                    lineHeight: '1.6',
+                                    background: 'rgba(255, 255, 255, 0.01)',
+                                    padding: '6px 10px',
+                                    borderRadius: '0 6px 6px 0'
+                                  }}>
+                                    {displayReasoning}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Render main text content */}
+                            {displayContent ? (
+                              renderMessageContent(displayContent)
                             ) : (
-                              <button className="msg-action-btn" onClick={() => handleRegenerate(idx)}>
-                                <RefreshCw size={10} />
-                                <span>重新生成</span>
-                              </button>
+                              /* Show small thinking pulsing dot if thinking and content is empty */
+                              isGenerating && displayReasoning && <span style={{ opacity: 0.5, fontSize: '13px', fontStyle: 'italic' }}>思考完毕，正在生成回答..</span>
                             )}
                           </div>
-                        )}
-                      </>
-                    )}
+
+                          {!isGenerating && (
+                            <div className="message-actions" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                              {msg.role === 'user' ? (
+                                <button className="msg-action-btn" onClick={() => handleStartEdit(msg)}>
+                                  <Edit size={10} />
+                                  <span>编辑</span>
+                                </button>
+                              ) : (
+                                <button className="msg-action-btn" onClick={() => handleRegenerate(idx)}>
+                                  <RefreshCw size={10} />
+                                  <span>重新生成</span>
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               <div ref={messagesEndRef} />
             </div>
           )}
