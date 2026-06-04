@@ -1347,10 +1347,10 @@ function App(): React.JSX.Element {
               <div ref={skillsMenuRef} className="skills-menu">
                 {autocompleteItems.map((item, idx) => (
                   <div key={item.id} className={`skills-item ${selectedItemIdx === idx ? 'selected' : ''}`} onClick={() => triggerAutocompleteItem(item)}>
+                    <span className="skills-trigger" style={{ color: getTriggerColor(item.type) }}>{item.trigger}</span>
                     <span className="skills-name">
                       {item.name.replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim()}
                     </span>
-                    <span className="skills-trigger" style={{ color: getTriggerColor(item.type) }}>{item.trigger}</span>
                   </div>
                 ))}
               </div>
