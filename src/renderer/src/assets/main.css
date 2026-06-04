@@ -39,6 +39,11 @@ html, body {
   user-select: none;
 }
 
+input, textarea, select {
+  user-select: text !important;
+  -webkit-app-region: no-drag;
+}
+
 #root {
   width: 100vw;
   height: 100vh;
