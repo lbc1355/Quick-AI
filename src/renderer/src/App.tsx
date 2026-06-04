@@ -11,7 +11,9 @@ import {
   Trash2,
   Undo2,
   Plus,
-  Minus
+  Minus,
+  Sun,
+  Moon
 } from 'lucide-react'
 
 interface Message {
@@ -30,12 +32,13 @@ interface Session {
 }
 
 interface AppSettings {
-  apiKey: string
-  apiUrl: string
-  model: string
-  modelsList: string[]
-  systemPrompt: string
-  autoHideOnBlur: boolean
+  apiKey: string;
+  apiUrl: string;
+  model: string;
+  modelsList: string[];
+  systemPrompt: string;
+  autoHideOnBlur: boolean;
+  theme?: 'dark' | 'light';
 }
 
 interface Skill {
@@ -58,6 +61,7 @@ function App(): React.JSX.Element {
   const [autoHideOnBlur, setAutoHideOnBlur] = useState(true)
   const [appStorePath, setAppStorePath] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
 
   // Model Management inputs state
   const [manualModelInput, setManualModelInput] = useState('')
@@ -112,6 +116,7 @@ function App(): React.JSX.Element {
         setSystemPrompt(savedSettings.systemPrompt || '')
         setAutoHideOnBlur(savedSettings.autoHideOnBlur !== false)
         setFetchModelsUrl(`${loadedApiUrl.replace(/\/$/, '')}/models`)
+        setTheme(savedSettings.theme || 'dark')
       }
 
       // App metadata
@@ -256,11 +261,30 @@ function App(): React.JSX.Element {
       model: selectedModel,
       modelsList,
       systemPrompt,
-      autoHideOnBlur
+      autoHideOnBlur,
+      theme
     }
     await window.api.storeSet('settings', settingsObj)
     setSaveSuccess(true)
     setTimeout(() => setSaveSuccess(false), 2000)
+  }
+
+  // Toggle theme between Light and Dark
+  const toggleTheme = async () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(nextTheme)
+    const savedSettings = (await window.api.storeGet('settings') as AppSettings) || {}
+    const updatedSettings: AppSettings = {
+      ...savedSettings,
+      apiKey,
+      apiUrl,
+      model: selectedModel,
+      modelsList,
+      systemPrompt,
+      autoHideOnBlur,
+      theme: nextTheme
+    }
+    await window.api.storeSet('settings', updatedSettings)
   }
 
   // Create new session manually (via UI button)
@@ -945,7 +969,7 @@ function App(): React.JSX.Element {
             {formattedText.map((subPart, subIdx) => {
               if (subPart.startsWith('`') && subPart.endsWith('`')) {
                 return (
-                  <code key={subIdx} style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 4px', borderRadius: '4px', fontFamily: 'Consolas, monospace', fontSize: '12px', color: '#f43f5e' }}>
+                  <code key={subIdx} style={{ background: 'var(--color-inline-code-bg)', padding: '2px 4px', borderRadius: '4px', fontFamily: 'Consolas, monospace', fontSize: '12px', color: '#f43f5e' }}>
                     {subPart.slice(1, -1)}
                   </code>
                 )
@@ -969,7 +993,7 @@ function App(): React.JSX.Element {
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
 
   return (
-    <div className="app-container" onDragEnter={handleDrag} onDragOver={handleDrag} onDragLeave={handleDrag} onDrop={handleDrop}>
+    <div className={`app-container ${theme === 'light' ? 'theme-light' : ''}`} onDragEnter={handleDrag} onDragOver={handleDrag} onDragLeave={handleDrag} onDrop={handleDrop}>
       {/* Draggable Top Dragbar */}
       <div className="drag-header">
         <div className="drag-header-left">
@@ -981,6 +1005,9 @@ function App(): React.JSX.Element {
           </div>
         </div>
         <div className="drag-header-right">
+          <button className="header-action-btn" onClick={toggleTheme} title={theme === 'dark' ? '切换到白天模式' : '切换到黑夜模式'}>
+            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
           {showSettings ? (
             <button className="header-action-btn" onClick={() => setShowSettings(false)} title="返回聊天">
               <Undo2 size={14} />
@@ -1098,7 +1125,7 @@ function App(): React.JSX.Element {
             /* Claude Code Style clean watermark interface */
             <div className="empty-state">
               <Sparkles size={40} style={{ color: 'rgba(59, 130, 246, 0.4)', filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.2))' }} />
-              <div className="empty-title" style={{ fontSize: '16px', fontWeight: '600', color: '#fff', marginTop: '14px' }}>
+              <div className="empty-title" style={{ fontSize: '16px', fontWeight: '600', color: 'var(--color-text-title)', marginTop: '14px' }}>
                 QuickAI Chat Launcher
               </div>
               <div className="empty-desc" style={{ fontSize: '12.5px', color: '#6b7280', marginTop: '6px', maxWidth: '380px' }}>
@@ -1171,14 +1198,14 @@ function App(): React.JSX.Element {
                                 {isExpanded && (
                                   <div style={{ 
                                     fontSize: '12px', 
-                                    color: '#8b949e', 
+                                    color: 'var(--color-text-muted)', 
                                     borderLeft: '2px solid rgba(96, 165, 250, 0.35)', 
                                     paddingLeft: '10px', 
                                     marginLeft: '4px',
                                     fontStyle: 'italic',
                                     whiteSpace: 'pre-wrap',
                                     lineHeight: '1.6',
-                                    background: 'rgba(255, 255, 255, 0.01)',
+                                    background: 'var(--color-card-bg)',
                                     padding: '6px 10px',
                                     borderRadius: '0 6px 6px 0'
                                   }}>
@@ -1245,7 +1272,9 @@ function App(): React.JSX.Element {
               <div className="skills-menu">
                 {autocompleteItems.map((item, idx) => (
                   <div key={item.id} className={`skills-item ${selectedItemIdx === idx ? 'selected' : ''}`} onClick={() => triggerAutocompleteItem(item)}>
-                    <span className="skills-name">{item.name}</span>
+                    <span className="skills-name">
+                      {item.name.replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim()}
+                    </span>
                     <span className="skills-trigger" style={{ color: getTriggerColor(item.type) }}>{item.trigger}</span>
                   </div>
                 ))}

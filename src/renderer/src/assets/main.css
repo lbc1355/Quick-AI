@@ -24,8 +24,32 @@
   --color-bg-main: #181820;
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-focus: rgba(59, 130, 246, 0.4);
+  --color-text: #e5e7eb;
+  --color-text-title: #ffffff;
   --color-text-muted: #9ca3af;
   --color-card-bg: rgba(255, 255, 255, 0.03);
+  --color-input-section-bg: rgba(15, 15, 18, 0.4);
+  --color-input-container-bg: rgba(255, 255, 255, 0.02);
+  --color-assistant-bubble-bg: rgba(255, 255, 255, 0.04);
+  --color-inline-code-bg: rgba(255, 255, 255, 0.08);
+}
+
+.app-container.theme-light {
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-bg-darker: #f3f4f6;
+  --color-bg-header: #f9fafb;
+  --color-bg-main: #ffffff;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-focus: rgba(37, 99, 235, 0.4);
+  --color-text: #1f2937;
+  --color-text-title: #111827;
+  --color-text-muted: #4b5563;
+  --color-card-bg: rgba(0, 0, 0, 0.02);
+  --color-input-section-bg: rgba(243, 244, 246, 0.8);
+  --color-input-container-bg: rgba(255, 255, 255, 0.9);
+  --color-assistant-bubble-bg: rgba(0, 0, 0, 0.02);
+  --color-inline-code-bg: rgba(0, 0, 0, 0.05);
 }
 
 html, body {
@@ -187,7 +211,7 @@ input, textarea, select {
 .empty-title {
   font-size: 16px;
   font-weight: 700;
-  color: #fff;
+  color: var(--color-text-title);
   margin-top: 12px;
   margin-bottom: 6px;
 }
@@ -196,7 +220,7 @@ input, textarea, select {
   font-size: 12.5px;
   max-width: 380px;
   line-height: 1.5;
-  color: #6b7280;
+  color: var(--color-text-muted);
 }
 
 /* Message Bubbles */
@@ -255,7 +279,7 @@ input, textarea, select {
   border-radius: 12px;
   font-size: 13.5px;
   line-height: 1.5;
-  color: #e5e7eb;
+  color: var(--color-text);
   word-break: break-word;
   user-select: text;
 }
@@ -267,7 +291,7 @@ input, textarea, select {
 }
 
 .message-bubble.assistant .message-text {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-assistant-bubble-bg);
   border-top-left-radius: 2px;
   border: 1px solid var(--color-border);
 }
@@ -349,7 +373,7 @@ input, textarea, select {
 /* Input area */
 .chat-input-section {
   padding: 12px 16px;
-  background: rgba(15, 15, 18, 0.4);
+  background: var(--color-input-section-bg);
   border-top: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -362,7 +386,7 @@ input, textarea, select {
   display: flex;
   gap: 10px;
   align-items: flex-end;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-input-container-bg);
   border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 8px 12px;
@@ -378,7 +402,7 @@ input, textarea, select {
   flex: 1;
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--color-text);
   font-family: inherit;
   font-size: 13.5px;
   resize: none;
@@ -526,7 +550,7 @@ input, textarea, select {
 .skills-name {
   font-size: 12.5px;
   font-weight: 600;
-  color: #fff;
+  color: var(--color-text-title);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -551,7 +575,7 @@ input, textarea, select {
 .settings-header {
   font-size: 18px;
   font-weight: 700;
-  color: white;
+  color: var(--color-text-title);
   margin-bottom: 16px;
   border-bottom: 1px solid var(--color-border);
   padding-bottom: 8px;
@@ -567,13 +591,13 @@ input, textarea, select {
 .settings-label {
   font-size: 12.5px;
   font-weight: 600;
-  color: #d1d5db;
+  color: var(--color-text-muted);
 }
 
 .settings-input {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-input-container-bg);
   border: 1px solid var(--color-border);
-  color: white;
+  color: var(--color-text);
   border-radius: 8px;
   padding: 8px 12px;
   font-family: inherit;
@@ -587,9 +611,9 @@ input, textarea, select {
 }
 
 .settings-select {
-  background: #1c1c24;
+  background: var(--color-bg-header);
   border: 1px solid var(--color-border);
-  color: white;
+  color: var(--color-text);
   border-radius: 8px;
   padding: 8px 12px;
   font-family: inherit;
@@ -602,7 +626,7 @@ input, textarea, select {
   gap: 8px;
   cursor: pointer;
   font-size: 12.5px;
-  color: #d1d5db;
+  color: var(--color-text-muted);
 }
 
 .settings-checkbox {
