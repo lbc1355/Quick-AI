@@ -460,7 +460,11 @@ function App(): React.JSX.Element {
 
       const combined = [...matchingCmds, ...matchingSkills, ...matchingModels, ...matchingSessions]
       setAutocompleteItems(combined)
-      setSelectedItemIdx((prev) => Math.min(prev, combined.length - 1))
+      setSelectedItemIdx((prev) => {
+        if (combined.length === 0) return 0
+        if (prev < 0 || prev >= combined.length) return 0
+        return prev
+      })
     } else {
       setAutocompleteItems([])
     }
@@ -468,6 +472,7 @@ function App(): React.JSX.Element {
 
   // Action executed on autocomplete item select
   const triggerAutocompleteItem = async (item: any) => {
+    if (!item) return
     if (item.type === 'command') {
       if (item.cmd === 'new') {
         await handleNewSession()
