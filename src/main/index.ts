@@ -76,6 +76,9 @@ function showWindow(): void {
   }
   mainWindow.show()
   mainWindow.focus()
+  
+  // Notify frontend that the window has been summoned/shown
+  mainWindow.webContents.send('window-shown')
 }
 
 function hideWindow(): void {

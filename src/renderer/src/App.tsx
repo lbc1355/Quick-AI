@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  MessageSquare,
-  Plus,
-  Trash2,
   Settings,
   Send,
   Paperclip,
@@ -10,7 +7,10 @@ import {
   Terminal,
   RefreshCw,
   Edit,
-  Sparkles
+  Sparkles,
+  Trash2,
+  Undo2,
+  Plus
 } from 'lucide-react'
 
 interface Message {
@@ -24,6 +24,7 @@ interface Session {
   id: string
   title: string
   messages: Message[]
+  lastActiveTime?: number
 }
 
 interface AppSettings {
@@ -66,10 +67,10 @@ function App(): React.JSX.Element {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
 
-  // Skills state
+  // Skills & History Autocomplete state
   const [skills, setSkills] = useState<Skill[]>([])
-  const [filteredSkills, setFilteredSkills] = useState<Skill[]>([])
-  const [selectedSkillIdx, setSelectedSkillIdx] = useState(0)
+  const [autocompleteItems, setAutocompleteItems] = useState<any[]>([])
+  const [selectedItemIdx, setSelectedItemIdx] = useState(0)
 
   // Refs for scrolling and textarea
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -94,35 +95,60 @@ function App(): React.JSX.Element {
       // Sessions
       const savedSessions = (await window.api.storeGet('sessions') as Session[]) || []
       setSessions(savedSessions)
+      
+      // Skills
+      const savedSkills = (await window.api.storeGet('skills') as Skill[]) || []
+      setSkills(savedSkills)
+
+      // Setup initial session
       if (savedSessions.length > 0) {
-        setActiveSessionId(savedSessions[0].id)
+        // Find most recently active session
+        const sorted = [...savedSessions].sort((a, b) => {
+          const tA = a.lastActiveTime || Number(a.id)
+          const tB = b.lastActiveTime || Number(b.id)
+          return tB - tA
+        })
+        setActiveSessionId(sorted[0].id)
+        
+        // Initial timeout check
+        checkSessionTimeout(sorted[0].id, savedSessions)
       } else {
-        // Create initial session if none exist
         const defaultSession: Session = {
           id: Date.now().toString(),
           title: '新对话',
-          messages: []
+          messages: [],
+          lastActiveTime: Date.now()
         }
         const updated = [defaultSession]
         setSessions(updated)
         setActiveSessionId(defaultSession.id)
         await window.api.storeSet('sessions', updated)
       }
-
-      // Skills
-      const savedSkills = (await window.api.storeGet('skills') as Skill[]) || []
-      setSkills(savedSkills)
     }
 
     initData()
   }, [])
+
+  // Listen to window summon (focus/show) event from Main Process
+  useEffect(() => {
+    const handleWindowShown = () => {
+      checkSessionTimeout(activeSessionId, sessions)
+    }
+
+    // Register event listener
+    window.electron.ipcRenderer.on('window-shown', handleWindowShown)
+    
+    return () => {
+      window.electron.ipcRenderer.removeAllListeners('window-shown')
+    }
+  }, [activeSessionId, sessions])
 
   // Auto-scroll when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [sessions, activeSessionId, isGenerating])
 
-  // Focus textarea when window opens
+  // Focus textarea when UI toggles
   useEffect(() => {
     if (!showSettings) {
       setTimeout(() => textareaRef.current?.focus(), 50)
@@ -140,6 +166,41 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isGenerating])
 
+  // Timeout Check: Create a new empty session if the idle time exceeds 5 minutes
+  const checkSessionTimeout = async (currentActiveId: string, currentSessions: Session[]) => {
+    if (currentSessions.length === 0 || !currentActiveId) return
+
+    const activeSess = currentSessions.find((s) => s.id === currentActiveId)
+    if (!activeSess) return
+
+    // If the active session is empty, do nothing
+    if (activeSess.messages.length === 0) return
+
+    const lastActive = activeSess.lastActiveTime || Number(activeSess.id)
+    const elapsed = Date.now() - lastActive
+    const fiveMinutes = 5 * 60 * 1000
+
+    if (elapsed > fiveMinutes) {
+      // Create new session
+      const newSession: Session = {
+        id: Date.now().toString(),
+        title: '新对话',
+        messages: [],
+        lastActiveTime: Date.now()
+      }
+      const updated = [newSession, ...currentSessions]
+      setSessions(updated)
+      setActiveSessionId(newSession.id)
+      await window.api.storeSet('sessions', updated)
+    } else {
+      // Within 5 minutes, reset its active timer
+      activeSess.lastActiveTime = Date.now()
+      const updated = currentSessions.map((s) => (s.id === currentActiveId ? activeSess : s))
+      setSessions(updated)
+      await window.api.storeSet('sessions', updated)
+    }
+  }
+
   // Get active session
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
@@ -156,12 +217,13 @@ function App(): React.JSX.Element {
     setTimeout(() => setSaveSuccess(false), 2000)
   }
 
-  // Create new session
+  // Create new session manually (via UI button)
   const handleNewSession = async () => {
     const newSession: Session = {
       id: Date.now().toString(),
       title: '新对话',
-      messages: []
+      messages: [],
+      lastActiveTime: Date.now()
     }
     const updated = [newSession, ...sessions]
     setSessions(updated)
@@ -170,34 +232,12 @@ function App(): React.JSX.Element {
     setShowSettings(false)
   }
 
-  // Delete session
-  const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation()
-    const filtered = sessions.filter((s) => s.id !== id)
-    let updated = filtered
-    
-    if (filtered.length === 0) {
-      const defaultSession = {
-        id: Date.now().toString(),
-        title: '新对话',
-        messages: []
-      }
-      updated = [defaultSession]
-    }
-
-    setSessions(updated)
-    if (activeSessionId === id || filtered.length === 0) {
-      setActiveSessionId(updated[0].id)
-    }
-    await window.api.storeSet('sessions', updated)
-  }
-
   // Clear current conversation messages
   const handleClearCurrentSession = async () => {
     if (!activeSessionId) return
     const updated = sessions.map((s) => {
       if (s.id === activeSessionId) {
-        return { ...s, messages: [], title: '新对话' }
+        return { ...s, messages: [], title: '新对话', lastActiveTime: Date.now() }
       }
       return s
     })
@@ -262,7 +302,6 @@ function App(): React.JSX.Element {
       }
       reader.readAsDataURL(file)
     } else {
-      // Treat as plain text
       reader.onload = (e) => {
         if (e.target?.result) {
           setAttachedFiles((prev) => [
@@ -283,50 +322,81 @@ function App(): React.JSX.Element {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  // Skills input logic
+  // Autocomplete change: skills + session histories
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInputVal(val)
 
-    // Check for `/` trigger
     if (val.startsWith('/')) {
-      const searchTrigger = val.slice(1).toLowerCase()
-      const matching = skills.filter((s) => s.trigger.toLowerCase().startsWith(searchTrigger))
-      setFilteredSkills(matching)
-      setSelectedSkillIdx((prev) => Math.min(prev, matching.length - 1))
+      const search = val.slice(1).toLowerCase()
+      
+      // Skills
+      const matchingSkills = skills
+        .filter((s) => s.trigger.toLowerCase().startsWith(search))
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          trigger: `/${s.trigger}`,
+          prompt: s.prompt,
+          isSession: false
+        }))
+      
+      // Session histories (exclude active one and empty ones)
+      const matchingSessions = sessions
+        .filter((s) => s.id !== activeSessionId && s.messages.length > 0)
+        .filter((s) => s.title.toLowerCase().includes(search))
+        .map((s) => ({
+          id: s.id,
+          name: s.title,
+          trigger: `/history:${s.id}`,
+          prompt: '',
+          isSession: true
+        }))
+
+      const combined = [...matchingSkills, ...matchingSessions]
+      setAutocompleteItems(combined)
+      setSelectedItemIdx((prev) => Math.min(prev, combined.length - 1))
     } else {
-      setFilteredSkills([])
+      setAutocompleteItems([])
     }
   }
 
-  const triggerSkill = (skill: Skill) => {
-    setInputVal(skill.prompt)
-    setFilteredSkills([])
+  const triggerAutocompleteItem = (item: any) => {
+    if (item.isSession) {
+      // Switch conversation
+      setActiveSessionId(item.id)
+      setShowSettings(false)
+      setAutocompleteItems([])
+      setInputVal('')
+    } else {
+      // Injects prompt skill
+      setInputVal(item.prompt)
+      setAutocompleteItems([])
+    }
     textareaRef.current?.focus()
   }
 
   // Keyboard navigation inside prompt input
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Navigate skills list if open
-    if (filteredSkills.length > 0) {
+    if (autocompleteItems.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedSkillIdx((prev) => (prev + 1) % filteredSkills.length)
+        setSelectedItemIdx((prev) => (prev + 1) % autocompleteItems.length)
         return
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setSelectedSkillIdx((prev) => (prev - 1 + filteredSkills.length) % filteredSkills.length)
+        setSelectedItemIdx((prev) => (prev - 1 + autocompleteItems.length) % autocompleteItems.length)
         return
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
-        triggerSkill(filteredSkills[selectedSkillIdx])
+        triggerAutocompleteItem(autocompleteItems[selectedItemIdx])
         return
       }
       if (e.key === 'Escape') {
         e.preventDefault()
-        setFilteredSkills([])
+        setAutocompleteItems([])
         return
       }
     }
@@ -376,7 +446,8 @@ function App(): React.JSX.Element {
       setAttachedFiles([])
     }
 
-    // Update session title if it was default
+    // Update session metadata
+    currentSession.lastActiveTime = Date.now()
     if (currentSession.title === '新对话') {
       currentSession.title = promptToSend.substring(0, 15) || '聊天对话'
     }
@@ -391,16 +462,14 @@ function App(): React.JSX.Element {
     currentSession.messages.push(assistantMsg)
     setSessions([...currentSessions])
 
-    // Load full messages block (including custom system prompt)
+    // Load full messages block
     const apiMessages: any[] = []
     if (systemPrompt) {
       apiMessages.push({ role: 'system', content: systemPrompt })
     }
 
-    // Process previous messages for API payload
     currentSession.messages.slice(0, -1).forEach((msg) => {
       let content: any = msg.content
-      // If there are files/images attached, construct multimodal payload if image, or explain files
       if (msg.files && msg.files.length > 0) {
         const textParts = [msg.content]
         const images: any[] = []
@@ -483,7 +552,8 @@ function App(): React.JSX.Element {
                             return { ...m, content: accumulatedText }
                           }
                           return m
-                        })
+                        }),
+                        lastActiveTime: Date.now()
                       }
                     }
                     return s
@@ -516,11 +586,12 @@ function App(): React.JSX.Element {
       )
     } finally {
       setIsGenerating(false)
-      // Save full sessions payload back to FileStore
+      // Save sessions
       setTimeout(async () => {
         const finalSessions = (await window.api.storeGet('sessions') as Session[]) || []
         const currentActive = sessions.find((s) => s.id === activeSessionId)
         if (currentActive) {
+          currentActive.lastActiveTime = Date.now()
           const updatedSessions = finalSessions.map((s) => (s.id === activeSessionId ? currentActive : s))
           if (!updatedSessions.some((s) => s.id === activeSessionId)) {
             updatedSessions.push(currentActive)
@@ -548,14 +619,14 @@ function App(): React.JSX.Element {
                 return { ...m, content: editingText }
               }
               return m
-            })
+            }),
+            lastActiveTime: Date.now()
           }
         }
         return s
       })
     )
     setEditingMessageId(null)
-    // Re-send the prompt starting from this message ID
     setTimeout(() => {
       handleSendMessage(editingText, msgId)
     }, 100)
@@ -565,15 +636,13 @@ function App(): React.JSX.Element {
   const handleRegenerate = (msgIdx: number) => {
     const currentSession = sessions.find((s) => s.id === activeSessionId)
     if (!currentSession) return
-    // Retrieve the prompt immediately preceding this assistant message
     const precedingUserMsg = currentSession.messages[msgIdx - 1]
     if (precedingUserMsg && precedingUserMsg.role === 'user') {
-      // Trigger a resend branching from the user prompt
       handleSendMessage(precedingUserMsg.content, precedingUserMsg.id)
     }
   }
 
-  // Formatting message elements
+  // Custom text formatter
   const renderMessageContent = (text: string) => {
     if (!text) return null
     const parts = text.split(/(```[\s\S]*?```)/g)
@@ -594,10 +663,10 @@ function App(): React.JSX.Element {
           </div>
         )
       } else {
-        const inlineParts = part.split(/(`[^`\n]+`)/g)
+        const formattedText = part.split(/(`[^`\n]+`)/g)
         return (
           <span key={idx} style={{ whiteSpace: 'pre-wrap' }}>
-            {inlineParts.map((subPart, subIdx) => {
+            {formattedText.map((subPart, subIdx) => {
               if (subPart.startsWith('`') && subPart.endsWith('`')) {
                 return (
                   <code key={subIdx} style={{ background: 'rgba(255,255,255,0.08)', padding: '2px 4px', borderRadius: '4px', fontFamily: 'Consolas, monospace', fontSize: '12px', color: '#f43f5e' }}>
@@ -613,45 +682,46 @@ function App(): React.JSX.Element {
     })
   }
 
+  // Check if current active session is a clean "new session" with no message history
+  const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
+
   return (
     <div className="app-container" onDragEnter={handleDrag} onDragOver={handleDrag} onDragLeave={handleDrag} onDrop={handleDrop}>
-      {/* Sidebar Panel */}
-      <div className="sidebar">
-        <div>
-          <div className="sidebar-header">
-            <div className="logo-section">
-              <Sparkles className="logo-icon" />
-              <span className="logo-text">QuickAI</span>
-            </div>
-            <button className="new-chat-btn" onClick={handleNewSession} title="创建新对话">
-              <Plus size={16} />
-            </button>
-          </div>
-          <div className="session-list">
-            {sessions.map((s) => (
-              <div key={s.id} className={`session-item ${activeSessionId === s.id && !showSettings ? 'active' : ''}`} onClick={() => {
-                setActiveSessionId(s.id)
-                setShowSettings(false)
-              }}>
-                <MessageSquare size={14} style={{ marginRight: '8px', flexShrink: 0 }} />
-                <span className="session-title">{s.title}</span>
-                <button className="delete-session-btn" onClick={(e) => handleDeleteSession(e, s.id)} title="删除对话">
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
+      {/* Draggable Top Dragbar */}
+      <div className="drag-header">
+        <div className="drag-header-left">
+          <Sparkles className="logo-icon" size={16} />
+          <span className="logo-text">QuickAI</span>
+          <div className="chat-model-info" style={{ marginLeft: '12px' }}>
+            <div className={`status-dot ${isGenerating ? 'loading' : ''}`} />
+            <span className="model-name" style={{ fontSize: '12px', color: '#9ca3af' }}>{selectedModel}</span>
           </div>
         </div>
-
-        <div className="sidebar-footer">
-          <button className={`footer-btn ${showSettings ? 'active' : ''}`} onClick={() => setShowSettings(true)}>
-            <Settings size={14} />
-            <span>应用设置</span>
-          </button>
+        <div className="drag-header-right">
+          {showSettings ? (
+            <button className="header-action-btn" onClick={() => setShowSettings(false)} title="返回聊天">
+              <Undo2 size={14} />
+            </button>
+          ) : (
+            <>
+              <button className="header-action-btn" onClick={handleNewSession} title="新建对话">
+                <Plus size={14} />
+              </button>
+              <button className="header-action-btn" onClick={handleClearCurrentSession} title="清空历史">
+                <Trash2 size={14} />
+              </button>
+              <button className="header-action-btn" onClick={() => window.api.toggleDevTools()} title="开发者工具">
+                <Terminal size={14} />
+              </button>
+              <button className="header-action-btn" onClick={() => setShowSettings(true)} title="应用设置">
+                <Settings size={14} />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Main Container */}
+      {/* Main Content Area */}
       {showSettings ? (
         <div className="settings-container">
           <div className="settings-header">QuickAI 设置</div>
@@ -691,32 +761,21 @@ function App(): React.JSX.Element {
         </div>
       ) : (
         <div className="chat-area">
-          {/* Top Navbar */}
-          <div className="chat-header">
-            <div className="chat-model-info">
-              <div className={`status-dot ${isGenerating ? 'loading' : ''}`} />
-              <span className="model-name">{selectedModel}</span>
-            </div>
-            <div className="chat-header-actions">
-              <button className="header-action-btn" onClick={() => window.api.toggleDevTools()} title="开发者控制台">
-                <Terminal size={14} />
-              </button>
-              <button className="header-action-btn" onClick={handleClearCurrentSession} title="清空对话历史">
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
-
-          {/* Messages Stream Container */}
-          <div className="messages-container">
-            {activeSession && activeSession.messages.length === 0 ? (
-              <div className="empty-state">
-                <Sparkles size={36} style={{ color: 'rgba(255,255,255,0.1)' }} />
-                <div className="empty-title">输入您的第一个问题</div>
-                <div className="empty-desc">按 Alt+/ 组合键可以在任何界面快速显示或隐藏窗口。输入 / 可以触发快捷命令技能。</div>
+          {isNewSessionEmpty ? (
+            /* Claude Code Style clean watermark interface */
+            <div className="empty-state">
+              <Sparkles size={40} style={{ color: 'rgba(59, 130, 246, 0.4)', filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.2))' }} />
+              <div className="empty-title" style={{ fontSize: '16px', fontWeight: '600', color: '#fff', marginTop: '14px' }}>
+                QuickAI Chat Launcher
               </div>
-            ) : (
-              activeSession?.messages.map((msg, idx) => (
+              <div className="empty-desc" style={{ fontSize: '12.5px', color: '#6b7280', marginTop: '6px', maxWidth: '380px' }}>
+                按 Alt+/ 快速显示/隐藏。输入问句直接开始；输入 `/` 可以触发技能或选择加载历史聊天。
+              </div>
+            </div>
+          ) : (
+            /* Scrollable Conversation History */
+            <div className="messages-container">
+              {activeSession?.messages.map((msg, idx) => (
                 <div key={msg.id} className={`message-bubble ${msg.role}`}>
                   <div className={`avatar ${msg.role}`}>
                     {msg.role === 'user' ? 'U' : 'AI'}
@@ -733,11 +792,10 @@ function App(): React.JSX.Element {
                     ) : (
                       <>
                         <div className="message-text">
-                          {/* Attachments within user bubbles */}
                           {msg.files && msg.files.length > 0 && (
                             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
                               {msg.files.map((f, fileIdx) => (
-                                <div key={fileIdx} style={{ fontSize: '11px', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <div key={fileIdx} style={{ fontSize: '11px', background: 'rgba(255, 255, 255, 0.08)', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                   <Paperclip size={10} />
                                   <span>{f.name}</span>
                                 </div>
@@ -747,7 +805,6 @@ function App(): React.JSX.Element {
                           {renderMessageContent(msg.content)}
                         </div>
 
-                        {/* Hover Actions */}
                         {!isGenerating && (
                           <div className="message-actions" style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
                             {msg.role === 'user' ? (
@@ -767,12 +824,12 @@ function App(): React.JSX.Element {
                     )}
                   </div>
                 </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
 
-          {/* Attached files preview list */}
+          {/* Attached Files List Preview */}
           {attachedFiles.length > 0 && (
             <div style={{ padding: '0 16px', background: 'rgba(15, 15, 18, 0.4)' }}>
               <div className="file-preview-list">
@@ -789,14 +846,14 @@ function App(): React.JSX.Element {
             </div>
           )}
 
-          {/* Prompt input with skills overlay */}
+          {/* Input Area */}
           <div className="chat-input-section">
-            {filteredSkills.length > 0 && (
+            {autocompleteItems.length > 0 && (
               <div className="skills-menu">
-                {filteredSkills.map((skill, idx) => (
-                  <div key={skill.id} className={`skills-item ${selectedSkillIdx === idx ? 'selected' : ''}`} onClick={() => triggerSkill(skill)}>
-                    <span className="skills-name">{skill.name}</span>
-                    <span className="skills-trigger">/{skill.trigger}</span>
+                {autocompleteItems.map((item, idx) => (
+                  <div key={item.id} className={`skills-item ${selectedItemIdx === idx ? 'selected' : ''}`} onClick={() => triggerAutocompleteItem(item)}>
+                    <span className="skills-name">{item.name}</span>
+                    <span className="skills-trigger" style={{ color: item.isSession ? '#3b82f6' : '#9ca3af' }}>{item.trigger}</span>
                   </div>
                 ))}
               </div>
