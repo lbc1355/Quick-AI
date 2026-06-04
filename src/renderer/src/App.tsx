@@ -95,6 +95,7 @@ function App(): React.JSX.Element {
   // Refs for scrolling and textarea
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const skillsMenuRef = useRef<HTMLDivElement>(null)
 
   // Track latest sessions state in a ref to avoid stale closures in async handlers
   const sessionsRef = useRef<Session[]>([])
@@ -184,6 +185,17 @@ function App(): React.JSX.Element {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [sessions, activeSessionId, isGenerating])
+
+  // Scroll selected autocomplete item into view
+  useEffect(() => {
+    if (autocompleteItems.length > 0 && skillsMenuRef.current) {
+      const container = skillsMenuRef.current
+      const selectedElement = container.children[selectedItemIdx] as HTMLElement
+      if (selectedElement) {
+        selectedElement.scrollIntoView({ block: 'nearest' })
+      }
+    }
+  }, [selectedItemIdx, autocompleteItems])
 
   // Focus textarea when UI toggles
   useEffect(() => {
@@ -1269,7 +1281,7 @@ function App(): React.JSX.Element {
           {/* Input Area */}
           <div className="chat-input-section">
             {autocompleteItems.length > 0 && (
-              <div className="skills-menu">
+              <div ref={skillsMenuRef} className="skills-menu">
                 {autocompleteItems.map((item, idx) => (
                   <div key={item.id} className={`skills-item ${selectedItemIdx === idx ? 'selected' : ''}`} onClick={() => triggerAutocompleteItem(item)}>
                     <span className="skills-name">
