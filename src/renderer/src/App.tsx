@@ -31,11 +31,18 @@ interface Session {
   lastActiveTime?: number
 }
 
-interface AppSettings {
+interface ApiProvider {
+  id: string;
+  name: string;
   apiKey: string;
   apiUrl: string;
   model: string;
   modelsList: string[];
+}
+
+interface AppSettings {
+  providers: ApiProvider[];
+  activeProviderId: string;
   systemPrompt: string;
   autoHideOnBlur: boolean;
   theme?: 'dark' | 'light';
@@ -62,6 +69,11 @@ function App(): React.JSX.Element {
   const [appStorePath, setAppStorePath] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+
+  // Providers list state
+  const [providers, setProviders] = useState<ApiProvider[]>([])
+  const [activeProviderId, setActiveProviderId] = useState<string>('')
+  const [editingProviderId, setEditingProviderId] = useState<string>('')
 
   // Model Management inputs state
   const [manualModelInput, setManualModelInput] = useState('')
@@ -116,6 +128,21 @@ function App(): React.JSX.Element {
     }
   }, [])
 
+  // Restore local editor states to active provider settings when settings panel is closed without saving
+  useEffect(() => {
+    if (!showSettings && activeProviderId && providers.length > 0) {
+      const activeProv = providers.find((p) => p.id === activeProviderId)
+      if (activeProv) {
+        setApiKey(activeProv.apiKey || '')
+        setApiUrl(activeProv.apiUrl || '')
+        setSelectedModel(activeProv.model || '')
+        setModelsList(activeProv.modelsList || [])
+        setFetchModelsUrl(`${(activeProv.apiUrl || '').replace(/\/$/, '')}/models`)
+        setEditingProviderId(activeProviderId)
+      }
+    }
+  }, [showSettings, activeProviderId, providers])
+
   // Track latest sessions state in a ref to avoid stale closures in async handlers
   const sessionsRef = useRef<Session[]>([])
   useEffect(() => {
@@ -128,14 +155,24 @@ function App(): React.JSX.Element {
       // Settings
       const savedSettings = await window.api.storeGet('settings') as AppSettings
       if (savedSettings) {
-        setApiKey(savedSettings.apiKey || '')
-        const loadedApiUrl = savedSettings.apiUrl || 'https://api.deepseek.com/v1'
-        setApiUrl(loadedApiUrl)
-        setSelectedModel(savedSettings.model || 'deepseek-chat')
-        setModelsList(savedSettings.modelsList || ['deepseek-chat', 'deepseek-reasoner'])
+        const loadedProviders = savedSettings.providers || []
+        const loadedActiveId = savedSettings.activeProviderId || ''
+        setProviders(loadedProviders)
+        setActiveProviderId(loadedActiveId)
+        setEditingProviderId(loadedActiveId)
+
+        // Find active provider
+        const activeProv = loadedProviders.find((p) => p.id === loadedActiveId) || loadedProviders[0]
+        if (activeProv) {
+          setApiKey(activeProv.apiKey || '')
+          setApiUrl(activeProv.apiUrl || '')
+          setSelectedModel(activeProv.model || '')
+          setModelsList(activeProv.modelsList || [])
+          setFetchModelsUrl(`${(activeProv.apiUrl || '').replace(/\/$/, '')}/models`)
+        }
+
         setSystemPrompt(savedSettings.systemPrompt || '')
         setAutoHideOnBlur(savedSettings.autoHideOnBlur !== false)
-        setFetchModelsUrl(`${loadedApiUrl.replace(/\/$/, '')}/models`)
         setTheme(savedSettings.theme || 'dark')
       }
 
@@ -286,11 +323,26 @@ function App(): React.JSX.Element {
 
   // Save settings
   const handleSaveSettings = async () => {
+    // Save current active editing inputs to the list
+    const updatedProviders = providers.map((p) => {
+      if (p.id === editingProviderId) {
+        return {
+          ...p,
+          apiKey,
+          apiUrl,
+          model: selectedModel,
+          modelsList
+        }
+      }
+      return p
+    })
+
+    setProviders(updatedProviders)
+    setActiveProviderId(editingProviderId) // Make the currently edited provider the active one
+
     const settingsObj: AppSettings = {
-      apiKey,
-      apiUrl,
-      model: selectedModel,
-      modelsList,
+      providers: updatedProviders,
+      activeProviderId: editingProviderId,
       systemPrompt,
       autoHideOnBlur,
       theme
@@ -300,19 +352,106 @@ function App(): React.JSX.Element {
     setTimeout(() => setSaveSuccess(false), 2000)
   }
 
+  // Switch the provider currently selected for editing in settings
+  const handleSwitchEditingProvider = (providerId: string) => {
+    // First, save current inputs to the currently edited provider in state
+    setProviders((prev) =>
+      prev.map((p) => {
+        if (p.id === editingProviderId) {
+          return {
+            ...p,
+            apiKey,
+            apiUrl,
+            model: selectedModel,
+            modelsList
+          }
+        }
+        return p
+      })
+    )
+
+    // Then switch
+    setEditingProviderId(providerId)
+    const target = providers.find((p) => p.id === providerId)
+    if (target) {
+      setApiKey(target.apiKey || '')
+      setApiUrl(target.apiUrl || '')
+      setSelectedModel(target.model || '')
+      setModelsList(target.modelsList || [])
+      setFetchModelsUrl(`${(target.apiUrl || '').replace(/\/$/, '')}/models`)
+    }
+  }
+
+  // Add a new custom provider
+  const handleAddProvider = () => {
+    const name = prompt('请输入新服务商的名称 (例如: Kimi, OpenAI):')
+    if (!name || !name.trim()) return
+
+    const newId = `provider-custom-${Date.now()}`
+    const newProvider: ApiProvider = {
+      id: newId,
+      name: name.trim(),
+      apiKey: '',
+      apiUrl: '',
+      model: '',
+      modelsList: []
+    }
+
+    // Save current inputs to the currently edited provider first
+    const updatedProviders = providers.map((p) => {
+      if (p.id === editingProviderId) {
+        return {
+          ...p,
+          apiKey,
+          apiUrl,
+          model: selectedModel,
+          modelsList
+        }
+      }
+      return p
+    })
+
+    const finalProviders = [...updatedProviders, newProvider]
+    setProviders(finalProviders)
+    
+    // Switch to editing the new provider
+    setEditingProviderId(newId)
+    setApiKey('')
+    setApiUrl('')
+    setSelectedModel('')
+    setModelsList([])
+    setFetchModelsUrl('')
+  }
+
+  // Delete a provider
+  const handleDeleteProvider = (providerId: string) => {
+    if (providers.length <= 1) {
+      alert('必须保留至少一个服务商！')
+      return
+    }
+
+    if (!confirm('确定要删除当前服务商吗？')) return
+
+    const finalProviders = providers.filter((p) => p.id !== providerId)
+    setProviders(finalProviders)
+
+    // Switch editing to the first remaining provider
+    const firstRemaining = finalProviders[0]
+    setEditingProviderId(firstRemaining.id)
+    setApiKey(firstRemaining.apiKey || '')
+    setApiUrl(firstRemaining.apiUrl || '')
+    setSelectedModel(firstRemaining.model || '')
+    setModelsList(firstRemaining.modelsList || [])
+    setFetchModelsUrl(`${(firstRemaining.apiUrl || '').replace(/\/$/, '')}/models`)
+  }
+
   // Toggle theme between Light and Dark
   const toggleTheme = async () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark'
     setTheme(nextTheme)
-    const savedSettings = (await window.api.storeGet('settings') as AppSettings) || {}
+    const savedSettings = (await window.api.storeGet('settings') as AppSettings) || { providers: [], activeProviderId: '', systemPrompt: '', autoHideOnBlur: true }
     const updatedSettings: AppSettings = {
       ...savedSettings,
-      apiKey,
-      apiUrl,
-      model: selectedModel,
-      modelsList,
-      systemPrompt,
-      autoHideOnBlur,
       theme: nextTheme
     }
     await window.api.storeSet('settings', updatedSettings)
@@ -533,7 +672,18 @@ function App(): React.JSX.Element {
           type: 'delete-session'
         }))
 
-      const combined = [...matchingCmds, ...matchingSkills, ...matchingModels, ...matchingSessions, ...matchingDeleteSessions]
+      // 6. Provider switching options
+      const matchingProviders = providers
+        .filter((p) => `/provider:${p.name}`.toLowerCase().includes(val.toLowerCase()) || p.name.toLowerCase().includes(search) || 'provider'.includes(search) || 'p'.includes(search))
+        .map((p) => ({
+          id: `provider-${p.id}`,
+          name: `切换服务商: ${p.name} (${p.apiUrl})`,
+          trigger: `/provider:${p.id}`,
+          providerId: p.id,
+          type: 'provider'
+        }))
+
+      const combined = [...matchingCmds, ...matchingSkills, ...matchingModels, ...matchingSessions, ...matchingDeleteSessions, ...matchingProviders]
       setAutocompleteItems(combined)
       setSelectedItemIdx((prev) => {
         if (combined.length === 0) return 0
@@ -598,7 +748,39 @@ function App(): React.JSX.Element {
       // Save directly to the storage in background
       const currentSettings = await window.api.storeGet('settings') as AppSettings
       if (currentSettings) {
-        currentSettings.model = item.modelId
+        // Update active provider's model
+        currentSettings.providers = currentSettings.providers.map((p) => {
+          if (p.id === currentSettings.activeProviderId) {
+            return { ...p, model: item.modelId }
+          }
+          return p
+        })
+        await window.api.storeSet('settings', currentSettings)
+
+        // Also update local React state for providers list
+        setProviders(currentSettings.providers)
+      }
+      setAutocompleteItems([])
+      setInputVal('')
+    } else if (item.type === 'provider') {
+      // Switch active provider instantly
+      setActiveProviderId(item.providerId)
+      setEditingProviderId(item.providerId)
+      
+      // Find the selected provider in memory to sync local states
+      const target = providers.find((p) => p.id === item.providerId)
+      if (target) {
+        setApiKey(target.apiKey || '')
+        setApiUrl(target.apiUrl || '')
+        setSelectedModel(target.model || '')
+        setModelsList(target.modelsList || [])
+        setFetchModelsUrl(`${(target.apiUrl || '').replace(/\/$/, '')}/models`)
+      }
+
+      // Save active provider state to database
+      const currentSettings = await window.api.storeGet('settings') as AppSettings
+      if (currentSettings) {
+        currentSettings.activeProviderId = item.providerId
         await window.api.storeSet('settings', currentSettings)
       }
       setAutocompleteItems([])
@@ -1061,6 +1243,7 @@ function App(): React.JSX.Element {
     if (type === 'delete-session') return '#ef4444' // Red for session deletion
     if (type === 'session') return '#3b82f6' // Blue for history session
     if (type === 'model') return '#a855f7'   // Purple for switching model
+    if (type === 'provider') return '#06b6d4' // Cyan for provider switching
     return '#10b981'                         // Green for prompt skills
   }
 
@@ -1076,7 +1259,9 @@ function App(): React.JSX.Element {
           <span className="logo-text">QuickAI</span>
           <div className="chat-model-info" style={{ marginLeft: '12px' }}>
             <div className={`status-dot ${isGenerating ? 'loading' : ''}`} />
-            <span className="model-name" style={{ fontSize: '12px', color: '#9ca3af' }}>{selectedModel}</span>
+            <span className="model-name" style={{ fontSize: '12px', color: '#9ca3af' }}>
+              {providers.find((p) => p.id === activeProviderId)?.name || '未选服务商'}: {selectedModel}
+            </span>
           </div>
         </div>
         <div className="drag-header-right">
@@ -1113,6 +1298,38 @@ function App(): React.JSX.Element {
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div>
+              <div className="settings-group">
+                <label className="settings-label">API 服务商 (API Provider)</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <select 
+                    className="settings-select" 
+                    style={{ flex: 1 }}
+                    value={editingProviderId} 
+                    onChange={(e) => handleSwitchEditingProvider(e.target.value)}
+                  >
+                    {providers.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <button 
+                    className="settings-save-btn" 
+                    style={{ margin: 0, padding: '4px 10px', height: '36px', borderRadius: '6px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                    onClick={handleAddProvider}
+                    title="添加新服务商"
+                  >
+                    <Plus size={14} />
+                  </button>
+                  <button 
+                    className="settings-save-btn" 
+                    style={{ margin: 0, padding: '4px 10px', height: '36px', borderRadius: '6px', background: '#ef4444', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                    onClick={() => handleDeleteProvider(editingProviderId)}
+                    disabled={providers.length <= 1}
+                    title="删除当前服务商"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
               <div className="settings-group">
                 <label className="settings-label">API Key</label>
                 <input type="password" className="settings-input" placeholder="输入您的 API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
