@@ -24,6 +24,7 @@ function createWindow(): void {
     y,
     show: false,
     frame: false, // Borderless
+    thickFrame: false, // Disables standard window resizing, native window shadow and DWM animations on Windows
     transparent: true, // Transparent for glassmorphic borders
     resizable: false,
     alwaysOnTop: true, // Always float on top
