@@ -285,6 +285,42 @@ function App(): React.JSX.Element {
     await window.api.storeSet('sessions', updated)
   }
 
+  // Show standard commands and shortcuts cheatsheet inside the chat
+  const showHelpMessage = async () => {
+    if (!activeSessionId) return
+    const helpMsg: Message = {
+      id: `help-${Date.now()}`,
+      role: 'assistant',
+      content: `### 💡 QuickAI 快捷操作与命令指南
+      
+* 🔑 **全局快捷键**：\`Alt + /\` (瞬间召唤/隐藏)
+* ❌ **快速隐藏**：\`Esc\`
+* ↩️ **换行**：\`Shift + Enter\`
+* 🚀 **发送消息**：\`Enter\`
+* ⚙️ **窗口拖动**：鼠标按住顶部标题栏空白区域可自由移动窗口
+
+#### 🛠️ 可用的 "/" 快捷指令：
+* 🆕 \`/new\` - 新建空白对话
+* 🧹 \`/clear\` - 清空当前对话的所有记录
+* ⚙️ \`/settings\` - 打开设置面板配置 API Key 与模型
+* ℹ️ \`/help\` - 显示本帮助指引信息
+* 🔄 \`/model:模型名\` - 快速点选并切换大模型
+* 🕒 \`/history:会话名\` - 快捷加载以往历史对话`
+    }
+    const updated = sessions.map((s) => {
+      if (s.id === activeSessionId) {
+        return {
+          ...s,
+          messages: [...s.messages, helpMsg],
+          lastActiveTime: Date.now()
+        }
+      }
+      return s
+    })
+    setSessions(updated)
+    await window.api.storeSet('sessions', updated)
+  }
+
   // File Picker
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -362,7 +398,7 @@ function App(): React.JSX.Element {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  // Autocomplete change: skills + model commands + session histories
+  // Autocomplete change: system commands + skills + model commands + session histories
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInputVal(val)
@@ -370,9 +406,21 @@ function App(): React.JSX.Element {
     if (val.startsWith('/')) {
       const search = val.slice(1).toLowerCase()
       
-      // 1. Predefined Skills
+      // 1. Built-in System Commands
+      const systemCommands = [
+        { id: 'cmd-new', name: '🆕 新建对话 (Start new chat)', trigger: '/new', cmd: 'new', type: 'command' },
+        { id: 'cmd-clear', name: '🧹 清空当前对话 (Clear current chat)', trigger: '/clear', cmd: 'clear', type: 'command' },
+        { id: 'cmd-settings', name: '⚙️ 打开应用设置 (Open settings)', trigger: '/settings', cmd: 'settings', type: 'command' },
+        { id: 'cmd-help', name: 'ℹ️ 显示快捷指令帮助 (Show help)', trigger: '/help', cmd: 'help', type: 'command' },
+        { id: 'cmd-exit', name: '❌ 隐藏/关闭窗口 (Hide window)', trigger: '/exit', cmd: 'exit', type: 'command' }
+      ]
+      const matchingCmds = systemCommands.filter((c) =>
+        c.trigger.toLowerCase().startsWith(val.toLowerCase())
+      )
+      
+      // 2. Predefined Skills
       const matchingSkills = skills
-        .filter((s) => s.trigger.toLowerCase().startsWith(search))
+        .filter((s) => `/${s.trigger}`.toLowerCase().startsWith(val.toLowerCase()) || s.name.toLowerCase().includes(search))
         .map((s) => ({
           id: s.id,
           name: s.name,
@@ -381,18 +429,18 @@ function App(): React.JSX.Element {
           type: 'skill'
         }))
       
-      // 2. Models switching command options
+      // 3. Models switching command options
       const matchingModels = modelsList
-        .filter((m) => `model:${m}`.toLowerCase().includes(search) || m.toLowerCase().includes(search))
+        .filter((m) => `/model:${m}`.toLowerCase().includes(val.toLowerCase()) || m.toLowerCase().includes(search))
         .map((m) => ({
           id: `model-${m}`,
-          name: `使用大模型 ${m}`,
+          name: `🔄 使用大模型 ${m}`,
           trigger: `/model:${m}`,
           modelId: m,
           type: 'model'
         }))
 
-      // 3. Session histories (exclude active one and empty ones)
+      // 4. Session histories (exclude active one and empty ones)
       const matchingSessions = sessions
         .filter((s) => s.id !== activeSessionId && s.messages.length > 0)
         .filter((s) => s.title.toLowerCase().includes(search) || 'history'.includes(search))
@@ -404,7 +452,7 @@ function App(): React.JSX.Element {
           type: 'session'
         }))
 
-      const combined = [...matchingSkills, ...matchingModels, ...matchingSessions]
+      const combined = [...matchingCmds, ...matchingSkills, ...matchingModels, ...matchingSessions]
       setAutocompleteItems(combined)
       setSelectedItemIdx((prev) => Math.min(prev, combined.length - 1))
     } else {
@@ -414,7 +462,21 @@ function App(): React.JSX.Element {
 
   // Action executed on autocomplete item select
   const triggerAutocompleteItem = async (item: any) => {
-    if (item.type === 'session') {
+    if (item.type === 'command') {
+      if (item.cmd === 'new') {
+        await handleNewSession()
+      } else if (item.cmd === 'clear') {
+        await handleClearCurrentSession()
+      } else if (item.cmd === 'settings') {
+        setShowSettings(true)
+      } else if (item.cmd === 'help') {
+        await showHelpMessage()
+      } else if (item.cmd === 'exit') {
+        window.api.hideWindow()
+      }
+      setAutocompleteItems([])
+      setInputVal('')
+    } else if (item.type === 'session') {
       // Switch conversation session
       setActiveSessionId(item.id)
       setShowSettings(false)
@@ -886,9 +948,10 @@ function App(): React.JSX.Element {
   }
 
   const getTriggerColor = (type: string) => {
+    if (type === 'command') return '#f59e0b' // Amber/Orange for system commands
     if (type === 'session') return '#3b82f6' // Blue for history session
     if (type === 'model') return '#a855f7'   // Purple for switching model
-    return '#9ca3af'                         // Muted gray for skills
+    return '#10b981'                         // Green for prompt skills
   }
 
   // Check if current active session is a clean "new session" with no message history
