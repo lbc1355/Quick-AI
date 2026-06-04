@@ -350,7 +350,7 @@ function App(): React.JSX.Element {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  // Autocomplete change: skills + session histories
+  // Autocomplete change: skills + model commands + session histories
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
     setInputVal(val)
@@ -358,7 +358,7 @@ function App(): React.JSX.Element {
     if (val.startsWith('/')) {
       const search = val.slice(1).toLowerCase()
       
-      // Skills
+      // 1. Predefined Skills
       const matchingSkills = skills
         .filter((s) => s.trigger.toLowerCase().startsWith(search))
         .map((s) => ({
@@ -366,22 +366,33 @@ function App(): React.JSX.Element {
           name: s.name,
           trigger: `/${s.trigger}`,
           prompt: s.prompt,
-          isSession: false
+          type: 'skill'
         }))
       
-      // Session histories (exclude active one and empty ones)
+      // 2. Models switching command options
+      const matchingModels = modelsList
+        .filter((m) => `model:${m}`.toLowerCase().includes(search) || m.toLowerCase().includes(search))
+        .map((m) => ({
+          id: `model-${m}`,
+          name: `使用大模型 ${m}`,
+          trigger: `/model:${m}`,
+          modelId: m,
+          type: 'model'
+        }))
+
+      // 3. Session histories (exclude active one and empty ones)
       const matchingSessions = sessions
         .filter((s) => s.id !== activeSessionId && s.messages.length > 0)
-        .filter((s) => s.title.toLowerCase().includes(search))
+        .filter((s) => s.title.toLowerCase().includes(search) || 'history'.includes(search))
         .map((s) => ({
           id: s.id,
           name: s.title,
           trigger: `/history:${s.id}`,
           prompt: '',
-          isSession: true
+          type: 'session'
         }))
 
-      const combined = [...matchingSkills, ...matchingSessions]
+      const combined = [...matchingSkills, ...matchingModels, ...matchingSessions]
       setAutocompleteItems(combined)
       setSelectedItemIdx((prev) => Math.min(prev, combined.length - 1))
     } else {
@@ -389,11 +400,24 @@ function App(): React.JSX.Element {
     }
   }
 
-  const triggerAutocompleteItem = (item: any) => {
-    if (item.isSession) {
-      // Switch conversation
+  // Action executed on autocomplete item select
+  const triggerAutocompleteItem = async (item: any) => {
+    if (item.type === 'session') {
+      // Switch conversation session
       setActiveSessionId(item.id)
       setShowSettings(false)
+      setAutocompleteItems([])
+      setInputVal('')
+    } else if (item.type === 'model') {
+      // Switch active model instantly
+      setSelectedModel(item.modelId)
+      
+      // Save directly to the storage in background
+      const currentSettings = await window.api.storeGet('settings') as AppSettings
+      if (currentSettings) {
+        currentSettings.model = item.modelId
+        await window.api.storeSet('settings', currentSettings)
+      }
       setAutocompleteItems([])
       setInputVal('')
     } else {
@@ -849,6 +873,12 @@ function App(): React.JSX.Element {
     })
   }
 
+  const getTriggerColor = (type: string) => {
+    if (type === 'session') return '#3b82f6' // Blue for history session
+    if (type === 'model') return '#a855f7'   // Purple for switching model
+    return '#9ca3af'                         // Muted gray for skills
+  }
+
   // Check if current active session is a clean "new session" with no message history
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
 
@@ -1130,7 +1160,7 @@ function App(): React.JSX.Element {
                 {autocompleteItems.map((item, idx) => (
                   <div key={item.id} className={`skills-item ${selectedItemIdx === idx ? 'selected' : ''}`} onClick={() => triggerAutocompleteItem(item)}>
                     <span className="skills-name">{item.name}</span>
-                    <span className="skills-trigger" style={{ color: item.isSession ? '#3b82f6' : '#9ca3af' }}>{item.trigger}</span>
+                    <span className="skills-trigger" style={{ color: getTriggerColor(item.type) }}>{item.trigger}</span>
                   </div>
                 ))}
               </div>
