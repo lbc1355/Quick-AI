@@ -7,14 +7,14 @@ import { FileStore } from './store'
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let store: FileStore | null = null
+let isWindowVisible = false
 
 function createWindow(): void {
-  // Get primary screen size to center horizontally and place spotlight-style vertically
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize
   const winWidth = 780
   const winHeight = 520
-  const x = Math.round((width - winWidth) / 2)
-  const y = Math.round(height * 0.15) // Spotlight upper center placement
+  // Position initially off-screen to avoid any visual flicker or animation on start
+  const x = -9999
+  const y = -9999
 
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -43,7 +43,7 @@ function createWindow(): void {
   mainWindow.on('blur', () => {
     if (store) {
       const autoHide = store.get('settings').autoHideOnBlur
-      if (autoHide && mainWindow && mainWindow.isVisible()) {
+      if (autoHide && mainWindow && isWindowVisible) {
         hideWindow()
       }
     }
@@ -61,19 +61,27 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // Once window is ready, show it off-screen inactive so that it paints, but does not grab focus or show to user
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow) {
+      mainWindow.showInactive()
+    }
+  })
 }
 
 function showWindow(): void {
   if (!mainWindow) return
 
   // Recenter horizontally to account for screen configuration changes
-  const { width } = screen.getPrimaryDisplay().workAreaSize
-  const currentPos = mainWindow.getPosition()
-  const x = Math.round((width - 780) / 2)
-  mainWindow.setPosition(x, currentPos[1])
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize
+  const winWidth = 780
+  const x = Math.round((width - winWidth) / 2)
+  const y = Math.round(height * 0.15) // Spotlight upper center placement
 
-  mainWindow.show()
+  mainWindow.setPosition(x, y)
   mainWindow.focus()
+  isWindowVisible = true
   
   // Notify frontend that the window has been summoned/shown
   mainWindow.webContents.send('window-shown')
@@ -81,13 +89,14 @@ function showWindow(): void {
 
 function hideWindow(): void {
   if (!mainWindow) return
-  mainWindow.hide()
+  mainWindow.setPosition(-9999, -9999)
+  mainWindow.blur()
+  isWindowVisible = false
 }
-
 
 function toggleWindow(): void {
   if (!mainWindow) return
-  if (mainWindow.isVisible()) {
+  if (isWindowVisible) {
     hideWindow()
   } else {
     showWindow()
