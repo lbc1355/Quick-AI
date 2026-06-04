@@ -204,7 +204,6 @@ input, textarea, select {
   display: flex;
   gap: 12px;
   max-width: 88%;
-  animation: fade-in 0.2s ease-out;
 }
 
 @keyframes fade-in {
