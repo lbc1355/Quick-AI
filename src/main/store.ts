@@ -6,7 +6,9 @@ export interface StorageSchema {
   sessions: any[]
   settings: {
     apiKey: string
+    apiUrl: string
     model: string
+    modelsList: string[]
     systemPrompt: string
     autoHideOnBlur: boolean
   }
@@ -18,7 +20,9 @@ const DEFAULT_STORAGE: StorageSchema = {
   sessions: [],
   settings: {
     apiKey: '',
+    apiUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-chat',
+    modelsList: ['deepseek-chat', 'deepseek-reasoner'],
     systemPrompt: 'You are QuickAI, a helpful, fast, and polite AI desktop assistant. Respond concisely and accurately.',
     autoHideOnBlur: true
   },

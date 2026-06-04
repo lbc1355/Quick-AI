@@ -10,7 +10,8 @@ import {
   Sparkles,
   Trash2,
   Undo2,
-  Plus
+  Plus,
+  Minus
 } from 'lucide-react'
 
 interface Message {
@@ -29,7 +30,9 @@ interface Session {
 
 interface AppSettings {
   apiKey: string
+  apiUrl: string
   model: string
+  modelsList: string[]
   systemPrompt: string
   autoHideOnBlur: boolean
 }
@@ -47,11 +50,20 @@ function App(): React.JSX.Element {
 
   // Settings state
   const [apiKey, setApiKey] = useState('')
+  const [apiUrl, setApiUrl] = useState('https://api.deepseek.com/v1')
   const [selectedModel, setSelectedModel] = useState('deepseek-chat')
+  const [modelsList, setModelsList] = useState<string[]>(['deepseek-chat', 'deepseek-reasoner'])
   const [systemPrompt, setSystemPrompt] = useState('')
   const [autoHideOnBlur, setAutoHideOnBlur] = useState(true)
   const [appStorePath, setAppStorePath] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
+
+  // Model Management inputs state
+  const [manualModelInput, setManualModelInput] = useState('')
+  const [fetchModelsUrl, setFetchModelsUrl] = useState('https://api.deepseek.com/v1/models')
+  const [isFetchingModels, setIsFetchingModels] = useState(false)
+  const [fetchedModels, setFetchedModels] = useState<string[]>([])
+  const [showModelsModal, setShowModelsModal] = useState(false)
 
   // Chat Data state
   const [sessions, setSessions] = useState<Session[]>([])
@@ -83,9 +95,13 @@ function App(): React.JSX.Element {
       const savedSettings = await window.api.storeGet('settings') as AppSettings
       if (savedSettings) {
         setApiKey(savedSettings.apiKey || '')
+        const loadedApiUrl = savedSettings.apiUrl || 'https://api.deepseek.com/v1'
+        setApiUrl(loadedApiUrl)
         setSelectedModel(savedSettings.model || 'deepseek-chat')
+        setModelsList(savedSettings.modelsList || ['deepseek-chat', 'deepseek-reasoner'])
         setSystemPrompt(savedSettings.systemPrompt || '')
         setAutoHideOnBlur(savedSettings.autoHideOnBlur !== false)
+        setFetchModelsUrl(`${loadedApiUrl.replace(/\/$/, '')}/models`)
       }
 
       // App metadata
@@ -129,6 +145,12 @@ function App(): React.JSX.Element {
     initData()
   }, [])
 
+  // Update fetch models URL when API URL changes
+  const handleApiUrlChange = (newUrl: string) => {
+    setApiUrl(newUrl)
+    setFetchModelsUrl(`${newUrl.replace(/\/$/, '')}/models`)
+  }
+
   // Listen to window summon (focus/show) event from Main Process
   useEffect(() => {
     const handleWindowShown = () => {
@@ -158,13 +180,13 @@ function App(): React.JSX.Element {
   // Trigger escape key listener to hide window
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isGenerating) {
+      if (e.key === 'Escape' && !isGenerating && !showModelsModal) {
         window.api.hideWindow()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isGenerating])
+  }, [isGenerating, showModelsModal])
 
   // Timeout Check: Create a new empty session if the idle time exceeds 5 minutes
   const checkSessionTimeout = async (currentActiveId: string, currentSessions: Session[]) => {
@@ -208,7 +230,9 @@ function App(): React.JSX.Element {
   const handleSaveSettings = async () => {
     const settingsObj: AppSettings = {
       apiKey,
+      apiUrl,
       model: selectedModel,
+      modelsList,
       systemPrompt,
       autoHideOnBlur
     }
@@ -415,7 +439,7 @@ function App(): React.JSX.Element {
     if (isGenerating) return
 
     // Verify key
-    if (!apiKey) {
+    if (!apiKey && apiUrl.includes('deepseek.com')) {
       alert('请先在设置中填写 DeepSeek API Key！')
       setShowSettings(true)
       return
@@ -496,12 +520,15 @@ function App(): React.JSX.Element {
       apiMessages.push({ role: msg.role, content })
     })
 
+    // Construct full URL dynamically
+    const completionsUrl = `${apiUrl.replace(/\/$/, '')}/chat/completions`
+
     try {
-      const response = await fetch('https://api.deepseek.com/chat/completions', {
+      const response = await fetch(completionsUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
         },
         body: JSON.stringify({
           model: selectedModel,
@@ -642,6 +669,94 @@ function App(): React.JSX.Element {
     }
   }
 
+  // Fetch models list from URL
+  const handleFetchModels = async () => {
+    if (!fetchModelsUrl.trim()) return
+    setIsFetchingModels(true)
+    try {
+      const response = await fetch(fetchModelsUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`获取失败：${response.status} ${response.statusText}`)
+      }
+
+      const json = await response.json()
+      let ids: string[] = []
+      
+      if (json.data && Array.isArray(json.data)) {
+        ids = json.data.map((m: any) => m.id)
+      } else if (json.models && Array.isArray(json.models)) {
+        ids = json.models.map((m: any) => m.name || m.model)
+      } else if (Array.isArray(json)) {
+        ids = json.map((m: any) => typeof m === 'string' ? m : (m.id || m.name))
+      }
+
+      if (ids.length === 0) {
+        alert('未获取到任何模型 ID，请检查接口返回格式！')
+        return
+      }
+
+      setFetchedModels(ids)
+      setShowModelsModal(true)
+    } catch (e: any) {
+      console.error(e)
+      alert(`获取模型出错：${e.message || '网络连接异常'}`)
+    } finally {
+      setIsFetchingModels(false)
+    }
+  }
+
+  // Manually add model ID
+  const handleAddManualModel = () => {
+    const modelId = manualModelInput.trim()
+    if (!modelId) return
+    if (modelsList.includes(modelId)) {
+      alert('模型已存在于列表中！')
+      return
+    }
+    const updated = [...modelsList, modelId]
+    setModelsList(updated)
+    setSelectedModel(modelId)
+    setManualModelInput('')
+  }
+
+  // Toggle dynamic model add/remove
+  const handleToggleModelSelection = (modelId: string) => {
+    if (modelsList.includes(modelId)) {
+      if (modelsList.length <= 1) {
+        alert('必须保留至少一个可用模型！')
+        return
+      }
+      const updated = modelsList.filter((m) => m !== modelId)
+      setModelsList(updated)
+      if (selectedModel === modelId) {
+        setSelectedModel(updated[0])
+      }
+    } else {
+      const updated = [...modelsList, modelId]
+      setModelsList(updated)
+    }
+  }
+
+  // Remove a model from configuration page directly
+  const handleRemoveModelDirectly = (modelId: string) => {
+    if (modelsList.length <= 1) {
+      alert('必须保留至少一个可用模型！')
+      return
+    }
+    const updated = modelsList.filter((m) => m !== modelId)
+    setModelsList(updated)
+    if (selectedModel === modelId) {
+      setSelectedModel(updated[0])
+    }
+  }
+
   // Custom text formatter
   const renderMessageContent = (text: string) => {
     if (!text) return null
@@ -726,38 +841,88 @@ function App(): React.JSX.Element {
         <div className="settings-container">
           <div className="settings-header">QuickAI 设置</div>
           
-          <div className="settings-group">
-            <label className="settings-label">DeepSeek API Key</label>
-            <input type="password" className="settings-input" placeholder="输入您的 api.deepseek.com Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div>
+              <div className="settings-group">
+                <label className="settings-label">API Key</label>
+                <input type="password" className="settings-input" placeholder="输入您的 API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+              </div>
+
+              <div className="settings-group">
+                <label className="settings-label">API 基础网址 (URL Base)</label>
+                <input type="text" className="settings-input" placeholder="https://api.deepseek.com/v1" value={apiUrl} onChange={(e) => handleApiUrlChange(e.target.value)} />
+              </div>
+
+              <div className="settings-group">
+                <label className="settings-label">当前选用模型 (Model)</label>
+                <select className="settings-select" value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
+                  {modelsList.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="settings-group">
+                <label className="settings-label">系统预设提示词 (System Prompt)</label>
+                <textarea className="settings-input" style={{ resize: 'vertical', minHeight: '60px', fontSize: '12px' }} value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Model Management panel */}
+            <div>
+              <div className="settings-group" style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid var(--color-border)', borderRadius: '8px', padding: '10px' }}>
+                <label className="settings-label" style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#60a5fa' }}>模型列表管理</label>
+                
+                {/* Manual configuration mode */}
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                  <input type="text" className="settings-input" style={{ flex: 1, height: '30px', padding: '4px 8px', fontSize: '12px' }} placeholder="手动添加模型 ID (例: gpt-4o)" value={manualModelInput} onChange={(e) => setManualModelInput(e.target.value)} />
+                  <button className="settings-save-btn" style={{ margin: 0, padding: '4px 10px', height: '30px', borderRadius: '6px' }} onClick={handleAddManualModel}>
+                    <Plus size={14} />
+                  </button>
+                </div>
+
+                {/* Fetch from URL mode */}
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '8px' }}>
+                  <input type="text" className="settings-input" style={{ flex: 1, height: '30px', padding: '4px 8px', fontSize: '11px' }} placeholder="从网址获取模型列表" value={fetchModelsUrl} onChange={(e) => setFetchModelsUrl(e.target.value)} />
+                  <button className="settings-save-btn" style={{ margin: 0, padding: '4px 8px', height: '30px', borderRadius: '6px', fontSize: '11.5px', whiteSpace: 'nowrap' }} onClick={handleFetchModels} disabled={isFetchingModels}>
+                    {isFetchingModels ? '获取中..' : '获取模型'}
+                  </button>
+                </div>
+
+                {/* Current Models list with direct remove */}
+                <div style={{ marginTop: '10px' }}>
+                  <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'bold' }}>已加入的候选模型：</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px', maxHeight: '100px', overflowY: 'auto' }}>
+                    {modelsList.map((m) => (
+                      <div key={m} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px', padding: '2px 6px', fontSize: '11px' }}>
+                        <span>{m}</span>
+                        <button style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center' }} onClick={() => handleRemoveModelDirectly(m)} title="移出列表">
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="settings-group" style={{ flexDirection: 'row', alignItems: 'center', marginTop: '10px' }}>
+                <label className="settings-checkbox-container">
+                  <input type="checkbox" className="settings-checkbox" checked={autoHideOnBlur} onChange={(e) => setAutoHideOnBlur(e.target.checked)} />
+                  <span>失焦时自动隐藏聊天窗口 (类似于 Spotlight)</span>
+                </label>
+              </div>
+
+              <div className="settings-group">
+                <label className="settings-label" style={{ fontSize: '11.5px' }}>本地数据存储路径</label>
+                <input type="text" className="settings-input" style={{ opacity: 0.5, fontSize: '10.5px', padding: '6px' }} value={appStorePath} readOnly disabled />
+              </div>
+            </div>
           </div>
 
-          <div className="settings-group">
-            <label className="settings-label">默认模型 (Model)</label>
-            <select className="settings-select" value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
-              <option value="deepseek-chat">deepseek-chat (常规/编程)</option>
-              <option value="deepseek-reasoner">deepseek-reasoner (深度思考/R1)</option>
-            </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px' }}>
+            <button className="settings-save-btn" onClick={handleSaveSettings}>保存配置</button>
+            {saveSuccess && <div className="settings-save-msg" style={{ margin: 0 }}>✓ 配置保存成功！</div>}
           </div>
-
-          <div className="settings-group">
-            <label className="settings-label">系统预设提示词 (System Prompt)</label>
-            <textarea className="settings-input" style={{ resize: 'vertical', minHeight: '80px' }} value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} />
-          </div>
-
-          <div className="settings-group" style={{ flexDirection: 'row', alignItems: 'center', marginTop: '6px' }}>
-            <label className="settings-checkbox-container">
-              <input type="checkbox" className="settings-checkbox" checked={autoHideOnBlur} onChange={(e) => setAutoHideOnBlur(e.target.checked)} />
-              <span>失焦时自动隐藏聊天窗口 (类似于 Spotlight)</span>
-            </label>
-          </div>
-
-          <div className="settings-group" style={{ marginTop: '10px' }}>
-            <label className="settings-label">本地数据存储路径</label>
-            <input type="text" className="settings-input" style={{ opacity: 0.6, fontSize: '11px' }} value={appStorePath} readOnly disabled />
-          </div>
-
-          <button className="settings-save-btn" onClick={handleSaveSettings}>保存配置</button>
-          {saveSuccess && <div className="settings-save-msg">✓ 配置保存成功！</div>}
         </div>
       ) : (
         <div className="chat-area">
@@ -870,6 +1035,42 @@ function App(): React.JSX.Element {
                   <Send size={14} />
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Models Selection Pop-up Modal */}
+      {showModelsModal && (
+        <div className="modal-backdrop" onClick={() => setShowModelsModal(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">获取到的模型列表 ({fetchedModels.length})</span>
+              <button className="header-action-btn" onClick={() => setShowModelsModal(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              {fetchedModels.map((modelId) => {
+                const isAdded = modelsList.includes(modelId)
+                return (
+                  <div key={modelId} className="modal-list-item">
+                    <span className="modal-model-id" title={modelId}>{modelId}</span>
+                    {isAdded ? (
+                      <button className="modal-action-btn remove" onClick={() => handleToggleModelSelection(modelId)} title="移除此模型">
+                        <Minus size={14} />
+                      </button>
+                    ) : (
+                      <button className="modal-action-btn add" onClick={() => handleToggleModelSelection(modelId)} title="添加此模型">
+                        <Plus size={14} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div className="modal-footer">
+              <button className="modal-close-btn" onClick={() => setShowModelsModal(false)}>完成</button>
             </div>
           </div>
         </div>
