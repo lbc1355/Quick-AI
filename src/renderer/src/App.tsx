@@ -181,6 +181,18 @@ function App(): React.JSX.Element {
     }
   }, [showSettings, activeSessionId])
 
+  // Auto-resize main input textarea height based on content
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = '24px' // Reset to default line height
+      const scrollHeight = textarea.scrollHeight
+      if (scrollHeight > 24) {
+        textarea.style.height = `${scrollHeight}px`
+      }
+    }
+  }, [inputVal])
+
   // Trigger escape key listener to hide window
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
