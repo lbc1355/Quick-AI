@@ -71,9 +71,6 @@ function showWindow(): void {
   const x = Math.round((width - 780) / 2)
   mainWindow.setPosition(x, currentPos[1])
 
-  if (process.platform === 'win32') {
-    mainWindow.restore() // Restore working set memory trim
-  }
   mainWindow.show()
   mainWindow.focus()
   
@@ -83,11 +80,9 @@ function showWindow(): void {
 
 function hideWindow(): void {
   if (!mainWindow) return
-  if (process.platform === 'win32') {
-    mainWindow.minimize() // Forces working set memory trim on Windows
-  }
   mainWindow.hide()
 }
+
 
 function toggleWindow(): void {
   if (!mainWindow) return
