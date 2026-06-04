@@ -96,6 +96,25 @@ function App(): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const skillsMenuRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Listen to file input cancel event
+  useEffect(() => {
+    const input = fileInputRef.current
+    if (!input) return
+
+    const handleCancel = () => {
+      window.api.reSummonWindow()
+      setTimeout(() => {
+        textareaRef.current?.focus()
+      }, 50)
+    }
+
+    input.addEventListener('cancel', handleCancel)
+    return () => {
+      input.removeEventListener('cancel', handleCancel)
+    }
+  }, [])
 
   // Track latest sessions state in a ref to avoid stale closures in async handlers
   const sessionsRef = useRef<Session[]>([])
@@ -369,6 +388,13 @@ function App(): React.JSX.Element {
     if (e.target.files) {
       Array.from(e.target.files).forEach(processFile)
     }
+    // Clear value to allow triggering change event if the same file is selected again
+    e.target.value = ''
+    // Re-summon window and focus text input
+    window.api.reSummonWindow()
+    setTimeout(() => {
+      textareaRef.current?.focus()
+    }, 50)
   }
 
   // Clipboard Paste Image
@@ -1333,7 +1359,7 @@ function App(): React.JSX.Element {
             <div className="input-container">
               <label htmlFor="file-input" className="input-action-btn" title="上传文件 (支持拖拽/粘贴图片)" style={{ cursor: 'pointer' }}>
                 <Paperclip size={16} />
-                <input id="file-input" type="file" style={{ display: 'none' }} multiple onChange={handleFileChange} />
+                <input ref={fileInputRef} id="file-input" type="file" style={{ display: 'none' }} multiple onChange={handleFileChange} onClick={() => window.api.setFilePickerActive(true)} />
               </label>
               <textarea ref={textareaRef} className="chat-input" placeholder="输入您的问题... (Esc 隐藏, Shift+Enter 换行, / 命令快捷词)" value={inputVal} onChange={handleInputChange} onKeyDown={handleInputKeyDown} onPaste={handlePaste} rows={1} />
               <div className="chat-actions">

@@ -7,7 +7,9 @@ const api = {
   storeSet: (key: string, value: any) => ipcRenderer.invoke('store-set', key, value),
   getAppInfo: () => ipcRenderer.invoke('get-app-info'),
   hideWindow: () => ipcRenderer.send('hide-window'),
-  toggleDevTools: () => ipcRenderer.send('toggle-devtools')
+  toggleDevTools: () => ipcRenderer.send('toggle-devtools'),
+  setFilePickerActive: (active: boolean) => ipcRenderer.send('set-file-picker-active', active),
+  reSummonWindow: () => ipcRenderer.send('re-summon-window')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

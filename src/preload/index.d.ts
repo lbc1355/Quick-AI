@@ -9,6 +9,8 @@ declare global {
       getAppInfo: () => Promise<{ storePath: string; version: string }>
       hideWindow: () => void
       toggleDevTools: () => void
+      setFilePickerActive: (active: boolean) => void
+      reSummonWindow: () => void
     }
   }
 }

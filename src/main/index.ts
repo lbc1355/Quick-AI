@@ -8,6 +8,7 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let store: FileStore | null = null
 let isWindowVisible = false
+let isFilePickerActive = false
 
 function createWindow(): void {
   const winWidth = 780
@@ -41,12 +42,21 @@ function createWindow(): void {
 
   // Focus-loss auto-hide behavior
   mainWindow.on('blur', () => {
+    if (isFilePickerActive) return
     if (store) {
       const autoHide = store.get('settings').autoHideOnBlur
       if (autoHide && mainWindow && isWindowVisible) {
         hideWindow()
       }
     }
+  })
+
+  // Reset file picker active state when focus returns to the window
+  mainWindow.on('focus', () => {
+    // Reset file picker active state after a short delay to ignore trailing blur events from the OS dialog closing transition
+    setTimeout(() => {
+      isFilePickerActive = false
+    }, 300)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -179,6 +189,16 @@ app.whenReady().then(() => {
   // IPC handlers for window control
   ipcMain.on('hide-window', () => {
     hideWindow()
+  })
+
+  ipcMain.on('set-file-picker-active', (_event, active) => {
+    isFilePickerActive = active
+  })
+
+  ipcMain.on('re-summon-window', () => {
+    if (mainWindow) {
+      showWindow()
+    }
   })
 
   ipcMain.on('toggle-devtools', () => {
