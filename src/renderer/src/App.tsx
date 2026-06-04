@@ -347,7 +347,8 @@ function App(): React.JSX.Element {
 * ⚙️ \`/settings\` - 打开设置面板配置 API Key 与模型
 * ℹ️ \`/help\` - 显示本帮助指引信息
 * 🔄 \`/model:模型名\` - 快速点选并切换大模型
-* 🕒 \`/history:会话名\` - 快捷加载以往历史对话`
+* 🕒 \`/history:会话名\` - 快捷加载以往历史对话
+* ❌ \`/delete:会话名\` - 删除历史对话会话`
     }
     const updated = sessions.map((s) => {
       if (s.id === activeSessionId) {
@@ -494,7 +495,19 @@ function App(): React.JSX.Element {
           type: 'session'
         }))
 
-      const combined = [...matchingCmds, ...matchingSkills, ...matchingModels, ...matchingSessions]
+      // 5. Session deletion options
+      const matchingDeleteSessions = sessions
+        .filter((s) => s.messages.length > 0)
+        .filter((s) => `/delete:${s.id}`.toLowerCase().includes(val.toLowerCase()) || s.title.toLowerCase().includes(search) || 'delete'.includes(search) || 'del'.includes(search))
+        .map((s) => ({
+          id: `delete-${s.id}`,
+          name: `删除会话: ${s.title}`,
+          trigger: `/delete:${s.id}`,
+          sessionId: s.id,
+          type: 'delete-session'
+        }))
+
+      const combined = [...matchingCmds, ...matchingSkills, ...matchingModels, ...matchingSessions, ...matchingDeleteSessions]
       setAutocompleteItems(combined)
       setSelectedItemIdx((prev) => {
         if (combined.length === 0) return 0
@@ -521,6 +534,29 @@ function App(): React.JSX.Element {
       } else if (item.cmd === 'exit') {
         window.api.hideWindow()
       }
+      setAutocompleteItems([])
+      setInputVal('')
+    } else if (item.type === 'delete-session') {
+      const targetSessionId = item.sessionId
+      const updated = sessions.filter((s) => s.id !== targetSessionId)
+      
+      if (activeSessionId === targetSessionId) {
+        if (updated.length > 0) {
+          setActiveSessionId(updated[0].id)
+        } else {
+          const newSession: Session = {
+            id: Date.now().toString(),
+            title: '新对话',
+            messages: [],
+            lastActiveTime: Date.now()
+          }
+          updated.push(newSession)
+          setActiveSessionId(newSession.id)
+        }
+      }
+      
+      setSessions(updated)
+      await window.api.storeSet('sessions', updated)
       setAutocompleteItems([])
       setInputVal('')
     } else if (item.type === 'session') {
@@ -996,6 +1032,7 @@ function App(): React.JSX.Element {
 
   const getTriggerColor = (type: string) => {
     if (type === 'command') return '#f59e0b' // Amber/Orange for system commands
+    if (type === 'delete-session') return '#ef4444' // Red for session deletion
     if (type === 'session') return '#3b82f6' // Blue for history session
     if (type === 'model') return '#a855f7'   // Purple for switching model
     return '#10b981'                         // Green for prompt skills
