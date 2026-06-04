@@ -92,6 +92,12 @@ function App(): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // Track latest sessions state in a ref to avoid stale closures in async handlers
+  const sessionsRef = useRef<Session[]>([])
+  useEffect(() => {
+    sessionsRef.current = sessions
+  }, [sessions])
+
   // Load configuration and data on startup
   useEffect(() => {
     const initData = async () => {
@@ -745,7 +751,7 @@ function App(): React.JSX.Element {
       // Save sessions
       setTimeout(async () => {
         const finalSessions = (await window.api.storeGet('sessions') as Session[]) || []
-        const currentActive = sessions.find((s) => s.id === activeSessionId)
+        const currentActive = sessionsRef.current.find((s) => s.id === activeSessionId)
         if (currentActive) {
           currentActive.lastActiveTime = Date.now()
           const updatedSessions = finalSessions.map((s) => (s.id === activeSessionId ? currentActive : s))
