@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 export interface ApiProvider {
   id: string
   name: string
+  type: 'deepseek' | 'kimi' | 'ollama' | 'custom'
   apiKey: string
   apiUrl: string
   model: string
@@ -36,6 +37,7 @@ const DEFAULT_STORAGE: StorageSchema = {
       {
         id: 'provider-deepseek',
         name: 'DeepSeek',
+        type: 'deepseek',
         apiKey: '',
         apiUrl: 'https://api.deepseek.com/v1',
         model: 'deepseek-chat',
@@ -44,6 +46,7 @@ const DEFAULT_STORAGE: StorageSchema = {
       {
         id: 'provider-kimi',
         name: 'Kimi (Moonshot)',
+        type: 'kimi',
         apiKey: '',
         apiUrl: 'https://api.moonshot.cn/v1',
         model: 'moonshot-v1-8k',
@@ -52,6 +55,7 @@ const DEFAULT_STORAGE: StorageSchema = {
       {
         id: 'provider-ollama',
         name: 'Local Ollama',
+        type: 'ollama',
         apiKey: '',
         apiUrl: 'http://localhost:11434/v1',
         model: 'deepseek-r1:8b',
@@ -110,6 +114,7 @@ export class FileStore {
           const defaultProvider: ApiProvider = {
             id: 'provider-deepseek',
             name: oldApiUrl.includes('deepseek.com') ? 'DeepSeek' : '默认服务商',
+            type: oldApiUrl.includes('deepseek.com') ? 'deepseek' : 'custom',
             apiKey: oldApiKey,
             apiUrl: oldApiUrl,
             model: oldModel,
@@ -120,6 +125,7 @@ export class FileStore {
           const kimiProvider: ApiProvider = {
             id: 'provider-kimi',
             name: 'Kimi (Moonshot)',
+            type: 'kimi',
             apiKey: '',
             apiUrl: 'https://api.moonshot.cn/v1',
             model: 'moonshot-v1-8k',
@@ -129,6 +135,7 @@ export class FileStore {
           const ollamaProvider: ApiProvider = {
             id: 'provider-ollama',
             name: 'Local Ollama',
+            type: 'ollama',
             apiKey: '',
             apiUrl: 'http://localhost:11434/v1',
             model: 'deepseek-r1:8b',
@@ -137,6 +144,20 @@ export class FileStore {
 
           settings.providers = [defaultProvider, kimiProvider, ollamaProvider]
           settings.activeProviderId = 'provider-deepseek'
+        }
+
+        // Ensure all loaded providers have a "type" attribute for backward compatibility
+        if (settings.providers && settings.providers.length > 0) {
+          settings.providers = settings.providers.map((p: any) => {
+            if (!p.type) {
+              let detectedType: 'deepseek' | 'kimi' | 'ollama' | 'custom' = 'custom'
+              if (p.apiUrl.includes('deepseek.com')) detectedType = 'deepseek'
+              else if (p.apiUrl.includes('moonshot.cn')) detectedType = 'kimi'
+              else if (p.apiUrl.includes('localhost') || p.apiUrl.includes('127.0.0.1')) detectedType = 'ollama'
+              return { ...p, type: detectedType }
+            }
+            return p
+          })
         }
 
         // Merge defaults to prevent breaking changes on old versions

@@ -34,6 +34,7 @@ interface Session {
 interface ApiProvider {
   id: string;
   name: string;
+  type: 'deepseek' | 'kimi' | 'ollama' | 'custom';
   apiKey: string;
   apiUrl: string;
   model: string;
@@ -55,6 +56,37 @@ interface Skill {
   prompt: string
 }
 
+const PROVIDER_PRESETS = [
+  {
+    type: 'deepseek' as const,
+    name: 'DeepSeek',
+    apiUrl: 'https://api.deepseek.com/v1',
+    modelsList: ['deepseek-chat', 'deepseek-reasoner'],
+    defaultModel: 'deepseek-chat'
+  },
+  {
+    type: 'kimi' as const,
+    name: 'Kimi (Moonshot)',
+    apiUrl: 'https://api.moonshot.cn/v1',
+    modelsList: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+    defaultModel: 'moonshot-v1-8k'
+  },
+  {
+    type: 'ollama' as const,
+    name: 'Local Ollama',
+    apiUrl: 'http://localhost:11434/v1',
+    modelsList: ['deepseek-r1:8b', 'llama3'],
+    defaultModel: 'deepseek-r1:8b'
+  },
+  {
+    type: 'custom' as const,
+    name: '自定义服务商',
+    apiUrl: '',
+    modelsList: [],
+    defaultModel: ''
+  }
+]
+
 function App(): React.JSX.Element {
   // Navigation
   const [showSettings, setShowSettings] = useState(false)
@@ -74,6 +106,11 @@ function App(): React.JSX.Element {
   const [providers, setProviders] = useState<ApiProvider[]>([])
   const [activeProviderId, setActiveProviderId] = useState<string>('')
   const [editingProviderId, setEditingProviderId] = useState<string>('')
+
+  // Add provider form states
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newProviderName, setNewProviderName] = useState('')
+  const [newProviderType, setNewProviderType] = useState<'deepseek' | 'kimi' | 'ollama' | 'custom'>('deepseek')
 
   // Model Management inputs state
   const [manualModelInput, setManualModelInput] = useState('')
@@ -338,11 +375,10 @@ function App(): React.JSX.Element {
     })
 
     setProviders(updatedProviders)
-    setActiveProviderId(editingProviderId) // Make the currently edited provider the active one
 
     const settingsObj: AppSettings = {
       providers: updatedProviders,
-      activeProviderId: editingProviderId,
+      activeProviderId, // Set explicitly chosen active provider
       systemPrompt,
       autoHideOnBlur,
       theme
@@ -382,19 +418,18 @@ function App(): React.JSX.Element {
     }
   }
 
-  // Add a new custom provider
-  const handleAddProvider = () => {
-    const name = prompt('请输入新服务商的名称 (例如: Kimi, OpenAI):')
-    if (!name || !name.trim()) return
-
+  // Add a new provider by choosing a preset type and custom name
+  const handleAddProvider = (name: string, type: 'deepseek' | 'kimi' | 'ollama' | 'custom') => {
+    const preset = PROVIDER_PRESETS.find((p) => p.type === type)
     const newId = `provider-custom-${Date.now()}`
     const newProvider: ApiProvider = {
       id: newId,
-      name: name.trim(),
+      name: name.trim() || (preset ? preset.name : '新服务商'),
+      type,
       apiKey: '',
-      apiUrl: '',
-      model: '',
-      modelsList: []
+      apiUrl: preset ? preset.apiUrl : '',
+      model: preset ? preset.defaultModel : '',
+      modelsList: preset ? [...preset.modelsList] : []
     }
 
     // Save current inputs to the currently edited provider first
@@ -417,10 +452,15 @@ function App(): React.JSX.Element {
     // Switch to editing the new provider
     setEditingProviderId(newId)
     setApiKey('')
-    setApiUrl('')
-    setSelectedModel('')
-    setModelsList([])
-    setFetchModelsUrl('')
+    setApiUrl(preset ? preset.apiUrl : '')
+    setSelectedModel(preset ? preset.defaultModel : '')
+    setModelsList(preset ? [...preset.modelsList] : [])
+    setFetchModelsUrl(`${(preset ? preset.apiUrl : '').replace(/\/$/, '')}/models`)
+  }
+
+  // Set the default/active provider
+  const handleSetActiveProvider = (providerId: string) => {
+    setActiveProviderId(providerId)
   }
 
   // Delete a provider
@@ -430,10 +470,15 @@ function App(): React.JSX.Element {
       return
     }
 
-    if (!confirm('确定要删除当前服务商吗？')) return
+    if (!confirm('确定要删除该服务商吗？')) return
 
     const finalProviders = providers.filter((p) => p.id !== providerId)
     setProviders(finalProviders)
+
+    // If the deleted provider was the default active one, switch active provider to first remaining
+    if (activeProviderId === providerId) {
+      setActiveProviderId(finalProviders[0].id)
+    }
 
     // Switch editing to the first remaining provider
     const firstRemaining = finalProviders[0]
@@ -1298,38 +1343,153 @@ function App(): React.JSX.Element {
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div>
-              <div className="settings-group">
-                <label className="settings-label">API 服务商 (API Provider)</label>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <select 
-                    className="settings-select" 
-                    style={{ flex: 1 }}
-                    value={editingProviderId} 
-                    onChange={(e) => handleSwitchEditingProvider(e.target.value)}
-                  >
-                    {providers.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                  <button 
-                    className="settings-save-btn" 
-                    style={{ margin: 0, padding: '4px 10px', height: '36px', borderRadius: '6px', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
-                    onClick={handleAddProvider}
-                    title="添加新服务商"
-                  >
-                    <Plus size={14} />
-                  </button>
-                  <button 
-                    className="settings-save-btn" 
-                    style={{ margin: 0, padding: '4px 10px', height: '36px', borderRadius: '6px', background: '#ef4444', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
-                    onClick={() => handleDeleteProvider(editingProviderId)}
-                    disabled={providers.length <= 1}
-                    title="删除当前服务商"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+              {/* Header for Configured Providers list */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span className="settings-label" style={{ fontSize: '13.5px', color: 'var(--color-text-title)' }}>已配置服务商 (Configured API Services)</span>
+                <button 
+                  className="settings-save-btn" 
+                  style={{ margin: 0, padding: '4px 10px', height: '28px', borderRadius: '6px', fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  onClick={() => setShowAddForm(true)}
+                >
+                  <Plus size={12} />
+                  <span>新增配置</span>
+                </button>
               </div>
+
+              {/* Add Provider form overlay/inline card */}
+              {showAddForm && (
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed var(--color-primary)', borderRadius: '8px', padding: '12px', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--color-primary)' }}>新增服务商配置</div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '10px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>服务商类型 (Preset Type)</label>
+                      <select 
+                        className="settings-select" 
+                        style={{ width: '100%', height: '30px', padding: '0 8px', fontSize: '11.5px' }}
+                        value={newProviderType}
+                        onChange={(e) => setNewProviderType(e.target.value as any)}
+                      >
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="kimi">Kimi (Moonshot)</option>
+                        <option value="ollama">Local Ollama</option>
+                        <option value="custom">Custom (自定义)</option>
+                      </select>
+                    </div>
+                    <div style={{ flex: 1.5 }}>
+                      <label style={{ fontSize: '10px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>配置名称 (Custom Name)</label>
+                      <input 
+                        type="text" 
+                        className="settings-input" 
+                        style={{ width: '100%', height: '30px', padding: '4px 8px', fontSize: '11.5px' }} 
+                        placeholder="例如: DeepSeek-官方, 硅基流动" 
+                        value={newProviderName}
+                        onChange={(e) => setNewProviderName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                    <button 
+                      className="edit-btn cancel" 
+                      style={{ padding: '4px 10px', height: '24px', fontSize: '11px', display: 'flex', alignItems: 'center' }}
+                      onClick={() => setShowAddForm(false)}
+                    >
+                      取消
+                    </button>
+                    <button 
+                      className="settings-save-btn" 
+                      style={{ margin: 0, padding: '4px 12px', height: '24px', fontSize: '11px', display: 'flex', alignItems: 'center' }}
+                      onClick={() => {
+                        handleAddProvider(newProviderName, newProviderType)
+                        setShowAddForm(false)
+                        setNewProviderName('')
+                      }}
+                    >
+                      确认添加
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Scrollable list of configured providers */}
+              <div className="provider-list-container">
+                {providers.map((p) => {
+                  const isActive = p.id === activeProviderId
+                  const isEditing = p.id === editingProviderId
+                  return (
+                    <div 
+                      key={p.id} 
+                      className={`provider-card ${isEditing ? 'editing' : ''}`}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-title)' }}>{p.name}</span>
+                          <span style={{ fontSize: '10px', padding: '1px 6px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#9ca3af', textTransform: 'capitalize' }}>
+                            {p.type}
+                          </span>
+                          {isActive && (
+                            <span style={{ fontSize: '10px', padding: '1px 6px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '4px', color: '#10b981', fontWeight: 'bold' }}>
+                              默认激活
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {!isActive && (
+                            <button 
+                              className="settings-save-btn" 
+                              style={{ margin: 0, padding: '2px 8px', height: '22px', fontSize: '10.5px', borderRadius: '4px', background: 'transparent', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#10b981' }}
+                              onClick={() => handleSetActiveProvider(p.id)}
+                            >
+                              设为默认
+                            </button>
+                          )}
+                          {!isEditing ? (
+                            <button 
+                              className="settings-save-btn" 
+                              style={{ margin: 0, padding: '2px 8px', height: '22px', fontSize: '10.5px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                              onClick={() => handleSwitchEditingProvider(p.id)}
+                            >
+                              编辑
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '11px', color: 'var(--color-primary)', fontWeight: 'bold', padding: '2px 0' }}>正在编辑</span>
+                          )}
+                          <button 
+                            style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: providers.length <= 1 ? 0.3 : 1 }}
+                            onClick={() => handleDeleteProvider(p.id)}
+                            disabled={providers.length <= 1}
+                            title="删除此配置"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {p.apiUrl || '未设置接口网址'}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Form editing section for the currently selected provider configuration */}
+              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '12px', marginTop: '12px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--color-primary)', marginBottom: '8px' }}>
+                  配置属性编辑: {providers.find(p => p.id === editingProviderId)?.name}
+                </div>
+                
+                <div className="settings-group">
+                  <label className="settings-label">服务自定义名称 (Custom Config Name)</label>
+                  <input 
+                    type="text" 
+                    className="settings-input" 
+                    placeholder="例如: DeepSeek 官方" 
+                    value={providers.find(p => p.id === editingProviderId)?.name || ''} 
+                    onChange={(e) => {
+                      const newName = e.target.value
+                      setProviders(prev => prev.map(p => p.id === editingProviderId ? { ...p, name: newName } : p))
+                    }} 
+                  />
+                </div>
               <div className="settings-group">
                 <label className="settings-label">API Key</label>
                 <input type="password" className="settings-input" placeholder="输入您的 API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
@@ -1347,6 +1507,7 @@ function App(): React.JSX.Element {
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
+              </div>
               </div>
 
               <div className="settings-group">
