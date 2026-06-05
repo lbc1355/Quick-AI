@@ -143,6 +143,9 @@ function App(): React.JSX.Element {
 
   // Refs for scrolling and textarea
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const shouldAutoScrollRef = useRef(true)
+  const isProgrammaticScrollRef = useRef(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const skillsMenuRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -274,10 +277,54 @@ function App(): React.JSX.Element {
     }
   }, [activeSessionId, sessions])
 
+  // Reset auto-scroll flag to true when a new message starts generating
+  useEffect(() => {
+    if (isGenerating) {
+      shouldAutoScrollRef.current = true
+    }
+  }, [isGenerating])
+
   // Auto-scroll when messages update
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (shouldAutoScrollRef.current) {
+      const container = messagesContainerRef.current
+      if (container) {
+        const behavior = isGenerating ? 'auto' : 'smooth'
+        if (behavior === 'smooth') {
+          isProgrammaticScrollRef.current = true
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: 'smooth'
+          })
+          const timeoutId = setTimeout(() => {
+            isProgrammaticScrollRef.current = false
+          }, 500)
+          return () => clearTimeout(timeoutId)
+        } else {
+          container.scrollTop = container.scrollHeight
+        }
+      }
+    }
+    return undefined
   }, [sessions, activeSessionId, isGenerating])
+
+  // Handle manual scroll detection
+  const handleScroll = () => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    // If it's a programmatic scroll (like smooth scrolling on load), ignore it
+    if (isProgrammaticScrollRef.current) return
+
+    const threshold = 15 // pixels from bottom
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold
+    
+    if (isAtBottom) {
+      shouldAutoScrollRef.current = true
+    } else {
+      shouldAutoScrollRef.current = false
+    }
+  }
 
   // Scroll selected autocomplete item into view
   useEffect(() => {
@@ -459,12 +506,18 @@ function App(): React.JSX.Element {
   }
 
   // Set the default/active provider
-  const handleSetActiveProvider = (providerId: string) => {
+  const handleSetActiveProvider = async (providerId: string) => {
     setActiveProviderId(providerId)
+    const savedSettings = (await window.api.storeGet('settings') as AppSettings) || { providers: [], activeProviderId: '', systemPrompt: '', autoHideOnBlur: true }
+    const updatedSettings: AppSettings = {
+      ...savedSettings,
+      activeProviderId: providerId
+    }
+    await window.api.storeSet('settings', updatedSettings)
   }
 
   // Delete a provider
-  const handleDeleteProvider = (providerId: string) => {
+  const handleDeleteProvider = async (providerId: string) => {
     if (providers.length <= 1) {
       alert('必须保留至少一个服务商！')
       return
@@ -475,9 +528,10 @@ function App(): React.JSX.Element {
     const finalProviders = providers.filter((p) => p.id !== providerId)
     setProviders(finalProviders)
 
-    // If the deleted provider was the default active one, switch active provider to first remaining
+    let nextActiveId = activeProviderId
     if (activeProviderId === providerId) {
-      setActiveProviderId(finalProviders[0].id)
+      nextActiveId = finalProviders[0].id
+      setActiveProviderId(nextActiveId)
     }
 
     // Switch editing to the first remaining provider
@@ -488,6 +542,15 @@ function App(): React.JSX.Element {
     setSelectedModel(firstRemaining.model || '')
     setModelsList(firstRemaining.modelsList || [])
     setFetchModelsUrl(`${(firstRemaining.apiUrl || '').replace(/\/$/, '')}/models`)
+
+    // Save updated provider list & active ID to store immediately
+    const savedSettings = (await window.api.storeGet('settings') as AppSettings) || { providers: [], activeProviderId: '', systemPrompt: '', autoHideOnBlur: true }
+    const updatedSettings: AppSettings = {
+      ...savedSettings,
+      providers: finalProviders,
+      activeProviderId: nextActiveId
+    }
+    await window.api.storeSet('settings', updatedSettings)
   }
 
   // Toggle theme between Light and Dark
@@ -1587,7 +1650,7 @@ function App(): React.JSX.Element {
             </div>
           ) : (
             /* Scrollable Conversation History */
-            <div className="messages-container">
+            <div ref={messagesContainerRef} className="messages-container" onScroll={handleScroll}>
               {activeSession?.messages.map((msg, idx) => {
                 // Parse think tags dynamically from content
                 const { content: displayContent, reasoning: displayReasoning } = parseThinkTags(msg.content, msg.reasoning_content)
