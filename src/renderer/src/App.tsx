@@ -24,6 +24,7 @@ import { useProviders } from './hooks/useProviders'
 import { useAttachments } from './hooks/useAttachments'
 import { useAutocomplete } from './hooks/useAutocomplete'
 import { useChatCompletion } from './hooks/useChatCompletion'
+import { useSkills } from './hooks/useSkills'
 
 function App(): React.JSX.Element {
   // Navigation
@@ -156,6 +157,13 @@ function App(): React.JSX.Element {
     handleInputKeyDown: autocompleteKeyDown
   } = useAutocomplete()
 
+  // 6. Markdown Skills hook
+  const {
+    skills,
+    installSkillFromMarkdown,
+    removeSkill
+  } = useSkills()
+
   // Listen to window summon (focus/show) event from Main Process
   useEffect(() => {
     const handleWindowShown = (): void => {
@@ -270,7 +278,21 @@ function App(): React.JSX.Element {
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     const val = e.target.value
     setInputVal(val)
-    updateAutocompleteItems(val, modelsList, sessions, activeSessionId, providers)
+    updateAutocompleteItems(val, modelsList, sessions, activeSessionId, providers, skills)
+  }
+
+  const buildSkillPrompt = (item: AutocompleteItem): string => {
+    const prompt = item.prompt || ''
+    const currentValue = inputVal.trimStart()
+    const inputTail = currentValue.toLowerCase().startsWith(item.trigger.toLowerCase())
+      ? currentValue.slice(item.trigger.length).trim()
+      : ''
+
+    if (/\{\{\s*input\s*\}\}/i.test(prompt)) {
+      return prompt.replace(/\{\{\s*input\s*\}\}/gi, inputTail)
+    }
+
+    return inputTail ? `${prompt.trimEnd()}\n\n${inputTail}` : prompt
   }
 
   // Action executed on autocomplete item select
@@ -328,8 +350,14 @@ function App(): React.JSX.Element {
       setInputVal('')
     } else {
       // Injects prompt skill
-      setInputVal(item.prompt || '')
       setAutocompleteItems([])
+      const skillPrompt = buildSkillPrompt(item)
+      if (item.skillMode === 'send') {
+        setInputVal('')
+        await handleSendMessage(skillPrompt)
+      } else {
+        setInputVal(skillPrompt)
+      }
     }
     textareaRef.current?.focus()
   }
@@ -411,6 +439,7 @@ function App(): React.JSX.Element {
           autoHideOnBlur={autoHideOnBlur}
           appStorePath={appStorePath}
           saveSuccess={saveSuccess}
+          skills={skills}
           setIsEditingProviderDetail={setIsEditingProviderDetail}
           setApiKey={setApiKey}
           setSelectedModel={setSelectedModel}
@@ -430,6 +459,8 @@ function App(): React.JSX.Element {
           onAddManualModel={handleAddManualModel}
           onFetchModels={handleFetchModels}
           onRemoveModel={handleRemoveModelDirectly}
+          onInstallSkill={installSkillFromMarkdown}
+          onRemoveSkill={removeSkill}
           onChangeEditingProviderName={(name) => {
             setProviders((prev) => prev.map((p) => (p.id === editingProviderId ? { ...p, name } : p)))
           }}

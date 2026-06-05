@@ -2,8 +2,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Skill, AutocompleteItem, Session, ApiProvider } from '../../../shared/types'
 
 export interface UseAutocompleteReturn {
-  skills: Skill[]
-  setSkills: React.Dispatch<React.SetStateAction<Skill[]>>
   autocompleteItems: AutocompleteItem[]
   setAutocompleteItems: React.Dispatch<React.SetStateAction<AutocompleteItem[]>>
   selectedItemIdx: number
@@ -14,7 +12,8 @@ export interface UseAutocompleteReturn {
     modelsList: string[],
     sessions: Session[],
     activeSessionId: string,
-    providers: ApiProvider[]
+    providers: ApiProvider[],
+    skills: Skill[]
   ) => void
   handleInputKeyDown: (
     e: React.KeyboardEvent<HTMLTextAreaElement>,
@@ -23,19 +22,9 @@ export interface UseAutocompleteReturn {
 }
 
 export const useAutocomplete = (): UseAutocompleteReturn => {
-  const [skills, setSkills] = useState<Skill[]>([])
   const [autocompleteItems, setAutocompleteItems] = useState<AutocompleteItem[]>([])
   const [selectedItemIdx, setSelectedItemIdx] = useState(0)
   const skillsMenuRef = useRef<HTMLDivElement>(null)
-
-  // Load skills on startup
-  useEffect(() => {
-    const loadSkills = async (): Promise<void> => {
-      const savedSkills = (await window.api.storeGet('skills') as Skill[]) || []
-      setSkills(savedSkills)
-    }
-    loadSkills()
-  }, [])
 
   // Scroll selected autocomplete item into view
   useEffect(() => {
@@ -53,10 +42,13 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
     modelsList: string[],
     sessions: Session[],
     activeSessionId: string,
-    providers: ApiProvider[]
+    providers: ApiProvider[],
+    skills: Skill[]
   ): void => {
     if (val.startsWith('/')) {
-      const search = val.slice(1).toLowerCase()
+      const commandSearch = val.slice(1).trimStart().split(/\s+/)[0].toLowerCase()
+      const commandPrefix = `/${commandSearch}`
+      const search = commandSearch
 
       // 1. Built-in System Commands
       const systemCommands: AutocompleteItem[] = [
@@ -67,23 +59,34 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
         { id: 'cmd-exit', name: '❌ 隐藏/关闭窗口 (Hide window)', trigger: '/exit', cmd: 'exit', type: 'command' }
       ]
       const matchingCmds: AutocompleteItem[] = systemCommands.filter((c) =>
-        c.trigger.toLowerCase().startsWith(val.toLowerCase())
+        c.trigger.toLowerCase().startsWith(commandPrefix)
       )
 
       // 2. Predefined Skills
       const matchingSkills: AutocompleteItem[] = skills
-        .filter((s) => `/${s.trigger}`.toLowerCase().startsWith(val.toLowerCase()) || s.name.toLowerCase().includes(search))
-        .map((s) => ({
-          id: s.id,
-          name: s.name,
-          trigger: `/${s.trigger}`,
-          prompt: s.prompt,
+        .map((skill) => {
+          const triggers = skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
+          const matchingTrigger = triggers.find((trigger) => `/${trigger}`.toLowerCase().startsWith(commandPrefix))
+          return { skill, triggers, matchingTrigger }
+        })
+        .filter(({ skill, matchingTrigger }) => (
+          Boolean(matchingTrigger) ||
+          skill.name.toLowerCase().includes(search) ||
+          (skill.description || '').toLowerCase().includes(search)
+        ))
+        .map(({ skill, matchingTrigger }) => ({
+          id: skill.id,
+          name: skill.description ? `${skill.name} - ${skill.description}` : skill.name,
+          trigger: `/${matchingTrigger || skill.trigger}`,
+          prompt: skill.prompt,
+          skillId: skill.id,
+          skillMode: skill.mode || 'insert',
           type: 'skill'
         }))
 
       // 3. Models switching command options
       const matchingModels: AutocompleteItem[] = modelsList
-        .filter((m) => `/model:${m}`.toLowerCase().includes(val.toLowerCase()) || m.toLowerCase().includes(search))
+        .filter((m) => `/model:${m}`.toLowerCase().includes(commandPrefix) || m.toLowerCase().includes(search))
         .map((m) => ({
           id: `model-${m}`,
           name: `🔄 使用大模型 ${m}`,
@@ -107,7 +110,7 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
       // 5. Session deletion options
       const matchingDeleteSessions: AutocompleteItem[] = sessions
         .filter((s) => s.messages.length > 0)
-        .filter((s) => `/delete:${s.id}`.toLowerCase().includes(val.toLowerCase()) || s.title.toLowerCase().includes(search) || 'delete'.includes(search) || 'del'.includes(search))
+        .filter((s) => `/delete:${s.id}`.toLowerCase().includes(commandPrefix) || s.title.toLowerCase().includes(search) || 'delete'.includes(search) || 'del'.includes(search))
         .map((s) => ({
           id: `delete-${s.id}`,
           name: `删除会话: ${s.title}`,
@@ -118,7 +121,7 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
 
       // 6. Provider switching options
       const matchingProviders: AutocompleteItem[] = providers
-        .filter((p) => `/provider:${p.name}`.toLowerCase().includes(val.toLowerCase()) || p.name.toLowerCase().includes(search) || 'provider'.includes(search) || 'p'.includes(search))
+        .filter((p) => `/provider:${p.name}`.toLowerCase().includes(commandPrefix) || p.name.toLowerCase().includes(search) || 'provider'.includes(search) || 'p'.includes(search))
         .map((p) => ({
           id: `provider-${p.id}`,
           name: `切换服务商: ${p.name} (${p.apiUrl})`,
@@ -180,8 +183,6 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
   }
 
   return {
-    skills,
-    setSkills,
     autocompleteItems,
     setAutocompleteItems,
     selectedItemIdx,

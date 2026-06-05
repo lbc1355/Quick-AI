@@ -86,7 +86,13 @@ export class FileStore {
           'summary'
         ]
         let loadedSkills: Skill[] = Array.isArray(parsed.skills) ? parsed.skills : []
-        loadedSkills = loadedSkills.filter((s: Skill) => s && s.trigger && !defaultTriggers.includes(s.trigger))
+        loadedSkills = loadedSkills
+          .filter((s: Skill) => s && s.trigger && s.prompt && !defaultTriggers.includes(s.trigger))
+          .map((s: Skill) => ({
+            ...s,
+            triggers: s.triggers && s.triggers.length > 0 ? s.triggers : [s.trigger],
+            mode: s.mode || 'insert'
+          }))
 
         // Migrate settings from flat format to multi-provider structure if needed
         const settings = (parsed.settings as LegacyAppSettings) || {}

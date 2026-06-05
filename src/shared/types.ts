@@ -40,11 +40,19 @@ export interface AppSettings {
   theme?: 'dark' | 'light'
 }
 
+export type SkillMode = 'insert' | 'send'
+
 export interface Skill {
   id: string
   name: string
   trigger: string
   prompt: string
+  description?: string
+  triggers?: string[]
+  mode?: SkillMode
+  source?: 'manual' | 'markdown'
+  installedAt?: number
+  updatedAt?: number
 }
 
 export interface Memory {
@@ -70,6 +78,8 @@ export interface AutocompleteItem {
   type: 'command' | 'skill' | 'model' | 'session' | 'delete-session' | 'provider'
   cmd?: string
   prompt?: string
+  skillId?: string
+  skillMode?: SkillMode
   modelId?: string
   sessionId?: string
   providerId?: string

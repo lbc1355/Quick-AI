@@ -1,7 +1,8 @@
 import React from 'react'
-import { ApiProvider } from '../../../shared/types'
+import { ApiProvider, Skill } from '../../../shared/types'
 import { ProviderList } from './ProviderList'
 import { ProviderEditor } from './ProviderEditor'
+import { SkillManager } from './SkillManager'
 
 interface SettingsViewProps {
   isEditingProviderDetail: boolean
@@ -22,6 +23,7 @@ interface SettingsViewProps {
   autoHideOnBlur: boolean
   appStorePath: string
   saveSuccess: boolean
+  skills: Skill[]
 
   setIsEditingProviderDetail: (val: boolean) => void
   setApiKey: (val: string) => void
@@ -43,6 +45,8 @@ interface SettingsViewProps {
   onAddManualModel: () => void
   onFetchModels: () => void
   onRemoveModel: (modelId: string) => void
+  onInstallSkill: (fileName: string, markdown: string) => Promise<Skill>
+  onRemoveSkill: (id: string) => Promise<void>
   onChangeEditingProviderName: (name: string) => void
   onChangeEditingProviderApiUrl: (url: string) => void
 }
@@ -66,6 +70,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   autoHideOnBlur,
   appStorePath,
   saveSuccess,
+  skills,
 
   setIsEditingProviderDetail,
   setApiKey,
@@ -87,6 +92,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onAddManualModel,
   onFetchModels,
   onRemoveModel,
+  onInstallSkill,
+  onRemoveSkill,
   onChangeEditingProviderName,
   onChangeEditingProviderApiUrl
 }) => {
@@ -190,6 +197,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   disabled
                 />
               </div>
+
+              <SkillManager
+                skills={skills}
+                onInstallSkill={onInstallSkill}
+                onRemoveSkill={onRemoveSkill}
+              />
             </div>
           </div>
 
