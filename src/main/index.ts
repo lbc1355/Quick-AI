@@ -35,7 +35,7 @@ function createWindow(): void {
     hasShadow: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: true
+      sandbox: false
     }
   })
 
@@ -59,6 +59,12 @@ function createWindow(): void {
     setTimeout(() => {
       isFilePickerActive = false
     }, 300)
+  })
+
+  // Prevent window from being destroyed on close (e.g. Alt+F4) and hide instead
+  mainWindow.on('close', (event) => {
+    event.preventDefault()
+    hideWindow()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
