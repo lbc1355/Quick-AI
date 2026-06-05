@@ -11,13 +11,15 @@ let tray: Tray | null = null
 let store: FileStore | null = null
 let isWindowVisible = false
 let isFilePickerActive = false
+const winWidth = 780
+const winHeight = 520
+const hiddenX = -9999
+const hiddenY = -9999
 
 function createWindow(): void {
-  const winWidth = 780
-  const winHeight = 520
   // Position initially off-screen to avoid any visual flicker or animation on start
-  const x = -9999
-  const y = -9999
+  const x = hiddenX
+  const y = hiddenY
 
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -38,6 +40,7 @@ function createWindow(): void {
       sandbox: false
     }
   })
+  mainWindow.setOpacity(0)
 
   // Disable default native menu bar
   mainWindow.setMenuBarVisibility(false)
@@ -80,9 +83,11 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // Once window is ready, do nothing (keep it hidden until summoned)
+  // Pre-paint the window off-screen so shortcut summon only repositions it.
+  // Calling show()/hide() on every toggle triggers the native Windows easing animation.
   mainWindow.once('ready-to-show', () => {
-    // Hidden initially
+    mainWindow?.setPosition(hiddenX, hiddenY)
+    mainWindow?.showInactive()
   })
 }
 
@@ -91,23 +96,29 @@ function showWindow(): void {
 
   // Recenter horizontally to account for screen configuration changes
   const { width, height } = screen.getPrimaryDisplay().workAreaSize
-  const winWidth = 780
   const x = Math.round((width - winWidth) / 2)
   const y = Math.round(height * 0.15) // Spotlight upper center placement
 
-  mainWindow.setPosition(x, y)
-  mainWindow.show()
-  mainWindow.focus()
   isWindowVisible = true
+  mainWindow.setOpacity(0)
+  mainWindow.setBounds({ x, y, width: winWidth, height: winHeight })
+
+  setTimeout(() => {
+    if (!mainWindow || !isWindowVisible) return
+    mainWindow.setOpacity(1)
+    mainWindow.focus()
   
-  // Notify frontend that the window has been summoned/shown
-  mainWindow.webContents.send('window-shown')
+    // Notify frontend that the window has been summoned/shown
+    mainWindow.webContents.send('window-shown')
+  }, 16)
 }
 
 function hideWindow(): void {
   if (!mainWindow) return
-  mainWindow.hide()
   isWindowVisible = false
+  mainWindow.setOpacity(0)
+  mainWindow.setPosition(hiddenX, hiddenY)
+  mainWindow.blur()
 }
 
 function toggleWindow(): void {
@@ -259,4 +270,3 @@ app.on('will-quit', () => {
 app.on('window-all-closed', () => {
   // Do nothing. The app lives in the system tray.
 })
-

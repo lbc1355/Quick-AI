@@ -47,13 +47,15 @@ export const useSessions = (): UseSessionsReturn => {
       }
       const updated = [newSession, ...currentSessions]
       setSessions(updated)
+      sessionsRef.current = updated
       setActiveSessionId(newSession.id)
       await window.api.storeSet('sessions', updated)
     } else {
-      // Within 5 minutes, reset its active timer
-      activeSess.lastActiveTime = Date.now()
-      const updated = currentSessions.map((s) => (s.id === currentActiveId ? activeSess : s))
-      setSessions(updated)
+      // Within 5 minutes, only persist the active timer. Avoid a visible rerender on every summon.
+      const updated = currentSessions.map((s) =>
+        s.id === currentActiveId ? { ...s, lastActiveTime: Date.now() } : s
+      )
+      sessionsRef.current = updated
       await window.api.storeSet('sessions', updated)
     }
   }
