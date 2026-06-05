@@ -52,7 +52,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           padding: '10px 16px',
           borderTop: '1px solid var(--color-border)',
           borderBottom: '1px solid var(--color-border)',
-          fontSize: '12.5px',
+          fontSize: '10px',
           background: 'rgba(255, 255, 255, 0.015)'
         }}>
           <div
@@ -68,15 +68,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ animation: isGenerating && !cleanContent ? 'spin 2s linear infinite' : 'none', display: 'inline-block' }}>⚙️</span>
               <span style={{ fontWeight: 600, color: 'var(--color-text-title)' }}>
                 Agent 工具调用 ({logs.filter(l => l.type === 'tool').length} 步 / {skillName || 'search'})
               </span>
               {isGenerating && !cleanContent && (
-                <span className="status-dot loading" style={{ width: '6px', height: '6px', marginLeft: '4px' }} />
+                <span className="status-dot loading" style={{ width: '5px', height: '5px', marginLeft: '4px' }} />
               )}
             </div>
-            <span style={{ fontSize: '11.5px', color: '#60a5fa', userSelect: 'none' }}>
+            <span style={{ fontSize: '9px', color: '#60a5fa', userSelect: 'none' }}>
               {isLogsExpanded ? '隐藏执行细节' : '显示执行细节'}
             </span>
           </div>
@@ -84,13 +83,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           {isLogsExpanded && (
             <div style={{
               marginTop: '10px',
-              padding: '8px 4px 4px 4px',
+              padding: '6px 4px 4px 4px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '10px',
+              gap: '8px',
               maxHeight: '220px',
               overflowY: 'auto',
-              fontSize: '12px',
+              fontSize: '9.5px',
               fontFamily: 'Consolas, Courier New, monospace',
               color: 'var(--color-text)'
             }}>
@@ -100,9 +99,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   const errorLog = logs.find(l => l.step === log.step && l.type === 'error')
                   
                   acc.push(
-                    <div key={`step-${log.step}-${logIdx}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderBottom: '1px dashed var(--color-border)', paddingBottom: '8px', marginBottom: '2px' }}>
+                    <div key={`step-${log.step}-${logIdx}`} style={{ display: 'flex', flexDirection: 'column', gap: '3px', borderBottom: '1px dashed var(--color-border)', paddingBottom: '6px', marginBottom: '2px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: '#c084fc', fontWeight: 'bold' }}>▶ [步骤 {log.step}/{log.maxSteps}] 调用 {log.toolName}</span>
+                        <span style={{ color: '#c084fc', fontWeight: 'bold' }}>[步骤 {log.step}/{log.maxSteps}] 调用 {log.toolName}</span>
                         {resultLog ? (
                           <span style={{ color: '#10b981', fontWeight: '500' }}>[完成]</span>
                         ) : errorLog ? (
@@ -111,17 +110,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                           <span style={{ color: '#eab308', fontWeight: '500' }}>[执行中...]</span>
                         )}
                       </div>
-                      <div style={{ color: 'var(--color-text-muted)', wordBreak: 'break-all', fontSize: '11px', paddingLeft: '14px' }}>
+                      <div style={{ color: 'var(--color-text-muted)', wordBreak: 'break-all', fontSize: '8.5px', paddingLeft: '8px' }}>
                         链接: <a href={log.url} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>{log.url}</a>
                       </div>
                       {resultLog && (
-                        <div style={{ color: '#34d399', fontSize: '11px', paddingLeft: '14px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                          📄 标题: {resultLog.title || '无标题页面'}
+                        <div style={{ color: '#34d399', fontSize: '8.5px', paddingLeft: '8px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                          标题: {resultLog.title || '无标题页面'}
                         </div>
                       )}
                       {errorLog && (
-                        <div style={{ color: '#f87171', fontSize: '11px', paddingLeft: '14px' }}>
-                          ❌ 错误日志: {errorLog.error}
+                        <div style={{ color: '#f87171', fontSize: '8.5px', paddingLeft: '8px' }}>
+                          错误日志: {errorLog.error}
                         </div>
                       )}
                     </div>
