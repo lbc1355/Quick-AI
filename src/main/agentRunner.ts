@@ -131,59 +131,61 @@ export const runAgentSkill = async (
       messages.push(assistantMessage)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-        const toolCall = assistantMessage.tool_calls[0]
-        const toolName = toolCall.function.name
-        
-        let toolArgs: { url?: string } = {}
-        try {
-          toolArgs = JSON.parse(toolCall.function.arguments) as { url?: string }
-        } catch (e) {
-          console.warn('Failed to parse tool call arguments:', toolCall.function.arguments)
-        }
+        for (const toolCall of assistantMessage.tool_calls) {
+          const toolName = toolCall.function.name
+          
+          let toolArgs: { url?: string } = {}
+          try {
+            toolArgs = JSON.parse(toolCall.function.arguments) as { url?: string }
+          } catch (e) {
+            console.warn('Failed to parse tool call arguments:', toolCall.function.arguments)
+          }
 
-        const url = toolArgs.url || ''
+          const url = toolArgs.url || ''
 
-        // Deadlock check
-        const callKey = `${toolName}:${url}`
-        if (executedCalls.has(callKey)) {
-          // If we detect a loop, feed warning to the model and retry
-          messages.push({
-            role: 'user',
-            content: `System Warning: You have already executed ${toolName} with these exact arguments (url: ${url}). It did not yield new information. Please change your arguments or stop and provide your final answer.`
-          })
-          continue
-        }
-        executedCalls.add(callKey)
+          // Deadlock check
+          const callKey = `${toolName}:${url}`
+          if (executedCalls.has(callKey)) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              name: toolName,
+              content: `Warning: You have already fetched the URL: ${url}. Fetching it again will not yield new information. Please analyze the existing observations or try a different URL.`
+            })
+            continue
+          }
+          executedCalls.add(callKey)
 
-        sendContent(
-          mainWindow,
-          reqId,
-          `[tool ${step}/${maxSteps}] ${toolName}\n${url}\n\n`
-        )
-
-        try {
-          const result = await fetchUrl(url)
-          const observation = formatObservation(result)
           sendContent(
             mainWindow,
             reqId,
-            `[result ${step}/${maxSteps}] ${result.title || result.finalUrl}\n${result.finalUrl}\n\n`
+            `[tool ${step}/${maxSteps}] ${toolName}\n${url}\n\n`
           )
-          messages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            name: toolName,
-            content: observation
-          })
-        } catch (error) {
-          const err = error as Error
-          sendContent(mainWindow, reqId, `[error ${step}/${maxSteps}] ${err.message}\n\n`)
-          messages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            name: toolName,
-            content: `ERROR: ${err.message}`
-          })
+
+          try {
+            const result = await fetchUrl(url)
+            const observation = formatObservation(result)
+            sendContent(
+              mainWindow,
+              reqId,
+              `[result ${step}/${maxSteps}] ${result.title || result.finalUrl}\n${result.finalUrl}\n\n`
+            )
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              name: toolName,
+              content: observation
+            })
+          } catch (error) {
+            const err = error as Error
+            sendContent(mainWindow, reqId, `[error ${step}/${maxSteps}] ${err.message}\n\n`)
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              name: toolName,
+              content: `ERROR: ${err.message}`
+            })
+          }
         }
 
         step++
