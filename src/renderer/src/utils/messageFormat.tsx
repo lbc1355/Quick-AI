@@ -179,60 +179,203 @@ const parseInlineMarkdown = (text: string, keyPrefix: string): React.ReactNode =
   })
 }
 
-// Parse block-level markdown structures: headings, bullet lists, ordered lists, and paragraphs
+// Parse block-level markdown structures: headings, bullet lists, ordered lists, tables, and paragraphs
 const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => {
   const lines = text.split('\n')
-  return (
-    <div key={blockKey} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-      {lines.map((line, lIdx) => {
-        const lineKey = `${blockKey}-line-${lIdx}`
+  const blocks: React.ReactNode[] = []
 
-        // 1. Headers: e.g. "### Header"
-        const headerMatch = line.match(/^(#{1,6})\s+(.*)$/)
-        if (headerMatch) {
-          const level = headerMatch[1].length
-          const title = headerMatch[2]
-          const fontSize = `${22 - level * 2}px`
-          const HeadingTag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
-          return (
-            <HeadingTag key={lineKey} style={{ fontSize, fontWeight: 600, margin: '12px 0 6px 0', color: 'var(--color-text-title)', lineHeight: '1.3' }}>
-              {parseInlineMarkdown(title, lineKey)}
-            </HeadingTag>
-          )
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      i++
+      continue
+    }
+
+    // 1. Headers: e.g. "### Header"
+    const headerMatch = trimmed.match(/^(#{1,6})\s+(.*)$/)
+    if (headerMatch) {
+      const level = headerMatch[1].length
+      const title = headerMatch[2]
+      const fontSize = `${22 - level * 2}px`
+      const HeadingTag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
+      const key = `${blockKey}-h-${i}`
+      blocks.push(
+        <HeadingTag key={key} style={{ fontSize, fontWeight: 600, margin: '12px 0 6px 0', color: 'var(--color-text-title)', lineHeight: '1.3' }}>
+          {parseInlineMarkdown(title, key)}
+        </HeadingTag>
+      )
+      i++
+      continue
+    }
+
+    // 2. Table Block: starts with '|' and ends with '|'
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const tableLines: string[] = []
+      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+        tableLines.push(lines[i].trim())
+        i++
+      }
+
+      if (tableLines.length >= 2) {
+        // Parse header
+        const headerRow = tableLines[0]
+        const headers = headerRow.slice(1, -1).split('|').map((s) => s.trim())
+
+        // Parse alignments from the second row (separator)
+        const sepRow = tableLines[1]
+        const sepParts = sepRow.slice(1, -1).split('|').map((s) => s.trim())
+        const alignments = sepParts.map((part) => {
+          const left = part.startsWith(':')
+          const right = part.endsWith(':')
+          if (left && right) return 'center'
+          if (right) return 'right'
+          return 'left' // default
+        })
+
+        // Parse data rows
+        const rows: string[][] = []
+        for (let r = 2; r < tableLines.length; r++) {
+          const rowLine = tableLines[r]
+          const cells = rowLine.slice(1, -1).split('|').map((s) => s.trim())
+          // Fill missing cells if row has fewer cells than headers
+          while (cells.length < headers.length) {
+            cells.push('')
+          }
+          rows.push(cells)
         }
 
-        // 2. Unordered List Items: e.g. "- Item" or "* Item"
-        const listMatch = line.match(/^([-*])\s+(.*)$/)
-        if (listMatch) {
-          const content = listMatch[2]
-          return (
-            <div key={lineKey} style={{ display: 'flex', gap: '8px', paddingLeft: '12px', alignItems: 'flex-start', margin: '2px 0' }}>
-              <span style={{ color: 'var(--color-primary)', userSelect: 'none', lineHeight: '1.4' }}>•</span>
-              <span style={{ flex: 1, lineHeight: '1.4' }}>{parseInlineMarkdown(content, lineKey)}</span>
-            </div>
-          )
-        }
-
-        // 3. Ordered List Items: e.g. "1. Item"
-        const ordListMatch = line.match(/^(\d+)\.\s+(.*)$/)
-        if (ordListMatch) {
-          const num = ordListMatch[1]
-          const content = ordListMatch[2]
-          return (
-            <div key={lineKey} style={{ display: 'flex', gap: '8px', paddingLeft: '12px', alignItems: 'flex-start', margin: '2px 0' }}>
-              <span style={{ color: 'var(--color-primary)', fontWeight: 500, userSelect: 'none', lineHeight: '1.4' }}>{num}.</span>
-              <span style={{ flex: 1, lineHeight: '1.4' }}>{parseInlineMarkdown(content, lineKey)}</span>
-            </div>
-          )
-        }
-
-        // 4. Plain Paragraph Line
-        return (
-          <div key={lineKey} style={{ minHeight: '1.2em', lineHeight: '1.5', margin: '2px 0' }}>
-            {parseInlineMarkdown(line, lineKey)}
+        const key = `${blockKey}-table-${i}`
+        blocks.push(
+          <div key={key} style={{ overflowX: 'auto', margin: '12px 0', border: '1px solid var(--color-border)', borderRadius: '6px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: 'var(--color-card-bg)', borderBottom: '1px solid var(--color-border)' }}>
+                  {headers.map((h, colIdx) => (
+                    <th key={`th-${colIdx}`} style={{ padding: '8px 12px', fontWeight: 600, color: 'var(--color-text-title)', textAlign: alignments[colIdx] || 'left' }}>
+                      {parseInlineMarkdown(h, `${key}-th-${colIdx}`)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, rowIdx) => (
+                  <tr key={`tr-${rowIdx}`} style={{ borderBottom: rowIdx === rows.length - 1 ? 'none' : '1px solid var(--color-border)', background: rowIdx % 2 === 1 ? 'rgba(255, 255, 255, 0.01)' : 'transparent' }}>
+                    {row.map((cell, colIdx) => (
+                      <td key={`td-${rowIdx}-${colIdx}`} style={{ padding: '8px 12px', color: 'var(--color-text)', textAlign: alignments[colIdx] || 'left', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                        {parseInlineMarkdown(cell, `${key}-td-${rowIdx}-${colIdx}`)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )
-      })}
+        continue
+      } else {
+        // Fallback: put the index back and let paragraph handler run
+        i -= tableLines.length
+      }
+    }
+
+    // 3. Unordered List Items: e.g. "- Item" or "* Item"
+    const listMatch = trimmed.match(/^([-*])\s+(.*)$/)
+    if (listMatch) {
+      const listKey = `${blockKey}-ul-${i}`
+      const listItems: string[] = []
+      while (i < lines.length) {
+        const nextTrimmed = lines[i].trim()
+        const match = nextTrimmed.match(/^([-*])\s+(.*)$/)
+        if (match) {
+          listItems.push(match[2])
+          i++
+        } else {
+          break
+        }
+      }
+      blocks.push(
+        <div key={listKey} style={{ display: 'flex', flexDirection: 'column', gap: '4px', margin: '6px 0' }}>
+          {listItems.map((item, itemIdx) => {
+            const itemKey = `${listKey}-item-${itemIdx}`
+            return (
+              <div key={itemKey} style={{ display: 'flex', gap: '8px', paddingLeft: '12px', alignItems: 'flex-start' }}>
+                <span style={{ color: 'var(--color-primary)', userSelect: 'none', lineHeight: '1.4' }}>•</span>
+                <span style={{ flex: 1, lineHeight: '1.4' }}>{parseInlineMarkdown(item, itemKey)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )
+      continue
+    }
+
+    // 4. Ordered List Items: e.g. "1. Item"
+    const ordListMatch = trimmed.match(/^(\d+)\.\s+(.*)$/)
+    if (ordListMatch) {
+      const listKey = `${blockKey}-ol-${i}`
+      const listItems: { num: string; content: string }[] = []
+      while (i < lines.length) {
+        const nextTrimmed = lines[i].trim()
+        const match = nextTrimmed.match(/^(\d+)\.\s+(.*)$/)
+        if (match) {
+          listItems.push({ num: match[1], content: match[2] })
+          i++
+        } else {
+          break
+        }
+      }
+      blocks.push(
+        <div key={listKey} style={{ display: 'flex', flexDirection: 'column', gap: '4px', margin: '6px 0' }}>
+          {listItems.map((item, itemIdx) => {
+            const itemKey = `${listKey}-item-${itemIdx}`
+            return (
+              <div key={itemKey} style={{ display: 'flex', gap: '8px', paddingLeft: '12px', alignItems: 'flex-start' }}>
+                <span style={{ color: 'var(--color-primary)', fontWeight: 500, userSelect: 'none', lineHeight: '1.4' }}>{item.num}.</span>
+                <span style={{ flex: 1, lineHeight: '1.4' }}>{parseInlineMarkdown(item.content, itemKey)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )
+      continue
+    }
+
+    // 5. Plain Paragraph: group consecutive plain lines together
+    const paraKey = `${blockKey}-p-${i}`
+    const paraLines: string[] = []
+    while (i < lines.length) {
+      const nextTrimmed = lines[i].trim()
+      if (!nextTrimmed) break
+      if (nextTrimmed.match(/^(#{1,6})\s+/) || 
+          nextTrimmed.match(/^([-*])\s+/) || 
+          nextTrimmed.match(/^(\d+)\.\s+/) ||
+          (nextTrimmed.startsWith('|') && nextTrimmed.endsWith('|'))) {
+        break
+      }
+      paraLines.push(lines[i])
+      i++
+    }
+
+    blocks.push(
+      <div key={paraKey} style={{ display: 'flex', flexDirection: 'column', gap: '2px', margin: '4px 0' }}>
+        {paraLines.map((pLine, pIdx) => {
+          const lineKey = `${paraKey}-l-${pIdx}`
+          return (
+            <div key={lineKey} style={{ minHeight: '1.2em', lineHeight: '1.5' }}>
+              {parseInlineMarkdown(pLine, lineKey)}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  return (
+    <div key={blockKey} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {blocks}
     </div>
   )
 }
