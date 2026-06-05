@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Message } from '../../../shared/types'
 import { Edit, RefreshCw, Paperclip, Sparkles } from 'lucide-react'
 import { parseThinkTags, renderMessageContent, parseAgentLogs } from '../utils/messageFormat'
@@ -29,13 +29,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onChangeEditingText
 }) => {
   const [isExpanded, setIsExpanded] = useState(true)
-  const [isLogsExpanded, setIsLogsExpanded] = useState(true)
   const { content: displayContent, reasoning: displayReasoning } = parseThinkTags(
     msg.content,
     msg.reasoning_content
   )
   const { logs, cleanContent, skillName } = parseAgentLogs(displayContent)
+  const [isLogsExpanded, setIsLogsExpanded] = useState(isGenerating && !cleanContent)
   const isEditing = editingMessageId === msg.id
+
+  // Auto-collapse logs when final answer starts streaming
+  useEffect(() => {
+    if (cleanContent) {
+      setIsLogsExpanded(false)
+    }
+  }, [cleanContent])
 
   return (
     <div className={`message-bubble ${msg.role}`}>
@@ -138,67 +145,88 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
               {/* Agent execution logs block */}
               {logs.length > 0 && (
-                <div className="agent-logs-block" style={{ marginBottom: '10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.08)', overflow: 'hidden' }}>
+                <div className="agent-logs-block" style={{
+                  marginBottom: '12px',
+                  background: 'var(--color-bg-logs, rgba(0, 0, 0, 0.2))',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                  fontSize: '12px',
+                  overflow: 'hidden'
+                }}>
                   <div
                     onClick={() => setIsLogsExpanded(!isLogsExpanded)}
                     style={{
-                      fontSize: '12.5px',
-                      color: 'var(--color-text-title)',
+                      fontSize: '12px',
+                      color: 'var(--color-text-muted)',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       padding: '8px 12px',
-                      background: 'rgba(255, 255, 255, 0.02)',
+                      background: 'rgba(255, 255, 255, 0.01)',
                       userSelect: 'none',
-                      fontWeight: '600',
-                      borderBottom: isLogsExpanded ? '1px solid rgba(255, 255, 255, 0.08)' : 'none'
+                      fontWeight: '500'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '12px' }}>⚙️</span>
-                      <span>Agent 执行日志 ({skillName || 'multi-search-engine'})</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ animation: isGenerating && !cleanContent ? 'spin 2s linear infinite' : 'none', display: 'inline-block' }}>⚙️</span>
+                      <span style={{ fontWeight: 600, color: 'var(--color-text-title)' }}>
+                        Agent 工具调用 ({logs.filter(l => l.type === 'tool').length} 步 / {skillName || 'search'})
+                      </span>
                     </div>
-                    <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-                      {isLogsExpanded ? '收起' : `展开 (${logs.filter(l => l.type === 'tool').length} 个步骤)`}
+                    <span style={{ fontSize: '11px', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {isLogsExpanded ? '隐藏日志' : '点击展开日志'}
                     </span>
                   </div>
                   {isLogsExpanded && (
-                    <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto', fontSize: '12px', fontFamily: 'Consolas, monospace', background: '#13131a' }}>
-                      {logs.map((log, logIdx) => {
-                        const uniqueKey = `log-${logIdx}`
+                    <div style={{
+                      padding: '8px 12px',
+                      borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                      maxHeight: '160px',
+                      overflowY: 'auto',
+                      fontSize: '11px',
+                      fontFamily: 'Consolas, Courier New, monospace',
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      color: '#a9b1d6'
+                    }}>
+                      {logs.reduce<React.ReactNode[]>((acc, log, logIdx) => {
                         if (log.type === 'tool') {
-                          return (
-                            <div key={uniqueKey} style={{ borderLeft: '2px solid #a855f7', paddingLeft: '8px', margin: '2px 0' }}>
-                              <div style={{ color: '#c084fc', fontWeight: 'bold' }}>
-                                [步骤 {log.step}/{log.maxSteps}] 调用 {log.toolName}
+                          const resultLog = logs.find(l => l.step === log.step && l.type === 'result' && l.url === log.url)
+                          const errorLog = logs.find(l => l.step === log.step && l.type === 'error')
+                          
+                          acc.push(
+                            <div key={`step-${log.step}-${logIdx}`} style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderBottom: '1px dashed rgba(255, 255, 255, 0.03)', paddingBottom: '4px', marginBottom: '2px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: '#c084fc', fontWeight: 'bold' }}>▶ Step {log.step}: {log.toolName}</span>
+                                {resultLog ? (
+                                  <span style={{ color: '#10b981', fontSize: '10px' }}>[成功]</span>
+                                ) : errorLog ? (
+                                  <span style={{ color: '#ef4444', fontSize: '10px' }}>[失败]</span>
+                                ) : (
+                                  <span style={{ color: '#eab308', fontSize: '10px' }}>[执行中...]</span>
+                                )}
                               </div>
-                              <div style={{ color: '#9ca3af', wordBreak: 'break-all', fontSize: '11px' }}>
-                                {log.url}
+                              <div style={{ color: '#888', wordBreak: 'break-all', fontSize: '10px' }}>
+                                URL: <a href={log.url} target="_blank" rel="noreferrer" style={{ color: '#58a6ff', textDecoration: 'none' }}>{log.url}</a>
                               </div>
-                            </div>
-                          )
-                        } else if (log.type === 'result') {
-                          return (
-                            <div key={uniqueKey} style={{ borderLeft: '2px solid #10b981', paddingLeft: '8px', margin: '2px 0' }}>
-                              <div style={{ color: '#34d399', fontWeight: 'bold' }}>
-                                └─ 获得结果: {log.title}
-                              </div>
-                              <div style={{ color: '#6b7280', wordBreak: 'break-all', fontSize: '11px' }}>
-                                {log.url}
-                              </div>
-                            </div>
-                          )
-                        } else {
-                          return (
-                            <div key={uniqueKey} style={{ borderLeft: '2px solid #ef4444', paddingLeft: '8px', margin: '2px 0' }}>
-                              <div style={{ color: '#f87171', fontWeight: 'bold' }}>
-                                └─ 发生错误: {log.error}
-                              </div>
+                              {resultLog && (
+                                <div style={{ color: '#34d399', fontSize: '10px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                  📄 {resultLog.title || '无标题页面'}
+                                </div>
+                              )}
+                              {errorLog && (
+                                <div style={{ color: '#f87171', fontSize: '10px' }}>
+                                  ❌ Error: {errorLog.error}
+                                </div>
+                              )}
                             </div>
                           )
                         }
-                      })}
+                        return acc
+                      }, [])}
                     </div>
                   )}
                 </div>
