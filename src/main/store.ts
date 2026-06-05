@@ -2,32 +2,18 @@ import { app } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 
-export interface ApiProvider {
-  id: string
-  name: string
-  type: 'deepseek' | 'kimi' | 'ollama' | 'custom'
-  apiKey: string
-  apiUrl: string
-  model: string
-  modelsList: string[]
-}
+import { StorageSchema, ApiProvider, Skill, AppSettings } from '../shared/types'
 
-export interface StorageSchema {
-  sessions: any[]
-  settings: {
-    providers: ApiProvider[]
-    activeProviderId: string
-    systemPrompt: string
-    autoHideOnBlur: boolean
-    theme?: 'dark' | 'light'
-    // Legacy support for flat settings migration
-    apiKey?: string
-    apiUrl?: string
-    model?: string
-    modelsList?: string[]
-  }
-  skills: any[]
-  memories: any[]
+interface LegacyAppSettings {
+  providers?: ApiProvider[]
+  activeProviderId?: string
+  systemPrompt?: string
+  autoHideOnBlur?: boolean
+  theme?: 'dark' | 'light'
+  apiKey?: string
+  apiUrl?: string
+  model?: string
+  modelsList?: string[]
 }
 
 const DEFAULT_STORAGE: StorageSchema = {
@@ -99,11 +85,11 @@ export class FileStore {
           'mock',
           'summary'
         ]
-        let loadedSkills = Array.isArray(parsed.skills) ? parsed.skills : []
-        loadedSkills = loadedSkills.filter((s: any) => s && s.trigger && !defaultTriggers.includes(s.trigger))
+        let loadedSkills: Skill[] = Array.isArray(parsed.skills) ? parsed.skills : []
+        loadedSkills = loadedSkills.filter((s: Skill) => s && s.trigger && !defaultTriggers.includes(s.trigger))
 
         // Migrate settings from flat format to multi-provider structure if needed
-        let settings = parsed.settings || {}
+        const settings = (parsed.settings as LegacyAppSettings) || {}
         if (!settings.providers || settings.providers.length === 0) {
           const oldApiKey = settings.apiKey || ''
           const oldApiUrl = settings.apiUrl || 'https://api.deepseek.com/v1'
@@ -148,7 +134,7 @@ export class FileStore {
 
         // Ensure all loaded providers have a "type" attribute for backward compatibility
         if (settings.providers && settings.providers.length > 0) {
-          settings.providers = settings.providers.map((p: any) => {
+          settings.providers = settings.providers.map((p: ApiProvider) => {
             if (!p.type) {
               let detectedType: 'deepseek' | 'kimi' | 'ollama' | 'custom' = 'custom'
               if (p.apiUrl.includes('deepseek.com')) detectedType = 'deepseek'
@@ -165,7 +151,7 @@ export class FileStore {
           ...DEFAULT_STORAGE,
           ...parsed,
           skills: loadedSkills,
-          settings: { ...DEFAULT_STORAGE.settings, ...settings }
+          settings: { ...DEFAULT_STORAGE.settings, ...settings } as AppSettings
         }
       }
     } catch (e) {

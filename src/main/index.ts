@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
+import { handleChatCompletion } from './aiClient'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -33,7 +34,7 @@ function createWindow(): void {
     hasShadow: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true
     }
   })
 
@@ -169,13 +170,21 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC handlers for FileStore
+  // IPC handlers for FileStore with security whitelist
+  const ALLOWED_STORE_KEYS = ['sessions', 'settings', 'skills', 'memories']
+
   ipcMain.handle('store-get', (_event, key) => {
-    return store?.get(key)
+    if (typeof key !== 'string' || !ALLOWED_STORE_KEYS.includes(key)) {
+      throw new Error(`Forbidden store-get key: ${key}`)
+    }
+    return store?.get(key as any)
   })
 
   ipcMain.handle('store-set', (_event, key, value) => {
-    store?.set(key, value)
+    if (typeof key !== 'string' || !ALLOWED_STORE_KEYS.includes(key)) {
+      throw new Error(`Forbidden store-set key: ${key}`)
+    }
+    store?.set(key as any, value)
     return true
   })
 
@@ -208,6 +217,13 @@ app.whenReady().then(() => {
       } else {
         mainWindow.webContents.openDevTools({ mode: 'detach' })
       }
+    }
+  })
+
+  ipcMain.on('start-chat-completion', (event, reqId, options) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) {
+      handleChatCompletion(win, reqId, options)
     }
   })
 
