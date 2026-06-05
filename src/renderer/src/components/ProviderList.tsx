@@ -92,7 +92,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                 className="settings-select"
                 style={{ width: '100%', height: '30px', padding: '0 8px', fontSize: '11.5px' }}
                 value={newProviderType}
-                onChange={(e) => setNewProviderType(e.target.value as any)}
+                onChange={(e) => setNewProviderType(e.target.value as ApiProvider['type'])}
               >
                 <option value="deepseek">DeepSeek</option>
                 <option value="kimi">Kimi (Moonshot)</option>

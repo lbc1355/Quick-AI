@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import { StoreKey, StoreValue } from '../shared/types'
+import { StoreKey, StoreValue, ChatCompletionMessage } from '../shared/types'
 
 declare global {
   interface Window {
@@ -16,7 +16,7 @@ declare global {
         apiUrl: string
         apiKey: string
         model: string
-        messages: any[]
+        messages: ChatCompletionMessage[]
       }) => void
       onChatChunk: (callback: (data: {
         reqId: string
@@ -25,7 +25,7 @@ declare global {
         done?: boolean
         error?: string
       }) => void) => () => void
+      fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
     }
   }
 }
-

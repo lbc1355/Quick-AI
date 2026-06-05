@@ -1,7 +1,7 @@
-
+import React from 'react'
 
 // Parse reasoning process from either official API properties or local Ollama `<think>` tags
-export const parseThinkTags = (content: string, reasoningContent?: string) => {
+export const parseThinkTags = (content: string, reasoningContent?: string): { content: string; reasoning: string } => {
   let finalContent = content
   let finalReasoning = reasoningContent || ''
 
@@ -22,7 +22,7 @@ export const parseThinkTags = (content: string, reasoningContent?: string) => {
 }
 
 // Custom text formatter
-export const renderMessageContent = (text: string) => {
+export const renderMessageContent = (text: string): React.ReactNode => {
   if (!text) return null
   const parts = text.split(/(```[\s\S]*?```)/g)
   return parts.map((part, idx) => {
@@ -34,7 +34,7 @@ export const renderMessageContent = (text: string) => {
         <div key={idx} className="code-block-container" style={{ margin: '8px 0', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', overflow: 'hidden' }}>
           <div style={{ background: 'rgba(255,255,255,0.03)', padding: '6px 12px', fontSize: '11.5px', borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#9ca3af', display: 'flex', justifyContent: 'space-between', userSelect: 'none' }}>
             <span>{lang || 'code'}</span>
-            <span style={{ cursor: 'pointer', color: '#3b82f6' }} onClick={() => navigator.clipboard.writeText(code)}>复制</span>
+            <span style={{ cursor: 'pointer', color: '#3b82f6' }} onClick={(): Promise<void> => navigator.clipboard.writeText(code)}>复制</span>
           </div>
           <pre style={{ margin: 0, padding: '10px', overflowX: 'auto', background: 'rgba(10,10,12,0.45)', fontFamily: 'Consolas, monospace', fontSize: '12px' }}>
             <code>{code}</code>
@@ -62,7 +62,7 @@ export const renderMessageContent = (text: string) => {
 }
 
 // Get the visual tag badge colors for the autocomplete triggers
-export const getTriggerColor = (type: string) => {
+export const getTriggerColor = (type: string): string => {
   if (type === 'command') return '#f59e0b' // Amber/Orange for system commands
   if (type === 'delete-session') return '#ef4444' // Red for session deletion
   if (type === 'session') return '#3b82f6' // Blue for history session

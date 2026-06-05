@@ -1,8 +1,7 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { Message, Session } from '../../../shared/types'
 
 interface UseChatCompletionProps {
-  sessions: Session[]
   setSessions: React.Dispatch<React.SetStateAction<Session[]>>
   activeSessionId: string
   sessionsRef: React.MutableRefObject<Session[]>
@@ -15,8 +14,32 @@ interface UseChatCompletionProps {
   setAttachedFiles: React.Dispatch<React.SetStateAction<Array<{ name: string; content: string; type: string }>>>
 }
 
+export interface UseChatCompletionReturn {
+  inputVal: string
+  setInputVal: React.Dispatch<React.SetStateAction<string>>
+  isGenerating: boolean
+  setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>
+  editingMessageId: string | null
+  setEditingMessageId: React.Dispatch<React.SetStateAction<string | null>>
+  editingText: string
+  setEditingText: React.Dispatch<React.SetStateAction<string>>
+  handleSendMessage: (customPrompt?: string, customMsgId?: string) => Promise<void>
+  handleStartEdit: (msg: Message) => void
+  handleSaveEdit: (msgId: string) => void
+  handleRegenerate: (msgIdx: number) => void
+  showHelpMessage: () => Promise<void>
+}
+
+interface ApiMessage {
+  role: string
+  content: string | Array<{
+    type: string
+    text?: string
+    image_url?: { url: string }
+  }>
+}
+
 export const useChatCompletion = ({
-  sessions,
   setSessions,
   activeSessionId,
   sessionsRef,
@@ -27,13 +50,13 @@ export const useChatCompletion = ({
   setShowSettings,
   attachedFiles,
   setAttachedFiles
-}: UseChatCompletionProps) => {
+}: UseChatCompletionProps): UseChatCompletionReturn => {
   const [inputVal, setInputVal] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
 
-  const showHelpMessage = async () => {
+  const showHelpMessage = async (): Promise<void> => {
     if (!activeSessionId) return
     const helpMsg: Message = {
       id: `help-${Date.now()}`,
@@ -55,7 +78,7 @@ export const useChatCompletion = ({
 * 🕒 \`/history:会话名\` - 快捷加载以往历史对话
 * ❌ \`/delete:会话名\` - 删除历史对话会话`
     }
-    const updated = sessions.map((s) => {
+    const updated = sessionsRef.current.map((s) => {
       if (s.id === activeSessionId) {
         return {
           ...s,
@@ -66,10 +89,11 @@ export const useChatCompletion = ({
       return s
     })
     setSessions(updated)
+    sessionsRef.current = updated
     await window.api.storeSet('sessions', updated)
   }
 
-  const handleSendMessage = async (customPrompt?: string, customMsgId?: string) => {
+  const handleSendMessage = async (customPrompt?: string, customMsgId?: string): Promise<void> => {
     const promptToSend = customPrompt !== undefined ? customPrompt : inputVal
     if (!promptToSend.trim() && attachedFiles.length === 0 && !customPrompt) return
     if (isGenerating) return
@@ -84,17 +108,24 @@ export const useChatCompletion = ({
     setIsGenerating(true)
     setInputVal('')
 
-    let currentSessions = [...sessions]
-    let currentSession = currentSessions.find((s) => s.id === activeSessionId)
+    const currentSessions: Session[] = sessionsRef.current.map((s) => ({
+      ...s,
+      messages: s.messages.map((m) => ({ ...m }))
+    }))
+    const currentSession = currentSessions.find((s) => s.id === activeSessionId)
     if (!currentSession) {
       setIsGenerating(false)
       return
     }
 
-    // 1. If we are editing, delete/slice trailing messages
+    // 1. If we are editing, update message content and slice trailing messages
     if (customMsgId) {
       const idx = currentSession.messages.findIndex((m) => m.id === customMsgId)
       if (idx !== -1) {
+        currentSession.messages[idx] = {
+          ...currentSession.messages[idx],
+          content: promptToSend
+        }
         currentSession.messages = currentSession.messages.slice(0, idx + 1)
       }
     } else {
@@ -127,16 +158,21 @@ export const useChatCompletion = ({
     setSessions([...currentSessions])
 
     // Load full messages block
-    const apiMessages: any[] = []
+    const apiMessages: ApiMessage[] = []
     if (systemPrompt) {
       apiMessages.push({ role: 'system', content: systemPrompt })
     }
 
     currentSession.messages.slice(0, -1).forEach((msg) => {
-      let content: any = msg.content
+      let content: string | Array<{
+        type: string
+        text?: string
+        image_url?: { url: string }
+      }> = msg.content
+
       if (msg.files && msg.files.length > 0) {
         const textParts = [msg.content]
-        const images: any[] = []
+        const images: Array<{ type: 'image_url'; image_url: { url: string } }> = []
         msg.files.forEach((f) => {
           if (f.type === 'image') {
             images.push({
@@ -165,7 +201,13 @@ export const useChatCompletion = ({
     let accumulatedText = ''
     let accumulatedReasoning = ''
 
-    const unsubscribe = window.api.onChatChunk((data) => {
+    const unsubscribe = window.api.onChatChunk((data: {
+      reqId: string
+      content?: string
+      reasoningContent?: string
+      done?: boolean
+      error?: string
+    }): void => {
       if (data.reqId !== reqId) return
 
       if (data.error) {
@@ -237,7 +279,7 @@ export const useChatCompletion = ({
       }
     })
 
-    const cleanup = () => {
+    const cleanup = (): void => {
       unsubscribe()
       setIsGenerating(false)
       // Save sessions
@@ -262,8 +304,9 @@ export const useChatCompletion = ({
         model: selectedModel,
         messages: apiMessages
       })
-    } catch (err: any) {
-      console.error(err)
+    } catch (err) {
+      const error = err as Error
+      console.error(error)
       setSessions((prevSessions) =>
         prevSessions.map((s) => {
           if (s.id === activeSessionId) {
@@ -271,7 +314,7 @@ export const useChatCompletion = ({
               ...s,
               messages: s.messages.map((m) => {
                 if (m.id === assistantMsgId) {
-                  return { ...m, content: `⚠️ 出错了：${err.message || '启动请求失败'}` }
+                  return { ...m, content: `⚠️ 出错了：${error.message || '启动请求失败'}` }
                 }
                 return m
               })
@@ -284,41 +327,47 @@ export const useChatCompletion = ({
     }
   }
 
-  const handleStartEdit = (msg: Message) => {
+  const handleStartEdit = (msg: Message): void => {
     setEditingMessageId(msg.id)
     setEditingText(msg.content)
   }
 
-  const handleSaveEdit = (msgId: string) => {
-    setSessions((prevSessions) =>
-      prevSessions.map((s) => {
-        if (s.id === activeSessionId) {
-          return {
-            ...s,
-            messages: s.messages.map((m) => {
-              if (m.id === msgId) {
-                return { ...m, content: editingText }
-              }
-              return m
-            }),
-            lastActiveTime: Date.now()
-          }
+  const handleSaveEdit = (msgId: string): void => {
+    const nextSessions = sessionsRef.current.map((s) => {
+      if (s.id === activeSessionId) {
+        return {
+          ...s,
+          messages: s.messages.map((m) => {
+            if (m.id === msgId) {
+              return { ...m, content: editingText }
+            }
+            return m
+          }),
+          lastActiveTime: Date.now()
         }
-        return s
-      })
-    )
+      }
+      return s
+    })
+    setSessions(nextSessions)
+    sessionsRef.current = nextSessions
     setEditingMessageId(null)
     setTimeout(() => {
-      handleSendMessage(editingText, msgId)
+      const promiseOrVoid = handleSendMessage(editingText, msgId)
+      if (promiseOrVoid instanceof Promise) {
+        promiseOrVoid.catch(console.error)
+      }
     }, 100)
   }
 
-  const handleRegenerate = (msgIdx: number) => {
-    const currentSession = sessions.find((s) => s.id === activeSessionId)
+  const handleRegenerate = (msgIdx: number): void => {
+    const currentSession = sessionsRef.current.find((s) => s.id === activeSessionId)
     if (!currentSession) return
     const precedingUserMsg = currentSession.messages[msgIdx - 1]
     if (precedingUserMsg && precedingUserMsg.role === 'user') {
-      handleSendMessage(precedingUserMsg.content, precedingUserMsg.id)
+      const promiseOrVoid = handleSendMessage(precedingUserMsg.content, precedingUserMsg.id)
+      if (promiseOrVoid instanceof Promise) {
+        promiseOrVoid.catch(console.error)
+      }
     }
   }
 

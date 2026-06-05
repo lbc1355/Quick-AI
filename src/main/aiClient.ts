@@ -1,10 +1,22 @@
 import { BrowserWindow } from 'electron'
+import { ChatCompletionMessage } from '../shared/types'
+
+interface ModelItem {
+  id?: string
+  name?: string
+  model?: string
+}
+
+interface FetchModelsResponse {
+  data?: ModelItem[]
+  models?: ModelItem[]
+}
 
 export async function handleChatCompletion(
   mainWindow: BrowserWindow,
   reqId: string,
-  options: { apiUrl: string; apiKey: string; model: string; messages: any[] }
-) {
+  options: { apiUrl: string; apiKey: string; model: string; messages: ChatCompletionMessage[] }
+): Promise<void> {
   const { apiUrl, apiKey, model, messages } = options
   const completionsUrl = `${apiUrl.replace(/\/$/, '')}/chat/completions`
 
@@ -52,8 +64,8 @@ export async function handleChatCompletion(
         if (cleanLine.startsWith('data: ')) {
           try {
             const json = JSON.parse(cleanLine.substring(6))
-            const reasoningContent = json.choices[0]?.delta?.reasoning_content || ''
-            const content = json.choices[0]?.delta?.content || ''
+            const reasoningContent = (json.choices?.[0]?.delta?.reasoning_content as string) || ''
+            const content = (json.choices?.[0]?.delta?.content as string) || ''
 
             if (reasoningContent || content) {
               mainWindow.webContents.send('chat-chunk', {
@@ -62,7 +74,7 @@ export async function handleChatCompletion(
                 reasoningContent
               })
             }
-          } catch (e) {
+          } catch {
             // Parse error on incomplete JSON chunks
           }
         }
@@ -70,8 +82,43 @@ export async function handleChatCompletion(
     }
     // Stream completed
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })
-  } catch (error: any) {
-    console.error('Chat Completion Main process error:', error)
-    mainWindow.webContents.send('chat-chunk', { reqId, error: error.message || '网络连接失败' })
+  } catch (error) {
+    const err = error as Error
+    console.error('Chat Completion Main process error:', err)
+    mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || '网络连接失败' })
+  }
+}
+
+export async function fetchModels(fetchUrl: string, apiKey: string): Promise<string[]> {
+  if (!fetchUrl) return []
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`
+    }
+    const response = await fetch(fetchUrl, { method: 'GET', headers })
+    if (!response.ok) {
+      throw new Error(`获取失败：${response.status} ${response.statusText}`)
+    }
+    const data = await response.json() as FetchModelsResponse | ModelItem[] | string[]
+    let modelIds: string[] = []
+
+    if (data && typeof data === 'object') {
+      if ('data' in data && Array.isArray(data.data)) {
+        modelIds = data.data.map((m) => m.id || '').filter(Boolean)
+      } else if ('models' in data && Array.isArray(data.models)) {
+        modelIds = data.models.map((m) => m.name || m.model || m.id || '').filter(Boolean)
+      } else if (Array.isArray(data)) {
+        modelIds = (data as (ModelItem | string)[]).map((m) => {
+          if (typeof m === 'string') return m
+          return m.id || m.name || m.model || ''
+        }).filter(Boolean)
+      }
+    }
+    return modelIds
+  } catch (error) {
+    const err = error as Error
+    console.error('Fetch models error:', err)
+    throw new Error(err.message || '网络连接异常')
   }
 }

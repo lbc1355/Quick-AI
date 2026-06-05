@@ -1,6 +1,19 @@
 import { useState, useEffect, useRef, ChangeEvent, ClipboardEvent, DragEvent } from 'react'
 
-export const useAttachments = (textareaRef: React.RefObject<HTMLTextAreaElement | null>) => {
+export interface UseAttachmentsReturn {
+  dragActive: boolean
+  setDragActive: React.Dispatch<React.SetStateAction<boolean>>
+  attachedFiles: Array<{ name: string; content: string; type: string }>
+  setAttachedFiles: React.Dispatch<React.SetStateAction<Array<{ name: string; content: string; type: string }>>>
+  fileInputRef: React.RefObject<HTMLInputElement | null>
+  handleFileChange: (e: ChangeEvent<HTMLInputElement>) => void
+  handlePaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void
+  handleDrag: (e: DragEvent) => void
+  handleDrop: (e: DragEvent) => void
+  handleRemoveFile: (idx: number) => void
+}
+
+export const useAttachments = (textareaRef: React.RefObject<HTMLTextAreaElement | null>): UseAttachmentsReturn => {
   const [dragActive, setDragActive] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<Array<{ name: string; content: string; type: string }>>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -9,7 +22,7 @@ export const useAttachments = (textareaRef: React.RefObject<HTMLTextAreaElement 
     const input = fileInputRef.current
     if (!input) return
 
-    const handleCancel = () => {
+    const handleCancel = (): void => {
       window.api.reSummonWindow()
       setTimeout(() => {
         textareaRef.current?.focus()
@@ -22,7 +35,7 @@ export const useAttachments = (textareaRef: React.RefObject<HTMLTextAreaElement 
     }
   }, [textareaRef])
 
-  const processFile = (file: File) => {
+  const processFile = (file: File): void => {
     // 5MB size limit to prevent memory bloating
     const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
     if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -62,7 +75,7 @@ export const useAttachments = (textareaRef: React.RefObject<HTMLTextAreaElement 
     }
   }
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>): void => {
     if (e.target.files) {
       Array.from(e.target.files).forEach(processFile)
     }
@@ -73,7 +86,7 @@ export const useAttachments = (textareaRef: React.RefObject<HTMLTextAreaElement 
     }, 50)
   }
 
-  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>): void => {
     const items = e.clipboardData.items
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.indexOf('image') !== -1) {
@@ -85,7 +98,7 @@ export const useAttachments = (textareaRef: React.RefObject<HTMLTextAreaElement 
     }
   }
 
-  const handleDrag = (e: DragEvent) => {
+  const handleDrag = (e: DragEvent): void => {
     e.preventDefault()
     e.stopPropagation()
     if (e.type === 'dragenter' || e.type === 'dragover') {
@@ -95,7 +108,7 @@ export const useAttachments = (textareaRef: React.RefObject<HTMLTextAreaElement 
     }
   }
 
-  const handleDrop = (e: DragEvent) => {
+  const handleDrop = (e: DragEvent): void => {
     e.preventDefault()
     e.stopPropagation()
     setDragActive(false)
@@ -104,7 +117,7 @@ export const useAttachments = (textareaRef: React.RefObject<HTMLTextAreaElement 
     }
   }
 
-  const handleRemoveFile = (idx: number) => {
+  const handleRemoveFile = (idx: number): void => {
     setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
   }
 

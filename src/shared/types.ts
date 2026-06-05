@@ -6,6 +6,15 @@ export interface Message {
   files?: Array<{ name: string; content: string; type: string }>
 }
 
+export interface ChatCompletionMessage {
+  role: string
+  content: string | Array<{
+    type: string
+    text?: string
+    image_url?: { url: string }
+  }>
+}
+
 export interface Session {
   id: string
   title: string

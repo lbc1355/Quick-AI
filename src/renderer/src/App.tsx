@@ -29,6 +29,12 @@ function App(): React.JSX.Element {
   // Navigation
   const [showSettings, setShowSettings] = useState(false)
 
+  // Close settings panel and restore local editor states
+  const handleCloseSettings = (): void => {
+    setShowSettings(false)
+    resetLocalSettings()
+  }
+
   // 1. Providers hook
   const {
     apiKey,
@@ -75,8 +81,9 @@ function App(): React.JSX.Element {
     handleAddManualModel,
     handleFetchModels,
     handleRemoveModelDirectly,
-    handleToggleModelSelection
-  } = useProviders(showSettings)
+    handleToggleModelSelection,
+    resetLocalSettings
+  } = useProviders()
 
   // 2. Sessions hook
   const {
@@ -127,7 +134,6 @@ function App(): React.JSX.Element {
     handleRegenerate,
     showHelpMessage
   } = useChatCompletion({
-    sessions,
     setSessions,
     activeSessionId,
     sessionsRef,
@@ -152,7 +158,7 @@ function App(): React.JSX.Element {
 
   // Listen to window summon (focus/show) event from Main Process
   useEffect(() => {
-    const handleWindowShown = () => {
+    const handleWindowShown = (): void => {
       checkSessionTimeout(activeSessionId, sessions)
     }
 
@@ -196,7 +202,7 @@ function App(): React.JSX.Element {
   }, [sessions, activeSessionId, isGenerating])
 
   // Handle manual scroll detection
-  const handleScroll = () => {
+  const handleScroll = (): void => {
     const container = messagesContainerRef.current
     if (!container) return
 
@@ -234,7 +240,7 @@ function App(): React.JSX.Element {
 
   // Trigger escape key listener for hierarchy back navigation or window hiding
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
 
       // Do not allow ESC action during active AI generation to prevent accidental interruption
@@ -251,7 +257,7 @@ function App(): React.JSX.Element {
         setIsEditingProviderDetail(false)
       } else if (showSettings) {
         e.preventDefault()
-        setShowSettings(false)
+        handleCloseSettings()
       } else {
         window.api.hideWindow()
       }
@@ -261,14 +267,14 @@ function App(): React.JSX.Element {
   }, [isGenerating, showModelsModal, showAddForm, isEditingProviderDetail, showSettings, setShowModelsModal, setShowAddForm, setIsEditingProviderDetail])
 
   // Autocomplete change
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     const val = e.target.value
     setInputVal(val)
     updateAutocompleteItems(val, modelsList, sessions, activeSessionId, providers)
   }
 
   // Action executed on autocomplete item select
-  const triggerAutocompleteItem = async (item: AutocompleteItem) => {
+  const triggerAutocompleteItem = async (item: AutocompleteItem): Promise<void> => {
     if (!item) return
     if (item.type === 'command') {
       if (item.cmd === 'new') {
@@ -291,7 +297,7 @@ function App(): React.JSX.Element {
     } else if (item.type === 'session') {
       // Switch conversation session
       setActiveSessionId(item.id)
-      setShowSettings(false)
+      handleCloseSettings()
       setAutocompleteItems([])
       setInputVal('')
     } else if (item.type === 'model') {
@@ -329,7 +335,7 @@ function App(): React.JSX.Element {
   }
 
   // Keyboard navigation inside prompt input
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     const handled = autocompleteKeyDown(e, triggerAutocompleteItem)
     if (handled) return
 
@@ -362,7 +368,7 @@ function App(): React.JSX.Element {
             {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
           </button>
           {showSettings ? (
-            <button className="header-action-btn" onClick={() => setShowSettings(false)} title="返回聊天">
+            <button className="header-action-btn" onClick={handleCloseSettings} title="返回聊天">
               <Undo2 size={14} />
             </button>
           ) : (

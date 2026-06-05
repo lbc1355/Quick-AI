@@ -3,7 +3,8 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
-import { handleChatCompletion } from './aiClient'
+import { StorageSchema } from '../shared/types'
+import { handleChatCompletion, fetchModels } from './aiClient'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -177,14 +178,16 @@ app.whenReady().then(() => {
     if (typeof key !== 'string' || !ALLOWED_STORE_KEYS.includes(key)) {
       throw new Error(`Forbidden store-get key: ${key}`)
     }
-    return store?.get(key as any)
+    const storeKey = key as keyof StorageSchema
+    return store?.get(storeKey)
   })
 
   ipcMain.handle('store-set', (_event, key, value) => {
     if (typeof key !== 'string' || !ALLOWED_STORE_KEYS.includes(key)) {
       throw new Error(`Forbidden store-set key: ${key}`)
     }
-    store?.set(key as any, value)
+    const storeKey = key as keyof StorageSchema
+    store?.set(storeKey, value as StorageSchema[typeof storeKey])
     return true
   })
 
@@ -193,6 +196,10 @@ app.whenReady().then(() => {
       storePath: store?.getStorePath() || '',
       version: '1.0.0'
     }
+  })
+
+  ipcMain.handle('fetch-models', (_event, fetchUrl, apiKey) => {
+    return fetchModels(fetchUrl, apiKey)
   })
 
   // IPC handlers for window control

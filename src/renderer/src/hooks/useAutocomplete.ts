@@ -1,7 +1,28 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Skill, AutocompleteItem, Session, ApiProvider } from '../../../shared/types'
 
-export const useAutocomplete = () => {
+export interface UseAutocompleteReturn {
+  skills: Skill[]
+  setSkills: React.Dispatch<React.SetStateAction<Skill[]>>
+  autocompleteItems: AutocompleteItem[]
+  setAutocompleteItems: React.Dispatch<React.SetStateAction<AutocompleteItem[]>>
+  selectedItemIdx: number
+  setSelectedItemIdx: React.Dispatch<React.SetStateAction<number>>
+  skillsMenuRef: React.RefObject<HTMLDivElement | null>
+  updateAutocompleteItems: (
+    val: string,
+    modelsList: string[],
+    sessions: Session[],
+    activeSessionId: string,
+    providers: ApiProvider[]
+  ) => void
+  handleInputKeyDown: (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+    triggerAutocompleteItem: (item: AutocompleteItem) => void | Promise<void>
+  ) => boolean
+}
+
+export const useAutocomplete = (): UseAutocompleteReturn => {
   const [skills, setSkills] = useState<Skill[]>([])
   const [autocompleteItems, setAutocompleteItems] = useState<AutocompleteItem[]>([])
   const [selectedItemIdx, setSelectedItemIdx] = useState(0)
@@ -9,7 +30,7 @@ export const useAutocomplete = () => {
 
   // Load skills on startup
   useEffect(() => {
-    const loadSkills = async () => {
+    const loadSkills = async (): Promise<void> => {
       const savedSkills = (await window.api.storeGet('skills') as Skill[]) || []
       setSkills(savedSkills)
     }
@@ -33,7 +54,7 @@ export const useAutocomplete = () => {
     sessions: Session[],
     activeSessionId: string,
     providers: ApiProvider[]
-  ) => {
+  ): void => {
     if (val.startsWith('/')) {
       const search = val.slice(1).toLowerCase()
 
@@ -127,8 +148,8 @@ export const useAutocomplete = () => {
 
   const handleInputKeyDown = (
     e: React.KeyboardEvent<HTMLTextAreaElement>,
-    triggerAutocompleteItem: (item: AutocompleteItem) => void
-  ) => {
+    triggerAutocompleteItem: (item: AutocompleteItem) => void | Promise<void>
+  ): boolean => {
     if (autocompleteItems.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -142,7 +163,10 @@ export const useAutocomplete = () => {
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
-        triggerAutocompleteItem(autocompleteItems[selectedItemIdx])
+        const promiseOrVoid = triggerAutocompleteItem(autocompleteItems[selectedItemIdx])
+        if (promiseOrVoid instanceof Promise) {
+          promiseOrVoid.catch(console.error)
+        }
         return true
       }
       if (e.key === 'Escape') {

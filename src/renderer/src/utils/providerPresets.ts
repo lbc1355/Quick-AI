@@ -34,7 +34,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     type: 'custom',
     name: '自定义服务商',
     apiUrl: '',
-    modelsList: [],
-    defaultModel: ''
+    modelsList: ['custom-model'],
+    defaultModel: 'custom-model'
   }
 ]

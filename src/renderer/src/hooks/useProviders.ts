@@ -1,8 +1,62 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { ApiProvider, AppSettings } from '../../../shared/types'
 import { PROVIDER_PRESETS } from '../utils/providerPresets'
 
-export const useProviders = (showSettings: boolean) => {
+export interface UseProvidersReturn {
+  apiKey: string
+  setApiKey: React.Dispatch<React.SetStateAction<string>>
+  apiUrl: string
+  setApiUrl: React.Dispatch<React.SetStateAction<string>>
+  selectedModel: string
+  setSelectedModel: React.Dispatch<React.SetStateAction<string>>
+  modelsList: string[]
+  setModelsList: React.Dispatch<React.SetStateAction<string[]>>
+  systemPrompt: string
+  setSystemPrompt: React.Dispatch<React.SetStateAction<string>>
+  autoHideOnBlur: boolean
+  setAutoHideOnBlur: React.Dispatch<React.SetStateAction<boolean>>
+  appStorePath: string
+  saveSuccess: boolean
+  theme: 'dark' | 'light'
+  setTheme: React.Dispatch<React.SetStateAction<'dark' | 'light'>>
+  toggleTheme: () => void
+  providers: ApiProvider[]
+  setProviders: React.Dispatch<React.SetStateAction<ApiProvider[]>>
+  activeProviderId: string
+  setActiveProviderId: React.Dispatch<React.SetStateAction<string>>
+  editingProviderId: string
+  setEditingProviderId: React.Dispatch<React.SetStateAction<string>>
+  isEditingProviderDetail: boolean
+  setIsEditingProviderDetail: React.Dispatch<React.SetStateAction<boolean>>
+  showAddForm: boolean
+  setShowAddForm: React.Dispatch<React.SetStateAction<boolean>>
+  newProviderName: string
+  setNewProviderName: React.Dispatch<React.SetStateAction<string>>
+  newProviderType: ApiProvider['type']
+  setNewProviderType: React.Dispatch<React.SetStateAction<ApiProvider['type']>>
+  manualModelInput: string
+  setManualModelInput: React.Dispatch<React.SetStateAction<string>>
+  fetchModelsUrl: string
+  setFetchModelsUrl: React.Dispatch<React.SetStateAction<string>>
+  isFetchingModels: boolean
+  fetchedModels: string[]
+  showModelsModal: boolean
+  setShowModelsModal: React.Dispatch<React.SetStateAction<boolean>>
+  handleApiUrlChange: (newUrl: string) => void
+  handleSaveGlobalSettings: () => Promise<void>
+  handleSaveProviderDetails: () => Promise<void>
+  handleAddProvider: (name: string, type: ApiProvider['type']) => Promise<void>
+  handleSetActiveProvider: (id: string) => Promise<void>
+  handleStartEditingProvider: (id: string) => void
+  handleDeleteProvider: (id: string) => Promise<void>
+  handleAddManualModel: () => void
+  handleFetchModels: () => Promise<void>
+  handleRemoveModelDirectly: (modelId: string) => void
+  handleToggleModelSelection: (modelId: string) => void
+  resetLocalSettings: () => void
+}
+
+export const useProviders = (): UseProvidersReturn => {
   // Settings state
   const [apiKey, setApiKey] = useState('')
   const [apiUrl, setApiUrl] = useState('https://api.deepseek.com/v1')
@@ -34,7 +88,7 @@ export const useProviders = (showSettings: boolean) => {
 
   // Load configuration and data on startup
   useEffect(() => {
-    const initSettings = async () => {
+    const initSettings = async (): Promise<void> => {
       // Settings
       const savedSettings = (await window.api.storeGet('settings')) as AppSettings
       if (savedSettings) {
@@ -67,9 +121,8 @@ export const useProviders = (showSettings: boolean) => {
     initSettings()
   }, [])
 
-  // Restore local editor states to active provider settings when settings panel is closed without saving
-  useEffect(() => {
-    if (!showSettings && activeProviderId && providers.length > 0) {
+  const resetLocalSettings = (): void => {
+    if (activeProviderId && providers.length > 0) {
       const activeProv = providers.find((p) => p.id === activeProviderId)
       if (activeProv) {
         setApiKey(activeProv.apiKey || '')
@@ -80,15 +133,15 @@ export const useProviders = (showSettings: boolean) => {
         setEditingProviderId(activeProviderId)
       }
     }
-  }, [showSettings, activeProviderId, providers])
+  }
 
   // Update fetch models URL when API URL changes
-  const handleApiUrlChange = (newUrl: string) => {
+  const handleApiUrlChange = (newUrl: string): void => {
     setApiUrl(newUrl)
     setFetchModelsUrl(`${newUrl.replace(/\/$/, '')}/models`)
   }
 
-  const handleSaveGlobalSettings = async () => {
+  const handleSaveGlobalSettings = async (): Promise<void> => {
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
     if (savedSettings) {
       savedSettings.systemPrompt = systemPrompt
@@ -100,7 +153,15 @@ export const useProviders = (showSettings: boolean) => {
     }
   }
 
-  const handleSaveProviderDetails = async () => {
+  const handleSaveProviderDetails = async (): Promise<void> => {
+    if (modelsList.length === 0) {
+      alert('模型列表不能为空，请至少添加一个模型！')
+      return
+    }
+    if (!selectedModel) {
+      alert('未选择默认模型，请先选择一个默认模型！')
+      return
+    }
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
     if (savedSettings) {
       savedSettings.providers = providers.map((p) => {
@@ -121,17 +182,18 @@ export const useProviders = (showSettings: boolean) => {
     }
   }
 
-  const handleAddProvider = async (name: string, type: ApiProvider['type']) => {
+  const handleAddProvider = async (name: string, type: ApiProvider['type']): Promise<void> => {
     const customName = name.trim() || `${type.toUpperCase()}-配置`
     const preset = PROVIDER_PRESETS.find((p) => p.type === type)
+    const newId = `provider-custom-${Date.now()}`
     const newProv: ApiProvider = {
-      id: `provider-${Date.now()}`,
+      id: newId,
       name: customName,
       type,
       apiKey: '',
       apiUrl: preset ? preset.apiUrl : '',
       model: preset ? preset.defaultModel : '',
-      modelsList: preset ? preset.modelsList : []
+      modelsList: preset ? [...preset.modelsList] : []
     }
     const updated = [...providers, newProv]
     setProviders(updated)
@@ -140,9 +202,18 @@ export const useProviders = (showSettings: boolean) => {
       savedSettings.providers = updated
       await window.api.storeSet('settings', savedSettings)
     }
+
+    // Switch editing to the new provider and open the edit sub-page
+    setEditingProviderId(newId)
+    setApiKey('')
+    setApiUrl(preset ? preset.apiUrl : '')
+    setSelectedModel(preset ? preset.defaultModel : '')
+    setModelsList(preset ? [...preset.modelsList] : [])
+    setFetchModelsUrl(`${(preset ? preset.apiUrl : '').replace(/\/$/, '')}/models`)
+    setIsEditingProviderDetail(true)
   }
 
-  const handleSetActiveProvider = async (id: string) => {
+  const handleSetActiveProvider = async (id: string): Promise<void> => {
     setActiveProviderId(id)
     setEditingProviderId(id)
     const target = providers.find((p) => p.id === id)
@@ -160,7 +231,7 @@ export const useProviders = (showSettings: boolean) => {
     }
   }
 
-  const handleStartEditingProvider = (id: string) => {
+  const handleStartEditingProvider = (id: string): void => {
     setEditingProviderId(id)
     const target = providers.find((p) => p.id === id)
     if (target) {
@@ -173,7 +244,7 @@ export const useProviders = (showSettings: boolean) => {
     setIsEditingProviderDetail(true)
   }
 
-  const handleDeleteProvider = async (id: string) => {
+  const handleDeleteProvider = async (id: string): Promise<void> => {
     if (providers.length <= 1) return
     const updated = providers.filter((p) => p.id !== id)
     setProviders(updated)
@@ -199,7 +270,7 @@ export const useProviders = (showSettings: boolean) => {
     }
   }
 
-  const handleAddManualModel = () => {
+  const handleAddManualModel = (): void => {
     const val = manualModelInput.trim()
     if (!val) return
     if (!modelsList.includes(val)) {
@@ -208,37 +279,32 @@ export const useProviders = (showSettings: boolean) => {
     setManualModelInput('')
   }
 
-  const handleFetchModels = async () => {
-    if (!fetchModelsUrl.trim()) return
+  const handleFetchModels = async (): Promise<void> => {
+    const url = fetchModelsUrl.trim()
+    if (!url) return
     setIsFetchingModels(true)
     try {
-      const headers: any = { 'Content-Type': 'application/json' }
-      if (apiKey) {
-        headers['Authorization'] = `Bearer ${apiKey}`
-      }
-      const response = await fetch(fetchModelsUrl, { method: 'GET', headers })
-      const data = await response.json()
-      let modelIds: string[] = []
-      if (data && Array.isArray(data.data)) {
-        modelIds = data.data.map((m: any) => m.id)
-      } else if (data && Array.isArray(data)) {
-        modelIds = data.map((m: any) => m.id || m)
-      }
-      if (modelIds.length > 0) {
+      const modelIds = await window.api.fetchModels(url, apiKey)
+      if (modelIds && modelIds.length > 0) {
         setFetchedModels(modelIds)
         setShowModelsModal(true)
       } else {
         alert('未能获取到有效的模型列表，请检查 Base URL 或 API Key。')
       }
     } catch (e) {
-      console.error(e)
-      alert(`获取模型列表失败: ${e}`)
+      const err = e as Error
+      console.error(err)
+      alert(`获取模型列表失败: ${err.message || err}`)
     } finally {
       setIsFetchingModels(false)
     }
   }
 
-  const handleRemoveModelDirectly = (modelId: string) => {
+  const handleRemoveModelDirectly = (modelId: string): void => {
+    if (modelsList.length <= 1) {
+      alert('必须保留至少一个可用模型！')
+      return
+    }
     const updated = modelsList.filter((m) => m !== modelId)
     setModelsList(updated)
     if (selectedModel === modelId) {
@@ -246,8 +312,12 @@ export const useProviders = (showSettings: boolean) => {
     }
   }
 
-  const handleToggleModelSelection = (modelId: string) => {
+  const handleToggleModelSelection = (modelId: string): void => {
     if (modelsList.includes(modelId)) {
+      if (modelsList.length <= 1) {
+        alert('必须保留至少一个可用模型！')
+        return
+      }
       const updated = modelsList.filter((m) => m !== modelId)
       setModelsList(updated)
       if (selectedModel === modelId) {
@@ -258,7 +328,7 @@ export const useProviders = (showSettings: boolean) => {
     }
   }
 
-  const toggleTheme = () => {
+  const toggleTheme = (): void => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark'
     setTheme(nextTheme)
 
@@ -320,6 +390,7 @@ export const useProviders = (showSettings: boolean) => {
     handleAddManualModel,
     handleFetchModels,
     handleRemoveModelDirectly,
-    handleToggleModelSelection
+    handleToggleModelSelection,
+    resetLocalSettings
   }
 }

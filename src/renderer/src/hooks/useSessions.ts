@@ -1,7 +1,20 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Session } from '../../../shared/types'
 
-export const useSessions = () => {
+export interface UseSessionsReturn {
+  sessions: Session[]
+  setSessions: React.Dispatch<React.SetStateAction<Session[]>>
+  sessionsRef: React.MutableRefObject<Session[]>
+  activeSessionId: string
+  setActiveSessionId: React.Dispatch<React.SetStateAction<string>>
+  activeSession: Session | undefined
+  handleNewSession: (onCreated?: () => void) => Promise<void>
+  handleClearCurrentSession: () => Promise<void>
+  handleDeleteSession: (targetSessionId: string) => Promise<void>
+  checkSessionTimeout: (currentActiveId: string, currentSessions: Session[]) => Promise<void>
+}
+
+export const useSessions = (): UseSessionsReturn => {
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string>('')
 
@@ -11,85 +24,7 @@ export const useSessions = () => {
     sessionsRef.current = sessions
   }, [sessions])
 
-  // Load sessions from storage on startup
-  useEffect(() => {
-    const loadSessions = async () => {
-      const savedSessions = ((await window.api.storeGet('sessions')) as Session[]) || []
-      setSessions(savedSessions)
-      if (savedSessions.length > 0) {
-        // Find most recently active session
-        const sorted = [...savedSessions].sort((a, b) => {
-          const tA = a.lastActiveTime || Number(a.id)
-          const tB = b.lastActiveTime || Number(b.id)
-          return tB - tA
-        })
-        setActiveSessionId(sorted[0].id)
-        checkSessionTimeout(sorted[0].id, savedSessions)
-      } else {
-        const defaultSession: Session = {
-          id: Date.now().toString(),
-          title: '新对话',
-          messages: [],
-          lastActiveTime: Date.now()
-        }
-        const updated = [defaultSession]
-        setSessions(updated)
-        setActiveSessionId(defaultSession.id)
-        await window.api.storeSet('sessions', updated)
-      }
-    }
-    loadSessions()
-  }, [])
-
-  const activeSession = sessions.find((s) => s.id === activeSessionId)
-
-  const handleNewSession = async (onCreated?: () => void) => {
-    const newSession: Session = {
-      id: Date.now().toString(),
-      title: '新对话',
-      messages: [],
-      lastActiveTime: Date.now()
-    }
-    const updated = [newSession, ...sessions]
-    setSessions(updated)
-    setActiveSessionId(newSession.id)
-    await window.api.storeSet('sessions', updated)
-    if (onCreated) onCreated()
-  }
-
-  const handleClearCurrentSession = async () => {
-    if (!activeSessionId) return
-    const updated = sessions.map((s) => {
-      if (s.id === activeSessionId) {
-        return { ...s, messages: [], title: '新对话', lastActiveTime: Date.now() }
-      }
-      return s
-    })
-    setSessions(updated)
-    await window.api.storeSet('sessions', updated)
-  }
-
-  const handleDeleteSession = async (targetSessionId: string) => {
-    const updated = sessions.filter((s) => s.id !== targetSessionId)
-    if (activeSessionId === targetSessionId) {
-      if (updated.length > 0) {
-        setActiveSessionId(updated[0].id)
-      } else {
-        const newSession: Session = {
-          id: Date.now().toString(),
-          title: '新对话',
-          messages: [],
-          lastActiveTime: Date.now()
-        }
-        updated.push(newSession)
-        setActiveSessionId(newSession.id)
-      }
-    }
-    setSessions(updated)
-    await window.api.storeSet('sessions', updated)
-  }
-
-  const checkSessionTimeout = async (currentActiveId: string, currentSessions: Session[]) => {
+  const checkSessionTimeout = async (currentActiveId: string, currentSessions: Session[]): Promise<void> => {
     if (currentSessions.length === 0 || !currentActiveId) return
 
     const activeSess = currentSessions.find((s) => s.id === currentActiveId)
@@ -121,6 +56,84 @@ export const useSessions = () => {
       setSessions(updated)
       await window.api.storeSet('sessions', updated)
     }
+  }
+
+  // Load sessions from storage on startup
+  useEffect(() => {
+    const loadSessions = async (): Promise<void> => {
+      const savedSessions = ((await window.api.storeGet('sessions')) as Session[]) || []
+      setSessions(savedSessions)
+      if (savedSessions.length > 0) {
+        // Find most recently active session
+        const sorted = [...savedSessions].sort((a, b) => {
+          const tA = a.lastActiveTime || Number(a.id)
+          const tB = b.lastActiveTime || Number(b.id)
+          return tB - tA
+        })
+        setActiveSessionId(sorted[0].id)
+        checkSessionTimeout(sorted[0].id, savedSessions)
+      } else {
+        const defaultSession: Session = {
+          id: Date.now().toString(),
+          title: '新对话',
+          messages: [],
+          lastActiveTime: Date.now()
+        }
+        const updated = [defaultSession]
+        setSessions(updated)
+        setActiveSessionId(defaultSession.id)
+        await window.api.storeSet('sessions', updated)
+      }
+    }
+    loadSessions()
+  }, [])
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId)
+
+  const handleNewSession = async (onCreated?: () => void): Promise<void> => {
+    const newSession: Session = {
+      id: Date.now().toString(),
+      title: '新对话',
+      messages: [],
+      lastActiveTime: Date.now()
+    }
+    const updated = [newSession, ...sessions]
+    setSessions(updated)
+    setActiveSessionId(newSession.id)
+    await window.api.storeSet('sessions', updated)
+    if (onCreated) onCreated()
+  }
+
+  const handleClearCurrentSession = async (): Promise<void> => {
+    if (!activeSessionId) return
+    const updated = sessions.map((s) => {
+      if (s.id === activeSessionId) {
+        return { ...s, messages: [], title: '新对话', lastActiveTime: Date.now() }
+      }
+      return s
+    })
+    setSessions(updated)
+    await window.api.storeSet('sessions', updated)
+  }
+
+  const handleDeleteSession = async (targetSessionId: string): Promise<void> => {
+    const updated = sessions.filter((s) => s.id !== targetSessionId)
+    if (activeSessionId === targetSessionId) {
+      if (updated.length > 0) {
+        setActiveSessionId(updated[0].id)
+      } else {
+        const newSession: Session = {
+          id: Date.now().toString(),
+          title: '新对话',
+          messages: [],
+          lastActiveTime: Date.now()
+        }
+        updated.push(newSession)
+        setActiveSessionId(newSession.id)
+      }
+    }
+    setSessions(updated)
+    await window.api.storeSet('sessions', updated)
   }
 
   return {
