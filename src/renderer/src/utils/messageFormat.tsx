@@ -23,6 +23,108 @@ export const parseThinkTags = (content: string, reasoningContent?: string): { co
   return { content: finalContent, reasoning: finalReasoning }
 }
 
+export interface AgentLogStep {
+  step: number
+  maxSteps: number
+  type: 'tool' | 'result' | 'error'
+  toolName?: string
+  url?: string
+  title?: string
+  error?: string
+}
+
+export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanContent: string; skillName: string } => {
+  let skillName = ''
+  const logs: AgentLogStep[] = []
+  
+  const lines = content.split('\n')
+  let logEndIdx = 0
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line) {
+      if (i === logEndIdx) logEndIdx = i + 1
+      continue
+    }
+    
+    if (line.startsWith('Running agent skill:')) {
+      skillName = line.replace('Running agent skill:', '').trim()
+      logEndIdx = i + 1
+      continue
+    }
+    
+    const toolMatch = line.match(/^\[tool (\d+)\/(\d+)\]\s+(.*)$/)
+    if (toolMatch) {
+      const step = parseInt(toolMatch[1])
+      const maxSteps = parseInt(toolMatch[2])
+      const toolName = toolMatch[3].trim()
+      let url = ''
+      let nextIdx = i + 1
+      while (nextIdx < lines.length && !lines[nextIdx].trim()) {
+        nextIdx++
+      }
+      if (nextIdx < lines.length) {
+        url = lines[nextIdx].trim()
+        i = nextIdx
+      }
+      logs.push({
+        step,
+        maxSteps,
+        type: 'tool',
+        toolName,
+        url
+      })
+      logEndIdx = i + 1
+      continue
+    }
+    
+    const resultMatch = line.match(/^\[result (\d+)\/(\d+)\]\s+(.*)$/)
+    if (resultMatch) {
+      const step = parseInt(resultMatch[1])
+      const maxSteps = parseInt(resultMatch[2])
+      const title = resultMatch[3].trim()
+      let url = ''
+      let nextIdx = i + 1
+      while (nextIdx < lines.length && !lines[nextIdx].trim()) {
+        nextIdx++
+      }
+      if (nextIdx < lines.length) {
+        url = lines[nextIdx].trim()
+        i = nextIdx
+      }
+      logs.push({
+        step,
+        maxSteps,
+        type: 'result',
+        title,
+        url
+      })
+      logEndIdx = i + 1
+      continue
+    }
+    
+    const errorMatch = line.match(/^\[error (\d+)\/(\d+)\]\s+(.*)$/)
+    if (errorMatch) {
+      const step = parseInt(errorMatch[1])
+      const maxSteps = parseInt(errorMatch[2])
+      const error = errorMatch[3].trim()
+      logs.push({
+        step,
+        maxSteps,
+        type: 'error',
+        error
+      })
+      logEndIdx = i + 1
+      continue
+    }
+    
+    break
+  }
+  
+  const cleanContent = lines.slice(logEndIdx).join('\n').trim()
+  return { logs, cleanContent, skillName }
+}
+
 const renderMath = (math: string, block = false, key?: string): React.ReactNode => {
   let html = ''
   let hasError = false
