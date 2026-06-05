@@ -42,6 +42,99 @@ const renderMath = (math: string, block = false, key?: string): React.ReactNode 
   return <span key={key} dangerouslySetInnerHTML={{ __html: html }} />
 }
 
+// Recursively parse inline formatting like bold (**bold**) and italics (*italic*)
+const parseInlineMarkdown = (text: string, keyPrefix: string): React.ReactNode => {
+  // 1. Bold: **text**
+  const boldParts = text.split(/(\*\*[^*]+?\*\*)/g)
+  return boldParts.map((bPart, bIdx) => {
+    const uniqueKey = `${keyPrefix}-b-${bIdx}`
+    if (bPart.startsWith('**') && bPart.endsWith('**')) {
+      const content = bPart.slice(2, -2)
+      return (
+        <strong key={uniqueKey} style={{ fontWeight: 600 }}>
+          {parseInlineMarkdown(content, uniqueKey)}
+        </strong>
+      )
+    }
+
+    // 2. Italic: *text*
+    const italicParts = bPart.split(/(\*[^*]+?\*)/g)
+    return (
+      <span key={uniqueKey}>
+        {italicParts.map((iPart, iIdx) => {
+          const iKey = `${uniqueKey}-i-${iIdx}`
+          if (iPart.startsWith('*') && iPart.endsWith('*')) {
+            return (
+              <em key={iKey} style={{ fontStyle: 'italic' }}>
+                {iPart.slice(1, -1)}
+              </em>
+            )
+          }
+          return iPart
+        })}
+      </span>
+    )
+  })
+}
+
+// Parse block-level markdown structures: headings, bullet lists, ordered lists, and paragraphs
+const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => {
+  const lines = text.split('\n')
+  return (
+    <div key={blockKey} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {lines.map((line, lIdx) => {
+        const lineKey = `${blockKey}-line-${lIdx}`
+
+        // 1. Headers: e.g. "### Header"
+        const headerMatch = line.match(/^(#{1,6})\s+(.*)$/)
+        if (headerMatch) {
+          const level = headerMatch[1].length
+          const title = headerMatch[2]
+          const fontSize = `${22 - level * 2}px`
+          const HeadingTag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
+          return (
+            <HeadingTag key={lineKey} style={{ fontSize, fontWeight: 600, margin: '12px 0 6px 0', color: 'var(--color-text-title)', lineHeight: '1.3' }}>
+              {parseInlineMarkdown(title, lineKey)}
+            </HeadingTag>
+          )
+        }
+
+        // 2. Unordered List Items: e.g. "- Item" or "* Item"
+        const listMatch = line.match(/^([-*])\s+(.*)$/)
+        if (listMatch) {
+          const content = listMatch[2]
+          return (
+            <div key={lineKey} style={{ display: 'flex', gap: '8px', paddingLeft: '12px', alignItems: 'flex-start', margin: '2px 0' }}>
+              <span style={{ color: 'var(--color-primary)', userSelect: 'none', lineHeight: '1.4' }}>•</span>
+              <span style={{ flex: 1, lineHeight: '1.4' }}>{parseInlineMarkdown(content, lineKey)}</span>
+            </div>
+          )
+        }
+
+        // 3. Ordered List Items: e.g. "1. Item"
+        const ordListMatch = line.match(/^(\d+)\.\s+(.*)$/)
+        if (ordListMatch) {
+          const num = ordListMatch[1]
+          const content = ordListMatch[2]
+          return (
+            <div key={lineKey} style={{ display: 'flex', gap: '8px', paddingLeft: '12px', alignItems: 'flex-start', margin: '2px 0' }}>
+              <span style={{ color: 'var(--color-primary)', fontWeight: 500, userSelect: 'none', lineHeight: '1.4' }}>{num}.</span>
+              <span style={{ flex: 1, lineHeight: '1.4' }}>{parseInlineMarkdown(content, lineKey)}</span>
+            </div>
+          )
+        }
+
+        // 4. Plain Paragraph Line
+        return (
+          <div key={lineKey} style={{ minHeight: '1.2em', lineHeight: '1.5', margin: '2px 0' }}>
+            {parseInlineMarkdown(line, lineKey)}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // Custom text formatter
 export const renderMessageContent = (text: string): React.ReactNode => {
   if (!text) return null
@@ -91,7 +184,7 @@ export const renderMessageContent = (text: string): React.ReactNode => {
                       // Split by inline code `...`
                       const codeParts = inlinePart.split(/(`[^`\n]+`)/g)
                       return (
-                        <span key={`code-parts-${iIdx}`} style={{ whiteSpace: 'pre-wrap' }}>
+                        <span key={`code-parts-${iIdx}`}>
                           {codeParts.map((codePart, cIdx) => {
                             if (codePart.startsWith('`') && codePart.endsWith('`')) {
                               return (
@@ -100,7 +193,7 @@ export const renderMessageContent = (text: string): React.ReactNode => {
                                 </code>
                               )
                             }
-                            return codePart
+                            return parseBlockMarkdown(codePart, `block-md-${cIdx}`)
                           })}
                         </span>
                       )
