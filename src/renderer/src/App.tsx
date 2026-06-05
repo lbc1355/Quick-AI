@@ -373,7 +373,10 @@ function App(): React.JSX.Element {
 
   // Keyboard navigation inside prompt input
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    const handled = autocompleteKeyDown(e, triggerAutocompleteItem)
+    const handled = autocompleteKeyDown(e, triggerAutocompleteItem, (item) => {
+      setInputVal(`${item.trigger} `)
+      setAutocompleteItems([])
+    })
     if (handled) return
 
     // Submit prompt on Enter (without Shift)

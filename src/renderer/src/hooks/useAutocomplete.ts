@@ -17,7 +17,8 @@ export interface UseAutocompleteReturn {
   ) => void
   handleInputKeyDown: (
     e: React.KeyboardEvent<HTMLTextAreaElement>,
-    triggerAutocompleteItem: (item: AutocompleteItem) => void | Promise<void>
+    triggerAutocompleteItem: (item: AutocompleteItem) => void | Promise<void>,
+    onTabComplete?: (item: AutocompleteItem) => void
   ) => boolean
 }
 
@@ -151,7 +152,8 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
 
   const handleInputKeyDown = (
     e: React.KeyboardEvent<HTMLTextAreaElement>,
-    triggerAutocompleteItem: (item: AutocompleteItem) => void | Promise<void>
+    triggerAutocompleteItem: (item: AutocompleteItem) => void | Promise<void>,
+    onTabComplete?: (item: AutocompleteItem) => void
   ): boolean => {
     if (autocompleteItems.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -164,7 +166,19 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
         setSelectedItemIdx((prev) => (prev - 1 + autocompleteItems.length) % autocompleteItems.length)
         return true
       }
-      if (e.key === 'Enter' || e.key === 'Tab') {
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        if (onTabComplete) {
+          onTabComplete(autocompleteItems[selectedItemIdx])
+        } else {
+          const promiseOrVoid = triggerAutocompleteItem(autocompleteItems[selectedItemIdx])
+          if (promiseOrVoid instanceof Promise) {
+            promiseOrVoid.catch(console.error)
+          }
+        }
+        return true
+      }
+      if (e.key === 'Enter') {
         e.preventDefault()
         const promiseOrVoid = triggerAutocompleteItem(autocompleteItems[selectedItemIdx])
         if (promiseOrVoid instanceof Promise) {
