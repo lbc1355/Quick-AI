@@ -31,12 +31,12 @@ export const renderMessageContent = (text: string): React.ReactNode => {
       const lang = match ? match[1] : ''
       const code = match ? match[2] : part.slice(3, -3)
       return (
-        <div key={idx} className="code-block-container" style={{ margin: '8px 0', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', overflow: 'hidden' }}>
-          <div style={{ background: 'rgba(255,255,255,0.03)', padding: '6px 12px', fontSize: '11.5px', borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#9ca3af', display: 'flex', justifyContent: 'space-between', userSelect: 'none' }}>
+        <div key={idx} className="code-block-container" style={{ margin: '8px 0', border: '1px solid var(--color-code-block-border)', borderRadius: '8px', overflow: 'hidden' }}>
+          <div style={{ background: 'var(--color-code-block-header-bg)', padding: '6px 12px', fontSize: '11.5px', borderBottom: '1px solid var(--color-code-block-border)', color: 'var(--color-code-block-header-text)', display: 'flex', justifyContent: 'space-between', userSelect: 'none' }}>
             <span>{lang || 'code'}</span>
-            <span style={{ cursor: 'pointer', color: '#3b82f6' }} onClick={(): Promise<void> => navigator.clipboard.writeText(code)}>复制</span>
+            <span style={{ cursor: 'pointer', color: 'var(--color-primary)' }} onClick={(): Promise<void> => navigator.clipboard.writeText(code)}>复制</span>
           </div>
-          <pre style={{ margin: 0, padding: '10px', overflowX: 'auto', background: 'rgba(10,10,12,0.45)', fontFamily: 'Consolas, monospace', fontSize: '12px' }}>
+          <pre style={{ margin: 0, padding: '10px', overflowX: 'auto', background: 'var(--color-code-block-bg)', color: 'var(--color-code-block-text)', fontFamily: 'Consolas, monospace', fontSize: '12px' }}>
             <code>{code}</code>
           </pre>
         </div>
