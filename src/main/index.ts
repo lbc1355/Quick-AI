@@ -30,7 +30,7 @@ function createWindow(): void {
     resizable: false,
     alwaysOnTop: true, // Always float on top
     skipTaskbar: true, // Do not display in taskbar
-    hasShadow: true,
+    hasShadow: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
