@@ -10,11 +10,18 @@ export interface UseSkillsReturn {
 
 const normalizeLoadedSkill = (skill: Skill): Skill => {
   const triggers = skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
+  const kind = skill.kind || (skill.mode === 'run' ? 'agent' : 'prompt')
+  const tools = kind === 'agent'
+    ? Array.from(new Set([...(skill.tools || []), 'fetch_url']))
+    : skill.tools || []
   return {
     ...skill,
     trigger: skill.trigger || triggers[0],
     triggers,
-    mode: skill.mode || 'insert'
+    kind,
+    tools,
+    mode: skill.mode || (kind === 'agent' ? 'run' : 'insert'),
+    rawMarkdown: skill.rawMarkdown || skill.prompt
   }
 }
 

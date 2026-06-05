@@ -1,4 +1,4 @@
-import { Skill, SkillMode } from '../../../shared/types'
+import { Skill, SkillKind, SkillMode } from '../../../shared/types'
 
 type FrontmatterValue = string | string[]
 type Frontmatter = Record<string, FrontmatterValue>
@@ -112,7 +112,25 @@ const normalizeTriggers = (frontmatter: Frontmatter, fallback: string): string[]
 }
 
 const readMode = (value: string): SkillMode => {
-  return value.toLowerCase() === 'send' ? 'send' : 'insert'
+  const normalized = value.toLowerCase()
+  if (normalized === 'send') return 'send'
+  if (normalized === 'run') return 'run'
+  return 'insert'
+}
+
+const readKind = (value: string, mode: SkillMode, body: string, tools: string[]): SkillKind => {
+  const normalized = value.toLowerCase()
+  if (normalized === 'agent') return 'agent'
+  if (normalized === 'prompt') return 'prompt'
+  if (mode === 'run' || tools.length > 0) return 'agent'
+  if (/https?:\/\//i.test(body) && /\{keyword\}/i.test(body)) return 'agent'
+  return 'prompt'
+}
+
+const readMaxSteps = (value: string): number | undefined => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined
+  return Math.floor(parsed)
 }
 
 const fallbackNameFromFile = (fallbackName: string): string => {
@@ -141,6 +159,10 @@ export const parseSkillMarkdown = (markdown: string, fallbackFileName: string): 
   const idSource = asString(frontmatter.id) || triggers[0]
   const id = `skill-${slugify(idSource, triggers[0])}`
   const description = asString(frontmatter.description)
+  const mode = readMode(asString(frontmatter.mode))
+  const declaredTools = asStringList(frontmatter.tools).map((tool) => tool.trim()).filter(Boolean)
+  const kind = readKind(asString(frontmatter.kind), mode, body, declaredTools)
+  const tools = kind === 'agent' ? Array.from(new Set([...declaredTools, 'fetch_url'])) : declaredTools
 
   return {
     id,
@@ -149,7 +171,11 @@ export const parseSkillMarkdown = (markdown: string, fallbackFileName: string): 
     triggers,
     prompt: body,
     description: description || undefined,
-    mode: readMode(asString(frontmatter.mode)),
+    mode: kind === 'agent' && mode === 'insert' ? 'run' : mode,
+    kind,
+    tools,
+    maxSteps: readMaxSteps(asString(frontmatter.max_steps) || asString(frontmatter.maxsteps)),
+    rawMarkdown: markdown,
     source: 'markdown'
   }
 }

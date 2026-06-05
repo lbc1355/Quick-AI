@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { StoreKey, StoreValue, ChatCompletionMessage } from '../shared/types'
+import { StoreKey, StoreValue, ChatCompletionMessage, AgentSkillRunOptions, ChatChunkData } from '../shared/types'
 
 // Custom APIs for renderer
 const api = {
@@ -17,8 +17,9 @@ const api = {
     model: string
     messages: ChatCompletionMessage[]
   }): void => ipcRenderer.send('start-chat-completion', reqId, options),
-  onChatChunk: (callback: (data: { reqId: string; content?: string; reasoningContent?: string; done?: boolean; error?: string }) => void): (() => void) => {
-    const listener = (_event: IpcRendererEvent, data: { reqId: string; content?: string; reasoningContent?: string; done?: boolean; error?: string }): void => callback(data)
+  startAgentSkill: (reqId: string, options: AgentSkillRunOptions): void => ipcRenderer.send('start-agent-skill', reqId, options),
+  onChatChunk: (callback: (data: ChatChunkData) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, data: ChatChunkData): void => callback(data)
     ipcRenderer.on('chat-chunk', listener)
     return (): void => {
       ipcRenderer.removeListener('chat-chunk', listener)

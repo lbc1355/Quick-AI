@@ -91,7 +91,12 @@ export class FileStore {
           .map((s: Skill) => ({
             ...s,
             triggers: s.triggers && s.triggers.length > 0 ? s.triggers : [s.trigger],
-            mode: s.mode || 'insert'
+            kind: s.kind || (s.mode === 'run' ? 'agent' : 'prompt'),
+            tools: (s.kind === 'agent' || s.mode === 'run')
+              ? Array.from(new Set([...(s.tools || []), 'fetch_url']))
+              : s.tools || [],
+            mode: s.mode || (s.kind === 'agent' ? 'run' : 'insert'),
+            rawMarkdown: s.rawMarkdown || s.prompt
           }))
 
         // Migrate settings from flat format to multi-provider structure if needed

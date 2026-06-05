@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Message, Session } from '../../../shared/types'
+import { ChatChunkData, Message, Session, Skill } from '../../../shared/types'
 
 interface UseChatCompletionProps {
   setSessions: React.Dispatch<React.SetStateAction<Session[]>>
@@ -24,6 +24,7 @@ export interface UseChatCompletionReturn {
   editingText: string
   setEditingText: React.Dispatch<React.SetStateAction<string>>
   handleSendMessage: (customPrompt?: string, customMsgId?: string) => Promise<void>
+  handleRunAgentSkill: (skill: Skill, userInput: string) => Promise<void>
   handleStartEdit: (msg: Message) => void
   handleSaveEdit: (msgId: string) => void
   handleRegenerate: (msgIdx: number) => void
@@ -201,13 +202,7 @@ export const useChatCompletion = ({
     let accumulatedText = ''
     let accumulatedReasoning = ''
 
-    const unsubscribe = window.api.onChatChunk((data: {
-      reqId: string
-      content?: string
-      reasoningContent?: string
-      done?: boolean
-      error?: string
-    }): void => {
+    const unsubscribe = window.api.onChatChunk((data: ChatChunkData): void => {
       if (data.reqId !== reqId) return
 
       if (data.error) {
@@ -327,6 +322,179 @@ export const useChatCompletion = ({
     }
   }
 
+  const handleRunAgentSkill = async (skill: Skill, userInput: string): Promise<void> => {
+    if (isGenerating) return
+
+    if (!apiKey && apiUrl.includes('deepseek.com')) {
+      alert('Please set the DeepSeek API Key in Settings first.')
+      setShowSettings(true)
+      return
+    }
+
+    setIsGenerating(true)
+    setInputVal('')
+
+    const currentSessions: Session[] = sessionsRef.current.map((s) => ({
+      ...s,
+      messages: s.messages.map((m) => ({ ...m }))
+    }))
+    const currentSession = currentSessions.find((s) => s.id === activeSessionId)
+    if (!currentSession) {
+      setIsGenerating(false)
+      return
+    }
+
+    const displayPrompt = `/${skill.trigger}${userInput.trim() ? ` ${userInput.trim()}` : ''}`
+    const userMsg: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: displayPrompt,
+      files: []
+    }
+    currentSession.messages.push(userMsg)
+    setAttachedFiles([])
+
+    currentSession.lastActiveTime = Date.now()
+    if (currentSession.messages.length === 2) {
+      currentSession.title = displayPrompt.substring(0, 15) || 'Agent Skill'
+    }
+
+    const assistantMsgId = (Date.now() + 1).toString()
+    const assistantMsg: Message = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      reasoning_content: ''
+    }
+    currentSession.messages.push(assistantMsg)
+    setSessions([...currentSessions])
+    sessionsRef.current = currentSessions
+
+    const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    let accumulatedText = ''
+    let accumulatedReasoning = ''
+
+    const unsubscribe = window.api.onChatChunk((data: ChatChunkData): void => {
+      if (data.reqId !== reqId) return
+
+      if (data.error) {
+        setSessions((prevSessions) =>
+          prevSessions.map((s) => {
+            if (s.id === activeSessionId) {
+              return {
+                ...s,
+                messages: s.messages.map((m) => {
+                  if (m.id === assistantMsgId) {
+                    return { ...m, content: `Agent Skill failed: ${data.error}` }
+                  }
+                  return m
+                })
+              }
+            }
+            return s
+          })
+        )
+        cleanup()
+        return
+      }
+
+      if (data.done) {
+        cleanup()
+        return
+      }
+
+      if (data.reasoningContent) {
+        accumulatedReasoning += data.reasoningContent
+        setSessions((prevSessions) =>
+          prevSessions.map((s) => {
+            if (s.id === activeSessionId) {
+              return {
+                ...s,
+                messages: s.messages.map((m) => {
+                  if (m.id === assistantMsgId) {
+                    return { ...m, reasoning_content: accumulatedReasoning }
+                  }
+                  return m
+                }),
+                lastActiveTime: Date.now()
+              }
+            }
+            return s
+          })
+        )
+      }
+
+      if (data.content) {
+        accumulatedText += data.content
+        setSessions((prevSessions) =>
+          prevSessions.map((s) => {
+            if (s.id === activeSessionId) {
+              return {
+                ...s,
+                messages: s.messages.map((m) => {
+                  if (m.id === assistantMsgId) {
+                    return { ...m, content: accumulatedText }
+                  }
+                  return m
+                }),
+                lastActiveTime: Date.now()
+              }
+            }
+            return s
+          })
+        )
+      }
+    })
+
+    const cleanup = (): void => {
+      unsubscribe()
+      setIsGenerating(false)
+      setTimeout(async () => {
+        const finalSessions = (await window.api.storeGet('sessions') as Session[]) || []
+        const currentActive = sessionsRef.current.find((s) => s.id === activeSessionId)
+        if (currentActive) {
+          currentActive.lastActiveTime = Date.now()
+          const updatedSessions = finalSessions.map((s) => (s.id === activeSessionId ? currentActive : s))
+          if (!updatedSessions.some((s) => s.id === activeSessionId)) {
+            updatedSessions.push(currentActive)
+          }
+          await window.api.storeSet('sessions', updatedSessions)
+        }
+      }, 300)
+    }
+
+    try {
+      window.api.startAgentSkill(reqId, {
+        apiUrl,
+        apiKey,
+        model: selectedModel,
+        systemPrompt,
+        skill,
+        userInput
+      })
+    } catch (err) {
+      const error = err as Error
+      console.error(error)
+      setSessions((prevSessions) =>
+        prevSessions.map((s) => {
+          if (s.id === activeSessionId) {
+            return {
+              ...s,
+              messages: s.messages.map((m) => {
+                if (m.id === assistantMsgId) {
+                  return { ...m, content: `Agent Skill start failed: ${error.message}` }
+                }
+                return m
+              })
+            }
+          }
+          return s
+        })
+      )
+      cleanup()
+    }
+  }
+
   const handleStartEdit = (msg: Message): void => {
     setEditingMessageId(msg.id)
     setEditingText(msg.content)
@@ -381,6 +549,7 @@ export const useChatCompletion = ({
     editingText,
     setEditingText,
     handleSendMessage,
+    handleRunAgentSkill,
     handleStartEdit,
     handleSaveEdit,
     handleRegenerate,

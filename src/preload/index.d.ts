@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import { StoreKey, StoreValue, ChatCompletionMessage } from '../shared/types'
+import { StoreKey, StoreValue, ChatCompletionMessage, AgentSkillRunOptions, ChatChunkData } from '../shared/types'
 
 declare global {
   interface Window {
@@ -18,13 +18,8 @@ declare global {
         model: string
         messages: ChatCompletionMessage[]
       }) => void
-      onChatChunk: (callback: (data: {
-        reqId: string
-        content?: string
-        reasoningContent?: string
-        done?: boolean
-        error?: string
-      }) => void) => () => void
+      startAgentSkill: (reqId: string, options: AgentSkillRunOptions) => void
+      onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
     }
   }

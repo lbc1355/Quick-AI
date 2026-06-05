@@ -130,6 +130,7 @@ function App(): React.JSX.Element {
     editingText,
     setEditingText,
     handleSendMessage,
+    handleRunAgentSkill,
     handleStartEdit,
     handleSaveEdit,
     handleRegenerate,
@@ -281,13 +282,16 @@ function App(): React.JSX.Element {
     updateAutocompleteItems(val, modelsList, sessions, activeSessionId, providers, skills)
   }
 
-  const buildSkillPrompt = (item: AutocompleteItem): string => {
-    const prompt = item.prompt || ''
+  const getSkillInputTail = (item: AutocompleteItem): string => {
     const currentValue = inputVal.trimStart()
-    const inputTail = currentValue.toLowerCase().startsWith(item.trigger.toLowerCase())
+    return currentValue.toLowerCase().startsWith(item.trigger.toLowerCase())
       ? currentValue.slice(item.trigger.length).trim()
       : ''
+  }
 
+  const buildSkillPrompt = (item: AutocompleteItem): string => {
+    const prompt = item.prompt || ''
+    const inputTail = getSkillInputTail(item)
     if (/\{\{\s*input\s*\}\}/i.test(prompt)) {
       return prompt.replace(/\{\{\s*input\s*\}\}/gi, inputTail)
     }
@@ -351,11 +355,16 @@ function App(): React.JSX.Element {
     } else {
       // Injects prompt skill
       setAutocompleteItems([])
-      const skillPrompt = buildSkillPrompt(item)
-      if (item.skillMode === 'send') {
+      const targetSkill = skills.find((skill) => skill.id === item.skillId || skill.id === item.id)
+      if (targetSkill && (targetSkill.kind === 'agent' || targetSkill.mode === 'run')) {
         setInputVal('')
+        await handleRunAgentSkill(targetSkill, getSkillInputTail(item))
+      } else if (item.skillMode === 'send') {
+        setInputVal('')
+        const skillPrompt = buildSkillPrompt(item)
         await handleSendMessage(skillPrompt)
       } else {
+        const skillPrompt = buildSkillPrompt(item)
         setInputVal(skillPrompt)
       }
     }

@@ -8,10 +8,20 @@ export interface Message {
 
 export interface ChatCompletionMessage {
   role: string
-  content: string | Array<{
+  content?: string | Array<{
     type: string
     text?: string
     image_url?: { url: string }
+  }> | null
+  name?: string
+  tool_call_id?: string
+  tool_calls?: Array<{
+    id: string
+    type: 'function'
+    function: {
+      name: string
+      arguments: string
+    }
   }>
 }
 
@@ -40,7 +50,8 @@ export interface AppSettings {
   theme?: 'dark' | 'light'
 }
 
-export type SkillMode = 'insert' | 'send'
+export type SkillMode = 'insert' | 'send' | 'run'
+export type SkillKind = 'prompt' | 'agent'
 
 export interface Skill {
   id: string
@@ -50,6 +61,10 @@ export interface Skill {
   description?: string
   triggers?: string[]
   mode?: SkillMode
+  kind?: SkillKind
+  tools?: string[]
+  maxSteps?: number
+  rawMarkdown?: string
   source?: 'manual' | 'markdown'
   installedAt?: number
   updatedAt?: number
@@ -83,4 +98,21 @@ export interface AutocompleteItem {
   modelId?: string
   sessionId?: string
   providerId?: string
+}
+
+export interface AgentSkillRunOptions {
+  apiUrl: string
+  apiKey: string
+  model: string
+  systemPrompt?: string
+  skill: Skill
+  userInput: string
+}
+
+export interface ChatChunkData {
+  reqId: string
+  content?: string
+  reasoningContent?: string
+  done?: boolean
+  error?: string
 }

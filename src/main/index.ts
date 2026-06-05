@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
 import { StorageSchema } from '../shared/types'
 import { handleChatCompletion, fetchModels } from './aiClient'
+import { runAgentSkill } from './agentRunner'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -246,6 +247,13 @@ app.whenReady().then(() => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) {
       handleChatCompletion(win, reqId, options)
+    }
+  })
+
+  ipcMain.on('start-agent-skill', (event, reqId, options) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) {
+      runAgentSkill(win, reqId, options)
     }
   })
 
