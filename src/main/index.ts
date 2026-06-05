@@ -80,11 +80,9 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // Once window is ready, show it off-screen inactive so that it paints, but does not grab focus or show to user
+  // Once window is ready, do nothing (keep it hidden until summoned)
   mainWindow.once('ready-to-show', () => {
-    if (mainWindow) {
-      mainWindow.showInactive()
-    }
+    // Hidden initially
   })
 }
 
@@ -98,6 +96,7 @@ function showWindow(): void {
   const y = Math.round(height * 0.15) // Spotlight upper center placement
 
   mainWindow.setPosition(x, y)
+  mainWindow.show()
   mainWindow.focus()
   isWindowVisible = true
   
@@ -107,8 +106,7 @@ function showWindow(): void {
 
 function hideWindow(): void {
   if (!mainWindow) return
-  mainWindow.setPosition(-9999, -9999)
-  mainWindow.blur()
+  mainWindow.hide()
   isWindowVisible = false
 }
 
