@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { promises as fs } from 'fs'
 import { join, resolve } from 'path'
-import { isPathInWorkspace, isSensitiveFile, ToolRegistry, getWorkspaceRoot } from './toolRegistry'
+import { isPathInWorkspace, isSensitiveFile, ToolRegistry, getWorkspaceRoot, searchToolDefinitions } from './toolRegistry'
 
 describe('File Safety & Search Tools', () => {
   const workspaceRoot = getWorkspaceRoot()
@@ -326,6 +326,111 @@ describe('File Safety & Search Tools', () => {
       const resRead = await ToolRegistry.file_read.execute({ path: join(testDir, 'a.txt') }, context)
       expect(resRead.resultForModel).toContain(`Workspace Root: ${workspaceRoot}`)
       expect(resRead.resultForUi.summary).toContain(workspaceRoot)
+    })
+  })
+
+  describe('workspace_list_files tool', () => {
+    it('lists matching files inside workspace', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const res = await ToolRegistry.workspace_list_files.execute({ glob: 'temp-file-test-dir/**/*.txt' }, context)
+      expect(res.resultForUi.items).toHaveLength(1)
+      expect(res.resultForUi.items![0].title).toBe('temp-file-test-dir/a.txt')
+      expect(res.resultForModel).toContain('File: temp-file-test-dir/a.txt')
+    })
+
+    it('rejects listing symbolic links or sensitive files', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const res = await ToolRegistry.workspace_list_files.execute({ glob: 'temp-file-test-dir/**' }, context)
+      const paths = res.resultForUi.items?.map((i) => i.title) || []
+      expect(paths.some((p) => p.includes('.env'))).toBe(false)
+      expect(paths.some((p) => p.includes('sensitive.key'))).toBe(false)
+    })
+  })
+
+  describe('file_write tool', () => {
+    it('writes content to a new file and creates parent directories', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const targetPath = join(testDir, 'new-sub-dir', 'written.txt')
+      try {
+        const res = await ToolRegistry.file_write.execute({
+          path: targetPath,
+          content: 'hello world from test',
+          mode: 'create',
+          createDirs: true
+        }, context)
+
+        expect(res.resultForUi.summary).toContain('created')
+        const readContent = await fs.readFile(targetPath, 'utf-8')
+        expect(readContent).toBe('hello world from test')
+      } finally {
+        await fs.unlink(targetPath).catch(() => {})
+        await fs.rm(join(testDir, 'new-sub-dir'), { recursive: true, force: true }).catch(() => {})
+      }
+    })
+
+    it('overwrites file content when mode is overwrite', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const targetPath = join(testDir, 'overwrite-test.txt')
+      await fs.writeFile(targetPath, 'original content')
+      try {
+        // mode create should throw an error
+        await expect(ToolRegistry.file_write.execute({
+          path: targetPath,
+          content: 'new content',
+          mode: 'create'
+        }, context)).rejects.toThrow('already exists')
+
+        // mode overwrite should succeed
+        const res = await ToolRegistry.file_write.execute({
+          path: targetPath,
+          content: 'new content',
+          mode: 'overwrite'
+        }, context)
+
+        expect(res.resultForUi.summary).toContain('overwrote')
+        const readContent = await fs.readFile(targetPath, 'utf-8')
+        expect(readContent).toBe('new content')
+      } finally {
+        await fs.unlink(targetPath).catch(() => {})
+      }
+    })
+
+    it('rejects writing outside workspace or to sensitive files', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const outsidePath = resolve(workspaceRoot, '..', 'should-fail-write.txt')
+      await expect(ToolRegistry.file_write.execute({
+        path: outsidePath,
+        content: 'fails'
+      }, context)).rejects.toThrow('outside the workspace directory')
+
+      const sensitivePath = join(testDir, '.env')
+      await expect(ToolRegistry.file_write.execute({
+        path: sensitivePath,
+        content: 'fails',
+        mode: 'overwrite'
+      }, context)).rejects.toThrow('sensitive file is blocked')
+    })
+  })
+
+  describe('searchToolDefinitions', () => {
+    it('finds file read and write tools using Chinese queries', () => {
+      const results = searchToolDefinitions('文件读取 md 翻译')
+      const names = results.map((r) => r.name)
+      expect(names).toContain('file_read')
+      expect(names).toContain('file_write')
+    })
+
+    it('finds file read and listing tools using multi-word English query', () => {
+      const results = searchToolDefinitions('list directory read files')
+      const names = results.map((r) => r.name)
+      expect(names).toContain('file_read')
+      expect(names).toContain('workspace_list_files')
+    })
+
+    it('finds workspace_list_files using translation queries', () => {
+      const results = searchToolDefinitions('translate markdown files')
+      const names = results.map((r) => r.name)
+      expect(names).toContain('workspace_list_files')
     })
   })
 })

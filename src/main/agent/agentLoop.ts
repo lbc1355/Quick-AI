@@ -15,8 +15,8 @@ import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy'
 
 const clampMaxSteps = (value: number | undefined): number => {
-  if (!value || Number.isNaN(value)) return 5
-  return Math.max(1, Math.min(8, Math.floor(value)))
+  if (!value || Number.isNaN(value)) return 30
+  return Math.max(1, Math.min(30, Math.floor(value)))
 }
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
@@ -44,7 +44,7 @@ export const runAgentLoop = async (
       : 'static'
     : 'dynamic'
 
-  const maxSteps = isSkill ? clampMaxSteps(options.skill!.maxSteps) : 8
+  const maxSteps = isSkill ? clampMaxSteps(options.skill!.maxSteps) : 30
   const skillTools = isSkill ? options.skill!.tools || [] : []
   const toolScope = isSkill ? new Set<string>(skillTools) : 'all'
 

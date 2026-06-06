@@ -58,9 +58,10 @@ const DEFAULT_STORAGE: StorageSchema = {
     permissions: {
       fetch_url: 'allow',
       web_search: 'allow',
+      workspace_list_files: 'allow',
       workspace_search: 'ask',
       file_read: 'ask',
-      file_write: 'deny',
+      file_write: 'ask',
       shell: 'deny'
     }
   },
@@ -171,13 +172,18 @@ export class FileStore {
           })
         }
 
+        const permissions = settings.permissions || {}
+        if (permissions.file_write === 'deny') {
+          permissions.file_write = 'ask'
+        }
+
         // Merge defaults to prevent breaking changes on old versions
         const mergedSettings: AppSettings = {
           ...DEFAULT_STORAGE.settings,
           ...settings,
           permissions: {
             ...DEFAULT_STORAGE.settings.permissions,
-            ...(settings.permissions || {})
+            ...permissions
           }
         }
 

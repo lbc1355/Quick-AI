@@ -1,7 +1,7 @@
 import { fetchUrl, webSearch, formatSearchResultsForModel } from './webTools'
 import { ToolArgs, ChatToolDeclaration, ToolResultUi } from '../shared/types'
 import { getRun } from './agent/AgentRunContext'
-import { resolve, normalize, relative, isAbsolute, basename, join } from 'path'
+import { resolve, normalize, relative, isAbsolute, basename, join, dirname } from 'path'
 import { promises as fs, realpathSync } from 'fs'
 
 export function getWorkspaceRoot(): string {
@@ -112,7 +112,28 @@ export function searchToolDefinitions(
   permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): ToolSummary[] {
   const cleanQuery = query.toLowerCase().trim()
-  const matched: ToolSummary[] = []
+  if (cleanQuery === '') {
+    const matched: ToolSummary[] = []
+    for (const key in ToolRegistry) {
+      const tool = ToolRegistry[key]
+      if (!tool.discoverable || !tool.implemented) continue
+      if (scope && scope !== 'all' && !scope.has(tool.name)) continue
+      const permission = permissionPolicy?.[tool.name] || 'allow'
+      if (permission === 'deny') continue
+      matched.push({
+        name: tool.name,
+        title: tool.title,
+        description: tool.description,
+        category: tool.category,
+        risk: tool.risk,
+        permission
+      })
+    }
+    return matched
+  }
+
+  const queryWords = cleanQuery.split(/\s+/).filter(Boolean)
+  const resultsWithScore: Array<{ tool: ToolSummary; score: number }> = []
 
   for (const key in ToolRegistry) {
     const tool = ToolRegistry[key]
@@ -124,19 +145,51 @@ export function searchToolDefinitions(
 
     const matchText =
       `${tool.name} ${tool.title} ${tool.description} ${tool.tags.join(' ')}`.toLowerCase()
-    if (cleanQuery === '' || matchText.includes(cleanQuery)) {
-      matched.push({
-        name: tool.name,
-        title: tool.title,
-        description: tool.description,
-        category: tool.category,
-        risk: tool.risk,
-        permission
+
+    let score = 0
+    for (const word of queryWords) {
+      if (matchText.includes(word)) {
+        score += 10
+      } else {
+        if (word.endsWith('s') && matchText.includes(word.slice(0, -1))) {
+          score += 8
+        } else if (matchText.includes(word + 's')) {
+          score += 8
+        }
+
+        const isChinese = /[\u4e00-\u9fa5]/.test(word)
+        if (isChinese) {
+          const chars = [...word]
+          let charMatchCount = 0
+          for (const char of chars) {
+            if (matchText.includes(char)) {
+              charMatchCount++
+            }
+          }
+          if (charMatchCount > 0) {
+            score += Math.round((charMatchCount / chars.length) * 5)
+          }
+        }
+      }
+    }
+
+    if (score > 0) {
+      resultsWithScore.push({
+        tool: {
+          name: tool.name,
+          title: tool.title,
+          description: tool.description,
+          category: tool.category,
+          risk: tool.risk,
+          permission
+        },
+        score
       })
     }
   }
 
-  return matched
+  resultsWithScore.sort((a, b) => b.score - a.score)
+  return resultsWithScore.map((r) => r.tool)
 }
 
 export const ToolRegistry: Record<string, ToolDefinition> = {
@@ -145,7 +198,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     title: 'Fetch URL Content',
     description:
       'Fetches the content of a public HTTP or HTTPS web page and returns its title, text content, and extracted links.',
-    tags: ['web', 'scraper', 'fetch', 'parse'],
+    tags: ['web', 'scraper', 'fetch', 'parse', '网页', '抓取', '读取', '爬虫', '获取'],
     category: 'web',
     risk: 'low',
     implemented: true,
@@ -202,7 +255,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     title: 'Web Search',
     description:
       'Search the web using Bing, Sogou, or DuckDuckGo fallback to find web pages matching a query.',
-    tags: ['web', 'search', 'query', 'bing', 'sogou', 'duckduckgo'],
+    tags: ['web', 'search', 'query', 'bing', 'sogou', 'duckduckgo', '搜索', '网页', '查找'],
     dependencies: ['fetch_url'],
     category: 'web',
     risk: 'low',
@@ -237,7 +290,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     name: 'file_read',
     title: 'Read File',
     description: 'Reads the content of a local file within the workspace root directory.',
-    tags: ['file', 'read', 'local'],
+    tags: ['file', 'read', 'local', '文件', '读取', '内容', '读文件'],
     category: 'file',
     risk: 'low',
     implemented: true,
@@ -345,7 +398,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     title: 'Workspace Search',
     description:
       'Search for text matches within files in the workspace root directory (skipping build/dependency folders).',
-    tags: ['file', 'search', 'grep', 'local', 'find'],
+    tags: ['file', 'search', 'grep', 'local', 'find', '搜索', '查找', '全局', '工作区', '内容'],
     dependencies: ['file_read'],
     category: 'file',
     risk: 'low',
@@ -576,26 +629,305 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       }
     }
   },
-  file_write: {
-    name: 'file_write',
-    title: 'Write File',
-    description: 'Writes content to a local file (stub).',
-    tags: ['file', 'write', 'local', 'save'],
+  workspace_list_files: {
+    name: 'workspace_list_files',
+    title: 'List Workspace Files',
+    description: 'Lists files matching a glob wildcard pattern within the workspace root directory.',
+    tags: [
+      'file',
+      'list',
+      'glob',
+      'find',
+      'local',
+      '列表',
+      '文件',
+      '查找',
+      '工作区',
+      '列出',
+      'markdown',
+      'md',
+      'batch',
+      'translate',
+      'path'
+    ],
+    dependencies: ['file_read', 'file_write'],
     category: 'file',
-    risk: 'medium',
-    implemented: false,
-    discoverable: false,
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'The file path.' },
-        content: { type: 'string', description: 'The file content.' }
+        glob: {
+          type: 'string',
+          description: 'The glob pattern to filter files (e.g., "**/*.md" or "src/**/*.ts").'
+        },
+        maxResults: {
+          type: 'number',
+          description: 'Maximum number of file paths to return (default: 100).'
+        }
+      },
+      required: ['glob']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const globPattern = args.glob
+      if (typeof globPattern !== 'string' || !globPattern) {
+        throw new Error('Missing or invalid glob parameter')
+      }
+
+      const maxResults = typeof args.maxResults === 'number' ? Math.max(1, args.maxResults) : 100
+      const limit = Math.min(maxResults, 1000)
+
+      const root = getWorkspaceRoot()
+      console.log(`[workspace_list_files] Workspace root is: ${root}`)
+
+      const MAX_FILES_SCANNED = 5000
+      const MAX_DIRS_SCANNED = 1000
+      const SEARCH_TIMEOUT_MS = 10000 // 10 seconds
+
+      let filesScanned = 0
+      let dirsScanned = 0
+      const startTime = Date.now()
+      let scanTruncatedReason: string | undefined = undefined
+
+      const GLOBSTAR = '__GLOBSTAR__'
+      let pattern = globPattern.replace(/\*\*/g, GLOBSTAR)
+      pattern = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      pattern = pattern.replace(/\*/g, '[^/]*')
+      pattern = pattern.replace(/\?/g, '[^/]')
+      pattern = pattern.replace(new RegExp(GLOBSTAR + '/', 'g'), '(?:.*/)?')
+      pattern = pattern.replace(new RegExp(GLOBSTAR, 'g'), '.*')
+      const globRegex = new RegExp(
+        globPattern.includes('/')
+          ? '^' + pattern + '$'
+          : '/' + pattern + '$|' + '^' + pattern + '$',
+        'i'
+      )
+
+      const matches: Array<{
+        relativePath: string
+        absolutePath: string
+        size: number
+        modifiedTime: string
+      }> = []
+
+      const walk = async (dir: string): Promise<void> => {
+        if (ctx.signal.aborted || scanTruncatedReason) return
+
+        if (Date.now() - startTime > SEARCH_TIMEOUT_MS) {
+          scanTruncatedReason = 'Time limit exceeded'
+          return
+        }
+
+        dirsScanned++
+        if (dirsScanned > MAX_DIRS_SCANNED) {
+          scanTruncatedReason = 'Maximum directory scan limit reached'
+          return
+        }
+
+        const dirents = await fs.readdir(dir, { withFileTypes: true })
+        for (const dirent of dirents) {
+          if (matches.length >= limit || scanTruncatedReason || ctx.signal.aborted) break
+          const resPath = join(dir, dirent.name)
+          const relPath = relative(root, resPath)
+
+          if (dirent.isDirectory()) {
+            if (['.git', 'node_modules', 'dist', 'out', 'build'].includes(dirent.name)) {
+              continue
+            }
+            await walk(resPath)
+          } else {
+            filesScanned++
+            if (filesScanned > MAX_FILES_SCANNED) {
+              scanTruncatedReason = 'Maximum file scan limit reached'
+              break
+            }
+
+            // Skip symbolic links to avoid escaping the workspace
+            if (dirent.isSymbolicLink()) continue
+
+            const normalizedRelPath = relPath.replace(/\\/g, '/')
+            if (!globRegex.test(normalizedRelPath)) {
+              continue
+            }
+
+            if (!isPathInWorkspace(resPath) || isSensitiveFile(resPath)) {
+              continue
+            }
+
+            try {
+              const stats = await fs.stat(resPath)
+              matches.push({
+                relativePath: relPath.replace(/\\/g, '/'),
+                absolutePath: resPath,
+                size: stats.size,
+                modifiedTime: stats.mtime.toISOString()
+              })
+            } catch {
+              // Ignore files we cannot stat
+            }
+          }
+        }
+      }
+
+      await walk(root)
+
+      if (ctx.signal.aborted) {
+        throw new Error('Agent execution aborted by user.')
+      }
+
+      let resultForModel = [
+        `Workspace Root: ${root}`,
+        matches.length > 0
+          ? matches
+              .map((m) => `File: ${m.relativePath}\nSize: ${m.size} bytes\nModified: ${m.modifiedTime}`)
+              .join('\n\n')
+          : `No files found matching glob: "${globPattern}"`
+      ].join('\n\n')
+
+      if (scanTruncatedReason) {
+        resultForModel += `\n\n[Warning: Scan was truncated. Reason: ${scanTruncatedReason}]`
+      }
+
+      const items = matches.map((m) => {
+        const fileUrl = `file:///${m.absolutePath.replace(/\\/g, '/')}`
+        return {
+          title: m.relativePath,
+          url: fileUrl,
+          snippet: `Size: ${m.size} bytes, Modified: ${m.modifiedTime}`,
+          source: 'Workspace'
+        }
+      })
+
+      const summaryText = `Found ${matches.length} files in ${root}` + (scanTruncatedReason ? ` (Scan truncated: ${scanTruncatedReason})` : '')
+
+      return {
+        resultForModel,
+        resultForUi: {
+          title: `List Files: "${globPattern}"`,
+          summary: summaryText,
+          items
+        }
+      }
+    }
+  },
+  file_write: {
+    name: 'file_write',
+    title: 'Write File',
+    description: 'Writes content to a local file within the workspace root directory.',
+    tags: ['file', 'write', 'local', 'save', '文件', '写入', '保存', '修改', '编辑', '创建', '翻译'],
+    category: 'file',
+    risk: 'medium',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'The relative or absolute path to write the file to.'
+        },
+        content: {
+          type: 'string',
+          description: 'The file content to write.'
+        },
+        mode: {
+          type: 'string',
+          description: 'Whether to fail if file exists ("create") or overwrite ("overwrite"). (default: "create")',
+          enum: ['create', 'overwrite']
+        },
+        createDirs: {
+          type: 'boolean',
+          description: 'Whether to automatically create parent directories if they do not exist. (default: true)'
+        }
       },
       required: ['path', 'content']
     },
-    execute: async () => {
-      // Not yet implemented. Fail loudly instead of reporting a fake success.
-      throw new Error('Tool "file_write" is not implemented yet.')
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      void ctx
+      const filePath = args.path
+      const content = args.content
+      const mode = (args.mode as string) || 'create'
+      const createDirs = args.createDirs !== false
+
+      if (typeof filePath !== 'string' || !filePath) {
+        throw new Error('Missing or invalid path parameter')
+      }
+      if (typeof content !== 'string') {
+        throw new Error('Missing or invalid content parameter')
+      }
+
+      const root = getWorkspaceRoot()
+      console.log(`[file_write] Workspace root is: ${root}`)
+      const resolvedPath = resolve(root, filePath)
+
+      // Get realPath to check if it's within workspace (resolve symlinks if any exist in path)
+      let realPath = resolvedPath
+      try {
+        realPath = await fs.realpath(resolvedPath)
+      } catch {
+        // Path might not exist, but let's resolve its parent dir realpath to check
+        try {
+          const parentDir = await fs.realpath(dirname(resolvedPath))
+          realPath = join(parentDir, basename(resolvedPath))
+        } catch {
+          // Fallback to containment checks on resolvedPath if parent does not exist either
+        }
+      }
+
+      if (!isPathInWorkspace(realPath)) {
+        throw new Error(`Security Violation: Path is outside the workspace directory.`)
+      }
+
+      if (isSensitiveFile(realPath)) {
+        throw new Error(`Security Violation: Writing to sensitive file is blocked.`)
+      }
+
+      const MAX_WRITE_BYTES = 2 * 1024 * 1024 // 2MB
+      const contentBuffer = Buffer.from(content, 'utf-8')
+      if (contentBuffer.length > MAX_WRITE_BYTES) {
+        throw new Error(`File content is too large (${(contentBuffer.length / 1024 / 1024).toFixed(2)} MB). Max supported write size is 2 MB.`)
+      }
+
+      let exists = false
+      try {
+        const stats = await fs.stat(realPath)
+        exists = true
+        if (stats.isDirectory()) {
+          throw new Error('Target path is a directory, not a file.')
+        }
+      } catch {
+        // If file doesn't exist, stat throws ENOENT, which is expected
+      }
+
+      if (exists && mode === 'create') {
+        throw new Error(`File already exists and mode is set to "create". To overwrite, set mode to "overwrite".`)
+      }
+
+      try {
+        if (createDirs) {
+          const parent = dirname(realPath)
+          await fs.mkdir(parent, { recursive: true })
+        }
+        await fs.writeFile(realPath, content, 'utf-8')
+      } catch (err) {
+        const error = err as Error
+        throw new Error(`Failed to write file: ${error.message}`)
+      }
+
+      const relPath = relative(root, realPath).replace(/\\/g, '/')
+      const fileUrl = `file:///${resolvedPath.replace(/\\/g, '/')}`
+
+      const resultForModel = `Successfully wrote file: ${relPath}\nSize: ${contentBuffer.length} bytes\nPath: ${realPath}`
+
+      return {
+        resultForModel,
+        resultForUi: {
+          title: `Write File: ${relPath}`,
+          url: fileUrl,
+          summary: `Wrote ${contentBuffer.length} bytes to ${relPath} (${exists ? 'overwrote' : 'created'}) in workspace ${root}`
+        }
+      }
     }
   },
   shell: {

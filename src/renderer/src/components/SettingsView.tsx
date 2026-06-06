@@ -243,6 +243,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       riskLabel: '低风险'
                     },
                     {
+                      name: 'workspace_list_files',
+                      label: '列出工作区文件 (workspace_list_files)',
+                      risk: 'low',
+                      riskLabel: '低风险'
+                    },
+                    {
                       name: 'workspace_search',
                       label: '搜索工作区 (workspace_search)',
                       risk: 'low',
