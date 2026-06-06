@@ -30,6 +30,7 @@ import { useSkills } from './hooks/useSkills'
 function App(): React.JSX.Element {
   // Navigation
   const [showSettings, setShowSettings] = useState(false)
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState<number>(0)
 
   // Close settings panel and restore local editor states
   const handleCloseSettings = (): void => {
@@ -432,8 +433,51 @@ function App(): React.JSX.Element {
     const pending = getPendingPermission()
     if (pending) {
       window.api.respondToolPermission(pending.agentRunId, pending.callId, approved)
+      setTimeout(() => {
+        textareaRef.current?.focus()
+      }, 50)
     }
   }
+
+  // Reset selected option and manage keyboard shortcuts for pending tool execution permissions
+  const pendingPermission = getPendingPermission()
+  const pendingCallId = pendingPermission?.callId || null
+
+  const [prevCallId, setPrevCallId] = useState<string | null>(null)
+  if (pendingCallId !== prevCallId) {
+    setPrevCallId(pendingCallId)
+    setSelectedOptionIndex(0)
+  }
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent): void => {
+      const pending = getPendingPermission()
+      if (!pending) return
+
+      if (e.key === '1') {
+        e.preventDefault()
+        handlePermissionResponse(true)
+      } else if (e.key === '2') {
+        e.preventDefault()
+        handlePermissionResponse(false)
+      } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedOptionIndex((prev) => (prev === 0 ? 1 : 0))
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        handlePermissionResponse(selectedOptionIndex === 0)
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        handlePermissionResponse(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSession, selectedOptionIndex])
 
   const getArgsText = (toolName: string, args: unknown): string => {
     if (!args || typeof args !== 'object') return ''
@@ -666,131 +710,48 @@ function App(): React.JSX.Element {
               if (!pending) return null
               const argsText = getArgsText(pending.toolName, pending.args)
 
-              const translateToolName = (name: string): string => {
-                if (name === 'fetch_url') return '抓取网页 (fetch_url)'
-                if (name === 'web_search') return '网络搜索 (web_search)'
-                if (name === 'workspace_search') return '工作区搜索 (workspace_search)'
-                if (name === 'file_read') return '读取本地文件 (file_read)'
-                if (name === 'file_write') return '写入本地文件 (file_write)'
-                if (name === 'shell') return '执行系统命令 (shell)'
-                return name
-              }
-
               return (
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: '100%',
-                    left: '16px',
-                    right: '16px',
-                    marginBottom: '8px',
-                    background: 'rgba(30, 41, 59, 0.96)',
-                    backdropFilter: 'blur(16px)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: '12px',
-                    padding: '12px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                    boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.45)',
-                    zIndex: 100
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: '12.5px',
-                      color: 'var(--color-text)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px'
-                    }}
-                  >
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>
-                      Agent 正在请求执行工具：
-                    </span>
-                    <strong style={{ color: 'var(--color-primary)', fontSize: '13px' }}>
-                      {translateToolName(pending.toolName)}
-                    </strong>
+                <div className="permission-popup-container">
+                  <div className="permission-popup-header">
+                    <Terminal size={14} style={{ color: 'var(--color-primary)' }} />
+                    <span>是否允许执行此工具？</span>
                   </div>
 
                   {argsText && (
-                    <div
-                      style={{
-                        fontSize: '11.5px',
-                        color: 'var(--color-text-muted)',
-                        background: 'rgba(0, 0, 0, 0.2)',
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
-                        fontFamily: 'monospace',
-                        wordBreak: 'break-all',
-                        maxHeight: '60px',
-                        overflowY: 'auto'
-                      }}
-                    >
-                      {argsText}
+                    <div className="permission-popup-code">
+                      {pending.toolName} {argsText}
                     </div>
                   )}
 
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '6px',
-                      marginTop: '4px'
-                    }}
-                  >
-                    <button
+                  <div className="permission-popup-options">
+                    <div
+                      className={`permission-popup-option ${selectedOptionIndex === 0 ? 'selected' : ''}`}
                       onClick={() => handlePermissionResponse(true)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        fontSize: '12px',
-                        background: 'rgba(16, 185, 129, 0.12)',
-                        color: '#10b981',
-                        border: '1px solid rgba(16, 185, 129, 0.3)',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        textAlign: 'left',
-                        transition: 'all 0.15s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(16, 185, 129, 0.22)'
-                        e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.5)'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(16, 185, 129, 0.12)'
-                        e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.3)'
-                      }}
                     >
-                      允许执行 (Approve)
+                      <span className="permission-popup-badge">1</span>
+                      <span>允许本次执行 (Yes, allow this time)</span>
+                    </div>
+                    <div
+                      className={`permission-popup-option ${selectedOptionIndex === 1 ? 'selected' : ''}`}
+                      onClick={() => handlePermissionResponse(false)}
+                    >
+                      <span className="permission-popup-badge">2</span>
+                      <span>拒绝执行 (No)</span>
+                    </div>
+                  </div>
+
+                  <div className="permission-popup-footer">
+                    <button
+                      className="permission-popup-btn skip"
+                      onClick={() => handlePermissionResponse(false)}
+                    >
+                      Skip
                     </button>
                     <button
-                      onClick={() => handlePermissionResponse(false)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        fontSize: '12px',
-                        background: 'rgba(239, 68, 68, 0.12)',
-                        color: '#ef4444',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        textAlign: 'left',
-                        transition: 'all 0.15s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.22)'
-                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)'
-                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)'
-                      }}
+                      className="permission-popup-btn submit"
+                      onClick={() => handlePermissionResponse(selectedOptionIndex === 0)}
                     >
-                      拒绝执行 (Deny)
+                      Submit
                     </button>
                   </div>
                 </div>
@@ -818,12 +779,17 @@ function App(): React.JSX.Element {
               <textarea
                 ref={textareaRef}
                 className="chat-input"
-                placeholder="输入您的问题... (Esc 隐藏, Shift+Enter 换行, / 命令快捷词)"
-                value={inputVal}
+                placeholder={
+                  pendingPermission
+                    ? '请先响应上方的工具执行权限请求...'
+                    : '输入您的问题... (Esc 隐藏, Shift+Enter 换行, / 命令快捷词)'
+                }
+                value={pendingPermission ? '' : inputVal}
                 onChange={handleInputChange}
                 onKeyDown={handleInputKeyDown}
                 onPaste={handlePaste}
                 rows={1}
+                disabled={!!pendingPermission}
               />
               <div className="chat-actions">
                 <button

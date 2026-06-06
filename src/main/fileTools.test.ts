@@ -146,5 +146,90 @@ describe('File Safety & Search Tools', () => {
 
       expect(res.resultForUi.items).toHaveLength(2)
     })
+
+    it('blocks reading files outside workspace via symbolic link', async () => {
+      const symlinkPath = join(testDir, 'symlink-outside.txt')
+      const targetOutsideFile = resolve(workspaceRoot, '..', 'temp-outside-target.txt')
+
+      try {
+        await fs.writeFile(targetOutsideFile, 'outside data')
+        await fs.symlink(targetOutsideFile, symlinkPath, 'file')
+      } catch (e) {
+        // If symlink creation is not supported/permitted on this OS/user, skip the test gracefully
+        console.warn('Skipping symlink test due to OS restrictions:', (e as Error).message)
+        try {
+          await fs.unlink(targetOutsideFile)
+        } catch {
+          // Ignore cleanup error
+        }
+        return
+      }
+
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+
+      try {
+        await expect(
+          ToolRegistry.file_read.execute({ path: symlinkPath }, context)
+        ).rejects.toThrow('Security Violation: Path is outside the workspace directory')
+      } finally {
+        try {
+          await fs.unlink(symlinkPath)
+        } catch {
+          // Ignore cleanup error
+        }
+        try {
+          await fs.unlink(targetOutsideFile)
+        } catch {
+          // Ignore cleanup error
+        }
+      }
+    })
+
+    it('rejects reading files exceeding size limit', async () => {
+      const largeFilePath = join(testDir, 'large-file.txt')
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+
+      const data = 'A'.repeat(2.1 * 1024 * 1024) // 2.1MB
+      await fs.writeFile(largeFilePath, data)
+
+      try {
+        await expect(
+          ToolRegistry.file_read.execute({ path: largeFilePath }, context)
+        ).rejects.toThrow('File is too large')
+      } finally {
+        try {
+          await fs.unlink(largeFilePath)
+        } catch {
+          // Ignore cleanup error
+        }
+      }
+    })
+
+    it('ignores files exceeding size limit or binary extensions in search', async () => {
+      const largeSearchFile = join(testDir, 'large-search.txt')
+      const pngFile = join(testDir, 'image.png')
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+
+      await fs.writeFile(largeSearchFile, queryStr + '\n' + 'B'.repeat(600 * 1024))
+      await fs.writeFile(pngFile, queryStr)
+
+      try {
+        const res = await ToolRegistry.workspace_search.execute({ query: queryStr }, context)
+        const paths = res.resultForUi.items?.map((item) => item.title) || []
+        expect(paths.some((p) => p.includes('large-search.txt'))).toBe(false)
+        expect(paths.some((p) => p.includes('image.png'))).toBe(false)
+      } finally {
+        try {
+          await fs.unlink(largeSearchFile)
+        } catch {
+          // Ignore cleanup error
+        }
+        try {
+          await fs.unlink(pngFile)
+        } catch {
+          // Ignore cleanup error
+        }
+      }
+    })
   })
 })
