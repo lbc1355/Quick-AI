@@ -350,9 +350,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   }, [isGenerating, cleanContent, hasLogs, msg.id])
 
   // Derived logs expansion state
-  const effectiveLogsExpanded = userExpandedOverride !== null
-    ? userExpandedOverride
-    : (hasLogs && !cleanContent)
+  const effectiveLogsExpanded =
+    userExpandedOverride !== null ? userExpandedOverride : hasLogs && !cleanContent
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
@@ -384,7 +383,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 ? `Worked for ${elapsed}s`
                 : `Called tools (${toolCallCount} steps)`}
             </span>
-            <span style={{ fontSize: '9px', opacity: 0.7 }}>{effectiveLogsExpanded ? 'v' : '>'}</span>
+            <span style={{ fontSize: '9px', opacity: 0.7 }}>
+              {effectiveLogsExpanded ? 'v' : '>'}
+            </span>
           </div>
 
           <div

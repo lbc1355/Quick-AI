@@ -208,7 +208,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
               {/* Agent Permissions UI */}
-              <div className="settings-group" style={{ marginTop: '16px', borderTop: '1px solid var(--color-border)', paddingTop: '12px' }}>
+              <div
+                className="settings-group"
+                style={{
+                  marginTop: '16px',
+                  borderTop: '1px solid var(--color-border)',
+                  paddingTop: '12px'
+                }}
+              >
                 <span
                   className="settings-label"
                   style={{
@@ -223,20 +230,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </span>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {[
-                    { name: 'fetch_url', label: '抓取网页 (fetch_url)', risk: 'low', riskLabel: '低风险' },
-                    { name: 'web_search', label: '网络搜索 (web_search)', risk: 'low', riskLabel: '低风险' },
-                    { name: 'file_read', label: '读取本地文件 (file_read)', risk: 'low', riskLabel: '低风险' },
-                    { name: 'file_write', label: '写入本地文件 (file_write)', risk: 'medium', riskLabel: '中风险' },
-                    { name: 'shell', label: '执行系统命令 (shell)', risk: 'high', riskLabel: '高风险' }
+                    {
+                      name: 'fetch_url',
+                      label: '抓取网页 (fetch_url)',
+                      risk: 'low',
+                      riskLabel: '低风险'
+                    },
+                    {
+                      name: 'web_search',
+                      label: '网络搜索 (web_search)',
+                      risk: 'low',
+                      riskLabel: '低风险'
+                    },
+                    {
+                      name: 'file_read',
+                      label: '读取本地文件 (file_read)',
+                      risk: 'low',
+                      riskLabel: '低风险'
+                    },
+                    {
+                      name: 'file_write',
+                      label: '写入本地文件 (file_write)',
+                      risk: 'medium',
+                      riskLabel: '中风险'
+                    },
+                    {
+                      name: 'shell',
+                      label: '执行系统命令 (shell)',
+                      risk: 'high',
+                      riskLabel: '高风险'
+                    }
                   ].map((tool) => {
-                    const getRiskStyle = (risk: string) => {
+                    const getRiskStyle = (risk: string): React.CSSProperties => {
                       if (risk === 'high') {
-                        return { color: '#ef4444', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.2)' }
+                        return {
+                          color: '#ef4444',
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid rgba(239, 68, 68, 0.2)'
+                        }
                       }
                       if (risk === 'medium') {
-                        return { color: '#f59e0b', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.2)' }
+                        return {
+                          color: '#f59e0b',
+                          background: 'rgba(245, 158, 11, 0.12)',
+                          border: '1px solid rgba(245, 158, 11, 0.2)'
+                        }
                       }
-                      return { color: '#10b981', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.2)' }
+                      return {
+                        color: '#10b981',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        border: '1px solid rgba(16, 185, 129, 0.2)'
+                      }
                     }
 
                     return (
@@ -253,8 +297,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           gap: '12px'
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                          <span style={{ fontSize: '12.5px', color: 'var(--color-text)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            minWidth: 0,
+                            flex: 1
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: '12.5px',
+                              color: 'var(--color-text)',
+                              fontWeight: 500,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
                             {tool.label}
                           </span>
                           <span
@@ -278,7 +339,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             minWidth: '90px'
                           }}
                           value={permissions[tool.name] || 'allow'}
-                          onChange={(e) => onChangeToolPermission(tool.name, e.target.value as 'allow' | 'ask' | 'deny')}
+                          onChange={(e) =>
+                            onChangeToolPermission(
+                              tool.name,
+                              e.target.value as 'allow' | 'ask' | 'deny'
+                            )
+                          }
                         >
                           <option value="allow">允许 (Allow)</option>
                           <option value="ask">询问 (Ask)</option>

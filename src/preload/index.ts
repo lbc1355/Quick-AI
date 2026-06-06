@@ -21,10 +21,8 @@ const api = {
   setFilePickerActive: (active: boolean): void =>
     ipcRenderer.send('set-file-picker-active', active),
   reSummonWindow: (): void => ipcRenderer.send('re-summon-window'),
-  startChatCompletion: (
-    reqId: string,
-    options: ChatRunOptions
-  ): void => ipcRenderer.send('start-chat-completion', reqId, options),
+  startChatCompletion: (reqId: string, options: ChatRunOptions): void =>
+    ipcRenderer.send('start-chat-completion', reqId, options),
   startAgentSkill: (reqId: string, options: AgentSkillRunOptions): void =>
     ipcRenderer.send('start-agent-skill', reqId, options),
   respondToolPermission: (reqId: string, callId: string, approved: boolean): void =>

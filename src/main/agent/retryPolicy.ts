@@ -40,10 +40,7 @@ export async function withRetry<T>(
     } catch (error) {
       lastError = error as Error
       if (attempt < policy.maxRetries && isRetryableError(lastError, policy) && !signal?.aborted) {
-        const delay = Math.min(
-          policy.baseDelayMs * Math.pow(2, attempt),
-          policy.maxDelayMs
-        )
+        const delay = Math.min(policy.baseDelayMs * Math.pow(2, attempt), policy.maxDelayMs)
         await new Promise<void>((resolve, reject) => {
           const onAbort = (): void => {
             clearTimeout(timeoutId)

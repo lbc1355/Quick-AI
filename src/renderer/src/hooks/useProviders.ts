@@ -115,13 +115,15 @@ export const useProviders = (): UseProvidersReturn => {
         setSystemPrompt(savedSettings.systemPrompt || '')
         setAutoHideOnBlur(savedSettings.autoHideOnBlur !== false)
         setTheme(savedSettings.theme || 'dark')
-        setPermissions(savedSettings.permissions || {
-          fetch_url: 'allow',
-          web_search: 'allow',
-          file_read: 'ask',
-          file_write: 'deny',
-          shell: 'deny'
-        })
+        setPermissions(
+          savedSettings.permissions || {
+            fetch_url: 'allow',
+            web_search: 'allow',
+            file_read: 'ask',
+            file_write: 'deny',
+            shell: 'deny'
+          }
+        )
       }
 
       // App metadata

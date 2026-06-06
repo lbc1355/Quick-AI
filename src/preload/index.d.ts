@@ -18,10 +18,7 @@ declare global {
       toggleDevTools: () => void
       setFilePickerActive: (active: boolean) => void
       reSummonWindow: () => void
-      startChatCompletion: (
-        reqId: string,
-        options: ChatRunOptions
-      ) => void
+      startChatCompletion: (reqId: string, options: ChatRunOptions) => void
       startAgentSkill: (reqId: string, options: AgentSkillRunOptions) => void
       respondToolPermission: (reqId: string, callId: string, approved: boolean) => void
       abortGeneration: (reqId: string) => void

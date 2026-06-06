@@ -39,11 +39,13 @@ export const runAgentLoop = async (
 ): Promise<void> => {
   const isSkill = !!options.skill
   const toolDiscovery = isSkill
-    ? (options.skill!.toolDiscovery === 'dynamic' ? 'dynamic' : 'static')
+    ? options.skill!.toolDiscovery === 'dynamic'
+      ? 'dynamic'
+      : 'static'
     : 'dynamic'
 
   const maxSteps = isSkill ? clampMaxSteps(options.skill!.maxSteps) : 8
-  const skillTools = isSkill ? (options.skill!.tools || []) : []
+  const skillTools = isSkill ? options.skill!.tools || [] : []
   const toolScope = isSkill ? new Set<string>(skillTools) : 'all'
 
   // Prepare messages history
@@ -169,7 +171,7 @@ export const runAgentLoop = async (
         // Separate tool calls into serial (ask), parallel (allow/direct), and blocked (invalid/deny)
         interface ToolCallItem {
           index: number
-          toolCall: typeof assistantMessage.tool_calls[0]
+          toolCall: (typeof assistantMessage.tool_calls)[0]
         }
 
         const askCalls: ToolCallItem[] = []
@@ -206,7 +208,7 @@ export const runAgentLoop = async (
 
         // Helper to execute a single tool call and return its result message
         const executeTool = async (
-          toolCall: typeof assistantMessage.tool_calls[0],
+          toolCall: (typeof assistantMessage.tool_calls)[0],
           toolIndex: number,
           isApproved = true
         ): Promise<ChatCompletionMessage> => {

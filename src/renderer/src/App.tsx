@@ -640,7 +640,11 @@ function App(): React.JSX.Element {
                   type="button"
                   className={`run-mode-btn ${runMode}`}
                   onClick={() => setRunMode(runMode === 'chat' ? 'agent' : 'chat')}
-                  title={runMode === 'agent' ? '当前为 Agent 模式 (支持动态工具发现)' : '当前为普通 Chat 模式'}
+                  title={
+                    runMode === 'agent'
+                      ? '当前为 Agent 模式 (支持动态工具发现)'
+                      : '当前为普通 Chat 模式'
+                  }
                 >
                   <Sparkles size={13} className="sparkle-icon" />
                   <span>{runMode === 'agent' ? 'Agent' : 'Chat'}</span>

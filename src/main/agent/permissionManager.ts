@@ -7,7 +7,11 @@ interface PendingPermissionPromise {
 export class PermissionManager {
   private pending = new Map<string, PendingPermissionPromise>()
 
-  async requestPermission(reqId: string, callId: string, timeoutMs = 10 * 60 * 1000): Promise<boolean> {
+  async requestPermission(
+    reqId: string,
+    callId: string,
+    timeoutMs = 10 * 60 * 1000
+  ): Promise<boolean> {
     const key = `${reqId}:${callId}`
     return new Promise<boolean>((resolve, reject) => {
       const timeoutId = setTimeout(() => {

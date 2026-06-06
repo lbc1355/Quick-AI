@@ -80,7 +80,8 @@ const validatePublicHttpUrl = async (rawUrl: string): Promise<URL> => {
 const fetchWithCheckedRedirects = async (
   rawUrl: string,
   signal: AbortSignal,
-  redirects = 0
+  redirects = 0,
+  headers?: Record<string, string>
 ): Promise<Response> => {
   const parsed = await validatePublicHttpUrl(rawUrl)
   const response = await fetch(parsed.toString(), {
@@ -90,7 +91,8 @@ const fetchWithCheckedRedirects = async (
     headers: {
       Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1',
       'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      ...headers
     }
   })
 
@@ -103,7 +105,7 @@ const fetchWithCheckedRedirects = async (
       throw new Error(`Redirect response missing location header: ${response.status}`)
     }
     const nextUrl = new URL(location, parsed).toString()
-    return fetchWithCheckedRedirects(nextUrl, signal, redirects + 1)
+    return fetchWithCheckedRedirects(nextUrl, signal, redirects + 1, headers)
   }
 
   return response
@@ -433,11 +435,7 @@ const SEARCH_ENGINES: SearchEngine[] = [
 const fetchSearchHtml = async (url: string, signal?: AbortSignal): Promise<string> => {
   const { signal: combinedSignal, cleanup } = createCombinedSignal(signal, REQUEST_TIMEOUT_MS)
   try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: SEARCH_HEADERS,
-      signal: combinedSignal
-    })
+    const response = await fetchWithCheckedRedirects(url, combinedSignal, 0, SEARCH_HEADERS)
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} ${response.statusText}`)
     }

@@ -7,7 +7,11 @@ import { ChatCompletionMessage } from '../../shared/types'
  */
 export function estimateTokens(text: string): number {
   if (!text) return 0
-  const cjkCount = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\u3000-\u303f\uff00-\uffef]/g) || []).length
+  const cjkCount = (
+    text.match(
+      /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\u3000-\u303f\uff00-\uffef]/g
+    ) || []
+  ).length
   const nonCjkLength = text.length - cjkCount
   return Math.ceil(cjkCount / 1.5 + nonCjkLength / 4)
 }
@@ -18,11 +22,9 @@ export function estimateMessagesTokens(messages: ChatCompletionMessage[]): numbe
     if (typeof msg.content === 'string') {
       contentStr = msg.content
     } else if (Array.isArray(msg.content)) {
-      contentStr = msg.content
-        .map((part) => (part.type === 'text' ? part.text || '' : ''))
-        .join('')
+      contentStr = msg.content.map((part) => (part.type === 'text' ? part.text || '' : '')).join('')
     }
-    
+
     let toolCallsStr = ''
     if (msg.tool_calls) {
       toolCallsStr = JSON.stringify(msg.tool_calls)

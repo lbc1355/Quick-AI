@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest'
 import { runAgentLoop } from './agentLoop'
 import { callModel } from './callModel'
 import { ToolRegistry } from '../toolRegistry'
@@ -15,7 +15,7 @@ vi.mock('./callModel', () => ({
 
 describe('runAgentLoop', () => {
   let mockWindow: BrowserWindow
-  let sendMock: any
+  let sendMock: Mock
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -29,7 +29,11 @@ describe('runAgentLoop', () => {
     // Stub tool executions to prevent real fetches
     vi.spyOn(ToolRegistry.fetch_url, 'execute').mockResolvedValue({
       resultForModel: 'Fetched page content',
-      resultForUi: { title: 'Example Title', url: 'https://example.com', summary: 'Example summary' }
+      resultForUi: {
+        title: 'Example Title',
+        url: 'https://example.com',
+        summary: 'Example summary'
+      }
     })
     vi.spyOn(ToolRegistry.web_search, 'execute').mockResolvedValue({
       resultForModel: 'Search results',
@@ -43,11 +47,12 @@ describe('runAgentLoop', () => {
 
   it('unactivated tool is not declared and returns error on execution attempt', async () => {
     let callCount = 0
-    vi.mocked(callModel).mockImplementation(async (_options, messages, tools, _signal, _callbacks) => {
+    vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
+      void options
       callCount++
       if (callCount === 1) {
         // First turn: declare only search_tools (dynamic mode default)
-        expect(tools?.map(t => t.function.name)).toEqual(['search_tools'])
+        expect(tools?.map((t) => t.function.name)).toEqual(['search_tools'])
         // Model tries to call fetch_url (which is not active yet)
         return {
           role: 'assistant',
@@ -56,7 +61,10 @@ describe('runAgentLoop', () => {
             {
               id: 'tc-unactive',
               type: 'function',
-              function: { name: 'fetch_url', arguments: JSON.stringify({ url: 'https://example.com' }) }
+              function: {
+                name: 'fetch_url',
+                arguments: JSON.stringify({ url: 'https://example.com' })
+              }
             }
           ]
         }
@@ -86,11 +94,12 @@ describe('runAgentLoop', () => {
 
   it('denied tool is not declared and blocked from execution', async () => {
     let callCount = 0
-    vi.mocked(callModel).mockImplementation(async (_options, messages, tools, _signal, _callbacks) => {
+    vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
+      void options
       callCount++
       if (callCount === 1) {
         // search_tools should be declared, but web_search should NOT be because it is denied in policy
-        expect(tools?.map(t => t.function.name)).toEqual(['search_tools'])
+        expect(tools?.map((t) => t.function.name)).toEqual(['search_tools'])
         // Try calling it anyway
         return {
           role: 'assistant',
@@ -116,14 +125,19 @@ describe('runAgentLoop', () => {
       return { role: 'assistant', content: 'done' }
     })
 
-    await runAgentLoop(mockWindow, 'test-req-2', {
-      apiUrl: 'https://api.example.com',
-      apiKey: 'test-key',
-      model: 'deepseek-chat',
-      messages: [{ role: 'user', content: 'Search something' }]
-    }, {
-      web_search: 'deny'
-    })
+    await runAgentLoop(
+      mockWindow,
+      'test-req-2',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Search something' }]
+      },
+      {
+        web_search: 'deny'
+      }
+    )
 
     expect(callCount).toBe(2)
   })
@@ -131,9 +145,12 @@ describe('runAgentLoop', () => {
   it('ask tool triggers permission request and executes if approved', async () => {
     // Enable search_tools to discover and activate web_search
     let callCount = 0
-    const permissionSpy = vi.spyOn(globalPermissionManager, 'requestPermission').mockResolvedValue(true)
+    const permissionSpy = vi
+      .spyOn(globalPermissionManager, 'requestPermission')
+      .mockResolvedValue(true)
 
-    vi.mocked(callModel).mockImplementation(async (_options, messages, tools, _signal, _callbacks) => {
+    vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
+      void options
       callCount++
       if (callCount === 1) {
         // Run search_tools
@@ -151,7 +168,7 @@ describe('runAgentLoop', () => {
       }
       if (callCount === 2) {
         // web_search should now be activated and declared (since it was discovered in turn 1)
-        expect(tools?.map(t => t.function.name)).toContain('web_search')
+        expect(tools?.map((t) => t.function.name)).toContain('web_search')
         return {
           role: 'assistant',
           content: '',
@@ -177,14 +194,19 @@ describe('runAgentLoop', () => {
       return { role: 'assistant', content: 'done' }
     })
 
-    await runAgentLoop(mockWindow, 'test-req-3', {
-      apiUrl: 'https://api.example.com',
-      apiKey: 'test-key',
-      model: 'deepseek-chat',
-      messages: [{ role: 'user', content: 'Search testing' }]
-    }, {
-      web_search: 'ask'
-    })
+    await runAgentLoop(
+      mockWindow,
+      'test-req-3',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Search testing' }]
+      },
+      {
+        web_search: 'ask'
+      }
+    )
 
     expect(permissionSpy).toHaveBeenCalled()
     expect(callCount).toBe(3)
@@ -192,9 +214,12 @@ describe('runAgentLoop', () => {
 
   it('ask tool returns error if permission is denied', async () => {
     let callCount = 0
-    const permissionSpy = vi.spyOn(globalPermissionManager, 'requestPermission').mockResolvedValue(false)
+    const permissionSpy = vi
+      .spyOn(globalPermissionManager, 'requestPermission')
+      .mockResolvedValue(false)
 
-    vi.mocked(callModel).mockImplementation(async (_options, messages, _tools, _signal, _callbacks) => {
+    vi.mocked(callModel).mockImplementation(async (options, messages) => {
+      void options
       callCount++
       if (callCount === 1) {
         // Run search_tools to activate web_search
@@ -218,7 +243,10 @@ describe('runAgentLoop', () => {
             {
               id: 'tc-web-search',
               type: 'function',
-              function: { name: 'web_search', arguments: JSON.stringify({ query: 'testing ask deny' }) }
+              function: {
+                name: 'web_search',
+                arguments: JSON.stringify({ query: 'testing ask deny' })
+              }
             }
           ]
         }
@@ -235,14 +263,19 @@ describe('runAgentLoop', () => {
       return { role: 'assistant', content: 'done' }
     })
 
-    await runAgentLoop(mockWindow, 'test-req-4', {
-      apiUrl: 'https://api.example.com',
-      apiKey: 'test-key',
-      model: 'deepseek-chat',
-      messages: [{ role: 'user', content: 'Search testing' }]
-    }, {
-      web_search: 'ask'
-    })
+    await runAgentLoop(
+      mockWindow,
+      'test-req-4',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Search testing' }]
+      },
+      {
+        web_search: 'ask'
+      }
+    )
 
     expect(permissionSpy).toHaveBeenCalled()
     expect(callCount).toBe(3)
@@ -250,7 +283,8 @@ describe('runAgentLoop', () => {
 
   it('safeguard maxSteps ends execution and forces final answer', async () => {
     let callCount = 0
-    vi.mocked(callModel).mockImplementation(async (_options, messages, _tools, _signal, _callbacks) => {
+    vi.mocked(callModel).mockImplementation(async (options, messages) => {
+      void options
       callCount++
       if (callCount <= 3) {
         // Return a tool call to keep the loop going

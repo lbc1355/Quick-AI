@@ -59,7 +59,13 @@ export function createRun(
   toolScope: Set<string> | 'all',
   permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): AgentRunContext {
-  const ctx = new AgentRunContext(reqId, initialTools, toolScope, globalPermissionManager, permissionPolicy)
+  const ctx = new AgentRunContext(
+    reqId,
+    initialTools,
+    toolScope,
+    globalPermissionManager,
+    permissionPolicy
+  )
   activeRuns.set(reqId, ctx)
   return ctx
 }
