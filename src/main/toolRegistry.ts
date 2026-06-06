@@ -1,5 +1,6 @@
 import { fetchUrl, webSearch } from './webTools'
 import { ToolArgs, ChatToolDeclaration } from '../shared/types'
+import { getRun } from './agent/AgentRunContext'
 
 export interface ToolExecutionContext {
   reqId: string
@@ -20,7 +21,10 @@ export interface ToolDefinition {
     properties: Record<string, { type: string; description?: string; enum?: string[] }>
     required?: string[]
   }
-  execute: (args: ToolArgs, ctx: ToolExecutionContext) => Promise<{
+  execute: (
+    args: ToolArgs,
+    ctx: ToolExecutionContext
+  ) => Promise<{
     resultForModel: string
     resultForUi: { title?: string; url?: string; summary?: string }
   }>
@@ -46,7 +50,11 @@ export function toChatToolDeclaration(tool: ToolDefinition): ChatToolDeclaration
   }
 }
 
-export function searchToolDefinitions(query: string, scope?: Set<string> | 'all'): ToolSummary[] {
+export function searchToolDefinitions(
+  query: string,
+  scope?: Set<string> | 'all',
+  permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
+): ToolSummary[] {
   const cleanQuery = query.toLowerCase().trim()
   const matched: ToolSummary[] = []
 
@@ -55,7 +63,11 @@ export function searchToolDefinitions(query: string, scope?: Set<string> | 'all'
     if (!tool.discoverable || !tool.implemented) continue
     if (scope && scope !== 'all' && !scope.has(tool.name)) continue
 
-    const matchText = `${tool.name} ${tool.title} ${tool.description} ${tool.tags.join(' ')}`.toLowerCase()
+    const permission = permissionPolicy?.[tool.name] || 'allow'
+    if (permission === 'deny') continue
+
+    const matchText =
+      `${tool.name} ${tool.title} ${tool.description} ${tool.tags.join(' ')}`.toLowerCase()
     if (cleanQuery === '' || matchText.includes(cleanQuery)) {
       matched.push({
         name: tool.name,
@@ -63,7 +75,7 @@ export function searchToolDefinitions(query: string, scope?: Set<string> | 'all'
         description: tool.description,
         category: tool.category,
         risk: tool.risk,
-        permission: 'allow'
+        permission
       })
     }
   }
@@ -75,7 +87,8 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
   fetch_url: {
     name: 'fetch_url',
     title: 'Fetch URL Content',
-    description: 'Fetches the content of a public HTTP or HTTPS web page and returns its title, text content, and extracted links.',
+    description:
+      'Fetches the content of a public HTTP or HTTPS web page and returns its title, text content, and extracted links.',
     tags: ['web', 'scraper', 'fetch', 'parse'],
     category: 'web',
     risk: 'low',
@@ -91,12 +104,12 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['url']
     },
-    execute: async (args: ToolArgs) => {
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
       const url = args.url
       if (typeof url !== 'string' || !url) {
         throw new Error('Missing or invalid URL parameter')
       }
-      const result = await fetchUrl(url)
+      const result = await fetchUrl(url, ctx.signal)
 
       const formatLinks = (res: typeof result): string => {
         return res.links
@@ -167,7 +180,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     category: 'file',
     risk: 'low',
     implemented: false,
-    discoverable: true,
+    discoverable: false,
     parameters: {
       type: 'object',
       properties: {
@@ -175,18 +188,10 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['path']
     },
-    execute: async (args: ToolArgs) => {
-      const path = args.path
-      if (typeof path !== 'string' || !path) {
-        throw new Error('Missing or invalid path parameter')
-      }
-      return {
-        resultForModel: `Content of file at ${path} (stub)`,
-        resultForUi: {
-          title: `Read File: ${path}`,
-          summary: `Mock content of file at ${path}`
-        }
-      }
+    execute: async () => {
+      // Not yet implemented. Fail loudly instead of returning fabricated content so a
+      // premature `implemented: true` can never feed mock data back to the model.
+      throw new Error('Tool "file_read" is not implemented yet.')
     }
   },
   file_write: {
@@ -197,7 +202,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     category: 'file',
     risk: 'medium',
     implemented: false,
-    discoverable: true,
+    discoverable: false,
     parameters: {
       type: 'object',
       properties: {
@@ -206,19 +211,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['path', 'content']
     },
-    execute: async (args: ToolArgs) => {
-      const path = args.path
-      const content = args.content
-      if (typeof path !== 'string' || !path || typeof content !== 'string') {
-        throw new Error('Missing or invalid path/content parameters')
-      }
-      return {
-        resultForModel: `Successfully wrote content to ${path} (stub)`,
-        resultForUi: {
-          title: `Write File: ${path}`,
-          summary: `Mock write to file at ${path}`
-        }
-      }
+    execute: async () => {
+      // Not yet implemented. Fail loudly instead of reporting a fake success.
+      throw new Error('Tool "file_write" is not implemented yet.')
     }
   },
   shell: {
@@ -229,7 +224,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     category: 'shell',
     risk: 'high',
     implemented: false,
-    discoverable: true,
+    discoverable: false,
     parameters: {
       type: 'object',
       properties: {
@@ -237,24 +232,16 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['command']
     },
-    execute: async (args: ToolArgs) => {
-      const command = args.command
-      if (typeof command !== 'string' || !command) {
-        throw new Error('Missing or invalid command parameter')
-      }
-      return {
-        resultForModel: `Output of shell command: "${command}" (stub)`,
-        resultForUi: {
-          title: `Shell Command`,
-          summary: `Mock execution of command: "${command}"`
-        }
-      }
+    execute: async () => {
+      // Not yet implemented. Fail loudly instead of reporting a fake command result.
+      throw new Error('Tool "shell" is not implemented yet.')
     }
   },
   search_tools: {
     name: 'search_tools',
     title: 'Search Tools',
-    description: 'Search the tool registry for available tools that can help with the user request.',
+    description:
+      'Search the tool registry for available tools that can help with the user request.',
     tags: ['meta', 'utility', 'find', 'discovery'],
     category: 'system',
     risk: 'low',
@@ -270,12 +257,27 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['query']
     },
-    execute: async () => {
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const query = (args.query as string) || ''
+      const runCtx = getRun(ctx.reqId)
+      const scope = runCtx ? runCtx.toolScope : 'all'
+      const permissionPolicy = runCtx?.permissionPolicy
+      const matchedSummaries = searchToolDefinitions(query, scope, permissionPolicy)
+
+      if (runCtx) {
+        matchedSummaries.forEach((t) => runCtx.activateTool(t.name))
+      }
+
+      const observation =
+        matchedSummaries.length > 0
+          ? JSON.stringify(matchedSummaries, null, 2)
+          : `No discoverable tools matched query: "${query}"`
+
       return {
-        resultForModel: '[]',
+        resultForModel: observation,
         resultForUi: {
-          title: 'Search Tools',
-          summary: 'Executing tool search...'
+          title: `Search Tools: "${query}"`,
+          summary: `Discovered ${matchedSummaries.length} tools: ${matchedSummaries.map((m) => m.name).join(', ')}`
         }
       }
     }

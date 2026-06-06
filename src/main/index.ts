@@ -5,7 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
 import { StorageSchema } from '../shared/types'
 import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClient'
-import { runAgentSkill, runGeneralAgent, resolveToolPermission, abortAgentSkill } from './agentRunner'
+import { runAgentSkill, runGeneralAgent, resolveToolPermission, abortAgentSkill } from './agent'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null

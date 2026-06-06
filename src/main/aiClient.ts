@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { ChatCompletionMessage } from '../shared/types'
+import { callModel } from './agent/callModel'
 
 interface ModelItem {
   id?: string
@@ -28,72 +29,21 @@ export async function handleChatCompletion(
   options: { apiUrl: string; apiKey: string; model: string; messages: ChatCompletionMessage[] }
 ): Promise<void> {
   const { apiUrl, apiKey, model, messages } = options
-  const completionsUrl = `${apiUrl.replace(/\/$/, '')}/chat/completions`
   const controller = new AbortController()
   activeChatSessions.set(reqId, controller)
 
   try {
-    const response = await fetch(completionsUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+    // Plain chat is a single model call with no tools. Reuse the agent's SSE parser
+    // (callModel) as the single source of truth — it also splits local <think> tags
+    // into reasoning, which the previous inline parser ignored.
+    await callModel({ apiUrl, apiKey, model }, messages, undefined, controller.signal, {
+      onReasoning: (reasoningContent) => {
+        mainWindow.webContents.send('chat-chunk', { reqId, reasoningContent })
       },
-      body: JSON.stringify({
-        model,
-        messages,
-        stream: true
-      }),
-      signal: controller.signal
-    })
-
-    if (!response.ok) {
-      const errText = await response.text()
-      throw new Error(`API Error: ${response.status} - ${errText || response.statusText}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) throw new Error('Failed to get readable stream reader')
-
-    const decoder = new TextDecoder('utf-8')
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        const cleanLine = line.trim()
-        if (!cleanLine) continue
-        if (cleanLine === 'data: [DONE]') {
-          mainWindow.webContents.send('chat-chunk', { reqId, done: true })
-          return
-        }
-
-        if (cleanLine.startsWith('data: ')) {
-          try {
-            const json = JSON.parse(cleanLine.substring(6))
-            const reasoningContent = (json.choices?.[0]?.delta?.reasoning_content as string) || ''
-            const content = (json.choices?.[0]?.delta?.content as string) || ''
-
-            if (reasoningContent || content) {
-              mainWindow.webContents.send('chat-chunk', {
-                reqId,
-                content,
-                reasoningContent
-              })
-            }
-          } catch {
-            // Parse error on incomplete JSON chunks
-          }
-        }
+      onFinalChunk: (content) => {
+        mainWindow.webContents.send('chat-chunk', { reqId, content })
       }
-    }
-    // Stream completed
+    })
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })
   } catch (error) {
     const err = error as Error

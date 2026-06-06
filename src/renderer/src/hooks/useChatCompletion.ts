@@ -121,6 +121,113 @@ export const useChatCompletion = ({
   const [activeReqId, setActiveReqId] = useState<string | null>(null)
   const [runMode, setRunMode] = useState<RunMode>('chat')
 
+  // Replace a single message in the active session, keeping sessionsRef in sync.
+  const updateMessageById = (
+    msgId: string,
+    updater: (m: Message) => Message,
+    touchActiveTime = true
+  ): void => {
+    setSessions((prevSessions) => {
+      const next = prevSessions.map((s) => {
+        if (s.id !== activeSessionId) return s
+        return {
+          ...s,
+          messages: s.messages.map((m) => (m.id === msgId ? updater(m) : m)),
+          ...(touchActiveTime ? { lastActiveTime: Date.now() } : {})
+        }
+      })
+      sessionsRef.current = next
+      return next
+    })
+  }
+
+  // Persist the active session after a run finishes, merging into the latest stored state.
+  const persistActiveSession = (): void => {
+    setTimeout(async () => {
+      const finalSessions = ((await window.api.storeGet('sessions')) as Session[]) || []
+      const currentActive = sessionsRef.current.find((s) => s.id === activeSessionId)
+      if (currentActive) {
+        currentActive.lastActiveTime = Date.now()
+        const updatedSessions = finalSessions.map((s) =>
+          s.id === activeSessionId ? currentActive : s
+        )
+        if (!updatedSessions.some((s) => s.id === activeSessionId)) {
+          updatedSessions.push(currentActive)
+        }
+        await window.api.storeSet('sessions', updatedSessions)
+      }
+    }, 300)
+  }
+
+  // Shared streaming pipeline for both chat and agent-skill runs: subscribes to the
+  // chat-chunk channel, funnels deltas into the placeholder assistant message, and
+  // tears down on done/error. `start` kicks off the underlying IPC request.
+  const startStreamingRun = (
+    reqId: string,
+    assistantMsgId: string,
+    start: () => void,
+    formatError: (msg: string) => string
+  ): void => {
+    let accumulatedText = ''
+    let accumulatedReasoning = ''
+
+    const unsubscribe = window.api.onChatChunk((data: ChatChunkData): void => {
+      if (data.reqId !== reqId) return
+
+      if (data.error) {
+        updateMessageById(
+          assistantMsgId,
+          (m) => ({ ...m, content: formatError(data.error!) }),
+          false
+        )
+        cleanup()
+        return
+      }
+
+      if (data.done) {
+        cleanup()
+        return
+      }
+
+      if (data.reasoningContent) {
+        accumulatedReasoning += data.reasoningContent
+        updateMessageById(assistantMsgId, (m) => ({
+          ...m,
+          reasoning_content: accumulatedReasoning
+        }))
+      }
+
+      if (data.content) {
+        accumulatedText += data.content
+        updateMessageById(assistantMsgId, (m) => ({ ...m, content: accumulatedText }))
+      }
+
+      if (data.event) {
+        updateMessageById(assistantMsgId, (m) => applyAgentEventToMessage(m, data.event!))
+      }
+    })
+
+    const cleanup = (): void => {
+      unsubscribe()
+      setIsGenerating(false)
+      setActiveReqId(null)
+      persistActiveSession()
+    }
+
+    try {
+      start()
+    } catch (err) {
+      const error = err as Error
+      console.error(error)
+      updateMessageById(
+        assistantMsgId,
+        (m) => ({ ...m, content: formatError(error.message) }),
+        false
+      )
+      cleanup()
+    }
+  }
+
   const handleAbortGeneration = (): void => {
     if (activeReqId) {
       window.api.abortGeneration(activeReqId)
@@ -219,6 +326,10 @@ export const useChatCompletion = ({
       currentSession.title = promptToSend.substring(0, 15) || '聊天对话'
     }
 
+    // Construct request ID
+    const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    setActiveReqId(reqId)
+
     // Create placeholder for AI response
     const assistantMsgId = (Date.now() + 1).toString()
     const assistantMsg: Message = {
@@ -226,7 +337,7 @@ export const useChatCompletion = ({
       role: 'assistant',
       content: '',
       reasoning_content: '',
-      ...(runMode === 'agent' ? { agentRunId: assistantMsgId, agentEvents: [] } : {})
+      ...(runMode === 'agent' ? { agentRunId: reqId, agentEvents: [] } : {})
     }
     currentSession.messages.push(assistantMsg)
     setSessions([...currentSessions])
@@ -270,164 +381,19 @@ export const useChatCompletion = ({
       apiMessages.push({ role: msg.role, content })
     })
 
-    // Construct request ID
-    const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
-    setActiveReqId(reqId)
-    let accumulatedText = ''
-    let accumulatedReasoning = ''
-
-    const unsubscribe = window.api.onChatChunk((data: ChatChunkData): void => {
-      if (data.reqId !== reqId) return
-
-      if (data.error) {
-        setSessions((prevSessions) => {
-          const next = prevSessions.map((s) => {
-            if (s.id === activeSessionId) {
-              return {
-                ...s,
-                messages: s.messages.map((m) => {
-                  if (m.id === assistantMsgId) {
-                    return { ...m, content: `⚠️ 出错了：${data.error || '网络连接失败'}` }
-                  }
-                  return m
-                })
-              }
-            }
-            return s
-          })
-          sessionsRef.current = next
-          return next
-        })
-        cleanup()
-        return
-      }
-
-      if (data.done) {
-        cleanup()
-        return
-      }
-
-      if (data.reasoningContent) {
-        accumulatedReasoning += data.reasoningContent
-        setSessions((prevSessions) => {
-          const next = prevSessions.map((s) => {
-            if (s.id === activeSessionId) {
-              return {
-                ...s,
-                messages: s.messages.map((m) => {
-                  if (m.id === assistantMsgId) {
-                    return { ...m, reasoning_content: accumulatedReasoning }
-                  }
-                  return m
-                }),
-                lastActiveTime: Date.now()
-              }
-            }
-            return s
-          })
-          sessionsRef.current = next
-          return next
-        })
-      }
-
-      if (data.content) {
-        accumulatedText += data.content
-        setSessions((prevSessions) => {
-          const next = prevSessions.map((s) => {
-            if (s.id === activeSessionId) {
-              return {
-                ...s,
-                messages: s.messages.map((m) => {
-                  if (m.id === assistantMsgId) {
-                    return { ...m, content: accumulatedText }
-                  }
-                  return m
-                }),
-                lastActiveTime: Date.now()
-              }
-            }
-            return s
-          })
-          sessionsRef.current = next
-          return next
-        })
-      }
-
-      if (data.event) {
-        setSessions((prevSessions) => {
-          const next = prevSessions.map((s) => {
-            if (s.id === activeSessionId) {
-              return {
-                ...s,
-                messages: s.messages.map((m) => {
-                  if (m.id === assistantMsgId) {
-                    return applyAgentEventToMessage(m, data.event!)
-                  }
-                  return m
-                }),
-                lastActiveTime: Date.now()
-              }
-            }
-            return s
-          })
-          sessionsRef.current = next
-          return next
-        })
-      }
-    })
-
-    const cleanup = (): void => {
-      unsubscribe()
-      setIsGenerating(false)
-      setActiveReqId(null)
-      // Save sessions
-      setTimeout(async () => {
-        const finalSessions = ((await window.api.storeGet('sessions')) as Session[]) || []
-        const currentActive = sessionsRef.current.find((s) => s.id === activeSessionId)
-        if (currentActive) {
-          currentActive.lastActiveTime = Date.now()
-          const updatedSessions = finalSessions.map((s) =>
-            s.id === activeSessionId ? currentActive : s
-          )
-          if (!updatedSessions.some((s) => s.id === activeSessionId)) {
-            updatedSessions.push(currentActive)
-          }
-          await window.api.storeSet('sessions', updatedSessions)
-        }
-      }, 300)
-    }
-
-    try {
-      window.api.startChatCompletion(reqId, {
-        apiUrl,
-        apiKey,
-        model: selectedModel,
-        messages: apiMessages,
-        runMode
-      })
-    } catch (err) {
-      const error = err as Error
-      console.error(error)
-      setSessions((prevSessions) => {
-        const next = prevSessions.map((s) => {
-          if (s.id === activeSessionId) {
-            return {
-              ...s,
-              messages: s.messages.map((m) => {
-                if (m.id === assistantMsgId) {
-                  return { ...m, content: `⚠️ 出错了：${error.message || '启动请求失败'}` }
-                }
-                return m
-              })
-            }
-          }
-          return s
-        })
-        sessionsRef.current = next
-        return next
-      })
-      cleanup()
-    }
+    startStreamingRun(
+      reqId,
+      assistantMsgId,
+      () =>
+        window.api.startChatCompletion(reqId, {
+          apiUrl,
+          apiKey,
+          model: selectedModel,
+          messages: apiMessages,
+          runMode
+        }),
+      (msg) => `⚠️ 出错了：${msg || '网络连接失败'}`
+    )
   }
 
   const handleRunAgentSkill = async (skill: Skill, userInput: string): Promise<void> => {
@@ -482,161 +448,21 @@ export const useChatCompletion = ({
 
     const reqId = assistantMsgId
     setActiveReqId(reqId)
-    let accumulatedText = ''
-    let accumulatedReasoning = ''
 
-    const unsubscribe = window.api.onChatChunk((data: ChatChunkData): void => {
-      if (data.reqId !== reqId) return
-
-      if (data.error) {
-        setSessions((prevSessions) => {
-          const next = prevSessions.map((s) => {
-            if (s.id === activeSessionId) {
-              return {
-                ...s,
-                messages: s.messages.map((m) => {
-                  if (m.id === assistantMsgId) {
-                    return { ...m, content: `Agent Skill failed: ${data.error}` }
-                  }
-                  return m
-                })
-              }
-            }
-            return s
-          })
-          sessionsRef.current = next
-          return next
-        })
-        cleanup()
-        return
-      }
-
-      if (data.done) {
-        cleanup()
-        return
-      }
-
-      if (data.event) {
-        setSessions((prevSessions) => {
-          const next = prevSessions.map((s) => {
-            if (s.id === activeSessionId) {
-              return {
-                ...s,
-                messages: s.messages.map((m) => {
-                  if (m.id === assistantMsgId) {
-                    return applyAgentEventToMessage(m, data.event!)
-                  }
-                  return m
-                }),
-                lastActiveTime: Date.now()
-              }
-            }
-            return s
-          })
-          sessionsRef.current = next
-          return next
-        })
-      }
-
-      if (data.reasoningContent) {
-        accumulatedReasoning += data.reasoningContent
-        setSessions((prevSessions) => {
-          const next = prevSessions.map((s) => {
-            if (s.id === activeSessionId) {
-              return {
-                ...s,
-                messages: s.messages.map((m) => {
-                  if (m.id === assistantMsgId) {
-                    return { ...m, reasoning_content: accumulatedReasoning }
-                  }
-                  return m
-                }),
-                lastActiveTime: Date.now()
-              }
-            }
-            return s
-          })
-          sessionsRef.current = next
-          return next
-        })
-      }
-
-      if (data.content) {
-        accumulatedText += data.content
-        setSessions((prevSessions) => {
-          const next = prevSessions.map((s) => {
-            if (s.id === activeSessionId) {
-              return {
-                ...s,
-                messages: s.messages.map((m) => {
-                  if (m.id === assistantMsgId) {
-                    return { ...m, content: accumulatedText }
-                  }
-                  return m
-                }),
-                lastActiveTime: Date.now()
-              }
-            }
-            return s
-          })
-          sessionsRef.current = next
-          return next
-        })
-      }
-    })
-
-    const cleanup = (): void => {
-      unsubscribe()
-      setIsGenerating(false)
-      setActiveReqId(null)
-      setTimeout(async () => {
-        const finalSessions = ((await window.api.storeGet('sessions')) as Session[]) || []
-        const currentActive = sessionsRef.current.find((s) => s.id === activeSessionId)
-        if (currentActive) {
-          currentActive.lastActiveTime = Date.now()
-          const updatedSessions = finalSessions.map((s) =>
-            s.id === activeSessionId ? currentActive : s
-          )
-          if (!updatedSessions.some((s) => s.id === activeSessionId)) {
-            updatedSessions.push(currentActive)
-          }
-          await window.api.storeSet('sessions', updatedSessions)
-        }
-      }, 300)
-    }
-
-    try {
-      window.api.startAgentSkill(reqId, {
-        apiUrl,
-        apiKey,
-        model: selectedModel,
-        systemPrompt,
-        skill,
-        userInput
-      })
-    } catch (err) {
-      const error = err as Error
-      console.error(error)
-      setSessions((prevSessions) => {
-        const next = prevSessions.map((s) => {
-          if (s.id === activeSessionId) {
-            return {
-              ...s,
-              messages: s.messages.map((m) => {
-                if (m.id === assistantMsgId) {
-                  return { ...m, content: `Agent Skill start failed: ${error.message}` }
-                }
-                return m
-              })
-            }
-          }
-          return s
-        })
-        sessionsRef.current = next
-        return next
-      })
-      cleanup()
-    }
+    startStreamingRun(
+      reqId,
+      assistantMsgId,
+      () =>
+        window.api.startAgentSkill(reqId, {
+          apiUrl,
+          apiKey,
+          model: selectedModel,
+          systemPrompt,
+          skill,
+          userInput
+        }),
+      (msg) => `Agent Skill failed: ${msg}`
+    )
   }
 
   const handleStartEdit = (msg: Message): void => {
