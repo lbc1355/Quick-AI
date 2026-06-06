@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { promises as fs } from 'fs'
 import { join, resolve } from 'path'
 import { isPathInWorkspace, isSensitiveFile, ToolRegistry, getWorkspaceRoot } from './toolRegistry'
@@ -15,11 +15,14 @@ describe('File Safety & Search Tools', () => {
     // Set up a temporary folder structure within the workspace for testing
     await fs.mkdir(testDir, { recursive: true })
     await fs.mkdir(join(testDir, 'sub'), { recursive: true })
+    await fs.mkdir(join(testDir, 'sub', 'deep'), { recursive: true })
     await fs.mkdir(join(testDir, 'node_modules'), { recursive: true })
 
     await fs.writeFile(join(testDir, 'a.txt'), `line1\nline2\n${queryStr}\nline4`)
     await fs.writeFile(join(testDir, 'b.log'), `${queryStr}\nline2\n${queryStrUpper}`)
+    await fs.writeFile(join(testDir, 'root.ts'), `${queryStr}`)
     await fs.writeFile(join(testDir, 'sub', 'c.ts'), `other\n${queryStr}`)
+    await fs.writeFile(join(testDir, 'sub', 'deep', 'd.ts'), `${queryStr}`)
     await fs.writeFile(join(testDir, 'sub', 'sensitive.key'), 'secret')
     await fs.writeFile(join(testDir, '.env'), 'SECRET_KEY=123')
     await fs.writeFile(join(testDir, 'node_modules', 'ignored.txt'), queryStr)
@@ -98,8 +101,8 @@ describe('File Safety & Search Tools', () => {
       const context = { reqId: 'test-req', signal: new AbortController().signal }
       const res = await ToolRegistry.workspace_search.execute({ query: queryStr }, context)
 
-      // matches: 1 in a.txt, 2 in b.log, 1 in c.ts (ignored.txt in node_modules is skipped)
-      expect(res.resultForUi.items).toHaveLength(4)
+      // matches: 1 in a.txt, 2 in b.log, 1 in root.ts, 1 in c.ts, 1 in d.ts (ignored.txt in node_modules is skipped)
+      expect(res.resultForUi.items).toHaveLength(6)
       const paths = res.resultForUi.items?.map((item) => item.title) || []
       expect(paths.some((p) => p.includes('a.txt'))).toBe(true)
       expect(paths.some((p) => p.includes('b.log'))).toBe(true)
@@ -121,12 +124,12 @@ describe('File Safety & Search Tools', () => {
     it('respects caseSensitivity option', async () => {
       const context = { reqId: 'test-req', signal: new AbortController().signal }
 
-      // Case insensitive (default) - should match 4 lines across a.txt, b.log, c.ts
+      // Case insensitive (default) - should match 6 lines across a.txt, b.log, root.ts, c.ts, d.ts
       const resInsensitive = await ToolRegistry.workspace_search.execute(
         { query: queryStrUpper },
         context
       )
-      expect(resInsensitive.resultForUi.items).toHaveLength(4)
+      expect(resInsensitive.resultForUi.items).toHaveLength(6)
 
       // Case sensitive - should only match 1 line in b.log
       const resSensitive = await ToolRegistry.workspace_search.execute(
@@ -145,6 +148,67 @@ describe('File Safety & Search Tools', () => {
       )
 
       expect(res.resultForUi.items).toHaveLength(2)
+    })
+
+    it('escapes special regex characters in search query without crashing', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      // Each of these contains regex metacharacters that previously crashed or matched incorrectly
+      for (const q of ['*', 'fetch_url?', 'a+b', '[test]']) {
+        await expect(
+          ToolRegistry.workspace_search.execute({ query: q }, context)
+        ).resolves.toBeDefined()
+      }
+    })
+
+    it('supports ** glob for recursive directory matching', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const res = await ToolRegistry.workspace_search.execute(
+        { query: queryStr, glob: 'temp-file-test-dir/**/*.ts' },
+        context
+      )
+      const paths = res.resultForUi.items?.map((item) => item.title) || []
+      // ** should match zero-or-more directory levels
+      expect(paths.some((p) => p.includes('root.ts'))).toBe(true)
+      expect(paths.some((p) => p.includes('c.ts'))).toBe(true)
+      expect(paths.some((p) => p.includes('d.ts'))).toBe(true)
+    })
+
+    it('truncates long matched lines to 300 characters', async () => {
+      const longLineFile = join(testDir, 'long-line.txt')
+      const longLine = queryStr + 'X'.repeat(500)
+      await fs.writeFile(longLineFile, longLine)
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+
+      try {
+        const res = await ToolRegistry.workspace_search.execute(
+          { query: queryStr, glob: 'temp-file-test-dir/long-line.txt' },
+          context
+        )
+        expect(res.resultForUi.items).toHaveLength(1)
+        expect(res.resultForModel).toContain('...')
+        expect(res.resultForModel).not.toContain('X'.repeat(500))
+      } finally {
+        await fs.unlink(longLineFile).catch(() => {})
+      }
+    })
+
+    it('caps total result text at 25000 characters', async () => {
+      const manyMatchesFile = join(testDir, 'many-matches.txt')
+      const lines = Array.from({ length: 500 }, (_, i) => `${queryStr} line ${i}`)
+      await fs.writeFile(manyMatchesFile, lines.join('\n'))
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+
+      try {
+        const res = await ToolRegistry.workspace_search.execute(
+          { query: queryStr, glob: 'temp-file-test-dir/many-matches.txt', maxResults: 500 },
+          context
+        )
+        // 25000 + truncation notice
+        expect(res.resultForModel.length).toBeLessThanOrEqual(25200)
+        expect(res.resultForModel).toContain('[Results truncated')
+      } finally {
+        await fs.unlink(manyMatchesFile).catch(() => {})
+      }
     })
 
     it('blocks reading files outside workspace via symbolic link', async () => {
@@ -230,6 +294,38 @@ describe('File Safety & Search Tools', () => {
           // Ignore cleanup error
         }
       }
+    })
+
+    it('handles search timeouts and reports scan truncation', async () => {
+      let callCount = 0
+      const originalNow = Date.now
+      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => {
+        callCount++
+        if (callCount > 10) {
+          return originalNow() + 12000
+        }
+        return originalNow()
+      })
+
+      try {
+        const context = { reqId: 'test-req', signal: new AbortController().signal }
+        const res = await ToolRegistry.workspace_search.execute({ query: queryStr }, context)
+        expect(res.resultForModel).toContain('[Warning: Search scan was truncated. Reason: Time limit exceeded]')
+        expect(res.resultForUi.summary).toContain('Scan truncated: Time limit exceeded')
+      } finally {
+        nowSpy.mockRestore()
+      }
+    })
+
+    it('logs and displays workspace root in file_read and workspace_search', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const resSearch = await ToolRegistry.workspace_search.execute({ query: queryStr }, context)
+      expect(resSearch.resultForModel).toContain(`Workspace Root: ${workspaceRoot}`)
+      expect(resSearch.resultForUi.summary).toContain(workspaceRoot)
+
+      const resRead = await ToolRegistry.file_read.execute({ path: join(testDir, 'a.txt') }, context)
+      expect(resRead.resultForModel).toContain(`Workspace Root: ${workspaceRoot}`)
+      expect(resRead.resultForUi.summary).toContain(workspaceRoot)
     })
   })
 })

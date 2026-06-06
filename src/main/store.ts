@@ -58,6 +58,7 @@ const DEFAULT_STORAGE: StorageSchema = {
     permissions: {
       fetch_url: 'allow',
       web_search: 'allow',
+      workspace_search: 'ask',
       file_read: 'ask',
       file_write: 'deny',
       shell: 'deny'

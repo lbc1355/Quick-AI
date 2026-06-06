@@ -80,7 +80,8 @@ const validatePublicHttpUrl = async (rawUrl: string): Promise<URL> => {
 const fetchWithCheckedRedirects = async (
   rawUrl: string,
   signal: AbortSignal,
-  redirects = 0
+  redirects = 0,
+  headers?: Record<string, string>
 ): Promise<Response> => {
   const parsed = await validatePublicHttpUrl(rawUrl)
   const response = await fetch(parsed.toString(), {
@@ -90,7 +91,8 @@ const fetchWithCheckedRedirects = async (
     headers: {
       Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1',
       'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      ...headers
     }
   })
 
@@ -103,7 +105,7 @@ const fetchWithCheckedRedirects = async (
       throw new Error(`Redirect response missing location header: ${response.status}`)
     }
     const nextUrl = new URL(location, parsed).toString()
-    return fetchWithCheckedRedirects(nextUrl, signal, redirects + 1)
+    return fetchWithCheckedRedirects(nextUrl, signal, redirects + 1, headers)
   }
 
   return response
@@ -179,17 +181,15 @@ export const stripHtml = (html: string): string => {
   ).trim()
 }
 
-export interface SearchResult {
+export interface WebSearchResult {
   title: string
-  href: string
+  url: string
   snippet: string
+  source?: 'Bing' | 'Sogou' | 'DuckDuckGo'
 }
 
-// Pure parser for the DuckDuckGo HTML endpoint (html.duckduckgo.com/html). Kept
-// separate from fetching so it can be regression-tested against captured markup —
-// DuckDuckGo's class/attribute layout has shifted before and broken this silently.
-export const parseDuckDuckGoResults = (html: string, limit = 8): SearchResult[] => {
-  const results: SearchResult[] = []
+export const parseDuckDuckGoResults = (html: string, limit = 8): WebSearchResult[] => {
+  const results: WebSearchResult[] = []
   const blocks = html.split(/<div\s+class="[^"]*web-result[^"]*"/i)
   for (let i = 1; i < blocks.length && results.length < limit; i++) {
     const block = blocks[i]
@@ -223,14 +223,13 @@ export const parseDuckDuckGoResults = (html: string, limit = 8): SearchResult[] 
     )
     const snippet = snippetMatch ? stripHtml(snippetMatch[1]).replace(/\s+/g, ' ').trim() : ''
 
-    results.push({ title, href, snippet })
+    results.push({ title, url: href, snippet, source: 'DuckDuckGo' })
   }
   return results
 }
 
-// Pure parser for Bing's HTML results page (used as a fallback search engine).
-export const parseBingResults = (html: string, limit = 8): SearchResult[] => {
-  const results: SearchResult[] = []
+export const parseBingResults = (html: string, limit = 8): WebSearchResult[] => {
+  const results: WebSearchResult[] = []
   const blocks = html.split(/<li\s+class="[^"]*b_algo[^"]*"/i)
   for (let i = 1; i < blocks.length && results.length < limit; i++) {
     const block = blocks[i]
@@ -250,17 +249,14 @@ export const parseBingResults = (html: string, limit = 8): SearchResult[] => {
     const snippet = pMatch ? stripHtml(pMatch[1]).replace(/\s+/g, ' ').trim() : ''
 
     if (href && title) {
-      results.push({ title, href, snippet })
+      results.push({ title, url: href, snippet, source: 'Bing' })
     }
   }
   return results
 }
 
-// Pure parser for Sogou's results page (used as a China-accessible fallback when
-// DuckDuckGo is rate-limited). Title links are wrapped in Sogou redirect paths
-// (/link?url=...), so relative hrefs are resolved against the sogou.com origin.
-export const parseSogouResults = (html: string, limit = 8): SearchResult[] => {
-  const results: SearchResult[] = []
+export const parseSogouResults = (html: string, limit = 8): WebSearchResult[] => {
+  const results: WebSearchResult[] = []
   const blocks = html.split(/<div\s+class="vrwrap"/i)
   for (let i = 1; i < blocks.length && results.length < limit; i++) {
     const block = blocks[i]
@@ -282,15 +278,15 @@ export const parseSogouResults = (html: string, limit = 8): SearchResult[] => {
     const snippet = snippetMatch ? stripHtml(snippetMatch[1]).replace(/\s+/g, ' ').trim() : ''
 
     if (href && title) {
-      results.push({ title, href, snippet })
+      results.push({ title, url: href, snippet, source: 'Sogou' })
     }
   }
   return results
 }
 
-const formatSearchResults = (results: SearchResult[]): string =>
+export const formatSearchResultsForModel = (results: WebSearchResult[]): string =>
   results
-    .map((r, idx) => `${idx + 1}. ${r.title}\n   URL: ${r.href}\n   Snippet: ${r.snippet}`)
+    .map((r, idx) => `${idx + 1}. ${r.title}\n   URL: ${r.url}\n   Snippet: ${r.snippet}`)
     .join('\n\n')
 
 const readTitle = (html: string): string => {
@@ -404,9 +400,9 @@ const SEARCH_HEADERS = {
 }
 
 interface SearchEngine {
-  name: string
+  name: 'Bing' | 'Sogou' | 'DuckDuckGo'
   buildUrl: (query: string) => string
-  parse: (html: string) => SearchResult[]
+  parse: (html: string) => WebSearchResult[]
 }
 
 // Ordered by observed reliability: Bing international returns direct (non-wrapped)
@@ -433,15 +429,12 @@ const SEARCH_ENGINES: SearchEngine[] = [
 const fetchSearchHtml = async (url: string, signal?: AbortSignal): Promise<string> => {
   const { signal: combinedSignal, cleanup } = createCombinedSignal(signal, REQUEST_TIMEOUT_MS)
   try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: SEARCH_HEADERS,
-      signal: combinedSignal
-    })
+    const response = await fetchWithCheckedRedirects(url, combinedSignal, 0, SEARCH_HEADERS)
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} ${response.statusText}`)
     }
-    return await response.text()
+    const { text } = await readLimitedText(response)
+    return text
   } finally {
     cleanup()
   }
@@ -450,7 +443,10 @@ const fetchSearchHtml = async (url: string, signal?: AbortSignal): Promise<strin
 // Try each engine in order and return the first that yields results. Engines that
 // error, rate-limit, or parse to zero results are skipped so a single flaky engine
 // no longer leaves the agent with nothing.
-export const webSearch = async (query: string, signal?: AbortSignal): Promise<string> => {
+export const webSearch = async (
+  query: string,
+  signal?: AbortSignal
+): Promise<WebSearchResult[]> => {
   const cleanQuery = query.slice(0, 300)
   const failures: string[] = []
 
@@ -460,7 +456,7 @@ export const webSearch = async (query: string, signal?: AbortSignal): Promise<st
       const html = await fetchSearchHtml(engine.buildUrl(cleanQuery), signal)
       const results = engine.parse(html)
       if (results.length > 0) {
-        return formatSearchResults(results)
+        return results.map((r) => ({ ...r, source: engine.name }))
       }
       failures.push(`${engine.name}: no results`)
     } catch (error) {
