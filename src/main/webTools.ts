@@ -89,7 +89,7 @@ const fetchWithCheckedRedirects = async (
     signal,
     headers: {
       Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1',
-      'User-Agent': 'QuickAI/1.0 (+https://quickai.local)'
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
   })
 
@@ -255,22 +255,35 @@ export const webSearch = async (query: string, signal?: AbortSignal): Promise<st
   const { text: html } = await fetchPublicText(url, signal)
 
   const results: Array<{ title: string; href: string; snippet: string }> = []
-  const blocks = html.split('<div class="web-result')
+  const blocks = html.split(/<div\s+class="[^"]*web-result[^"]*"/i)
   for (let i = 1; i < blocks.length && results.length < 8; i++) {
     const block = blocks[i]
-    const aMatch = block.match(/<a\s+class="result__a"\s+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i)
+
+    // Robustly match the link tag containing class "result__a"
+    const aMatch = block.match(/<a\s+[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i)
     if (!aMatch) continue
 
-    let href = aMatch[1]
-    if (href.startsWith('/l/?')) {
+    const fullLinkTag = aMatch[0]
+    const titleHtml = aMatch[1]
+
+    const hrefMatch = fullLinkTag.match(/href="([^"]+)"/i)
+    let href = hrefMatch ? hrefMatch[1] : ''
+
+    if (href.startsWith('//')) {
+      href = 'https:' + href
+    }
+
+    if (href.includes('/l/?')) {
       const uddgMatch = href.match(/[?&]uddg=([^&]+)/)
       if (uddgMatch) {
         href = decodeURIComponent(uddgMatch[1])
       }
     }
 
-    const title = stripHtml(aMatch[2]).replace(/\s+/g, ' ').trim()
-    const snippetMatch = block.match(/<a\s+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i)
+    const title = stripHtml(titleHtml).replace(/\s+/g, ' ').trim()
+
+    // Robustly match the snippet tag containing class "result__snippet"
+    const snippetMatch = block.match(/<a\s+[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i)
     const snippet = snippetMatch ? stripHtml(snippetMatch[1]).replace(/\s+/g, ' ').trim() : ''
 
     results.push({ title, href, snippet })
