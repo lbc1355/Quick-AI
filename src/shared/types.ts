@@ -1,9 +1,19 @@
+export type AgentEvent =
+  | { type: 'agent_start'; skillName: string }
+  | { type: 'reasoning'; content: string }
+  | { type: 'tool_call'; callId: string; toolName: string; args: unknown; permissionState?: 'pending' | 'approved' | 'denied' }
+  | { type: 'tool_result'; callId: string; result: { title?: string; url?: string; summary?: string } }
+  | { type: 'tool_error'; callId: string; error: string }
+  | { type: 'final'; content: string }
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   reasoning_content?: string
   files?: Array<{ name: string; content: string; type: string }>
+  agentRunId?: string
+  agentEvents?: AgentEvent[]
 }
 
 export interface ChatCompletionMessage {
@@ -49,6 +59,9 @@ export interface AppSettings {
   systemPrompt: string
   autoHideOnBlur: boolean
   theme?: 'dark' | 'light'
+  permissions?: {
+    [toolName: string]: 'allow' | 'ask' | 'deny'
+  }
 }
 
 export type SkillMode = 'insert' | 'send' | 'run'
@@ -116,4 +129,5 @@ export interface ChatChunkData {
   reasoningContent?: string
   done?: boolean
   error?: string
+  event?: AgentEvent
 }

@@ -19,6 +19,7 @@ declare global {
         messages: ChatCompletionMessage[]
       }) => void
       startAgentSkill: (reqId: string, options: AgentSkillRunOptions) => void
+      respondToolPermission: (reqId: string, callId: string, approved: boolean) => void
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
     }

@@ -364,13 +364,15 @@ export const useChatCompletion = ({
       id: assistantMsgId,
       role: 'assistant',
       content: '',
-      reasoning_content: ''
+      reasoning_content: '',
+      agentRunId: assistantMsgId,
+      agentEvents: []
     }
     currentSession.messages.push(assistantMsg)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
 
-    const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    const reqId = assistantMsgId
     let accumulatedText = ''
     let accumulatedReasoning = ''
 
@@ -401,6 +403,66 @@ export const useChatCompletion = ({
       if (data.done) {
         cleanup()
         return
+      }
+
+      if (data.event) {
+        setSessions((prevSessions) =>
+          prevSessions.map((s) => {
+            if (s.id === activeSessionId) {
+              return {
+                ...s,
+                messages: s.messages.map((m) => {
+                  if (m.id === assistantMsgId) {
+                    const currentEvents = m.agentEvents || []
+                    const newEvent = data.event!
+                    const updatedEvents = [...currentEvents]
+
+                    if (updatedEvents.length > 0) {
+                      const lastEvent = updatedEvents[updatedEvents.length - 1]
+                      if (lastEvent.type === 'reasoning' && newEvent.type === 'reasoning') {
+                        // Merge consecutive reasoning events
+                        updatedEvents[updatedEvents.length - 1] = {
+                          ...lastEvent,
+                          content: lastEvent.content + newEvent.content
+                        }
+                      } else if (lastEvent.type === 'final' && newEvent.type === 'final') {
+                        // Merge consecutive final events
+                        updatedEvents[updatedEvents.length - 1] = {
+                          ...lastEvent,
+                          content: lastEvent.content + newEvent.content
+                        }
+                      } else {
+                        updatedEvents.push(newEvent)
+                      }
+                    } else {
+                      updatedEvents.push(newEvent)
+                    }
+
+                    // Keep legacy fields populated for compatibility
+                    let newContent = m.content
+                    let newReasoning = m.reasoning_content
+
+                    if (newEvent.type === 'reasoning') {
+                      newReasoning = (newReasoning || '') + newEvent.content
+                    } else if (newEvent.type === 'final') {
+                      newContent = (newContent || '') + newEvent.content
+                    }
+
+                    return {
+                      ...m,
+                      agentEvents: updatedEvents,
+                      content: newContent,
+                      reasoning_content: newReasoning
+                    }
+                  }
+                  return m
+                }),
+                lastActiveTime: Date.now()
+              }
+            }
+            return s
+          })
+        )
       }
 
       if (data.reasoningContent) {

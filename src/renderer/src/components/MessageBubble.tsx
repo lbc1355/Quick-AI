@@ -74,6 +74,10 @@ const LogStepRow: React.FC<LogStepRowProps> = ({ log, resultLog, errorLog }) => 
 
 const LogThinkRow: React.FC<{ log: AgentLogStep }> = ({ log }) => {
   const [isExpanded, setIsExpanded] = useState(false)
+  const title = log.step > 0 
+    ? `Thought (Step ${log.step}/${log.maxSteps})`
+    : `Thought`
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
       <div 
@@ -88,7 +92,7 @@ const LogThinkRow: React.FC<{ log: AgentLogStep }> = ({ log }) => {
         }}
       >
         <span style={{ color: 'var(--color-text-muted)', opacity: 0.9 }}>
-          Thought (Step {log.step}/{log.maxSteps})
+          {title}
         </span>
         <span style={{ fontSize: '8px', opacity: 0.6 }}>{isExpanded ? 'v' : '>'}</span>
       </div>
@@ -103,6 +107,156 @@ const LogThinkRow: React.FC<{ log: AgentLogStep }> = ({ log }) => {
           opacity: 0.85
         }}>
           {log.thought}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface EventStepRowProps {
+  callId: string
+  agentRunId?: string
+  toolName: string
+  args: any
+  permissionState?: 'pending' | 'approved' | 'denied'
+  result?: { title?: string; url?: string; summary?: string }
+  error?: string
+  setLocalPermissionState: (state: 'approved' | 'denied') => void
+}
+
+const EventStepRow: React.FC<EventStepRowProps> = ({
+  callId,
+  agentRunId,
+  toolName,
+  args,
+  permissionState,
+  result,
+  error,
+  setLocalPermissionState
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const url = args && typeof args === 'object' ? args.url || '' : ''
+  const displayUrl = url ? url.replace(/^https?:\/\/(www\.)?/, '') : ''
+  const truncatedUrl = displayUrl.length > 55 ? displayUrl.substring(0, 55) + '...' : displayUrl
+
+  const handlePermission = (approved: boolean): void => {
+    if (agentRunId) {
+      window.api.respondToolPermission(agentRunId, callId, approved)
+      setLocalPermissionState(approved ? 'approved' : 'denied')
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          cursor: 'pointer', 
+          userSelect: 'none',
+          color: 'var(--color-text-muted)',
+          gap: '6px'
+        }}
+      >
+        <span style={{ color: 'var(--color-text-muted)', opacity: 0.9 }}>
+          Called {toolName} {truncatedUrl && `(${truncatedUrl})`}
+        </span>
+        <span style={{ fontSize: '8px', opacity: 0.6 }}>{isExpanded ? 'v' : '>'}</span>
+        
+        {permissionState === 'pending' ? (
+          <span style={{ color: '#eab308', opacity: 0.8, fontSize: '9px', marginLeft: '4px' }}>[waiting for permission]</span>
+        ) : permissionState === 'denied' ? (
+          <span style={{ color: '#ef4444', opacity: 0.8, fontSize: '9px', marginLeft: '4px' }}>[denied]</span>
+        ) : error ? (
+          <span style={{ color: '#ef4444', opacity: 0.8, fontSize: '9px', marginLeft: '4px' }}>[failed]</span>
+        ) : result ? (
+          <span style={{ color: '#10b981', opacity: 0.8, fontSize: '9px', marginLeft: '4px' }}>[completed]</span>
+        ) : (
+          <span style={{ color: '#eab308', opacity: 0.8, fontSize: '9px', marginLeft: '4px' }}>[running]</span>
+        )}
+      </div>
+
+      {permissionState === 'pending' && (
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          paddingLeft: '14px',
+          marginTop: '4px',
+          marginBottom: '4px'
+        }}>
+          <button 
+            onClick={() => handlePermission(true)}
+            style={{
+              padding: '2px 8px',
+              fontSize: '10px',
+              background: '#10b981',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500
+            }}
+          >
+            Approve
+          </button>
+          <button 
+            onClick={() => handlePermission(false)}
+            style={{
+              padding: '2px 8px',
+              fontSize: '10px',
+              background: '#ef4444',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500
+            }}
+          >
+            Deny
+          </button>
+        </div>
+      )}
+      
+      {isExpanded && (
+        <div style={{ 
+          paddingLeft: '14px', 
+          fontSize: '9px', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '2px',
+          color: 'var(--color-text-muted)',
+          opacity: 0.8
+        }}>
+          {url && (
+            <div style={{ wordBreak: 'break-all' }}>
+              URL: <a href={url} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>{url}</a>
+            </div>
+          )}
+          {args && typeof args === 'object' && Object.keys(args).filter(k => k !== 'url').map(key => (
+            <div key={key}>
+              {key}: {JSON.stringify(args[key])}
+            </div>
+          ))}
+          {result && (
+            <>
+              {result.title && (
+                <div style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                  Title: {result.title}
+                </div>
+              )}
+              {result.summary && (
+                <div style={{ fontStyle: 'italic', opacity: 0.9 }}>
+                  Summary: {result.summary}
+                </div>
+              )}
+            </>
+          )}
+          {error && (
+            <div style={{ color: '#f87171' }}>
+              Error: {error}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -139,15 +293,28 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     msg.content,
     msg.reasoning_content
   )
-  const { logs, cleanContent } = parseAgentLogs(displayContent)
+  
+  const [localPerms, setLocalPerms] = useState<Record<string, 'approved' | 'denied'>>({})
+
+  // Determine if we use structured agent events or legacy string logs fallback
+  const hasStructuredEvents = msg.agentEvents && msg.agentEvents.length > 0
+  const legacyLogs = !hasStructuredEvents ? parseAgentLogs(displayContent).logs : []
+  const cleanContent = hasStructuredEvents ? displayContent : parseAgentLogs(displayContent).cleanContent
+
   const [isLogsExpanded, setIsLogsExpanded] = useState(isGenerating && !cleanContent)
   const isEditing = editingMessageId === msg.id
   
   const [elapsed, setElapsed] = useState<number>(0)
   const isFinished = !isGenerating || !!cleanContent
 
+  const toolCallCount = hasStructuredEvents
+    ? msg.agentEvents!.filter(e => e.type === 'tool_call').length
+    : legacyLogs.filter(l => l.type === 'tool').length
+
+  const hasLogs = hasStructuredEvents || legacyLogs.length > 0
+
   useEffect(() => {
-    if (isGenerating && !cleanContent && logs.length > 0) {
+    if (isGenerating && !cleanContent && hasLogs) {
       const startTime = parseInt(msg.id) || Date.now()
       const timer = setInterval(() => {
         setElapsed(Math.round((Date.now() - startTime) / 1000))
@@ -155,7 +322,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       return () => clearInterval(timer)
     }
     return undefined
-  }, [isGenerating, cleanContent, logs.length, msg.id])
+  }, [isGenerating, cleanContent, hasLogs, msg.id])
 
   // Auto-collapse logs when final answer starts streaming
   useEffect(() => {
@@ -166,7 +333,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-      {logs.length > 0 && (
+      {hasLogs && (
         <div className="agent-logs-container-fullwidth" style={{
           margin: '12px 0 16px 0',
           padding: '0 4px',
@@ -189,7 +356,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <span>
               {isGenerating && !cleanContent
                 ? `Worked for ${elapsed}s`
-                : `Called tools (${logs.filter(l => l.type === 'tool').length} steps)`
+                : `Called tools (${toolCallCount} steps)`
               }
             </span>
             <span style={{ fontSize: '9px', opacity: 0.7 }}>{isLogsExpanded ? 'v' : '>'}</span>
@@ -202,29 +369,70 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               gap: '6px',
               paddingLeft: '16px'
             }}>
-              {logs.reduce<React.ReactNode[]>((acc, log, logIdx) => {
-                if (log.type === 'think') {
-                  acc.push(
-                    <LogThinkRow
-                      key={`think-${log.step}-${logIdx}`}
-                      log={log}
-                    />
-                  )
-                } else if (log.type === 'tool') {
-                  const resultLog = logs.find(l => l.step === log.step && l.type === 'result' && l.url === log.url)
-                  const errorLog = logs.find(l => l.step === log.step && l.type === 'error')
-                  
-                  acc.push(
-                    <LogStepRow
-                      key={`step-${log.step}-${logIdx}`}
-                      log={log}
-                      resultLog={resultLog}
-                      errorLog={errorLog}
-                    />
-                  )
-                }
-                return acc
-              }, [])}
+              {hasStructuredEvents ? (
+                msg.agentEvents!.reduce<React.ReactNode[]>((acc, event, eventIdx) => {
+                  if (event.type === 'reasoning') {
+                    acc.push(
+                      <LogThinkRow
+                        key={`think-${eventIdx}`}
+                        log={{
+                          step: 0,
+                          maxSteps: 0,
+                          type: 'think',
+                          thought: event.content
+                        }}
+                      />
+                    )
+                  } else if (event.type === 'tool_call') {
+                    const callId = event.callId
+                    const resultEvent = msg.agentEvents!.find(e => e.type === 'tool_result' && e.callId === callId) as any
+                    const errorEvent = msg.agentEvents!.find(e => e.type === 'tool_error' && e.callId === callId) as any
+                    
+                    const permState = localPerms[callId] || event.permissionState
+
+                    acc.push(
+                      <EventStepRow
+                        key={`step-${callId}-${eventIdx}`}
+                        callId={callId}
+                        agentRunId={msg.agentRunId}
+                        toolName={event.toolName}
+                        args={event.args}
+                        permissionState={permState}
+                        result={resultEvent?.result}
+                        error={errorEvent?.error}
+                        setLocalPermissionState={(state) => {
+                          setLocalPerms(prev => ({ ...prev, [callId]: state }))
+                        }}
+                      />
+                    )
+                  }
+                  return acc
+                }, [])
+              ) : (
+                legacyLogs.reduce<React.ReactNode[]>((acc, log, logIdx) => {
+                  if (log.type === 'think') {
+                    acc.push(
+                      <LogThinkRow
+                        key={`think-${log.step}-${logIdx}`}
+                        log={log}
+                      />
+                    )
+                  } else if (log.type === 'tool') {
+                    const resultLog = legacyLogs.find(l => l.step === log.step && l.type === 'result' && l.url === log.url)
+                    const errorLog = legacyLogs.find(l => l.step === log.step && l.type === 'error')
+                    
+                    acc.push(
+                      <LogStepRow
+                        key={`step-${log.step}-${logIdx}`}
+                        log={log}
+                        resultLog={resultLog}
+                        errorLog={errorLog}
+                      />
+                    )
+                  }
+                  return acc
+                }, [])
+              )}
             </div>
           )}
 
@@ -240,7 +448,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       )}
 
       {/* 2. Standard message bubble wrapper */}
-      {(cleanContent || displayReasoning || msg.role === 'user' || (isGenerating && !displayReasoning && logs.length === 0)) && (
+      {(cleanContent || displayReasoning || msg.role === 'user' || (isGenerating && !displayReasoning && !hasLogs)) && (
         <div className={`message-bubble ${msg.role}`}>
           <div className={`avatar ${msg.role}`}>{msg.role === 'user' ? 'U' : 'AI'}</div>
           <div className="message-content-wrapper" style={{ maxWidth: '100%' }}>

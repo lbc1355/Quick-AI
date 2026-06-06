@@ -18,6 +18,8 @@ const api = {
     messages: ChatCompletionMessage[]
   }): void => ipcRenderer.send('start-chat-completion', reqId, options),
   startAgentSkill: (reqId: string, options: AgentSkillRunOptions): void => ipcRenderer.send('start-agent-skill', reqId, options),
+  respondToolPermission: (reqId: string, callId: string, approved: boolean): void =>
+    ipcRenderer.send('respond-tool-permission', reqId, callId, approved),
   onChatChunk: (callback: (data: ChatChunkData) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, data: ChatChunkData): void => callback(data)
     ipcRenderer.on('chat-chunk', listener)

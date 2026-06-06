@@ -14,6 +14,9 @@ interface LegacyAppSettings {
   apiUrl?: string
   model?: string
   modelsList?: string[]
+  permissions?: {
+    [toolName: string]: 'allow' | 'ask' | 'deny'
+  }
 }
 
 const DEFAULT_STORAGE: StorageSchema = {
@@ -50,7 +53,14 @@ const DEFAULT_STORAGE: StorageSchema = {
     ],
     activeProviderId: 'provider-deepseek',
     systemPrompt: 'You are QuickAI, a helpful, fast, and polite AI desktop assistant. Respond concisely and accurately.',
-    autoHideOnBlur: true
+    autoHideOnBlur: true,
+    permissions: {
+      fetch_url: 'allow',
+      web_search: 'allow',
+      file_read: 'ask',
+      file_write: 'deny',
+      shell: 'deny'
+    }
   },
   skills: [],
   memories: []
@@ -158,11 +168,20 @@ export class FileStore {
         }
 
         // Merge defaults to prevent breaking changes on old versions
+        const mergedSettings: AppSettings = {
+          ...DEFAULT_STORAGE.settings,
+          ...settings,
+          permissions: {
+            ...DEFAULT_STORAGE.settings.permissions,
+            ...(settings.permissions || {})
+          }
+        }
+
         return {
           ...DEFAULT_STORAGE,
           ...parsed,
           skills: loadedSkills,
-          settings: { ...DEFAULT_STORAGE.settings, ...settings } as AppSettings
+          settings: mergedSettings
         }
       }
     } catch (e) {
