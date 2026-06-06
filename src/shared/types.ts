@@ -27,6 +27,18 @@ export type AgentEvent =
     }
   | { type: 'tool_error'; callId: string; error: string }
   | { type: 'final'; content: string }
+  | {
+      type: 'agent_progress'
+      step: number
+      maxSteps: number
+      activeTools?: string[]
+      message?: string
+    }
+  | {
+      type: 'agent_end'
+      status: 'completed' | 'cancelled' | 'failed' | 'max_steps'
+      error?: string
+    }
 
 export interface Message {
   id: string

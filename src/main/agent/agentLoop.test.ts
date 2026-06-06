@@ -4,6 +4,7 @@ import { callModel } from './callModel'
 import { ToolRegistry } from '../toolRegistry'
 import { globalPermissionManager } from './permissionManager'
 import { BrowserWindow } from 'electron'
+import { abortRun } from './AgentRunContext'
 
 vi.mock('electron', () => ({
   BrowserWindow: {}
@@ -462,5 +463,138 @@ describe('runAgentLoop', () => {
     )
 
     expect(callCount).toBe(8)
+  })
+
+  it('emits agent_progress and agent_end completed events on normal run', async () => {
+    vi.mocked(callModel).mockResolvedValue({
+      role: 'assistant',
+      content: 'Final Answer'
+    })
+
+    await runAgentLoop(mockWindow, 'test-req-progress-completed', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Hello' }]
+    })
+
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'test-req-progress-completed',
+      event: expect.objectContaining({ type: 'agent_start' })
+    })
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'test-req-progress-completed',
+      event: expect.objectContaining({ type: 'agent_progress', step: 1 })
+    })
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'test-req-progress-completed',
+      event: { type: 'agent_end', status: 'completed' }
+    })
+  })
+
+  it('emits agent_end max_steps on maxSteps exhaustion', async () => {
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async () => {
+      callCount++
+      if (callCount <= 2) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: `tc-${callCount}`,
+              type: 'function',
+              function: { name: 'search_tools', arguments: JSON.stringify({ query: 'web' }) }
+            }
+          ]
+        }
+      }
+      return {
+        role: 'assistant',
+        content: 'Max steps final response.'
+      }
+    })
+
+    await runAgentLoop(mockWindow, 'test-req-max-steps-event', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      skill: {
+        id: 'test-skill',
+        name: 'Test Skill',
+        trigger: 'test',
+        prompt: 'test prompt',
+        maxSteps: 2
+      },
+      userInput: 'Run test skill'
+    })
+
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'test-req-max-steps-event',
+      event: { type: 'agent_end', status: 'max_steps' }
+    })
+  })
+
+  it('emits agent_end failed on unexpected error', async () => {
+    vi.mocked(callModel).mockRejectedValue(new Error('Model API is down'))
+
+    await runAgentLoop(mockWindow, 'test-req-failed-event', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Hello' }]
+    })
+
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'test-req-failed-event',
+      error: 'Model API is down'
+    })
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'test-req-failed-event',
+      event: { type: 'agent_end', status: 'failed', error: 'Model API is down' }
+    })
+  })
+
+  it('rejects pending permission and emits cancelled when aborted', async () => {
+    vi.mocked(callModel).mockResolvedValue({
+      role: 'assistant',
+      content: '',
+      tool_calls: [
+        {
+          id: 'tc-abort',
+          type: 'function',
+          function: { name: 'web_search', arguments: JSON.stringify({ query: 'test' }) }
+        }
+      ]
+    })
+
+    const permPromise = vi.spyOn(globalPermissionManager, 'requestPermission').mockImplementation(async (reqId) => {
+      abortRun(reqId)
+      throw new Error('Agent run terminated or aborted.')
+    })
+
+    await runAgentLoop(mockWindow, 'test-req-abort-event', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      skill: {
+        id: 'test-skill-abort',
+        name: 'Test Skill Abort',
+        trigger: 'test',
+        prompt: 'test prompt',
+        tools: ['web_search'],
+        maxSteps: 5
+      },
+      userInput: 'Abort test'
+    }, {
+      web_search: 'ask'
+    })
+
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'test-req-abort-event',
+      event: { type: 'agent_end', status: 'cancelled' }
+    })
+
+    permPromise.mockRestore()
   })
 })

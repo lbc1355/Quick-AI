@@ -2,7 +2,7 @@ import { BrowserWindow } from 'electron'
 import { AgentSkillRunOptions, ChatRunOptions } from '../../shared/types'
 import { runAgentLoop } from './agentLoop'
 import { globalPermissionManager } from './permissionManager'
-import { destroyRun } from './AgentRunContext'
+import { abortRun } from './AgentRunContext'
 
 export const runAgentSkill = async (
   mainWindow: BrowserWindow,
@@ -27,5 +27,5 @@ export const resolveToolPermission = (reqId: string, callId: string, approved: b
 }
 
 export const abortAgentSkill = (reqId: string): void => {
-  destroyRun(reqId)
+  abortRun(reqId)
 }

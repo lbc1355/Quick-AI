@@ -66,10 +66,24 @@ export const runAgentLoop = async (
   // Initialize Run Context
   const initialActiveTools = toolDiscovery === 'dynamic' ? ['search_tools'] : skillTools
   const runCtx = createRun(reqId, initialActiveTools, toolScope, permissions)
+  runCtx.maxSteps = maxSteps
   const signal = runCtx.signal
 
   let fetchUrlsCount = 0
   const MAX_FETCH_URLS_PER_RUN = 5
+
+  const setRunEnd = (status: 'completed' | 'cancelled' | 'failed' | 'max_steps', error?: string) => {
+    runCtx.status = status
+    runCtx.completedAt = Date.now()
+    if (error) {
+      runCtx.error = error
+    }
+    sendEvent(mainWindow, reqId, {
+      type: 'agent_end',
+      status,
+      error
+    })
+  }
 
   try {
     sendEvent(mainWindow, reqId, {
@@ -78,9 +92,17 @@ export const runAgentLoop = async (
     })
 
     for (let step = 1; step <= maxSteps; ) {
+      runCtx.currentStep = step
       if (signal.aborted) {
         throw new Error('Agent execution aborted by user.')
       }
+
+      sendEvent(mainWindow, reqId, {
+        type: 'agent_progress',
+        step,
+        maxSteps,
+        activeTools: Array.from(runCtx.activeTools)
+      })
 
       // Build tool declarations list for this step
       const toolsToDeclare: ChatToolDeclaration[] = []
@@ -321,6 +343,14 @@ export const runAgentLoop = async (
               result: resultForUi
             })
 
+            sendEvent(mainWindow, reqId, {
+              type: 'agent_progress',
+              step,
+              maxSteps,
+              activeTools: Array.from(runCtx.activeTools),
+              message: `Completed ${toolName}`
+            })
+
             return {
               role: 'tool',
               tool_call_id: callId,
@@ -344,6 +374,7 @@ export const runAgentLoop = async (
 
         // 1. Process askCalls sequentially
         for (const { index, toolCall } of askCalls) {
+          if (signal.aborted) break
           const toolName = toolCall.function.name
           const callId = toolCall.id
 
@@ -382,6 +413,9 @@ export const runAgentLoop = async (
               name: toolName,
               content: `ERROR: ${error.message}`
             }
+            if (signal.aborted) {
+              break
+            }
             continue
           }
 
@@ -394,6 +428,10 @@ export const runAgentLoop = async (
           })
 
           toolResponses[index] = await executeTool(toolCall, index, isApproved)
+        }
+
+        if (signal.aborted) {
+          throw new Error('Agent execution aborted by user.')
         }
 
         // 2. Process directCalls concurrently (validated and allowed)
@@ -438,6 +476,7 @@ export const runAgentLoop = async (
 
         step++
       } else {
+        setRunEnd('completed')
         mainWindow.webContents.send('chat-chunk', { reqId, done: true })
         return
       }
@@ -481,11 +520,19 @@ export const runAgentLoop = async (
       }
     )
 
+    setRunEnd('max_steps')
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })
   } catch (error) {
     const err = error as Error
     console.error('Agent Loop error:', err)
-    mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || 'Agent Loop failed' })
+    const isAborted = signal.aborted || err.message?.includes('aborted') || err.name === 'AbortError'
+    if (isAborted) {
+      setRunEnd('cancelled')
+    } else {
+      mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || 'Agent Loop failed' })
+      setRunEnd('failed', err.message || 'Agent Loop failed')
+    }
+    mainWindow.webContents.send('chat-chunk', { reqId, done: true })
   } finally {
     destroyRun(reqId)
   }

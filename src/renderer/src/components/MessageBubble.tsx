@@ -365,7 +365,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const isEditing = editingMessageId === msg.id
 
   const [elapsed, setElapsed] = useState<number>(0)
-  const isFinished = !isGenerating || !!cleanContent
 
   const toolCallCount = hasStructuredEvents
     ? msg.agentEvents!.filter((e) => e.type === 'tool_call').length
@@ -383,6 +382,49 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     }
     return undefined
   }, [isGenerating, cleanContent, hasLogs, msg.id])
+
+  // Find agent_end event in the events list
+  const agentEndEvent = msg.agentEvents?.find(
+    (e): e is Extract<AgentEvent, { type: 'agent_end' }> => e.type === 'agent_end'
+  )
+  // Find the last agent_progress event in the events list
+  const lastProgressEvent = msg.agentEvents?.reduce<Extract<AgentEvent, { type: 'agent_progress' }> | null>(
+    (last, e) => (e.type === 'agent_progress' ? e : last),
+    null
+  )
+
+  let agentStatus: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' = 'idle'
+  if (msg.agentEvents || msg.agentRunId) {
+    if (agentEndEvent) {
+      agentStatus = agentEndEvent.status
+    } else if (isGenerating) {
+      agentStatus = 'running'
+    } else {
+      agentStatus = cleanContent ? 'completed' : 'idle'
+    }
+  }
+
+  const currentStep = lastProgressEvent?.step || 1
+  const maxSteps = lastProgressEvent?.maxSteps || 30
+
+  let statusLabel = ''
+  let statusColor = 'var(--color-text-muted)'
+  if (agentStatus === 'running') {
+    statusLabel = `Running (Step ${currentStep}/${maxSteps})`
+    statusColor = '#3b82f6' // nice blue
+  } else if (agentStatus === 'completed') {
+    statusLabel = 'Completed'
+    statusColor = '#10b981' // nice green
+  } else if (agentStatus === 'cancelled') {
+    statusLabel = 'Cancelled'
+    statusColor = '#f59e0b' // nice yellow/orange
+  } else if (agentStatus === 'failed') {
+    statusLabel = 'Failed'
+    statusColor = '#ef4444' // nice red
+  } else if (agentStatus === 'max_steps') {
+    statusLabel = 'Step Limit Reached'
+    statusColor = '#f59e0b' // yellow/orange
+  }
 
   // Derived logs expansion state
   const effectiveLogsExpanded =
@@ -409,18 +451,36 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               userSelect: 'none',
               fontWeight: '500',
               color: 'var(--color-text-muted)',
-              gap: '6px',
+              gap: '8px',
               marginBottom: '8px'
             }}
           >
-            <span>
-              {isGenerating && !cleanContent
-                ? `Worked for ${elapsed}s`
-                : `Called tools (${toolCallCount} steps)`}
-            </span>
             <span style={{ fontSize: '9px', opacity: 0.7 }}>
-              {effectiveLogsExpanded ? 'v' : '>'}
+              {effectiveLogsExpanded ? '▼' : '▶'}
             </span>
+            {statusLabel && (
+              <span
+                style={{
+                  color: statusColor,
+                  backgroundColor: `${statusColor}14`,
+                  border: `1px solid ${statusColor}2c`,
+                  padding: '1px 5px',
+                  borderRadius: '3px',
+                  fontSize: '9.5px',
+                  fontWeight: 'bold'
+                }}
+              >
+                {statusLabel}
+              </span>
+            )}
+            <span>
+              {`Called tools (${toolCallCount} steps)`}
+            </span>
+            {agentStatus === 'running' && (
+              <span style={{ fontSize: '10px', opacity: 0.6 }}>
+                • {elapsed}s
+              </span>
+            )}
           </div>
 
           <div
@@ -510,7 +570,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           >
             <div style={{ flex: 1, borderBottom: '1px solid var(--color-border)' }}></div>
             <span style={{ padding: '0 10px', whiteSpace: 'nowrap' }}>
-              {isFinished ? 'Tool execution finished' : 'Tool execution in progress'}
+              {agentStatus === 'running'
+                ? 'Tool execution in progress'
+                : agentStatus === 'completed'
+                  ? 'Tool execution completed'
+                  : agentStatus === 'cancelled'
+                    ? 'Tool execution cancelled'
+                    : agentStatus === 'failed'
+                      ? 'Tool execution failed'
+                      : agentStatus === 'max_steps'
+                        ? 'Tool execution limit reached'
+                        : 'Tool execution finished'}
             </span>
             <div style={{ flex: 1, borderBottom: '1px solid var(--color-border)' }}></div>
           </div>

@@ -1,6 +1,12 @@
 import { PermissionManager, globalPermissionManager } from './permissionManager'
 
 export class AgentRunContext {
+  status: 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' = 'running'
+  readonly startedAt: number = Date.now()
+  currentStep = 1
+  maxSteps = 30
+  completedAt?: number
+  error?: string
   readonly reqId: string
   readonly controller: AbortController
   readonly activeTools: Set<string>
@@ -8,6 +14,7 @@ export class AgentRunContext {
   readonly toolScope: Set<string> | 'all'
   readonly permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
   private readonly permissions: PermissionManager
+
 
   constructor(
     reqId: string,
@@ -72,6 +79,13 @@ export function createRun(
 
 export function getRun(reqId: string): AgentRunContext | undefined {
   return activeRuns.get(reqId)
+}
+
+export function abortRun(reqId: string): void {
+  const ctx = activeRuns.get(reqId)
+  if (ctx) {
+    ctx.abort()
+  }
 }
 
 export function destroyRun(reqId: string): void {
