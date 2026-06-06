@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron'
-import { AgentSkillRunOptions, ChatCompletionMessage, AgentEvent, ToolArgs, ChatToolDeclaration } from '../shared/types'
-import { ToolRegistry } from './toolRegistry'
+import { AgentSkillRunOptions, ChatCompletionMessage, AgentEvent, ToolArgs, ChatToolDeclaration, ChatRunOptions } from '../shared/types'
+import { ToolRegistry, searchToolDefinitions, toChatToolDeclaration } from './toolRegistry'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 5
@@ -56,7 +56,12 @@ const cleanupPendingPermissionsForRun = (reqId: string): void => {
 const callModel = async (
   mainWindow: BrowserWindow,
   reqId: string,
-  options: AgentSkillRunOptions,
+  options: {
+    apiUrl: string
+    apiKey: string
+    model: string
+    systemPrompt?: string
+  },
   messages: ChatCompletionMessage[],
   toolsToDeclare?: ChatToolDeclaration[],
   signal?: AbortSignal
@@ -260,60 +265,135 @@ Rules:
   ]
 }
 
-export const runAgentSkill = async (
+export const activeToolsByRun = new Map<string, Set<string>>()
+
+const prepareChatAgentMessages = (
+  messages: ChatCompletionMessage[],
+  globalSystemPrompt?: string
+): ChatCompletionMessage[] => {
+  const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can discover and execute dynamically.
+
+Rules:
+- If you need to search or fetch external web data, or execute local file operations, you must first search for available tools by calling "search_tools".
+- You can search for tools by keywords (e.g. "web search" or "file read").
+- Only call tools that are whitelisted and returned by "search_tools" in a prior turn.
+- If observations are insufficient, say so in the final answer.
+- Stop when you can answer the user question directly. Write your final answer in Markdown.`
+
+  const copy = messages.map((m) => ({ ...m }))
+  const systemMsg = copy.find((m) => m.role === 'system')
+
+  if (systemMsg) {
+    systemMsg.content = `${globalSystemPrompt ? `Global system prompt:\n${globalSystemPrompt}\n\n` : ''}${systemMsg.content}\n\nTool instructions:\n${agentInstructions}`
+  } else {
+    copy.unshift({
+      role: 'system',
+      content: `${globalSystemPrompt ? `Global system prompt:\n${globalSystemPrompt}\n\n` : ''}${agentInstructions}`
+    })
+  }
+
+  return copy
+}
+
+export const runAgentLoop = async (
   mainWindow: BrowserWindow,
   reqId: string,
-  options: AgentSkillRunOptions,
+  options: {
+    apiUrl: string
+    apiKey: string
+    model: string
+    systemPrompt?: string
+    messages?: ChatCompletionMessage[]
+    skill?: AgentSkillRunOptions['skill']
+    userInput?: string
+  },
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): Promise<void> => {
-  const maxSteps = clampMaxSteps(options.skill.maxSteps)
-  const messages = buildAgentMessages(options)
+  const isSkill = !!options.skill
+  const toolDiscovery = isSkill
+    ? (options.skill!.toolDiscovery === 'dynamic' ? 'dynamic' : 'static')
+    : 'dynamic'
+
+  const maxSteps = isSkill ? clampMaxSteps(options.skill!.maxSteps) : 8
+  const skillTools = isSkill ? (options.skill!.tools || []) : []
+  const toolScope = isSkill ? new Set<string>(skillTools) : 'all'
+
+  // Prepare messages history
+  let messages: ChatCompletionMessage[] = []
+  if (isSkill) {
+    messages = buildAgentMessages({
+      apiUrl: options.apiUrl,
+      apiKey: options.apiKey,
+      model: options.model,
+      systemPrompt: options.systemPrompt,
+      skill: options.skill!,
+      userInput: options.userInput || ''
+    })
+  } else {
+    messages = prepareChatAgentMessages(options.messages || [], options.systemPrompt)
+  }
+
+  // Initialize active tools for this run
+  if (toolDiscovery === 'dynamic') {
+    activeToolsByRun.set(reqId, new Set(['search_tools']))
+  } else {
+    activeToolsByRun.set(reqId, new Set(skillTools))
+  }
+
   const executedCalls = new Set<string>()
   const controller = new AbortController()
   activeAgentRuns.set(reqId, controller)
   const signal = controller.signal
 
-  // Build tool declarations list by filtering based on implemented, skill whitelist, and permissions
-  const skillTools = options.skill.tools || []
-  const toolsToDeclare: ChatToolDeclaration[] = []
-  for (const toolName in ToolRegistry) {
-    const tool = ToolRegistry[toolName]
-    if (tool.implemented && skillTools.includes(toolName)) {
-      const permission = permissions?.[toolName] || 'allow'
-      if (permission !== 'deny') {
-        toolsToDeclare.push({
-          type: 'function',
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters
-          }
-        })
-      }
-    }
-  }
-
   try {
-    // Clean up any stale permissions first
     cleanupPendingPermissionsForRun(reqId)
 
-    sendEvent(mainWindow, reqId, { type: 'agent_start', skillName: options.skill.name })
+    sendEvent(mainWindow, reqId, {
+      type: 'agent_start',
+      skillName: isSkill ? options.skill!.name : 'General Agent'
+    })
 
     for (let step = 1; step <= maxSteps; ) {
       if (signal.aborted) {
         throw new Error('Agent execution aborted by user.')
       }
 
+      // Build tool declarations list for this step
+      const toolsToDeclare: ChatToolDeclaration[] = []
+      const activeTools = activeToolsByRun.get(reqId)
+
+      for (const toolName in ToolRegistry) {
+        const tool = ToolRegistry[toolName]
+        if (!tool.implemented) continue
+
+        // Whitelist checks depending on toolDiscovery mode
+        if (toolDiscovery === 'static') {
+          if (!skillTools.includes(toolName)) continue
+        } else {
+          // Dynamic tool discovery: must be active in current run context
+          if (!activeTools || !activeTools.has(toolName)) continue
+        }
+
+        const permission = permissions?.[toolName] || 'allow'
+        if (permission !== 'deny') {
+          toolsToDeclare.push(toChatToolDeclaration(tool))
+        }
+      }
+
       const assistantMessage = await callModel(
         mainWindow,
         reqId,
-        options,
+        {
+          apiUrl: options.apiUrl,
+          apiKey: options.apiKey,
+          model: options.model,
+          systemPrompt: options.systemPrompt
+        },
         messages,
         toolsToDeclare,
         signal
       )
 
-      // Push assistant's message into messages history
       messages.push(assistantMessage)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
@@ -330,12 +410,19 @@ export const runAgentSkill = async (
 
           const url = (toolArgs.url as string) || ''
 
-          // Double-layered check: tool registry, implementation, skill whitelist, and permission check
+          // Double-layered execution check: registry, implementation, whitelist, permissions
           const toolDef = ToolRegistry[toolName]
           const permission = permissions?.[toolName] || 'allow'
 
-          if (!toolDef || !toolDef.implemented || !skillTools.includes(toolName) || permission === 'deny') {
-            const errorMsg = `Tool execution blocked: Tool "${toolName}" is not registered, not implemented, not whitelisted by the current skill, or denied by policy.`
+          let isWhitelisted = false
+          if (toolDiscovery === 'static') {
+            isWhitelisted = skillTools.includes(toolName)
+          } else {
+            isWhitelisted = !!activeTools && activeTools.has(toolName)
+          }
+
+          if (!toolDef || !toolDef.implemented || !isWhitelisted || permission === 'deny') {
+            const errorMsg = `Tool execution blocked: Tool "${toolName}" is not registered, not implemented, not whitelisted/activated, or denied by policy.`
             sendEvent(mainWindow, reqId, {
               type: 'tool_call',
               callId,
@@ -353,11 +440,51 @@ export const runAgentSkill = async (
             continue
           }
 
-          // Deadlock check (only for fetch_url URLs)
+          // Intercept search_tools execution directly in runner to keep registry stateless
+          if (toolName === 'search_tools') {
+            const query = (toolArgs.query as string) || ''
+            sendEvent(mainWindow, reqId, {
+              type: 'tool_call',
+              callId,
+              toolName,
+              args: toolArgs,
+              permissionState: 'approved'
+            })
+
+            const matchedSummaries = searchToolDefinitions(query, toolScope)
+
+            // Activate matches for this run context
+            if (activeTools) {
+              matchedSummaries.forEach((t) => activeTools.add(t.name))
+            }
+
+            const observation = matchedSummaries.length > 0
+              ? JSON.stringify(matchedSummaries, null, 2)
+              : `No discoverable tools matched query: "${query}"`
+
+            sendEvent(mainWindow, reqId, {
+              type: 'tool_result',
+              callId,
+              result: {
+                title: `Search Tools: "${query}"`,
+                summary: `Discovered ${matchedSummaries.length} tools: ${matchedSummaries.map((m) => m.name).join(', ')}`
+              }
+            })
+
+            messages.push({
+              role: 'tool',
+              tool_call_id: callId,
+              name: toolName,
+              content: observation
+            })
+            continue
+          }
+
+          // Deadlock check
           if (toolName === 'fetch_url' && url) {
             const callKey = `${toolName}:${url}`
             if (executedCalls.has(callKey)) {
-              const deadlockWarning = `Warning: You have already fetched the URL: ${url}. Fetching it again will not yield new information. Please analyze the existing observations or try a different URL.`
+              const deadlockWarning = `Warning: You have already fetched the URL: ${url}. Fetching it again will not yield new information.`
               sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: deadlockWarning })
               messages.push({
                 role: 'tool',
@@ -370,7 +497,7 @@ export const runAgentSkill = async (
             executedCalls.add(callKey)
           }
 
-          // Emit tool_call event (starts in 'pending' if it requires ask permission)
+          // Emit tool_call event
           sendEvent(mainWindow, reqId, {
             type: 'tool_call',
             callId,
@@ -379,18 +506,14 @@ export const runAgentSkill = async (
             permissionState: permission === 'ask' ? 'pending' : 'approved'
           })
 
-          // Pause and ask for user permission if required
           let isApproved = true
           if (permission === 'ask') {
             const permissionPromise = new Promise<boolean>((resolve, reject) => {
-              const timeoutId = setTimeout(
-                () => {
-                  const key = `${reqId}:${callId}`
-                  pendingPermissions.delete(key)
-                  reject(new Error('Permission request timed out after 10 minutes.'))
-                },
-                10 * 60 * 1000
-              )
+              const timeoutId = setTimeout(() => {
+                const key = `${reqId}:${callId}`
+                pendingPermissions.delete(key)
+                reject(new Error('Permission request timed out after 10 minutes.'))
+              }, 10 * 60 * 1000)
 
               pendingPermissions.set(`${reqId}:${callId}`, { resolve, reject, timeoutId })
             })
@@ -399,7 +522,6 @@ export const runAgentSkill = async (
               isApproved = await permissionPromise
             } catch (err) {
               const error = err as Error
-              // Emit denied tool_call state to transition from pending
               sendEvent(mainWindow, reqId, {
                 type: 'tool_call',
                 callId,
@@ -418,7 +540,6 @@ export const runAgentSkill = async (
             }
           }
 
-          // Transition state to approved/denied
           sendEvent(mainWindow, reqId, {
             type: 'tool_call',
             callId,
@@ -439,12 +560,15 @@ export const runAgentSkill = async (
             continue
           }
 
-          // Tool approved or allowed, execute it
+          // Execute tool
           try {
             if (signal.aborted) {
               throw new Error('Agent execution aborted by user.')
             }
-            const { resultForModel, resultForUi } = await toolDef.execute(toolArgs)
+            const { resultForModel, resultForUi } = await toolDef.execute(toolArgs, {
+              reqId,
+              signal
+            })
             if (signal.aborted) {
               throw new Error('Agent execution aborted by user.')
             }
@@ -472,10 +596,8 @@ export const runAgentSkill = async (
             })
           }
         }
-
         step++
       } else {
-        // No tool calls: this is the final answer!
         cleanupPendingPermissionsForRun(reqId)
         mainWindow.webContents.send('chat-chunk', { reqId, done: true })
         return
@@ -493,17 +615,47 @@ export const runAgentSkill = async (
       throw new Error('Agent execution aborted by user.')
     }
 
-    // Call model without tools to force final direct answer text
-    await callModel(mainWindow, reqId, options, messages, undefined, signal)
+    await callModel(
+      mainWindow,
+      reqId,
+      {
+        apiUrl: options.apiUrl,
+        apiKey: options.apiKey,
+        model: options.model,
+        systemPrompt: options.systemPrompt
+      },
+      messages,
+      undefined,
+      signal
+    )
 
     cleanupPendingPermissionsForRun(reqId)
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })
   } catch (error) {
     const err = error as Error
-    console.error('Agent Skill Runner error:', err)
+    console.error('Agent Loop error:', err)
     cleanupPendingPermissionsForRun(reqId)
-    mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || 'Agent Skill failed' })
+    mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || 'Agent Loop failed' })
   } finally {
     activeAgentRuns.delete(reqId)
+    activeToolsByRun.delete(reqId)
   }
+}
+
+export const runAgentSkill = async (
+  mainWindow: BrowserWindow,
+  reqId: string,
+  options: AgentSkillRunOptions,
+  permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
+): Promise<void> => {
+  return runAgentLoop(mainWindow, reqId, options, permissions)
+}
+
+export const runGeneralAgent = async (
+  mainWindow: BrowserWindow,
+  reqId: string,
+  options: ChatRunOptions,
+  permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
+): Promise<void> => {
+  return runAgentLoop(mainWindow, reqId, options, permissions)
 }

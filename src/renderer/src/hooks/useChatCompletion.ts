@@ -1,5 +1,60 @@
 import React, { useState } from 'react'
-import { ChatChunkData, Message, Session, Skill } from '../../../shared/types'
+import { ChatChunkData, Message, Session, Skill, RunMode, AgentEvent } from '../../../shared/types'
+
+const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Message => {
+  const currentEvents = m.agentEvents || []
+  const updatedEvents = [...currentEvents]
+
+  if (newEvent.type === 'tool_call') {
+    const existingIdx = updatedEvents.findIndex(
+      (e) => e.type === 'tool_call' && e.callId === newEvent.callId
+    )
+    if (existingIdx !== -1) {
+      const existingEvent = updatedEvents[existingIdx]
+      if (existingEvent.type === 'tool_call') {
+        updatedEvents[existingIdx] = {
+          ...existingEvent,
+          permissionState: newEvent.permissionState
+        }
+      }
+    } else {
+      updatedEvents.push(newEvent)
+    }
+  } else if (updatedEvents.length > 0) {
+    const lastEvent = updatedEvents[updatedEvents.length - 1]
+    if (lastEvent.type === 'reasoning' && newEvent.type === 'reasoning') {
+      updatedEvents[updatedEvents.length - 1] = {
+        ...lastEvent,
+        content: lastEvent.content + newEvent.content
+      }
+    } else if (lastEvent.type === 'final' && newEvent.type === 'final') {
+      updatedEvents[updatedEvents.length - 1] = {
+        ...lastEvent,
+        content: lastEvent.content + newEvent.content
+      }
+    } else {
+      updatedEvents.push(newEvent)
+    }
+  } else {
+    updatedEvents.push(newEvent)
+  }
+
+  let newContent = m.content
+  let newReasoning = m.reasoning_content
+
+  if (newEvent.type === 'reasoning') {
+    newReasoning = (newReasoning || '') + newEvent.content
+  } else if (newEvent.type === 'final') {
+    newContent = (newContent || '') + newEvent.content
+  }
+
+  return {
+    ...m,
+    agentEvents: updatedEvents,
+    content: newContent,
+    reasoning_content: newReasoning
+  }
+}
 
 interface UseChatCompletionProps {
   setSessions: React.Dispatch<React.SetStateAction<Session[]>>
@@ -25,6 +80,8 @@ export interface UseChatCompletionReturn {
   setEditingMessageId: React.Dispatch<React.SetStateAction<string | null>>
   editingText: string
   setEditingText: React.Dispatch<React.SetStateAction<string>>
+  runMode: RunMode
+  setRunMode: React.Dispatch<React.SetStateAction<RunMode>>
   handleSendMessage: (customPrompt?: string, customMsgId?: string) => Promise<void>
   handleRunAgentSkill: (skill: Skill, userInput: string) => Promise<void>
   handleStartEdit: (msg: Message) => void
@@ -62,6 +119,7 @@ export const useChatCompletion = ({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
   const [activeReqId, setActiveReqId] = useState<string | null>(null)
+  const [runMode, setRunMode] = useState<RunMode>('chat')
 
   const handleAbortGeneration = (): void => {
     if (activeReqId) {
@@ -167,7 +225,8 @@ export const useChatCompletion = ({
       id: assistantMsgId,
       role: 'assistant',
       content: '',
-      reasoning_content: ''
+      reasoning_content: '',
+      ...(runMode === 'agent' ? { agentRunId: assistantMsgId, agentEvents: [] } : {})
     }
     currentSession.messages.push(assistantMsg)
     setSessions([...currentSessions])
@@ -293,6 +352,28 @@ export const useChatCompletion = ({
           return next
         })
       }
+
+      if (data.event) {
+        setSessions((prevSessions) => {
+          const next = prevSessions.map((s) => {
+            if (s.id === activeSessionId) {
+              return {
+                ...s,
+                messages: s.messages.map((m) => {
+                  if (m.id === assistantMsgId) {
+                    return applyAgentEventToMessage(m, data.event!)
+                  }
+                  return m
+                }),
+                lastActiveTime: Date.now()
+              }
+            }
+            return s
+          })
+          sessionsRef.current = next
+          return next
+        })
+      }
     })
 
     const cleanup = (): void => {
@@ -321,7 +402,8 @@ export const useChatCompletion = ({
         apiUrl,
         apiKey,
         model: selectedModel,
-        messages: apiMessages
+        messages: apiMessages,
+        runMode
       })
     } catch (err) {
       const error = err as Error
@@ -442,62 +524,7 @@ export const useChatCompletion = ({
                 ...s,
                 messages: s.messages.map((m) => {
                   if (m.id === assistantMsgId) {
-                    const currentEvents = m.agentEvents || []
-                    const newEvent = data.event!
-                    const updatedEvents = [...currentEvents]
-
-                    if (newEvent.type === 'tool_call') {
-                      const existingIdx = updatedEvents.findIndex(
-                        (e) => e.type === 'tool_call' && e.callId === newEvent.callId
-                      )
-                      if (existingIdx !== -1) {
-                        const existingEvent = updatedEvents[existingIdx]
-                        if (existingEvent.type === 'tool_call') {
-                          updatedEvents[existingIdx] = {
-                            ...existingEvent,
-                            permissionState: newEvent.permissionState
-                          }
-                        }
-                      } else {
-                        updatedEvents.push(newEvent)
-                      }
-                    } else if (updatedEvents.length > 0) {
-                      const lastEvent = updatedEvents[updatedEvents.length - 1]
-                      if (lastEvent.type === 'reasoning' && newEvent.type === 'reasoning') {
-                        // Merge consecutive reasoning events
-                        updatedEvents[updatedEvents.length - 1] = {
-                          ...lastEvent,
-                          content: lastEvent.content + newEvent.content
-                        }
-                      } else if (lastEvent.type === 'final' && newEvent.type === 'final') {
-                        // Merge consecutive final events
-                        updatedEvents[updatedEvents.length - 1] = {
-                          ...lastEvent,
-                          content: lastEvent.content + newEvent.content
-                        }
-                      } else {
-                        updatedEvents.push(newEvent)
-                      }
-                    } else {
-                      updatedEvents.push(newEvent)
-                    }
-
-                    // Keep legacy fields populated for compatibility
-                    let newContent = m.content
-                    let newReasoning = m.reasoning_content
-
-                    if (newEvent.type === 'reasoning') {
-                      newReasoning = (newReasoning || '') + newEvent.content
-                    } else if (newEvent.type === 'final') {
-                      newContent = (newContent || '') + newEvent.content
-                    }
-
-                    return {
-                      ...m,
-                      agentEvents: updatedEvents,
-                      content: newContent,
-                      reasoning_content: newReasoning
-                    }
+                    return applyAgentEventToMessage(m, data.event!)
                   }
                   return m
                 }),
@@ -665,6 +692,8 @@ export const useChatCompletion = ({
     setEditingMessageId,
     editingText,
     setEditingText,
+    runMode,
+    setRunMode,
     handleSendMessage,
     handleRunAgentSkill,
     handleStartEdit,

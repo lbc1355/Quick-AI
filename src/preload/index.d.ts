@@ -2,9 +2,9 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import {
   StoreKey,
   StoreValue,
-  ChatCompletionMessage,
   AgentSkillRunOptions,
-  ChatChunkData
+  ChatChunkData,
+  ChatRunOptions
 } from '../shared/types'
 
 declare global {
@@ -20,12 +20,7 @@ declare global {
       reSummonWindow: () => void
       startChatCompletion: (
         reqId: string,
-        options: {
-          apiUrl: string
-          apiKey: string
-          model: string
-          messages: ChatCompletionMessage[]
-        }
+        options: ChatRunOptions
       ) => void
       startAgentSkill: (reqId: string, options: AgentSkillRunOptions) => void
       respondToolPermission: (reqId: string, callId: string, approved: boolean) => void

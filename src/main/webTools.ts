@@ -162,7 +162,7 @@ const decodeHtmlEntities = (value: string): string => {
     .replace(/&#(\d+);/g, (_match, code: string) => String.fromCharCode(Number(code)))
 }
 
-const stripHtml = (html: string): string => {
+export const stripHtml = (html: string): string => {
   return decodeHtmlEntities(
     html
       .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
@@ -208,12 +208,16 @@ const extractLinks = (html: string, baseUrl: string): WebLink[] => {
   return links
 }
 
-export const fetchUrl = async (rawUrl: string): Promise<FetchUrlResult> => {
+export const fetchPublicText = async (
+  rawUrl: string,
+  signal?: AbortSignal
+): Promise<{ finalUrl: string; text: string; truncated: boolean }> => {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const signalToUse = signal || controller.signal
+  const timeoutId = signal ? null : setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
   try {
-    const response = await fetchWithCheckedRedirects(rawUrl, controller.signal)
+    const response = await fetchWithCheckedRedirects(rawUrl, signalToUse)
     if (!response.ok) {
       throw new Error(`Fetch failed: ${response.status} ${response.statusText}`)
     }
@@ -221,21 +225,62 @@ export const fetchUrl = async (rawUrl: string): Promise<FetchUrlResult> => {
     const finalUrl = response.url || rawUrl
     await validatePublicHttpUrl(finalUrl)
     const { text: rawText, truncated } = await readLimitedText(response)
-    const contentType = response.headers.get('content-type') || ''
-    const isHtml = contentType.includes('html') || /<html[\s>]/i.test(rawText)
-    const title = isHtml ? readTitle(rawText) : ''
-    const text = isHtml ? stripHtml(rawText) : rawText.trim()
-    const links = isHtml ? extractLinks(rawText, finalUrl) : []
-
-    return {
-      url: rawUrl,
-      finalUrl,
-      title,
-      text: text.slice(0, MAX_TEXT_CHARS),
-      links,
-      truncated: truncated || text.length > MAX_TEXT_CHARS
-    }
+    return { finalUrl, text: rawText, truncated }
   } finally {
-    clearTimeout(timeoutId)
+    if (timeoutId) clearTimeout(timeoutId)
   }
+}
+
+export const fetchUrl = async (rawUrl: string): Promise<FetchUrlResult> => {
+  const { finalUrl, text: rawText, truncated } = await fetchPublicText(rawUrl)
+  const isHtml = /<html[\s>]/i.test(rawText)
+  const title = isHtml ? readTitle(rawText) : ''
+  const text = isHtml ? stripHtml(rawText) : rawText.trim()
+  const links = isHtml ? extractLinks(rawText, finalUrl) : []
+
+  return {
+    url: rawUrl,
+    finalUrl,
+    title,
+    text: text.slice(0, MAX_TEXT_CHARS),
+    links,
+    truncated: truncated || text.length > MAX_TEXT_CHARS
+  }
+}
+
+export const webSearch = async (query: string, signal?: AbortSignal): Promise<string> => {
+  const cleanQuery = query.slice(0, 300)
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`
+
+  const { text: html } = await fetchPublicText(url, signal)
+
+  const results: Array<{ title: string; href: string; snippet: string }> = []
+  const blocks = html.split('<div class="web-result')
+  for (let i = 1; i < blocks.length && results.length < 8; i++) {
+    const block = blocks[i]
+    const aMatch = block.match(/<a\s+class="result__a"\s+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i)
+    if (!aMatch) continue
+
+    let href = aMatch[1]
+    if (href.startsWith('/l/?')) {
+      const uddgMatch = href.match(/[?&]uddg=([^&]+)/)
+      if (uddgMatch) {
+        href = decodeURIComponent(uddgMatch[1])
+      }
+    }
+
+    const title = stripHtml(aMatch[2]).replace(/\s+/g, ' ').trim()
+    const snippetMatch = block.match(/<a\s+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i)
+    const snippet = snippetMatch ? stripHtml(snippetMatch[1]).replace(/\s+/g, ' ').trim() : ''
+
+    results.push({ title, href, snippet })
+  }
+
+  if (results.length === 0) {
+    throw new Error(`No search results returned from DuckDuckGo for query: "${cleanQuery}"`)
+  }
+
+  return results
+    .map((r, idx) => `${idx + 1}. ${r.title}\n   URL: ${r.href}\n   Snippet: ${r.snippet}`)
+    .join('\n\n')
 }

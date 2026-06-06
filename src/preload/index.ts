@@ -3,9 +3,9 @@ import { electronAPI } from '@electron-toolkit/preload'
 import {
   StoreKey,
   StoreValue,
-  ChatCompletionMessage,
   AgentSkillRunOptions,
-  ChatChunkData
+  ChatChunkData,
+  ChatRunOptions
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -23,12 +23,7 @@ const api = {
   reSummonWindow: (): void => ipcRenderer.send('re-summon-window'),
   startChatCompletion: (
     reqId: string,
-    options: {
-      apiUrl: string
-      apiKey: string
-      model: string
-      messages: ChatCompletionMessage[]
-    }
+    options: ChatRunOptions
   ): void => ipcRenderer.send('start-chat-completion', reqId, options),
   startAgentSkill: (reqId: string, options: AgentSkillRunOptions): void =>
     ipcRenderer.send('start-agent-skill', reqId, options),

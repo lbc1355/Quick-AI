@@ -5,7 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
 import { StorageSchema } from '../shared/types'
 import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClient'
-import { runAgentSkill, resolveToolPermission, abortAgentSkill } from './agentRunner'
+import { runAgentSkill, runGeneralAgent, resolveToolPermission, abortAgentSkill } from './agentRunner'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -245,8 +245,14 @@ app.whenReady().then(() => {
 
   ipcMain.on('start-chat-completion', (event, reqId, options) => {
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (win) {
-      handleChatCompletion(win, reqId, options)
+    if (win && store) {
+      const permissions = store.get('settings').permissions
+      if (options.runMode === 'agent') {
+        const systemPrompt = store.get('settings').systemPrompt
+        runGeneralAgent(win, reqId, { ...options, systemPrompt }, permissions)
+      } else {
+        handleChatCompletion(win, reqId, options)
+      }
     }
   })
 

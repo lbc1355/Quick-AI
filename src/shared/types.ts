@@ -95,6 +95,7 @@ export interface Skill {
   source?: 'manual' | 'markdown'
   installedAt?: number
   updatedAt?: number
+  toolDiscovery?: 'static' | 'dynamic'
 }
 
 export interface Memory {
@@ -158,4 +159,15 @@ export interface ChatToolDeclaration {
       required?: string[]
     }
   }
+}
+
+export type RunMode = 'chat' | 'agent'
+
+export interface ChatRunOptions {
+  apiUrl: string
+  apiKey: string
+  model: string
+  messages: ChatCompletionMessage[]
+  systemPrompt?: string
+  runMode?: RunMode
 }

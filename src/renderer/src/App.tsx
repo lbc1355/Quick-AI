@@ -130,6 +130,8 @@ function App(): React.JSX.Element {
     setEditingMessageId,
     editingText,
     setEditingText,
+    runMode,
+    setRunMode,
     handleSendMessage,
     handleRunAgentSkill,
     handleStartEdit,
@@ -630,6 +632,15 @@ function App(): React.JSX.Element {
                 rows={1}
               />
               <div className="chat-actions">
+                <button
+                  type="button"
+                  className={`run-mode-btn ${runMode}`}
+                  onClick={() => setRunMode(runMode === 'chat' ? 'agent' : 'chat')}
+                  title={runMode === 'agent' ? '当前为 Agent 模式 (支持动态工具发现)' : '当前为普通 Chat 模式'}
+                >
+                  <Sparkles size={13} className="sparkle-icon" />
+                  <span>{runMode === 'agent' ? 'Agent' : 'Chat'}</span>
+                </button>
                 {isGenerating ? (
                   <button
                     className="input-action-btn stop"
