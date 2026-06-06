@@ -118,7 +118,8 @@ export const SkillManager: React.FC<SkillManagerProps> = ({
       ) : (
         <div className="skill-list">
           {skills.map((skill) => {
-            const triggers = skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
+            const triggers =
+              skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
             return (
               <div key={skill.id} className="skill-card">
                 <div className="skill-card-main">

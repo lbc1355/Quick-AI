@@ -12,6 +12,16 @@ interface FetchModelsResponse {
   models?: ModelItem[]
 }
 
+const activeChatSessions = new Map<string, AbortController>()
+
+export function abortChatCompletion(reqId: string): void {
+  const controller = activeChatSessions.get(reqId)
+  if (controller) {
+    controller.abort()
+    activeChatSessions.delete(reqId)
+  }
+}
+
 export async function handleChatCompletion(
   mainWindow: BrowserWindow,
   reqId: string,
@@ -19,6 +29,8 @@ export async function handleChatCompletion(
 ): Promise<void> {
   const { apiUrl, apiKey, model, messages } = options
   const completionsUrl = `${apiUrl.replace(/\/$/, '')}/chat/completions`
+  const controller = new AbortController()
+  activeChatSessions.set(reqId, controller)
 
   try {
     const response = await fetch(completionsUrl, {
@@ -31,7 +43,8 @@ export async function handleChatCompletion(
         model,
         messages,
         stream: true
-      })
+      }),
+      signal: controller.signal
     })
 
     if (!response.ok) {
@@ -86,6 +99,8 @@ export async function handleChatCompletion(
     const err = error as Error
     console.error('Chat Completion Main process error:', err)
     mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || '网络连接失败' })
+  } finally {
+    activeChatSessions.delete(reqId)
   }
 }
 
@@ -100,7 +115,7 @@ export async function fetchModels(fetchUrl: string, apiKey: string): Promise<str
     if (!response.ok) {
       throw new Error(`获取失败：${response.status} ${response.statusText}`)
     }
-    const data = await response.json() as FetchModelsResponse | ModelItem[] | string[]
+    const data = (await response.json()) as FetchModelsResponse | ModelItem[] | string[]
     let modelIds: string[] = []
 
     if (data && typeof data === 'object') {
@@ -109,10 +124,12 @@ export async function fetchModels(fetchUrl: string, apiKey: string): Promise<str
       } else if ('models' in data && Array.isArray(data.models)) {
         modelIds = data.models.map((m) => m.name || m.model || m.id || '').filter(Boolean)
       } else if (Array.isArray(data)) {
-        modelIds = (data as (ModelItem | string)[]).map((m) => {
-          if (typeof m === 'string') return m
-          return m.id || m.name || m.model || ''
-        }).filter(Boolean)
+        modelIds = (data as (ModelItem | string)[])
+          .map((m) => {
+            if (typeof m === 'string') return m
+            return m.id || m.name || m.model || ''
+          })
+          .filter(Boolean)
       }
     }
     return modelIds

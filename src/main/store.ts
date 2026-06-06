@@ -52,7 +52,8 @@ const DEFAULT_STORAGE: StorageSchema = {
       }
     ],
     activeProviderId: 'provider-deepseek',
-    systemPrompt: 'You are QuickAI, a helpful, fast, and polite AI desktop assistant. Respond concisely and accurately.',
+    systemPrompt:
+      'You are QuickAI, a helpful, fast, and polite AI desktop assistant. Respond concisely and accurately.',
     autoHideOnBlur: true,
     permissions: {
       fetch_url: 'allow',
@@ -82,7 +83,7 @@ export class FileStore {
       if (existsSync(this.filePath)) {
         const fileContent = readFileSync(this.filePath, 'utf-8')
         const parsed = JSON.parse(fileContent)
-        
+
         // Filter out the built-in default skills triggers to completely delete them
         const defaultTriggers = [
           'explain',
@@ -102,9 +103,10 @@ export class FileStore {
             ...s,
             triggers: s.triggers && s.triggers.length > 0 ? s.triggers : [s.trigger],
             kind: s.kind || (s.mode === 'run' ? 'agent' : 'prompt'),
-            tools: (s.kind === 'agent' || s.mode === 'run')
-              ? Array.from(new Set([...(s.tools || []), 'fetch_url']))
-              : s.tools || [],
+            tools:
+              s.kind === 'agent' || s.mode === 'run'
+                ? Array.from(new Set([...(s.tools || []), 'fetch_url']))
+                : s.tools || [],
             mode: s.mode || (s.kind === 'agent' ? 'run' : 'insert'),
             rawMarkdown: s.rawMarkdown || s.prompt
           }))
@@ -160,7 +162,8 @@ export class FileStore {
               let detectedType: 'deepseek' | 'kimi' | 'ollama' | 'custom' = 'custom'
               if (p.apiUrl.includes('deepseek.com')) detectedType = 'deepseek'
               else if (p.apiUrl.includes('moonshot.cn')) detectedType = 'kimi'
-              else if (p.apiUrl.includes('localhost') || p.apiUrl.includes('127.0.0.1')) detectedType = 'ollama'
+              else if (p.apiUrl.includes('localhost') || p.apiUrl.includes('127.0.0.1'))
+                detectedType = 'ollama'
               return { ...p, type: detectedType }
             }
             return p

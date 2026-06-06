@@ -1,4 +1,5 @@
 import { fetchUrl } from './webTools'
+import { ToolArgs } from '../shared/types'
 
 export interface ToolDefinition {
   name: string
@@ -9,7 +10,7 @@ export interface ToolDefinition {
     properties: Record<string, { type: string; description?: string; enum?: string[] }>
     required?: string[]
   }
-  execute: (args: any) => Promise<{
+  execute: (args: ToolArgs) => Promise<{
     resultForModel: string
     resultForUi: { title?: string; url?: string; summary?: string }
   }>
@@ -18,7 +19,8 @@ export interface ToolDefinition {
 export const ToolRegistry: Record<string, ToolDefinition> = {
   fetch_url: {
     name: 'fetch_url',
-    description: 'Fetches the content of a public HTTP or HTTPS web page and returns its title, text content, and extracted links.',
+    description:
+      'Fetches the content of a public HTTP or HTTPS web page and returns its title, text content, and extracted links.',
     implemented: true,
     parameters: {
       type: 'object',
@@ -30,9 +32,13 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['url']
     },
-    execute: async (args: { url: string }) => {
-      const result = await fetchUrl(args.url)
-      
+    execute: async (args: ToolArgs) => {
+      const url = args.url
+      if (typeof url !== 'string' || !url) {
+        throw new Error('Missing or invalid URL parameter')
+      }
+      const result = await fetchUrl(url)
+
       const formatLinks = (res: typeof result): string => {
         return res.links
           .slice(0, 25)
@@ -47,14 +53,18 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         result.truncated ? 'Note: page text was truncated.' : '',
         links ? `Links:\n${links}` : '',
         `Text:\n${result.text}`
-      ].filter(Boolean).join('\n\n')
+      ]
+        .filter(Boolean)
+        .join('\n\n')
 
       return {
         resultForModel: body.slice(0, 12000),
         resultForUi: {
           title: result.title || undefined,
           url: result.finalUrl || undefined,
-          summary: result.text ? (result.text.slice(0, 200) + (result.text.length > 200 ? '...' : '')) : undefined
+          summary: result.text
+            ? result.text.slice(0, 200) + (result.text.length > 200 ? '...' : '')
+            : undefined
         }
       }
     }
@@ -70,12 +80,16 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['query']
     },
-    execute: async (args: { query: string }) => {
+    execute: async (args: ToolArgs) => {
+      const query = args.query
+      if (typeof query !== 'string' || !query) {
+        throw new Error('Missing or invalid query parameter')
+      }
       return {
-        resultForModel: `Search results for query: "${args.query}"\n1. Example result - http://example.com`,
+        resultForModel: `Search results for query: "${query}"\n1. Example result - http://example.com`,
         resultForUi: {
-          title: `Search: ${args.query}`,
-          summary: `Mock search results for "${args.query}"`
+          title: `Search: ${query}`,
+          summary: `Mock search results for "${query}"`
         }
       }
     }
@@ -91,12 +105,16 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['path']
     },
-    execute: async (args: { path: string }) => {
+    execute: async (args: ToolArgs) => {
+      const path = args.path
+      if (typeof path !== 'string' || !path) {
+        throw new Error('Missing or invalid path parameter')
+      }
       return {
-        resultForModel: `Content of file at ${args.path} (stub)`,
+        resultForModel: `Content of file at ${path} (stub)`,
         resultForUi: {
-          title: `Read File: ${args.path}`,
-          summary: `Mock content of file at ${args.path}`
+          title: `Read File: ${path}`,
+          summary: `Mock content of file at ${path}`
         }
       }
     }
@@ -113,12 +131,17 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['path', 'content']
     },
-    execute: async (args: { path: string; content: string }) => {
+    execute: async (args: ToolArgs) => {
+      const path = args.path
+      const content = args.content
+      if (typeof path !== 'string' || !path || typeof content !== 'string') {
+        throw new Error('Missing or invalid path/content parameters')
+      }
       return {
-        resultForModel: `Successfully wrote content to ${args.path} (stub)`,
+        resultForModel: `Successfully wrote content to ${path} (stub)`,
         resultForUi: {
-          title: `Write File: ${args.path}`,
-          summary: `Mock write to file at ${args.path}`
+          title: `Write File: ${path}`,
+          summary: `Mock write to file at ${path}`
         }
       }
     }
@@ -134,12 +157,16 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['command']
     },
-    execute: async (args: { command: string }) => {
+    execute: async (args: ToolArgs) => {
+      const command = args.command
+      if (typeof command !== 'string' || !command) {
+        throw new Error('Missing or invalid command parameter')
+      }
       return {
-        resultForModel: `Output of shell command: "${args.command}" (stub)`,
+        resultForModel: `Output of shell command: "${command}" (stub)`,
         resultForUi: {
           title: `Shell Command`,
-          summary: `Mock execution of command: "${args.command}"`
+          summary: `Mock execution of command: "${command}"`
         }
       }
     }

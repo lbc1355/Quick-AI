@@ -3,7 +3,10 @@ import katex from 'katex'
 import 'katex/dist/katex.min.css'
 
 // Parse reasoning process from either official API properties or local Ollama `<think>` tags
-export const parseThinkTags = (content: string, reasoningContent?: string): { content: string; reasoning: string } => {
+export const parseThinkTags = (
+  content: string,
+  reasoningContent?: string
+): { content: string; reasoning: string } => {
   let finalContent = content
   let finalReasoning = reasoningContent || ''
 
@@ -34,20 +37,22 @@ export interface AgentLogStep {
   thought?: string
 }
 
-export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanContent: string; skillName: string } => {
+export const parseAgentLogs = (
+  content: string
+): { logs: AgentLogStep[]; cleanContent: string; skillName: string } => {
   let skillName = ''
   const logs: AgentLogStep[] = []
-  
+
   const lines = content.split('\n')
   let logEndIdx = 0
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim()
     if (!line) {
       if (i === logEndIdx) logEndIdx = i + 1
       continue
     }
-    
+
     if (line.startsWith('Running agent skill:')) {
       skillName = line.replace('Running agent skill:', '').trim()
       logEndIdx = i + 1
@@ -64,7 +69,7 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
       const step = parseInt(thinkMatch[1])
       const maxSteps = parseInt(thinkMatch[2])
       let thought = thinkMatch[3].trim()
-      
+
       let nextIdx = i + 1
       while (nextIdx < lines.length) {
         const nextLine = lines[nextIdx].trim()
@@ -81,7 +86,7 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
         thought += (thought ? '\n' : '') + lines[nextIdx]
         nextIdx++
       }
-      
+
       i = nextIdx - 1
       logs.push({
         step,
@@ -92,7 +97,7 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
       logEndIdx = i + 1
       continue
     }
-    
+
     const toolMatch = line.match(/^\[tool (\d+)\/(\d+)\]\s+(.*)$/)
     if (toolMatch) {
       const step = parseInt(toolMatch[1])
@@ -121,7 +126,7 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
       logEndIdx = i + 1
       continue
     }
-    
+
     const resultMatch = line.match(/^\[result (\d+)\/(\d+)\]\s+(.*)$/)
     if (resultMatch) {
       const step = parseInt(resultMatch[1])
@@ -149,7 +154,7 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
       logEndIdx = i + 1
       continue
     }
-    
+
     const errorMatch = line.match(/^\[error (\d+)\/(\d+)\]\s+(.*)$/)
     if (errorMatch) {
       const step = parseInt(errorMatch[1])
@@ -164,10 +169,10 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
       logEndIdx = i + 1
       continue
     }
-    
+
     break
   }
-  
+
   const cleanContent = lines.slice(logEndIdx).join('\n').trim()
   return { logs, cleanContent, skillName }
 }
@@ -250,7 +255,16 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
       const HeadingTag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
       const key = `${blockKey}-h-${i}`
       blocks.push(
-        <HeadingTag key={key} style={{ fontSize, fontWeight: 600, margin: '12px 0 6px 0', color: 'var(--color-text-title)', lineHeight: '1.3' }}>
+        <HeadingTag
+          key={key}
+          style={{
+            fontSize,
+            fontWeight: 600,
+            margin: '12px 0 6px 0',
+            color: 'var(--color-text-title)',
+            lineHeight: '1.3'
+          }}
+        >
           {parseInlineMarkdown(title, key)}
         </HeadingTag>
       )
@@ -269,11 +283,17 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
       if (tableLines.length >= 2) {
         // Parse header
         const headerRow = tableLines[0]
-        const headers = headerRow.slice(1, -1).split('|').map((s) => s.trim())
+        const headers = headerRow
+          .slice(1, -1)
+          .split('|')
+          .map((s) => s.trim())
 
         // Parse alignments from the second row (separator)
         const sepRow = tableLines[1]
-        const sepParts = sepRow.slice(1, -1).split('|').map((s) => s.trim())
+        const sepParts = sepRow
+          .slice(1, -1)
+          .split('|')
+          .map((s) => s.trim())
         const alignments = sepParts.map((part) => {
           const left = part.startsWith(':')
           const right = part.endsWith(':')
@@ -286,7 +306,10 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
         const rows: string[][] = []
         for (let r = 2; r < tableLines.length; r++) {
           const rowLine = tableLines[r]
-          const cells = rowLine.slice(1, -1).split('|').map((s) => s.trim())
+          const cells = rowLine
+            .slice(1, -1)
+            .split('|')
+            .map((s) => s.trim())
           // Fill missing cells if row has fewer cells than headers
           while (cells.length < headers.length) {
             cells.push('')
@@ -296,12 +319,40 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
 
         const key = `${blockKey}-table-${i}`
         blocks.push(
-          <div key={key} style={{ overflowX: 'auto', margin: '12px 0', border: '1px solid var(--color-border)', borderRadius: '6px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+          <div
+            key={key}
+            style={{
+              overflowX: 'auto',
+              margin: '12px 0',
+              border: '1px solid var(--color-border)',
+              borderRadius: '6px'
+            }}
+          >
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: '12.5px',
+                textAlign: 'left'
+              }}
+            >
               <thead>
-                <tr style={{ background: 'var(--color-card-bg)', borderBottom: '1px solid var(--color-border)' }}>
+                <tr
+                  style={{
+                    background: 'var(--color-card-bg)',
+                    borderBottom: '1px solid var(--color-border)'
+                  }}
+                >
                   {headers.map((h, colIdx) => (
-                    <th key={`th-${colIdx}`} style={{ padding: '8px 12px', fontWeight: 600, color: 'var(--color-text-title)', textAlign: alignments[colIdx] || 'left' }}>
+                    <th
+                      key={`th-${colIdx}`}
+                      style={{
+                        padding: '8px 12px',
+                        fontWeight: 600,
+                        color: 'var(--color-text-title)',
+                        textAlign: alignments[colIdx] || 'left'
+                      }}
+                    >
                       {parseInlineMarkdown(h, `${key}-th-${colIdx}`)}
                     </th>
                   ))}
@@ -309,9 +360,25 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
               </thead>
               <tbody>
                 {rows.map((row, rowIdx) => (
-                  <tr key={`tr-${rowIdx}`} style={{ borderBottom: rowIdx === rows.length - 1 ? 'none' : '1px solid var(--color-border)', background: rowIdx % 2 === 1 ? 'rgba(255, 255, 255, 0.01)' : 'transparent' }}>
+                  <tr
+                    key={`tr-${rowIdx}`}
+                    style={{
+                      borderBottom:
+                        rowIdx === rows.length - 1 ? 'none' : '1px solid var(--color-border)',
+                      background: rowIdx % 2 === 1 ? 'rgba(255, 255, 255, 0.01)' : 'transparent'
+                    }}
+                  >
                     {row.map((cell, colIdx) => (
-                      <td key={`td-${rowIdx}-${colIdx}`} style={{ padding: '8px 12px', color: 'var(--color-text)', textAlign: alignments[colIdx] || 'left', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                      <td
+                        key={`td-${rowIdx}-${colIdx}`}
+                        style={{
+                          padding: '8px 12px',
+                          color: 'var(--color-text)',
+                          textAlign: alignments[colIdx] || 'left',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word'
+                        }}
+                      >
                         {parseInlineMarkdown(cell, `${key}-td-${rowIdx}-${colIdx}`)}
                       </td>
                     ))}
@@ -323,8 +390,15 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
         )
         continue
       } else {
-        // Fallback: put the index back and let paragraph handler run
-        i -= tableLines.length
+        // Fallback: it's not a valid table (e.g. only 1 line).
+        // Render it as a normal text line and continue, consuming the line.
+        const fallbackKey = `${blockKey}-tbl-fallback-${i}`
+        blocks.push(
+          <div key={fallbackKey} style={{ minHeight: '1.2em', lineHeight: '1.5', margin: '4px 0' }}>
+            {parseInlineMarkdown(tableLines[0], fallbackKey)}
+          </div>
+        )
+        continue
       }
     }
 
@@ -344,13 +418,30 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
         }
       }
       blocks.push(
-        <div key={listKey} style={{ display: 'flex', flexDirection: 'column', gap: '4px', margin: '6px 0' }}>
+        <div
+          key={listKey}
+          style={{ display: 'flex', flexDirection: 'column', gap: '4px', margin: '6px 0' }}
+        >
           {listItems.map((item, itemIdx) => {
             const itemKey = `${listKey}-item-${itemIdx}`
             return (
-              <div key={itemKey} style={{ display: 'flex', gap: '8px', paddingLeft: '12px', alignItems: 'flex-start' }}>
-                <span style={{ color: 'var(--color-primary)', userSelect: 'none', lineHeight: '1.4' }}>•</span>
-                <span style={{ flex: 1, lineHeight: '1.4' }}>{parseInlineMarkdown(item, itemKey)}</span>
+              <div
+                key={itemKey}
+                style={{
+                  display: 'flex',
+                  gap: '8px',
+                  paddingLeft: '12px',
+                  alignItems: 'flex-start'
+                }}
+              >
+                <span
+                  style={{ color: 'var(--color-primary)', userSelect: 'none', lineHeight: '1.4' }}
+                >
+                  •
+                </span>
+                <span style={{ flex: 1, lineHeight: '1.4' }}>
+                  {parseInlineMarkdown(item, itemKey)}
+                </span>
               </div>
             )
           })}
@@ -375,13 +466,35 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
         }
       }
       blocks.push(
-        <div key={listKey} style={{ display: 'flex', flexDirection: 'column', gap: '4px', margin: '6px 0' }}>
+        <div
+          key={listKey}
+          style={{ display: 'flex', flexDirection: 'column', gap: '4px', margin: '6px 0' }}
+        >
           {listItems.map((item, itemIdx) => {
             const itemKey = `${listKey}-item-${itemIdx}`
             return (
-              <div key={itemKey} style={{ display: 'flex', gap: '8px', paddingLeft: '12px', alignItems: 'flex-start' }}>
-                <span style={{ color: 'var(--color-primary)', fontWeight: 500, userSelect: 'none', lineHeight: '1.4' }}>{item.num}.</span>
-                <span style={{ flex: 1, lineHeight: '1.4' }}>{parseInlineMarkdown(item.content, itemKey)}</span>
+              <div
+                key={itemKey}
+                style={{
+                  display: 'flex',
+                  gap: '8px',
+                  paddingLeft: '12px',
+                  alignItems: 'flex-start'
+                }}
+              >
+                <span
+                  style={{
+                    color: 'var(--color-primary)',
+                    fontWeight: 500,
+                    userSelect: 'none',
+                    lineHeight: '1.4'
+                  }}
+                >
+                  {item.num}.
+                </span>
+                <span style={{ flex: 1, lineHeight: '1.4' }}>
+                  {parseInlineMarkdown(item.content, itemKey)}
+                </span>
               </div>
             )
           })}
@@ -396,10 +509,12 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
     while (i < lines.length) {
       const nextTrimmed = lines[i].trim()
       if (!nextTrimmed) break
-      if (nextTrimmed.match(/^(#{1,6})\s+/) || 
-          nextTrimmed.match(/^([-*])\s+/) || 
-          nextTrimmed.match(/^(\d+)\.\s+/) ||
-          (nextTrimmed.startsWith('|') && nextTrimmed.endsWith('|'))) {
+      if (
+        nextTrimmed.match(/^(#{1,6})\s+/) ||
+        nextTrimmed.match(/^([-*])\s+/) ||
+        nextTrimmed.match(/^(\d+)\.\s+/) ||
+        (nextTrimmed.startsWith('|') && nextTrimmed.endsWith('|'))
+      ) {
         break
       }
       paraLines.push(lines[i])
@@ -407,7 +522,10 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
     }
 
     blocks.push(
-      <div key={paraKey} style={{ display: 'flex', flexDirection: 'column', gap: '2px', margin: '4px 0' }}>
+      <div
+        key={paraKey}
+        style={{ display: 'flex', flexDirection: 'column', gap: '2px', margin: '4px 0' }}
+      >
         {paraLines.map((pLine, pIdx) => {
           const lineKey = `${paraKey}-l-${pIdx}`
           return (
@@ -431,19 +549,54 @@ const parseBlockMarkdown = (text: string, blockKey: string): React.ReactNode => 
 export const renderMessageContent = (text: string): React.ReactNode => {
   if (!text) return null
   const parts = text.split(/(```[\s\S]*?```)/g)
-  
+
   return parts.map((part, idx) => {
     if (part.startsWith('```')) {
       const match = part.match(/```(\w*)\n([\s\S]*?)```/)
       const lang = match ? match[1] : ''
       const code = match ? match[2] : part.slice(3, -3)
       return (
-        <div key={`code-blk-${idx}`} className="code-block-container" style={{ margin: '8px 0', border: '1px solid var(--color-code-block-border)', borderRadius: '8px', overflow: 'hidden' }}>
-          <div style={{ background: 'var(--color-code-block-header-bg)', padding: '6px 12px', fontSize: '11.5px', borderBottom: '1px solid var(--color-code-block-border)', color: 'var(--color-code-block-header-text)', display: 'flex', justifyContent: 'space-between', userSelect: 'none' }}>
+        <div
+          key={`code-blk-${idx}`}
+          className="code-block-container"
+          style={{
+            margin: '8px 0',
+            border: '1px solid var(--color-code-block-border)',
+            borderRadius: '8px',
+            overflow: 'hidden'
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--color-code-block-header-bg)',
+              padding: '6px 12px',
+              fontSize: '11.5px',
+              borderBottom: '1px solid var(--color-code-block-border)',
+              color: 'var(--color-code-block-header-text)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              userSelect: 'none'
+            }}
+          >
             <span>{lang || 'code'}</span>
-            <span style={{ cursor: 'pointer', color: 'var(--color-primary)' }} onClick={(): Promise<void> => navigator.clipboard.writeText(code)}>复制</span>
+            <span
+              style={{ cursor: 'pointer', color: 'var(--color-primary)' }}
+              onClick={(): Promise<void> => navigator.clipboard.writeText(code)}
+            >
+              复制
+            </span>
           </div>
-          <pre style={{ margin: 0, padding: '10px', overflowX: 'auto', background: 'var(--color-code-block-bg)', color: 'var(--color-code-block-text)', fontFamily: 'Consolas, monospace', fontSize: '12px' }}>
+          <pre
+            style={{
+              margin: 0,
+              padding: '10px',
+              overflowX: 'auto',
+              background: 'var(--color-code-block-bg)',
+              color: 'var(--color-code-block-text)',
+              fontFamily: 'Consolas, monospace',
+              fontSize: '12px'
+            }}
+          >
             <code>{code}</code>
           </pre>
         </div>
@@ -480,7 +633,17 @@ export const renderMessageContent = (text: string): React.ReactNode => {
                           {codeParts.map((codePart, cIdx) => {
                             if (codePart.startsWith('`') && codePart.endsWith('`')) {
                               return (
-                                <code key={`code-i-${cIdx}`} style={{ background: 'var(--color-inline-code-bg)', padding: '2px 4px', borderRadius: '4px', fontFamily: 'Consolas, monospace', fontSize: '12px', color: '#f43f5e' }}>
+                                <code
+                                  key={`code-i-${cIdx}`}
+                                  style={{
+                                    background: 'var(--color-inline-code-bg)',
+                                    padding: '2px 4px',
+                                    borderRadius: '4px',
+                                    fontFamily: 'Consolas, monospace',
+                                    fontSize: '12px',
+                                    color: '#f43f5e'
+                                  }}
+                                >
                                   {codePart.slice(1, -1)}
                                 </code>
                               )
@@ -506,7 +669,7 @@ export const getTriggerColor = (type: string): string => {
   if (type === 'command') return '#f59e0b' // Amber/Orange for system commands
   if (type === 'delete-session') return '#ef4444' // Red for session deletion
   if (type === 'session') return '#3b82f6' // Blue for history session
-  if (type === 'model') return '#a855f7'   // Purple for switching model
+  if (type === 'model') return '#a855f7' // Purple for switching model
   if (type === 'provider') return '#06b6d4' // Cyan for provider switching
-  return '#10b981'                         // Green for prompt skills
+  return '#10b981' // Green for prompt skills
 }

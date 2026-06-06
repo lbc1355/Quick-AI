@@ -4,8 +4,8 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
 import { StorageSchema } from '../shared/types'
-import { handleChatCompletion, fetchModels } from './aiClient'
-import { runAgentSkill, resolveToolPermission } from './agentRunner'
+import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClient'
+import { runAgentSkill, resolveToolPermission, abortAgentSkill } from './agentRunner'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -108,7 +108,7 @@ function showWindow(): void {
     if (!mainWindow || !isWindowVisible) return
     mainWindow.setOpacity(1)
     mainWindow.focus()
-  
+
     // Notify frontend that the window has been summoned/shown
     mainWindow.webContents.send('window-shown')
   }, 16)
@@ -260,6 +260,11 @@ app.whenReady().then(() => {
 
   ipcMain.on('respond-tool-permission', (_event, reqId, callId, approved) => {
     resolveToolPermission(reqId, callId, approved)
+  })
+
+  ipcMain.on('abort-generation', (_event, reqId) => {
+    abortChatCompletion(reqId)
+    abortAgentSkill(reqId)
   })
 
   createWindow()

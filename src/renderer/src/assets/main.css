@@ -466,6 +466,16 @@ input, textarea, select {
   cursor: not-allowed;
 }
 
+.input-action-btn.stop {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.input-action-btn.stop:hover {
+  background: rgba(239, 68, 68, 0.22);
+  color: #ef4444;
+}
+
 /* File attachments previews */
 .file-preview-list {
   display: flex;

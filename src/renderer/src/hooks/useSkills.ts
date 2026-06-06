@@ -11,9 +11,10 @@ export interface UseSkillsReturn {
 const normalizeLoadedSkill = (skill: Skill): Skill => {
   const triggers = skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
   const kind = skill.kind || (skill.mode === 'run' ? 'agent' : 'prompt')
-  const tools = kind === 'agent'
-    ? Array.from(new Set([...(skill.tools || []), 'fetch_url']))
-    : skill.tools || []
+  const tools =
+    kind === 'agent'
+      ? Array.from(new Set([...(skill.tools || []), 'fetch_url']))
+      : skill.tools || []
   return {
     ...skill,
     trigger: skill.trigger || triggers[0],
@@ -56,10 +57,7 @@ export const useSkills = (): UseSkillsReturn => {
       installedAt: existingSkill?.installedAt || now,
       updatedAt: now
     }
-    const nextSkills = [
-      ...skills.filter((skill) => skill.id !== installedSkill.id),
-      installedSkill
-    ]
+    const nextSkills = [...skills.filter((skill) => skill.id !== installedSkill.id), installedSkill]
 
     await persistSkills(nextSkills)
     return installedSkill

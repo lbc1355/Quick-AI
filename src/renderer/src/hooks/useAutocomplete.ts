@@ -53,11 +53,41 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
 
       // 1. Built-in System Commands
       const systemCommands: AutocompleteItem[] = [
-        { id: 'cmd-new', name: '🆕 新建对话 (Start new chat)', trigger: '/new', cmd: 'new', type: 'command' },
-        { id: 'cmd-clear', name: '🧹 清空当前对话 (Clear current chat)', trigger: '/clear', cmd: 'clear', type: 'command' },
-        { id: 'cmd-settings', name: '⚙️ 打开应用设置 (Open settings)', trigger: '/settings', cmd: 'settings', type: 'command' },
-        { id: 'cmd-help', name: 'ℹ️ 显示快捷指令帮助 (Show help)', trigger: '/help', cmd: 'help', type: 'command' },
-        { id: 'cmd-exit', name: '❌ 隐藏/关闭窗口 (Hide window)', trigger: '/exit', cmd: 'exit', type: 'command' }
+        {
+          id: 'cmd-new',
+          name: '🆕 新建对话 (Start new chat)',
+          trigger: '/new',
+          cmd: 'new',
+          type: 'command'
+        },
+        {
+          id: 'cmd-clear',
+          name: '🧹 清空当前对话 (Clear current chat)',
+          trigger: '/clear',
+          cmd: 'clear',
+          type: 'command'
+        },
+        {
+          id: 'cmd-settings',
+          name: '⚙️ 打开应用设置 (Open settings)',
+          trigger: '/settings',
+          cmd: 'settings',
+          type: 'command'
+        },
+        {
+          id: 'cmd-help',
+          name: 'ℹ️ 显示快捷指令帮助 (Show help)',
+          trigger: '/help',
+          cmd: 'help',
+          type: 'command'
+        },
+        {
+          id: 'cmd-exit',
+          name: '❌ 隐藏/关闭窗口 (Hide window)',
+          trigger: '/exit',
+          cmd: 'exit',
+          type: 'command'
+        }
       ]
       const matchingCmds: AutocompleteItem[] = systemCommands.filter((c) =>
         c.trigger.toLowerCase().startsWith(commandPrefix)
@@ -66,15 +96,19 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
       // 2. Predefined Skills
       const matchingSkills: AutocompleteItem[] = skills
         .map((skill) => {
-          const triggers = skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
-          const matchingTrigger = triggers.find((trigger) => `/${trigger}`.toLowerCase().startsWith(commandPrefix))
+          const triggers =
+            skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
+          const matchingTrigger = triggers.find((trigger) =>
+            `/${trigger}`.toLowerCase().startsWith(commandPrefix)
+          )
           return { skill, triggers, matchingTrigger }
         })
-        .filter(({ skill, matchingTrigger }) => (
-          Boolean(matchingTrigger) ||
-          skill.name.toLowerCase().includes(search) ||
-          (skill.description || '').toLowerCase().includes(search)
-        ))
+        .filter(
+          ({ skill, matchingTrigger }) =>
+            Boolean(matchingTrigger) ||
+            skill.name.toLowerCase().includes(search) ||
+            (skill.description || '').toLowerCase().includes(search)
+        )
         .map(({ skill, matchingTrigger }) => ({
           id: skill.id,
           name: skill.description ? `${skill.name} - ${skill.description}` : skill.name,
@@ -87,7 +121,10 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
 
       // 3. Models switching command options
       const matchingModels: AutocompleteItem[] = modelsList
-        .filter((m) => `/model:${m}`.toLowerCase().includes(commandPrefix) || m.toLowerCase().includes(search))
+        .filter(
+          (m) =>
+            `/model:${m}`.toLowerCase().includes(commandPrefix) || m.toLowerCase().includes(search)
+        )
         .map((m) => ({
           id: `model-${m}`,
           name: `🔄 使用大模型 ${m}`,
@@ -111,7 +148,13 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
       // 5. Session deletion options
       const matchingDeleteSessions: AutocompleteItem[] = sessions
         .filter((s) => s.messages.length > 0)
-        .filter((s) => `/delete:${s.id}`.toLowerCase().includes(commandPrefix) || s.title.toLowerCase().includes(search) || 'delete'.includes(search) || 'del'.includes(search))
+        .filter(
+          (s) =>
+            `/delete:${s.id}`.toLowerCase().includes(commandPrefix) ||
+            s.title.toLowerCase().includes(search) ||
+            'delete'.includes(search) ||
+            'del'.includes(search)
+        )
         .map((s) => ({
           id: `delete-${s.id}`,
           name: `删除会话: ${s.title}`,
@@ -122,7 +165,13 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
 
       // 6. Provider switching options
       const matchingProviders: AutocompleteItem[] = providers
-        .filter((p) => `/provider:${p.name}`.toLowerCase().includes(commandPrefix) || p.name.toLowerCase().includes(search) || 'provider'.includes(search) || 'p'.includes(search))
+        .filter(
+          (p) =>
+            `/provider:${p.name}`.toLowerCase().includes(commandPrefix) ||
+            p.name.toLowerCase().includes(search) ||
+            'provider'.includes(search) ||
+            'p'.includes(search)
+        )
         .map((p) => ({
           id: `provider-${p.id}`,
           name: `切换服务商: ${p.name} (${p.apiUrl})`,
@@ -163,7 +212,9 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setSelectedItemIdx((prev) => (prev - 1 + autocompleteItems.length) % autocompleteItems.length)
+        setSelectedItemIdx(
+          (prev) => (prev - 1 + autocompleteItems.length) % autocompleteItems.length
+        )
         return true
       }
       if (e.key === 'Tab') {

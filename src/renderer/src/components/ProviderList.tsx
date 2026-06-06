@@ -85,7 +85,14 @@ export const ProviderList: React.FC<ProviderListProps> = ({
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '10px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
+              <label
+                style={{
+                  fontSize: '10px',
+                  color: '#9ca3af',
+                  display: 'block',
+                  marginBottom: '3px'
+                }}
+              >
                 服务商类型 (Preset Type)
               </label>
               <select
@@ -101,7 +108,14 @@ export const ProviderList: React.FC<ProviderListProps> = ({
               </select>
             </div>
             <div style={{ flex: 1.5 }}>
-              <label style={{ fontSize: '10px', color: '#9ca3af', display: 'block', marginBottom: '3px' }}>
+              <label
+                style={{
+                  fontSize: '10px',
+                  color: '#9ca3af',
+                  display: 'block',
+                  marginBottom: '3px'
+                }}
+              >
                 配置名称 (Custom Name)
               </label>
               <input
@@ -114,7 +128,9 @@ export const ProviderList: React.FC<ProviderListProps> = ({
               />
             </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+          <div
+            style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}
+          >
             <button
               className="edit-btn cancel"
               style={{
@@ -166,9 +182,17 @@ export const ProviderList: React.FC<ProviderListProps> = ({
                 borderRadius: '8px'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--color-text-title)' }}>
+                  <span
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      color: 'var(--color-text-title)'
+                    }}
+                  >
                     {p.name}
                   </span>
                   <span

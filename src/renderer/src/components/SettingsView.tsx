@@ -163,7 +163,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <label className="settings-label">系统预设提示词 (System Prompt)</label>
                 <textarea
                   className="settings-input"
-                  style={{ resize: 'vertical', minHeight: '80px', maxHeight: '160px', fontSize: '12px' }}
+                  style={{
+                    resize: 'vertical',
+                    minHeight: '80px',
+                    maxHeight: '160px',
+                    fontSize: '12px'
+                  }}
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
                 />

@@ -11,7 +11,9 @@ interface UseChatCompletionProps {
   systemPrompt: string
   setShowSettings: (show: boolean) => void
   attachedFiles: Array<{ name: string; content: string; type: string }>
-  setAttachedFiles: React.Dispatch<React.SetStateAction<Array<{ name: string; content: string; type: string }>>>
+  setAttachedFiles: React.Dispatch<
+    React.SetStateAction<Array<{ name: string; content: string; type: string }>>
+  >
 }
 
 export interface UseChatCompletionReturn {
@@ -29,15 +31,18 @@ export interface UseChatCompletionReturn {
   handleSaveEdit: (msgId: string) => void
   handleRegenerate: (msgIdx: number) => void
   showHelpMessage: () => Promise<void>
+  handleAbortGeneration: () => void
 }
 
 interface ApiMessage {
   role: string
-  content: string | Array<{
-    type: string
-    text?: string
-    image_url?: { url: string }
-  }>
+  content:
+    | string
+    | Array<{
+        type: string
+        text?: string
+        image_url?: { url: string }
+      }>
 }
 
 export const useChatCompletion = ({
@@ -56,6 +61,15 @@ export const useChatCompletion = ({
   const [isGenerating, setIsGenerating] = useState(false)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
+  const [activeReqId, setActiveReqId] = useState<string | null>(null)
+
+  const handleAbortGeneration = (): void => {
+    if (activeReqId) {
+      window.api.abortGeneration(activeReqId)
+      setIsGenerating(false)
+      setActiveReqId(null)
+    }
+  }
 
   const showHelpMessage = async (): Promise<void> => {
     if (!activeSessionId) return
@@ -157,6 +171,7 @@ export const useChatCompletion = ({
     }
     currentSession.messages.push(assistantMsg)
     setSessions([...currentSessions])
+    sessionsRef.current = currentSessions
 
     // Load full messages block
     const apiMessages: ApiMessage[] = []
@@ -165,11 +180,13 @@ export const useChatCompletion = ({
     }
 
     currentSession.messages.slice(0, -1).forEach((msg) => {
-      let content: string | Array<{
-        type: string
-        text?: string
-        image_url?: { url: string }
-      }> = msg.content
+      let content:
+        | string
+        | Array<{
+            type: string
+            text?: string
+            image_url?: { url: string }
+          }> = msg.content
 
       if (msg.files && msg.files.length > 0) {
         const textParts = [msg.content]
@@ -184,12 +201,9 @@ export const useChatCompletion = ({
             textParts.push(`\n[参考文件: ${f.name}]\n${f.content}`)
           }
         })
-        
+
         if (images.length > 0) {
-          content = [
-            { type: 'text', text: textParts.join('\n') },
-            ...images
-          ]
+          content = [{ type: 'text', text: textParts.join('\n') }, ...images]
         } else {
           content = textParts.join('\n')
         }
@@ -199,6 +213,7 @@ export const useChatCompletion = ({
 
     // Construct request ID
     const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    setActiveReqId(reqId)
     let accumulatedText = ''
     let accumulatedReasoning = ''
 
@@ -206,8 +221,8 @@ export const useChatCompletion = ({
       if (data.reqId !== reqId) return
 
       if (data.error) {
-        setSessions((prevSessions) =>
-          prevSessions.map((s) => {
+        setSessions((prevSessions) => {
+          const next = prevSessions.map((s) => {
             if (s.id === activeSessionId) {
               return {
                 ...s,
@@ -221,7 +236,9 @@ export const useChatCompletion = ({
             }
             return s
           })
-        )
+          sessionsRef.current = next
+          return next
+        })
         cleanup()
         return
       }
@@ -233,8 +250,8 @@ export const useChatCompletion = ({
 
       if (data.reasoningContent) {
         accumulatedReasoning += data.reasoningContent
-        setSessions((prevSessions) =>
-          prevSessions.map((s) => {
+        setSessions((prevSessions) => {
+          const next = prevSessions.map((s) => {
             if (s.id === activeSessionId) {
               return {
                 ...s,
@@ -249,13 +266,15 @@ export const useChatCompletion = ({
             }
             return s
           })
-        )
+          sessionsRef.current = next
+          return next
+        })
       }
 
       if (data.content) {
         accumulatedText += data.content
-        setSessions((prevSessions) =>
-          prevSessions.map((s) => {
+        setSessions((prevSessions) => {
+          const next = prevSessions.map((s) => {
             if (s.id === activeSessionId) {
               return {
                 ...s,
@@ -270,20 +289,25 @@ export const useChatCompletion = ({
             }
             return s
           })
-        )
+          sessionsRef.current = next
+          return next
+        })
       }
     })
 
     const cleanup = (): void => {
       unsubscribe()
       setIsGenerating(false)
+      setActiveReqId(null)
       // Save sessions
       setTimeout(async () => {
-        const finalSessions = (await window.api.storeGet('sessions') as Session[]) || []
+        const finalSessions = ((await window.api.storeGet('sessions')) as Session[]) || []
         const currentActive = sessionsRef.current.find((s) => s.id === activeSessionId)
         if (currentActive) {
           currentActive.lastActiveTime = Date.now()
-          const updatedSessions = finalSessions.map((s) => (s.id === activeSessionId ? currentActive : s))
+          const updatedSessions = finalSessions.map((s) =>
+            s.id === activeSessionId ? currentActive : s
+          )
           if (!updatedSessions.some((s) => s.id === activeSessionId)) {
             updatedSessions.push(currentActive)
           }
@@ -302,8 +326,8 @@ export const useChatCompletion = ({
     } catch (err) {
       const error = err as Error
       console.error(error)
-      setSessions((prevSessions) =>
-        prevSessions.map((s) => {
+      setSessions((prevSessions) => {
+        const next = prevSessions.map((s) => {
           if (s.id === activeSessionId) {
             return {
               ...s,
@@ -317,7 +341,9 @@ export const useChatCompletion = ({
           }
           return s
         })
-      )
+        sessionsRef.current = next
+        return next
+      })
       cleanup()
     }
   }
@@ -373,6 +399,7 @@ export const useChatCompletion = ({
     sessionsRef.current = currentSessions
 
     const reqId = assistantMsgId
+    setActiveReqId(reqId)
     let accumulatedText = ''
     let accumulatedReasoning = ''
 
@@ -380,8 +407,8 @@ export const useChatCompletion = ({
       if (data.reqId !== reqId) return
 
       if (data.error) {
-        setSessions((prevSessions) =>
-          prevSessions.map((s) => {
+        setSessions((prevSessions) => {
+          const next = prevSessions.map((s) => {
             if (s.id === activeSessionId) {
               return {
                 ...s,
@@ -395,7 +422,9 @@ export const useChatCompletion = ({
             }
             return s
           })
-        )
+          sessionsRef.current = next
+          return next
+        })
         cleanup()
         return
       }
@@ -406,8 +435,8 @@ export const useChatCompletion = ({
       }
 
       if (data.event) {
-        setSessions((prevSessions) =>
-          prevSessions.map((s) => {
+        setSessions((prevSessions) => {
+          const next = prevSessions.map((s) => {
             if (s.id === activeSessionId) {
               return {
                 ...s,
@@ -417,7 +446,22 @@ export const useChatCompletion = ({
                     const newEvent = data.event!
                     const updatedEvents = [...currentEvents]
 
-                    if (updatedEvents.length > 0) {
+                    if (newEvent.type === 'tool_call') {
+                      const existingIdx = updatedEvents.findIndex(
+                        (e) => e.type === 'tool_call' && e.callId === newEvent.callId
+                      )
+                      if (existingIdx !== -1) {
+                        const existingEvent = updatedEvents[existingIdx]
+                        if (existingEvent.type === 'tool_call') {
+                          updatedEvents[existingIdx] = {
+                            ...existingEvent,
+                            permissionState: newEvent.permissionState
+                          }
+                        }
+                      } else {
+                        updatedEvents.push(newEvent)
+                      }
+                    } else if (updatedEvents.length > 0) {
                       const lastEvent = updatedEvents[updatedEvents.length - 1]
                       if (lastEvent.type === 'reasoning' && newEvent.type === 'reasoning') {
                         // Merge consecutive reasoning events
@@ -462,13 +506,15 @@ export const useChatCompletion = ({
             }
             return s
           })
-        )
+          sessionsRef.current = next
+          return next
+        })
       }
 
       if (data.reasoningContent) {
         accumulatedReasoning += data.reasoningContent
-        setSessions((prevSessions) =>
-          prevSessions.map((s) => {
+        setSessions((prevSessions) => {
+          const next = prevSessions.map((s) => {
             if (s.id === activeSessionId) {
               return {
                 ...s,
@@ -483,13 +529,15 @@ export const useChatCompletion = ({
             }
             return s
           })
-        )
+          sessionsRef.current = next
+          return next
+        })
       }
 
       if (data.content) {
         accumulatedText += data.content
-        setSessions((prevSessions) =>
-          prevSessions.map((s) => {
+        setSessions((prevSessions) => {
+          const next = prevSessions.map((s) => {
             if (s.id === activeSessionId) {
               return {
                 ...s,
@@ -504,19 +552,24 @@ export const useChatCompletion = ({
             }
             return s
           })
-        )
+          sessionsRef.current = next
+          return next
+        })
       }
     })
 
     const cleanup = (): void => {
       unsubscribe()
       setIsGenerating(false)
+      setActiveReqId(null)
       setTimeout(async () => {
-        const finalSessions = (await window.api.storeGet('sessions') as Session[]) || []
+        const finalSessions = ((await window.api.storeGet('sessions')) as Session[]) || []
         const currentActive = sessionsRef.current.find((s) => s.id === activeSessionId)
         if (currentActive) {
           currentActive.lastActiveTime = Date.now()
-          const updatedSessions = finalSessions.map((s) => (s.id === activeSessionId ? currentActive : s))
+          const updatedSessions = finalSessions.map((s) =>
+            s.id === activeSessionId ? currentActive : s
+          )
           if (!updatedSessions.some((s) => s.id === activeSessionId)) {
             updatedSessions.push(currentActive)
           }
@@ -537,8 +590,8 @@ export const useChatCompletion = ({
     } catch (err) {
       const error = err as Error
       console.error(error)
-      setSessions((prevSessions) =>
-        prevSessions.map((s) => {
+      setSessions((prevSessions) => {
+        const next = prevSessions.map((s) => {
           if (s.id === activeSessionId) {
             return {
               ...s,
@@ -552,7 +605,9 @@ export const useChatCompletion = ({
           }
           return s
         })
-      )
+        sessionsRef.current = next
+        return next
+      })
       cleanup()
     }
   }
@@ -615,6 +670,7 @@ export const useChatCompletion = ({
     handleStartEdit,
     handleSaveEdit,
     handleRegenerate,
-    showHelpMessage
+    showHelpMessage,
+    handleAbortGeneration
   }
 }

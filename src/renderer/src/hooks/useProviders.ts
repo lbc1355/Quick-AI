@@ -99,7 +99,8 @@ export const useProviders = (): UseProvidersReturn => {
         setEditingProviderId(loadedActiveId)
 
         // Find active provider
-        const activeProv = loadedProviders.find((p) => p.id === loadedActiveId) || loadedProviders[0]
+        const activeProv =
+          loadedProviders.find((p) => p.id === loadedActiveId) || loadedProviders[0]
         if (activeProv) {
           setApiKey(activeProv.apiKey || '')
           setApiUrl(activeProv.apiUrl || '')

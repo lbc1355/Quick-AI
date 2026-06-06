@@ -24,7 +24,10 @@ export const useSessions = (): UseSessionsReturn => {
     sessionsRef.current = sessions
   }, [sessions])
 
-  const checkSessionTimeout = async (currentActiveId: string, currentSessions: Session[]): Promise<void> => {
+  const checkSessionTimeout = async (
+    currentActiveId: string,
+    currentSessions: Session[]
+  ): Promise<void> => {
     if (currentSessions.length === 0 || !currentActiveId) return
 
     const activeSess = currentSessions.find((s) => s.id === currentActiveId)

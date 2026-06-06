@@ -1,8 +1,18 @@
 export type AgentEvent =
   | { type: 'agent_start'; skillName: string }
   | { type: 'reasoning'; content: string }
-  | { type: 'tool_call'; callId: string; toolName: string; args: unknown; permissionState?: 'pending' | 'approved' | 'denied' }
-  | { type: 'tool_result'; callId: string; result: { title?: string; url?: string; summary?: string } }
+  | {
+      type: 'tool_call'
+      callId: string
+      toolName: string
+      args: unknown
+      permissionState?: 'pending' | 'approved' | 'denied'
+    }
+  | {
+      type: 'tool_result'
+      callId: string
+      result: { title?: string; url?: string; summary?: string }
+    }
   | { type: 'tool_error'; callId: string; error: string }
   | { type: 'final'; content: string }
 
@@ -18,11 +28,14 @@ export interface Message {
 
 export interface ChatCompletionMessage {
   role: string
-  content?: string | Array<{
-    type: string
-    text?: string
-    image_url?: { url: string }
-  }> | null
+  content?:
+    | string
+    | Array<{
+        type: string
+        text?: string
+        image_url?: { url: string }
+      }>
+    | null
   reasoning_content?: string
   name?: string
   tool_call_id?: string
@@ -130,4 +143,19 @@ export interface ChatChunkData {
   done?: boolean
   error?: string
   event?: AgentEvent
+}
+
+export type ToolArgs = Record<string, unknown>
+
+export interface ChatToolDeclaration {
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: {
+      type: 'object'
+      properties: Record<string, unknown>
+      required?: string[]
+    }
+  }
 }

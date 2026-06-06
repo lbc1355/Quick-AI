@@ -108,7 +108,9 @@ const fetchWithCheckedRedirects = async (
   return response
 }
 
-const readLimitedText = async (response: Response): Promise<{ text: string; truncated: boolean }> => {
+const readLimitedText = async (
+  response: Response
+): Promise<{ text: string; truncated: boolean }> => {
   const contentLength = Number(response.headers.get('content-length') || '0')
   if (contentLength > MAX_RESPONSE_BYTES) {
     throw new Error(`Response too large: ${contentLength} bytes`)
@@ -143,7 +145,8 @@ const readLimitedText = async (response: Response): Promise<{ text: string; trun
 
   const decoder = new TextDecoder('utf-8', { fatal: false })
   return {
-    text: chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join('') + decoder.decode(),
+    text:
+      chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join('') + decoder.decode(),
     truncated
   }
 }

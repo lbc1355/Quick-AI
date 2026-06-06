@@ -4,7 +4,9 @@ export interface UseAttachmentsReturn {
   dragActive: boolean
   setDragActive: React.Dispatch<React.SetStateAction<boolean>>
   attachedFiles: Array<{ name: string; content: string; type: string }>
-  setAttachedFiles: React.Dispatch<React.SetStateAction<Array<{ name: string; content: string; type: string }>>>
+  setAttachedFiles: React.Dispatch<
+    React.SetStateAction<Array<{ name: string; content: string; type: string }>>
+  >
   fileInputRef: React.RefObject<HTMLInputElement | null>
   handleFileChange: (e: ChangeEvent<HTMLInputElement>) => void
   handlePaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void
@@ -13,9 +15,13 @@ export interface UseAttachmentsReturn {
   handleRemoveFile: (idx: number) => void
 }
 
-export const useAttachments = (textareaRef: React.RefObject<HTMLTextAreaElement | null>): UseAttachmentsReturn => {
+export const useAttachments = (
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>
+): UseAttachmentsReturn => {
   const [dragActive, setDragActive] = useState(false)
-  const [attachedFiles, setAttachedFiles] = useState<Array<{ name: string; content: string; type: string }>>([])
+  const [attachedFiles, setAttachedFiles] = useState<
+    Array<{ name: string; content: string; type: string }>
+  >([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {

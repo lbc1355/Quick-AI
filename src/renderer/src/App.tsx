@@ -9,7 +9,8 @@ import {
   Undo2,
   Plus,
   Sun,
-  Moon
+  Moon,
+  Square
 } from 'lucide-react'
 
 import { AutocompleteItem, AppSettings } from '../../shared/types'
@@ -134,7 +135,8 @@ function App(): React.JSX.Element {
     handleStartEdit,
     handleSaveEdit,
     handleRegenerate,
-    showHelpMessage
+    showHelpMessage,
+    handleAbortGeneration
   } = useChatCompletion({
     setSessions,
     activeSessionId,
@@ -159,11 +161,7 @@ function App(): React.JSX.Element {
   } = useAutocomplete()
 
   // 6. Markdown Skills hook
-  const {
-    skills,
-    installSkillFromMarkdown,
-    removeSkill
-  } = useSkills()
+  const { skills, installSkillFromMarkdown, removeSkill } = useSkills()
 
   // Listen to window summon (focus/show) event from Main Process
   useEffect(() => {
@@ -173,7 +171,7 @@ function App(): React.JSX.Element {
 
     // Register event listener
     window.electron.ipcRenderer.on('window-shown', handleWindowShown)
-    
+
     return () => {
       window.electron.ipcRenderer.removeAllListeners('window-shown')
     }
@@ -219,8 +217,9 @@ function App(): React.JSX.Element {
     if (isProgrammaticScrollRef.current) return
 
     const threshold = 15 // pixels from bottom
-    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold
-    
+    const isAtBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight <= threshold
+
     if (isAtBottom) {
       shouldAutoScrollRef.current = true
     } else {
@@ -273,7 +272,17 @@ function App(): React.JSX.Element {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isGenerating, showModelsModal, showAddForm, isEditingProviderDetail, showSettings, setShowModelsModal, setShowAddForm, setIsEditingProviderDetail])
+  }, [
+    isGenerating,
+    showModelsModal,
+    showAddForm,
+    isEditingProviderDetail,
+    showSettings,
+    setShowModelsModal,
+    setShowAddForm,
+    setIsEditingProviderDetail,
+    handleCloseSettings
+  ])
 
   // Autocomplete change
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
@@ -329,9 +338,9 @@ function App(): React.JSX.Element {
     } else if (item.type === 'model') {
       // Switch active model instantly
       setSelectedModel(item.modelId || '')
-      
+
       // Save directly to the storage in background
-      const currentSettings = await window.api.storeGet('settings') as AppSettings
+      const currentSettings = (await window.api.storeGet('settings')) as AppSettings
       if (currentSettings) {
         // Update active provider's model
         currentSettings.providers = currentSettings.providers.map((p) => {
@@ -390,7 +399,13 @@ function App(): React.JSX.Element {
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
 
   return (
-    <div className={`app-container ${theme === 'light' ? 'theme-light' : ''}`} onDragEnter={handleDrag} onDragOver={handleDrag} onDragLeave={handleDrag} onDrop={handleDrop}>
+    <div
+      className={`app-container ${theme === 'light' ? 'theme-light' : ''}`}
+      onDragEnter={handleDrag}
+      onDragOver={handleDrag}
+      onDragLeave={handleDrag}
+      onDrop={handleDrop}
+    >
       {/* Draggable Top Dragbar */}
       <div className="drag-header">
         <div className="drag-header-left">
@@ -399,12 +414,17 @@ function App(): React.JSX.Element {
           <div className="chat-model-info" style={{ marginLeft: '12px' }}>
             <div className={`status-dot ${isGenerating ? 'loading' : ''}`} />
             <span className="model-name" style={{ fontSize: '12px', color: '#9ca3af' }}>
-              {providers.find((p) => p.id === activeProviderId)?.name || '未选服务商'}: {selectedModel}
+              {providers.find((p) => p.id === activeProviderId)?.name || '未选服务商'}:{' '}
+              {selectedModel}
             </span>
           </div>
         </div>
         <div className="drag-header-right">
-          <button className="header-action-btn" onClick={toggleTheme} title={theme === 'dark' ? '切换到白天模式' : '切换到黑夜模式'}>
+          <button
+            className="header-action-btn"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? '切换到白天模式' : '切换到黑夜模式'}
+          >
             {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
           </button>
           {showSettings ? (
@@ -413,16 +433,32 @@ function App(): React.JSX.Element {
             </button>
           ) : (
             <>
-              <button className="header-action-btn" onClick={() => handleNewSession()} title="新建对话">
+              <button
+                className="header-action-btn"
+                onClick={() => handleNewSession()}
+                title="新建对话"
+              >
                 <Plus size={14} />
               </button>
-              <button className="header-action-btn" onClick={handleClearCurrentSession} title="清空历史">
+              <button
+                className="header-action-btn"
+                onClick={handleClearCurrentSession}
+                title="清空历史"
+              >
                 <Trash2 size={14} />
               </button>
-              <button className="header-action-btn" onClick={() => window.api.toggleDevTools()} title="开发者工具">
+              <button
+                className="header-action-btn"
+                onClick={() => window.api.toggleDevTools()}
+                title="开发者工具"
+              >
                 <Terminal size={14} />
               </button>
-              <button className="header-action-btn" onClick={() => setShowSettings(true)} title="应用设置">
+              <button
+                className="header-action-btn"
+                onClick={() => setShowSettings(true)}
+                title="应用设置"
+              >
                 <Settings size={14} />
               </button>
             </>
@@ -474,7 +510,9 @@ function App(): React.JSX.Element {
           onInstallSkill={installSkillFromMarkdown}
           onRemoveSkill={removeSkill}
           onChangeEditingProviderName={(name) => {
-            setProviders((prev) => prev.map((p) => (p.id === editingProviderId ? { ...p, name } : p)))
+            setProviders((prev) =>
+              prev.map((p) => (p.id === editingProviderId ? { ...p, name } : p))
+            )
           }}
           onChangeEditingProviderApiUrl={handleApiUrlChange}
         />
@@ -483,11 +521,33 @@ function App(): React.JSX.Element {
           {isNewSessionEmpty ? (
             /* Claude Code Style clean watermark interface */
             <div className="empty-state">
-              <Sparkles size={40} style={{ color: 'rgba(59, 130, 246, 0.4)', filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.2))' }} />
-              <div className="empty-title" style={{ fontSize: '16px', fontWeight: '600', color: 'var(--color-text-title)', marginTop: '14px' }}>
+              <Sparkles
+                size={40}
+                style={{
+                  color: 'rgba(59, 130, 246, 0.4)',
+                  filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.2))'
+                }}
+              />
+              <div
+                className="empty-title"
+                style={{
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: 'var(--color-text-title)',
+                  marginTop: '14px'
+                }}
+              >
                 QuickAI Chat Launcher
               </div>
-              <div className="empty-desc" style={{ fontSize: '12.5px', color: '#6b7280', marginTop: '6px', maxWidth: '380px' }}>
+              <div
+                className="empty-desc"
+                style={{
+                  fontSize: '12.5px',
+                  color: '#6b7280',
+                  marginTop: '6px',
+                  maxWidth: '380px'
+                }}
+              >
                 按 Alt+/ 快速显示/隐藏。输入问句直接开始；输入 `/` 可以触发技能或选择加载历史聊天。
               </div>
             </div>
@@ -520,10 +580,21 @@ function App(): React.JSX.Element {
             {autocompleteItems.length > 0 && (
               <div ref={skillsMenuRef} className="skills-menu">
                 {autocompleteItems.map((item, idx) => (
-                  <div key={item.id} className={`skills-item ${selectedItemIdx === idx ? 'selected' : ''}`} onClick={() => triggerAutocompleteItem(item)}>
-                    <span className="skills-trigger" style={{ color: getTriggerColor(item.type) }}>{item.trigger}</span>
+                  <div
+                    key={item.id}
+                    className={`skills-item ${selectedItemIdx === idx ? 'selected' : ''}`}
+                    onClick={() => triggerAutocompleteItem(item)}
+                  >
+                    <span className="skills-trigger" style={{ color: getTriggerColor(item.type) }}>
+                      {item.trigger}
+                    </span>
                     <span className="skills-name">
-                      {item.name.replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, '').trim()}
+                      {item.name
+                        .replace(
+                          /[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g,
+                          ''
+                        )
+                        .trim()}
                     </span>
                   </div>
                 ))}
@@ -531,15 +602,53 @@ function App(): React.JSX.Element {
             )}
 
             <div className="input-container">
-              <label htmlFor="file-input" className="input-action-btn" title="上传文件 (支持拖拽/粘贴图片)" style={{ cursor: 'pointer' }}>
+              <label
+                htmlFor="file-input"
+                className="input-action-btn"
+                title="上传文件 (支持拖拽/粘贴图片)"
+                style={{ cursor: 'pointer' }}
+              >
                 <Paperclip size={16} />
-                <input ref={fileInputRef} id="file-input" type="file" style={{ display: 'none' }} multiple onChange={handleFileChange} onClick={() => window.api.setFilePickerActive(true)} />
+                <input
+                  ref={fileInputRef}
+                  id="file-input"
+                  type="file"
+                  style={{ display: 'none' }}
+                  multiple
+                  onChange={handleFileChange}
+                  onClick={() => window.api.setFilePickerActive(true)}
+                />
               </label>
-              <textarea ref={textareaRef} className="chat-input" placeholder="输入您的问题... (Esc 隐藏, Shift+Enter 换行, / 命令快捷词)" value={inputVal} onChange={handleInputChange} onKeyDown={handleInputKeyDown} onPaste={handlePaste} rows={1} />
+              <textarea
+                ref={textareaRef}
+                className="chat-input"
+                placeholder="输入您的问题... (Esc 隐藏, Shift+Enter 换行, / 命令快捷词)"
+                value={inputVal}
+                onChange={handleInputChange}
+                onKeyDown={handleInputKeyDown}
+                onPaste={handlePaste}
+                rows={1}
+              />
               <div className="chat-actions">
-                <button className="input-action-btn send" onClick={() => handleSendMessage()} disabled={isGenerating || (!inputVal.trim() && attachedFiles.length === 0)} title="发送消息">
-                  <Send size={14} />
-                </button>
+                {isGenerating ? (
+                  <button
+                    className="input-action-btn stop"
+                    onClick={handleAbortGeneration}
+                    title="终止回答"
+                    style={{ color: '#ef4444' }}
+                  >
+                    <Square size={14} fill="#ef4444" />
+                  </button>
+                ) : (
+                  <button
+                    className="input-action-btn send"
+                    onClick={() => handleSendMessage()}
+                    disabled={!inputVal.trim() && attachedFiles.length === 0}
+                    title="发送消息"
+                  >
+                    <Send size={14} />
+                  </button>
+                )}
               </div>
             </div>
           </div>

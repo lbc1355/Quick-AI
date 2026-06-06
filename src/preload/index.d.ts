@@ -1,5 +1,11 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import { StoreKey, StoreValue, ChatCompletionMessage, AgentSkillRunOptions, ChatChunkData } from '../shared/types'
+import {
+  StoreKey,
+  StoreValue,
+  ChatCompletionMessage,
+  AgentSkillRunOptions,
+  ChatChunkData
+} from '../shared/types'
 
 declare global {
   interface Window {
@@ -12,14 +18,18 @@ declare global {
       toggleDevTools: () => void
       setFilePickerActive: (active: boolean) => void
       reSummonWindow: () => void
-      startChatCompletion: (reqId: string, options: {
-        apiUrl: string
-        apiKey: string
-        model: string
-        messages: ChatCompletionMessage[]
-      }) => void
+      startChatCompletion: (
+        reqId: string,
+        options: {
+          apiUrl: string
+          apiKey: string
+          model: string
+          messages: ChatCompletionMessage[]
+        }
+      ) => void
       startAgentSkill: (reqId: string, options: AgentSkillRunOptions) => void
       respondToolPermission: (reqId: string, callId: string, approved: boolean) => void
+      abortGeneration: (reqId: string) => void
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
     }

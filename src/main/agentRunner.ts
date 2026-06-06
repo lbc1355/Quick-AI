@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { AgentSkillRunOptions, ChatCompletionMessage, AgentEvent } from '../shared/types'
+import { AgentSkillRunOptions, ChatCompletionMessage, AgentEvent, ToolArgs, ChatToolDeclaration } from '../shared/types'
 import { ToolRegistry } from './toolRegistry'
 
 const clampMaxSteps = (value: number | undefined): number => {
@@ -19,6 +19,17 @@ interface PendingPermissionPromise {
 }
 
 const pendingPermissions = new Map<string, PendingPermissionPromise>()
+
+// Map to hold active agent runs AbortControllers
+export const activeAgentRuns = new Map<string, AbortController>()
+
+export const abortAgentSkill = (reqId: string): void => {
+  const controller = activeAgentRuns.get(reqId)
+  if (controller) {
+    controller.abort()
+    activeAgentRuns.delete(reqId)
+  }
+}
 
 // Helper to resolve/reject a pending permission request
 export const resolveToolPermission = (reqId: string, callId: string, approved: boolean): void => {
@@ -42,45 +53,20 @@ const cleanupPendingPermissionsForRun = (reqId: string): void => {
   }
 }
 
-const processMessageReasoning = (
+const callModel = async (
   mainWindow: BrowserWindow,
   reqId: string,
-  message: ChatCompletionMessage
-): void => {
-  // 1. Extract cloud model reasoning_content if present
-  if (message.reasoning_content) {
-    sendEvent(mainWindow, reqId, { type: 'reasoning', content: message.reasoning_content })
-    message.reasoning_content = ''
-  }
-
-  // 2. Extract and send local model <think> reasoning if present, and clean content
-  if (message.content && typeof message.content === 'string' && message.content.includes('<think>')) {
-    const parts = message.content.split('</think>')
-    if (parts.length > 1) {
-      const thinking = parts[0].replace('<think>', '').trim()
-      sendEvent(mainWindow, reqId, { type: 'reasoning', content: thinking })
-      // Strip the thinking process from the message content
-      message.content = parts.slice(1).join('').trim()
-    } else {
-      // In-progress thinking without closing tag
-      const thinking = message.content.replace('<think>', '').trim()
-      sendEvent(mainWindow, reqId, { type: 'reasoning', content: thinking })
-      message.content = ''
-    }
-  }
-}
-
-const callModel = async (
   options: AgentSkillRunOptions,
   messages: ChatCompletionMessage[],
-  toolsToDeclare?: any[]
+  toolsToDeclare?: ChatToolDeclaration[],
+  signal?: AbortSignal
 ): Promise<ChatCompletionMessage> => {
   const completionsUrl = `${options.apiUrl.replace(/\/$/, '')}/chat/completions`
 
-  const body: any = {
+  const body: Record<string, unknown> = {
     model: options.model,
     messages,
-    stream: false
+    stream: true
   }
 
   if (toolsToDeclare && toolsToDeclare.length > 0) {
@@ -94,7 +80,8 @@ const callModel = async (
       'Content-Type': 'application/json',
       ...(options.apiKey ? { Authorization: `Bearer ${options.apiKey}` } : {})
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal
   })
 
   if (!response.ok) {
@@ -102,17 +89,129 @@ const callModel = async (
     throw new Error(`API Error: ${response.status} - ${errorText || response.statusText}`)
   }
 
-  const data = (await response.json()) as { choices?: Array<{ message?: ChatCompletionMessage }> }
-  const message = data.choices?.[0]?.message
-  if (!message) {
-    throw new Error('API returned an empty response choice')
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('Failed to get readable stream reader')
+
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+
+  const assistantMessage: ChatCompletionMessage = {
+    role: 'assistant',
+    content: '',
+    reasoning_content: '',
+    tool_calls: []
   }
-  return message
+
+  let inThinkTag = false
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      const cleanLine = line.trim()
+      if (!cleanLine) continue
+      if (cleanLine === 'data: [DONE]') continue
+
+      if (cleanLine.startsWith('data: ')) {
+        try {
+          const json = JSON.parse(cleanLine.substring(6))
+          const delta = json.choices?.[0]?.delta
+          if (!delta) continue
+
+          // 1. Stream cloud model reasoning_content
+          if (delta.reasoning_content) {
+            assistantMessage.reasoning_content += delta.reasoning_content
+            sendEvent(mainWindow, reqId, { type: 'reasoning', content: delta.reasoning_content })
+          }
+
+          // 2. Stream tool calls
+          if (delta.tool_calls) {
+            for (const tcDelta of delta.tool_calls) {
+              const idx = tcDelta.index
+              if (!assistantMessage.tool_calls) assistantMessage.tool_calls = []
+              if (!assistantMessage.tool_calls[idx]) {
+                assistantMessage.tool_calls[idx] = {
+                  id: tcDelta.id || '',
+                  type: 'function',
+                  function: { name: tcDelta.function?.name || '', arguments: '' }
+                }
+              }
+              if (tcDelta.id) {
+                assistantMessage.tool_calls[idx].id = tcDelta.id
+              }
+              if (tcDelta.function?.name) {
+                assistantMessage.tool_calls[idx].function.name = tcDelta.function.name
+              }
+              if (tcDelta.function?.arguments) {
+                assistantMessage.tool_calls[idx].function.arguments += tcDelta.function.arguments
+              }
+            }
+          }
+
+          // 3. Stream text content (handling local <think> tags on the fly)
+          if (delta.content) {
+            let contentChunk = delta.content
+
+            if (contentChunk.includes('<think>')) {
+              inThinkTag = true
+              const parts = contentChunk.split('<think>')
+              if (parts[0]) {
+                if (typeof assistantMessage.content !== 'string') assistantMessage.content = ''
+                assistantMessage.content += parts[0]
+                sendEvent(mainWindow, reqId, { type: 'final', content: parts[0] })
+              }
+              contentChunk = parts.slice(1).join('<think>')
+            }
+
+            if (inThinkTag) {
+              if (contentChunk.includes('</think>')) {
+                inThinkTag = false
+                const parts = contentChunk.split('</think>')
+                if (parts[0]) {
+                  assistantMessage.reasoning_content += parts[0]
+                  sendEvent(mainWindow, reqId, { type: 'reasoning', content: parts[0] })
+                }
+                if (parts[1]) {
+                  if (typeof assistantMessage.content !== 'string') assistantMessage.content = ''
+                  assistantMessage.content += parts[1]
+                  sendEvent(mainWindow, reqId, { type: 'final', content: parts[1] })
+                }
+              } else {
+                assistantMessage.reasoning_content += contentChunk
+                sendEvent(mainWindow, reqId, { type: 'reasoning', content: contentChunk })
+              }
+            } else {
+              if (typeof assistantMessage.content !== 'string') assistantMessage.content = ''
+              assistantMessage.content += contentChunk
+              sendEvent(mainWindow, reqId, { type: 'final', content: contentChunk })
+            }
+          }
+        } catch {
+          // JSON parse error
+        }
+      }
+    }
+  }
+
+  if (assistantMessage.tool_calls) {
+    assistantMessage.tool_calls = assistantMessage.tool_calls.filter(
+      (tc) => tc && tc.function?.name
+    )
+  }
+
+  return assistantMessage
 }
 
 const buildAgentMessages = (options: AgentSkillRunOptions): ChatCompletionMessage[] => {
   const skillMarkdown = options.skill.rawMarkdown || options.skill.prompt
-  const baseSystemPrompt = options.systemPrompt ? `User global system prompt:\n${options.systemPrompt}\n\n` : ''
+  const baseSystemPrompt = options.systemPrompt
+    ? `User global system prompt:\n${options.systemPrompt}\n\n`
+    : ''
 
   return [
     {
@@ -144,12 +243,16 @@ export const runAgentSkill = async (
   const maxSteps = clampMaxSteps(options.skill.maxSteps)
   const messages = buildAgentMessages(options)
   const executedCalls = new Set<string>()
+  const controller = new AbortController()
+  activeAgentRuns.set(reqId, controller)
+  const signal = controller.signal
 
-  // Build tool declarations list by filtering based on implemented and permissions
-  const toolsToDeclare: any[] = []
+  // Build tool declarations list by filtering based on implemented, skill whitelist, and permissions
+  const skillTools = options.skill.tools || []
+  const toolsToDeclare: ChatToolDeclaration[] = []
   for (const toolName in ToolRegistry) {
     const tool = ToolRegistry[toolName]
-    if (tool.implemented) {
+    if (tool.implemented && skillTools.includes(toolName)) {
       const permission = permissions?.[toolName] || 'allow'
       if (permission !== 'deny') {
         toolsToDeclare.push({
@@ -171,27 +274,35 @@ export const runAgentSkill = async (
     sendEvent(mainWindow, reqId, { type: 'agent_start', skillName: options.skill.name })
 
     for (let step = 1; step <= maxSteps; ) {
-      const assistantMessage = await callModel(options, messages, toolsToDeclare)
+      if (signal.aborted) {
+        throw new Error('Agent execution aborted by user.')
+      }
+
+      const assistantMessage = await callModel(
+        mainWindow,
+        reqId,
+        options,
+        messages,
+        toolsToDeclare,
+        signal
+      )
 
       // Push assistant's message into messages history
       messages.push(assistantMessage)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-        // Stream thinking process for intermediate steps as logs
-        processMessageReasoning(mainWindow, reqId, assistantMessage)
-
         for (const toolCall of assistantMessage.tool_calls) {
           const toolName = toolCall.function.name
           const callId = toolCall.id
 
-          let toolArgs: any = {}
+          let toolArgs: ToolArgs = {}
           try {
-            toolArgs = JSON.parse(toolCall.function.arguments)
-          } catch (e) {
+            toolArgs = JSON.parse(toolCall.function.arguments) as ToolArgs
+          } catch {
             console.warn('Failed to parse tool call arguments:', toolCall.function.arguments)
           }
 
-          const url = toolArgs.url || ''
+          const url = (toolArgs.url as string) || ''
 
           // Double-layered check: tool registry, implementation, and permission check
           const toolDef = ToolRegistry[toolName]
@@ -239,11 +350,14 @@ export const runAgentSkill = async (
           let isApproved = true
           if (permission === 'ask') {
             const permissionPromise = new Promise<boolean>((resolve, reject) => {
-              const timeoutId = setTimeout(() => {
-                const key = `${reqId}:${callId}`
-                pendingPermissions.delete(key)
-                reject(new Error('Permission request timed out after 10 minutes.'))
-              }, 10 * 60 * 1000)
+              const timeoutId = setTimeout(
+                () => {
+                  const key = `${reqId}:${callId}`
+                  pendingPermissions.delete(key)
+                  reject(new Error('Permission request timed out after 10 minutes.'))
+                },
+                10 * 60 * 1000
+              )
 
               pendingPermissions.set(`${reqId}:${callId}`, { resolve, reject, timeoutId })
             })
@@ -252,6 +366,14 @@ export const runAgentSkill = async (
               isApproved = await permissionPromise
             } catch (err) {
               const error = err as Error
+              // Emit denied tool_call state to transition from pending
+              sendEvent(mainWindow, reqId, {
+                type: 'tool_call',
+                callId,
+                toolName,
+                args: toolArgs,
+                permissionState: 'denied'
+              })
               sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: error.message })
               messages.push({
                 role: 'tool',
@@ -262,6 +384,15 @@ export const runAgentSkill = async (
               continue
             }
           }
+
+          // Transition state to approved/denied
+          sendEvent(mainWindow, reqId, {
+            type: 'tool_call',
+            callId,
+            toolName,
+            args: toolArgs,
+            permissionState: isApproved ? 'approved' : 'denied'
+          })
 
           if (!isApproved) {
             const errorMsg = 'Tool execution denied by user.'
@@ -277,7 +408,13 @@ export const runAgentSkill = async (
 
           // Tool approved or allowed, execute it
           try {
+            if (signal.aborted) {
+              throw new Error('Agent execution aborted by user.')
+            }
             const { resultForModel, resultForUi } = await toolDef.execute(toolArgs)
+            if (signal.aborted) {
+              throw new Error('Agent execution aborted by user.')
+            }
 
             sendEvent(mainWindow, reqId, {
               type: 'tool_result',
@@ -306,15 +443,7 @@ export const runAgentSkill = async (
         step++
       } else {
         // No tool calls: this is the final answer!
-        processMessageReasoning(mainWindow, reqId, assistantMessage)
-
-        const finalContent = typeof assistantMessage.content === 'string'
-          ? assistantMessage.content
-          : ''
-        sendEvent(mainWindow, reqId, { type: 'final', content: finalContent })
-
         cleanupPendingPermissionsForRun(reqId)
-
         mainWindow.webContents.send('chat-chunk', { reqId, done: true })
         return
       }
@@ -323,25 +452,25 @@ export const runAgentSkill = async (
     // Maximum steps reached without final answer: request final summary
     messages.push({
       role: 'user',
-      content: 'The maximum number of tool steps has been reached. Please provide a final answer based only on the observations available.'
+      content:
+        'The maximum number of tool steps has been reached. Please provide a final answer based only on the observations available.'
     })
 
-    // Call model without tools to force final direct answer text
-    const finalMessage = await callModel(options, messages)
-    processMessageReasoning(mainWindow, reqId, finalMessage)
+    if (signal.aborted) {
+      throw new Error('Agent execution aborted by user.')
+    }
 
-    const finalContent = typeof finalMessage.content === 'string'
-      ? finalMessage.content
-      : ''
-    sendEvent(mainWindow, reqId, { type: 'final', content: finalContent })
+    // Call model without tools to force final direct answer text
+    await callModel(mainWindow, reqId, options, messages, undefined, signal)
 
     cleanupPendingPermissionsForRun(reqId)
-
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })
   } catch (error) {
     const err = error as Error
     console.error('Agent Skill Runner error:', err)
     cleanupPendingPermissionsForRun(reqId)
     mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || 'Agent Skill failed' })
+  } finally {
+    activeAgentRuns.delete(reqId)
   }
 }

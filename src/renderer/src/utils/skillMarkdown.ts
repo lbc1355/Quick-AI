@@ -62,7 +62,10 @@ const splitMarkdown = (markdown: string): MarkdownParts => {
   }
 
   const rawFrontmatter = lines.slice(1, closingIndex).join('\n')
-  const body = lines.slice(closingIndex + 1).join('\n').trim()
+  const body = lines
+    .slice(closingIndex + 1)
+    .join('\n')
+    .trim()
   return {
     frontmatter: parseFrontmatter(rawFrontmatter),
     body
@@ -160,9 +163,12 @@ export const parseSkillMarkdown = (markdown: string, fallbackFileName: string): 
   const id = `skill-${slugify(idSource, triggers[0])}`
   const description = asString(frontmatter.description)
   const mode = readMode(asString(frontmatter.mode))
-  const declaredTools = asStringList(frontmatter.tools).map((tool) => tool.trim()).filter(Boolean)
+  const declaredTools = asStringList(frontmatter.tools)
+    .map((tool) => tool.trim())
+    .filter(Boolean)
   const kind = readKind(asString(frontmatter.kind), mode, body, declaredTools)
-  const tools = kind === 'agent' ? Array.from(new Set([...declaredTools, 'fetch_url'])) : declaredTools
+  const tools =
+    kind === 'agent' ? Array.from(new Set([...declaredTools, 'fetch_url'])) : declaredTools
 
   return {
     id,
