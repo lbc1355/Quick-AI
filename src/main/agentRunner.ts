@@ -169,13 +169,13 @@ export const runAgentSkill = async (
     for (let step = 1; step <= maxSteps;) {
       const assistantMessage = await callModel(options, messages)
       
-      // Stream thinking process to frontend and clean the message contents
-      processMessageReasoning(mainWindow, reqId, assistantMessage, step, maxSteps)
-      
       // Push assistant's message into messages history
       messages.push(assistantMessage)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        // Stream thinking process for intermediate steps as logs
+        processMessageReasoning(mainWindow, reqId, assistantMessage, step, maxSteps)
+        
         for (const toolCall of assistantMessage.tool_calls) {
           const toolName = toolCall.function.name
           
@@ -236,6 +236,25 @@ export const runAgentSkill = async (
         step++
       } else {
         // No tool calls: this is the final answer!
+        // Move its reasoning back to standard reasoningContent to show in main bubble
+        if (assistantMessage.reasoning_content) {
+          mainWindow.webContents.send('chat-chunk', {
+            reqId,
+            reasoningContent: assistantMessage.reasoning_content + '\n\n'
+          })
+          assistantMessage.reasoning_content = ''
+        }
+        if (assistantMessage.content && typeof assistantMessage.content === 'string' && assistantMessage.content.includes('<think>')) {
+          const parts = assistantMessage.content.split('</think>')
+          if (parts.length > 1) {
+            const thinking = parts[0].replace('<think>', '').trim()
+            mainWindow.webContents.send('chat-chunk', {
+              reqId,
+              reasoningContent: thinking + '\n\n'
+            })
+            assistantMessage.content = parts.slice(1).join('').trim()
+          }
+        }
         const finalContent = assistantMessage.content || ''
         sendContent(mainWindow, reqId, `\n${finalContent}`)
         mainWindow.webContents.send('chat-chunk', { reqId, done: true })
@@ -249,7 +268,24 @@ export const runAgentSkill = async (
       content: 'The maximum number of tool steps has been reached. Please provide a final answer based only on the observations available.'
     })
     const finalMessage = await callModel(options, messages)
-    processMessageReasoning(mainWindow, reqId, finalMessage, maxSteps, maxSteps)
+    if (finalMessage.reasoning_content) {
+      mainWindow.webContents.send('chat-chunk', {
+        reqId,
+        reasoningContent: finalMessage.reasoning_content + '\n\n'
+      })
+      finalMessage.reasoning_content = ''
+    }
+    if (finalMessage.content && typeof finalMessage.content === 'string' && finalMessage.content.includes('<think>')) {
+      const parts = finalMessage.content.split('</think>')
+      if (parts.length > 1) {
+        const thinking = parts[0].replace('<think>', '').trim()
+        mainWindow.webContents.send('chat-chunk', {
+          reqId,
+          reasoningContent: thinking + '\n\n'
+        })
+        finalMessage.content = parts.slice(1).join('').trim()
+      }
+    }
     const finalContent = finalMessage.content || ''
     sendContent(mainWindow, reqId, `\n${finalContent}`)
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })
