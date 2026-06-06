@@ -119,6 +119,7 @@ export const useProviders = (): UseProvidersReturn => {
           savedSettings.permissions || {
             fetch_url: 'allow',
             web_search: 'allow',
+            workspace_search: 'allow',
             file_read: 'ask',
             file_write: 'deny',
             shell: 'deny'

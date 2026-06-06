@@ -505,4 +505,46 @@ describe('runAgentLoop', () => {
 
     expect(callCount).toBe(2)
   })
+
+  it('search_tools with query "grep" activates both workspace_search and file_read via dependencies', async () => {
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
+      void options
+      void messages
+      callCount++
+      if (callCount === 1) {
+        expect(tools?.map((t) => t.function.name)).toEqual(['search_tools'])
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-search',
+              type: 'function',
+              function: { name: 'search_tools', arguments: JSON.stringify({ query: 'grep' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 2) {
+        const declaredNames = tools?.map((t) => t.function.name) || []
+        expect(declaredNames).toContain('workspace_search')
+        expect(declaredNames).toContain('file_read')
+        return {
+          role: 'assistant',
+          content: 'I see workspace search and file read tools.'
+        }
+      }
+      return { role: 'assistant', content: 'done' }
+    })
+
+    await runAgentLoop(mockWindow, 'test-req-dependencies-grep', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Grep workspace' }]
+    })
+
+    expect(callCount).toBe(2)
+  })
 })

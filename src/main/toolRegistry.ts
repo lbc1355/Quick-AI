@@ -1,6 +1,35 @@
 import { fetchUrl, webSearch, formatSearchResultsForModel } from './webTools'
 import { ToolArgs, ChatToolDeclaration, ToolResultUi } from '../shared/types'
 import { getRun } from './agent/AgentRunContext'
+import { resolve, normalize, relative, isAbsolute, basename, join } from 'path'
+import { promises as fs } from 'fs'
+
+export function getWorkspaceRoot(): string {
+  return normalize(resolve(process.cwd()))
+}
+
+export function isPathInWorkspace(filePath: string): boolean {
+  const root = getWorkspaceRoot()
+  const resolved = normalize(resolve(root, filePath))
+  const relativePath = relative(root, resolved)
+  if (resolved === root) return true
+  return !relativePath.startsWith('..') && !isAbsolute(relativePath)
+}
+
+export function isSensitiveFile(filePath: string): boolean {
+  const name = basename(filePath).toLowerCase()
+  if (name === '.env' || name.startsWith('.env.')) {
+    return true
+  }
+  if (['id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519'].includes(name)) {
+    return true
+  }
+  const sensitiveExtensions = ['.pem', '.key', '.pfx', '.p12', '.cert', '.crt', '.der']
+  if (sensitiveExtensions.some((ext) => name.endsWith(ext))) {
+    return true
+  }
+  return false
+}
 
 export interface ToolExecutionContext {
   reqId: string
@@ -181,23 +210,264 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
   file_read: {
     name: 'file_read',
     title: 'Read File',
-    description: 'Reads the content of a local file (stub).',
+    description: 'Reads the content of a local file within the workspace root directory.',
     tags: ['file', 'read', 'local'],
     category: 'file',
     risk: 'low',
-    implemented: false,
-    discoverable: false,
+    implemented: true,
+    discoverable: true,
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'The absolute file path.' }
+        path: { type: 'string', description: 'The relative or absolute path to the file.' },
+        offset: {
+          type: 'number',
+          description: 'The 1-indexed line number to start reading from (default: 1).'
+        },
+        limit: {
+          type: 'number',
+          description: 'The maximum number of lines to read (default: 1000).'
+        }
       },
       required: ['path']
     },
-    execute: async () => {
-      // Not yet implemented. Fail loudly instead of returning fabricated content so a
-      // premature `implemented: true` can never feed mock data back to the model.
-      throw new Error('Tool "file_read" is not implemented yet.')
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      void ctx
+      const filePath = args.path
+      if (typeof filePath !== 'string' || !filePath) {
+        throw new Error('Missing or invalid path parameter')
+      }
+
+      const root = getWorkspaceRoot()
+      const resolvedPath = resolve(root, filePath)
+
+      if (!isPathInWorkspace(resolvedPath)) {
+        throw new Error(`Security Violation: Path is outside the workspace directory.`)
+      }
+
+      if (isSensitiveFile(resolvedPath)) {
+        throw new Error(`Security Violation: Reading sensitive file is blocked.`)
+      }
+
+      try {
+        const stats = await fs.stat(resolvedPath)
+        if (stats.isDirectory()) {
+          throw new Error('Path is a directory, not a file.')
+        }
+      } catch (err) {
+        const error = err as Error
+        throw new Error(`Failed to read file: ${error.message}`)
+      }
+
+      let content = ''
+      try {
+        content = await fs.readFile(resolvedPath, 'utf-8')
+      } catch (err) {
+        const error = err as Error
+        throw new Error(`Failed to read file: ${error.message}`)
+      }
+
+      const offset = typeof args.offset === 'number' ? Math.max(1, args.offset) : 1
+      const limit = typeof args.limit === 'number' ? Math.max(1, args.limit) : 1000
+      const maxLines = Math.min(limit, 2000)
+
+      const lines = content.split(/\r?\n/)
+      const slicedLines = lines.slice(offset - 1, offset - 1 + maxLines)
+      const resultText = slicedLines.join('\n')
+
+      const totalLines = lines.length
+      const isTruncated = offset - 1 + maxLines < totalLines
+      const relPath = relative(root, resolvedPath).replace(/\\/g, '/')
+
+      const resultForModel = [
+        `File: ${relPath}`,
+        `Lines: ${offset} to ${offset - 1 + slicedLines.length} of ${totalLines}`,
+        isTruncated ? 'Note: file content was truncated.' : '',
+        `Content:\n${resultText}`
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+
+      const fileUrl = `file:///${resolvedPath.replace(/\\/g, '/')}`
+
+      return {
+        resultForModel,
+        resultForUi: {
+          title: `Read File: ${relPath}`,
+          url: fileUrl,
+          summary: `Read lines ${offset}-${offset - 1 + slicedLines.length} of ${totalLines}`
+        }
+      }
+    }
+  },
+  workspace_search: {
+    name: 'workspace_search',
+    title: 'Workspace Search',
+    description:
+      'Search for text matches within files in the workspace root directory (skipping build/dependency folders).',
+    tags: ['file', 'search', 'grep', 'local', 'find'],
+    dependencies: ['file_read'],
+    category: 'file',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The text query to search for.' },
+        glob: {
+          type: 'string',
+          description: 'Optional glob pattern to filter files (e.g., "*.ts" or "src/**/*.tsx").'
+        },
+        caseSensitive: {
+          type: 'boolean',
+          description: 'Whether the search is case-sensitive (default: false).'
+        },
+        maxResults: {
+          type: 'number',
+          description: 'Maximum number of match results to return (default: 100).'
+        }
+      },
+      required: ['query']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const query = args.query
+      if (typeof query !== 'string' || !query) {
+        throw new Error('Missing or invalid query parameter')
+      }
+
+      const globPattern = typeof args.glob === 'string' ? args.glob : undefined
+      const caseSensitive = typeof args.caseSensitive === 'boolean' ? args.caseSensitive : false
+      const maxResults = typeof args.maxResults === 'number' ? Math.max(1, args.maxResults) : 100
+      const limit = Math.min(maxResults, 500)
+
+      const root = getWorkspaceRoot()
+      const searchRegex = new RegExp(
+        query.replace(/[.+^${}()|[\]\\]/g, '\\$&'),
+        caseSensitive ? '' : 'i'
+      )
+
+      let globRegex: RegExp | undefined = undefined
+      if (globPattern) {
+        const pattern = globPattern
+          .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+          .replace(/\*\*/g, '.*')
+          .replace(/\*([^*]|$)/g, '[^/]*$1')
+          .replace(/\?/g, '[^/]')
+        globRegex = new RegExp(
+          globPattern.includes('/')
+            ? '^' + pattern + '$'
+            : '/' + pattern + '$|' + '^' + pattern + '$',
+          'i'
+        )
+      }
+
+      const matches: Array<{
+        relativePath: string
+        absolutePath: string
+        lineNumber: number
+        lineContent: string
+        contextBefore: string[]
+        contextAfter: string[]
+      }> = []
+
+      const walk = async (dir: string): Promise<void> => {
+        if (ctx.signal.aborted) return
+
+        const dirents = await fs.readdir(dir, { withFileTypes: true })
+        for (const dirent of dirents) {
+          if (matches.length >= limit) break
+          const resPath = join(dir, dirent.name)
+          const relPath = relative(root, resPath)
+
+          if (dirent.isDirectory()) {
+            if (['.git', 'node_modules', 'dist', 'out', 'build'].includes(dirent.name)) {
+              continue
+            }
+            await walk(resPath)
+          } else {
+            if (globRegex) {
+              const normalizedRelPath = relPath.replace(/\\/g, '/')
+              if (!globRegex.test(normalizedRelPath)) {
+                continue
+              }
+            }
+
+            if (!isPathInWorkspace(resPath) || isSensitiveFile(resPath)) {
+              continue
+            }
+
+            try {
+              const content = await fs.readFile(resPath, 'utf-8')
+              const lines = content.split(/\r?\n/)
+              for (let i = 0; i < lines.length; i++) {
+                if (matches.length >= limit) break
+                const line = lines[i]
+                if (searchRegex.test(line)) {
+                  const lineNumber = i + 1
+                  const contextBefore = lines.slice(Math.max(0, i - 1), i)
+                  const contextAfter = lines.slice(i + 1, Math.min(lines.length, i + 2))
+                  matches.push({
+                    relativePath: relPath,
+                    absolutePath: resPath,
+                    lineNumber,
+                    lineContent: line,
+                    contextBefore,
+                    contextAfter
+                  })
+                }
+              }
+            } catch {
+              // Ignore unreadable/binary files
+            }
+          }
+        }
+      }
+
+      await walk(root)
+
+      if (ctx.signal.aborted) {
+        throw new Error('Agent execution aborted by user.')
+      }
+
+      const resultForModel =
+        matches.length > 0
+          ? matches
+              .map((m) => {
+                const contextStr = [
+                  ...m.contextBefore.map((l) => `  [${m.lineNumber - 1}] ${l}`),
+                  `* [${m.lineNumber}] ${m.lineContent}`,
+                  ...m.contextAfter.map((l) => `  [${m.lineNumber + 1}] ${l}`)
+                ].join('\n')
+                return `File: ${m.relativePath} (Line ${m.lineNumber})\nContext:\n${contextStr}`
+              })
+              .join('\n\n')
+          : `No matches found in workspace for query: "${query}"`
+
+      const items = matches.map((m) => {
+        const fileUrl = `file:///${m.absolutePath.replace(/\\/g, '/')}`
+        const contextStr = [
+          ...m.contextBefore.map((l) => `[${m.lineNumber - 1}] ${l}`),
+          `[${m.lineNumber}] ${m.lineContent}`,
+          ...m.contextAfter.map((l) => `[${m.lineNumber + 1}] ${l}`)
+        ].join('\n')
+
+        return {
+          title: `${m.relativePath} Line ${m.lineNumber}`,
+          url: fileUrl,
+          snippet: contextStr,
+          source: 'Workspace'
+        }
+      })
+
+      return {
+        resultForModel,
+        resultForUi: {
+          title: `Workspace Search: "${query}"`,
+          summary: `Found ${matches.length} matches`,
+          items
+        }
+      }
     }
   },
   file_write: {

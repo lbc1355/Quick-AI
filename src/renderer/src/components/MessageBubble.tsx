@@ -144,17 +144,13 @@ const EventStepRow: React.FC<EventStepRowProps> = ({
   result,
   error
 }) => {
+  void callId
+  void agentRunId
   const [isExpanded, setIsExpanded] = useState(false)
   const argsObj = args && typeof args === 'object' ? (args as Record<string, unknown>) : null
   const url = typeof argsObj?.url === 'string' ? argsObj.url : ''
   const displayUrl = url ? url.replace(/^https?:\/\/(www\.)?/, '') : ''
   const truncatedUrl = displayUrl.length > 55 ? displayUrl.substring(0, 55) + '...' : displayUrl
-
-  const handlePermission = (approved: boolean): void => {
-    if (agentRunId) {
-      window.api.respondToolPermission(agentRunId, callId, approved)
-    }
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
@@ -195,47 +191,6 @@ const EventStepRow: React.FC<EventStepRowProps> = ({
             [running]
           </span>
         )}
-      </div>
-
-      <div
-        style={{
-          display: permissionState === 'pending' ? 'flex' : 'none',
-          gap: '8px',
-          paddingLeft: '14px',
-          marginTop: '4px',
-          marginBottom: '4px'
-        }}
-      >
-        <button
-          onClick={() => handlePermission(true)}
-          style={{
-            padding: '2px 8px',
-            fontSize: '10px',
-            background: '#10b981',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500
-          }}
-        >
-          Approve
-        </button>
-        <button
-          onClick={() => handlePermission(false)}
-          style={{
-            padding: '2px 8px',
-            fontSize: '10px',
-            background: '#ef4444',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 500
-          }}
-        >
-          Deny
-        </button>
       </div>
 
       <div

@@ -399,6 +399,60 @@ function App(): React.JSX.Element {
     }
   }
 
+  // Find pending permission request in the active session
+  const getPendingPermission = (): {
+    msgId: string
+    agentRunId: string
+    callId: string
+    toolName: string
+    args: unknown
+  } | null => {
+    if (!activeSession) return null
+    for (let i = activeSession.messages.length - 1; i >= 0; i--) {
+      const msg = activeSession.messages[i]
+      if (msg.agentEvents) {
+        const pendingEvent = msg.agentEvents.find(
+          (e) => e.type === 'tool_call' && e.permissionState === 'pending'
+        )
+        if (pendingEvent && pendingEvent.type === 'tool_call') {
+          return {
+            msgId: msg.id,
+            agentRunId: msg.agentRunId || '',
+            callId: pendingEvent.callId,
+            toolName: pendingEvent.toolName,
+            args: pendingEvent.args
+          }
+        }
+      }
+    }
+    return null
+  }
+
+  const handlePermissionResponse = (approved: boolean): void => {
+    const pending = getPendingPermission()
+    if (pending) {
+      window.api.respondToolPermission(pending.agentRunId, pending.callId, approved)
+    }
+  }
+
+  const getArgsText = (toolName: string, args: unknown): string => {
+    if (!args || typeof args !== 'object') return ''
+    const argsObj = args as Record<string, unknown>
+    if (toolName === 'fetch_url') {
+      return `URL: ${argsObj.url || ''}`
+    }
+    if (toolName === 'file_read') {
+      return `文件路径: ${argsObj.path || ''}${argsObj.offset ? ` (起始行: ${argsObj.offset})` : ''}`
+    }
+    if (toolName === 'workspace_search') {
+      return `搜索内容: "${argsObj.query || ''}"${argsObj.glob ? ` (匹配模式: ${argsObj.glob})` : ''}`
+    }
+    if (toolName === 'web_search') {
+      return `搜索关键词: "${argsObj.query || ''}"`
+    }
+    return JSON.stringify(args)
+  }
+
   // Check if current active session is a clean "new session" with no message history
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
 
@@ -606,6 +660,142 @@ function App(): React.JSX.Element {
                 ))}
               </div>
             )}
+
+            {(() => {
+              const pending = getPendingPermission()
+              if (!pending) return null
+              const argsText = getArgsText(pending.toolName, pending.args)
+
+              const translateToolName = (name: string): string => {
+                if (name === 'fetch_url') return '抓取网页 (fetch_url)'
+                if (name === 'web_search') return '网络搜索 (web_search)'
+                if (name === 'workspace_search') return '工作区搜索 (workspace_search)'
+                if (name === 'file_read') return '读取本地文件 (file_read)'
+                if (name === 'file_write') return '写入本地文件 (file_write)'
+                if (name === 'shell') return '执行系统命令 (shell)'
+                return name
+              }
+
+              return (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    left: '16px',
+                    right: '16px',
+                    marginBottom: '8px',
+                    background: 'rgba(30, 41, 59, 0.96)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '12px',
+                    padding: '12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    boxShadow: '0 -4px 24px rgba(0, 0, 0, 0.45)',
+                    zIndex: 100
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '12.5px',
+                      color: 'var(--color-text)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px'
+                    }}
+                  >
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}>
+                      Agent 正在请求执行工具：
+                    </span>
+                    <strong style={{ color: 'var(--color-primary)', fontSize: '13px' }}>
+                      {translateToolName(pending.toolName)}
+                    </strong>
+                  </div>
+
+                  {argsText && (
+                    <div
+                      style={{
+                        fontSize: '11.5px',
+                        color: 'var(--color-text-muted)',
+                        background: 'rgba(0, 0, 0, 0.2)',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(255, 255, 255, 0.05)',
+                        fontFamily: 'monospace',
+                        wordBreak: 'break-all',
+                        maxHeight: '60px',
+                        overflowY: 'auto'
+                      }}
+                    >
+                      {argsText}
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                      marginTop: '4px'
+                    }}
+                  >
+                    <button
+                      onClick={() => handlePermissionResponse(true)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        fontSize: '12px',
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        color: '#10b981',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(16, 185, 129, 0.22)'
+                        e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.5)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(16, 185, 129, 0.12)'
+                        e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.3)'
+                      }}
+                    >
+                      允许执行 (Approve)
+                    </button>
+                    <button
+                      onClick={() => handlePermissionResponse(false)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        fontSize: '12px',
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        color: '#ef4444',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.22)'
+                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)'
+                        e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)'
+                      }}
+                    >
+                      拒绝执行 (Deny)
+                    </button>
+                  </div>
+                </div>
+              )
+            })()}
 
             <div className="input-container">
               <label
