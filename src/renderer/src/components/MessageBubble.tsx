@@ -448,7 +448,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       )}
 
       {/* 2. Standard message bubble wrapper */}
-      {(cleanContent || displayReasoning || msg.role === 'user' || (isGenerating && !displayReasoning && !hasLogs)) && (
+      {(cleanContent || (displayReasoning && !hasStructuredEvents) || msg.role === 'user' || (isGenerating && !displayReasoning && !hasLogs)) && (
         <div className={`message-bubble ${msg.role}`}>
           <div className={`avatar ${msg.role}`}>{msg.role === 'user' ? 'U' : 'AI'}</div>
           <div className="message-content-wrapper" style={{ maxWidth: '100%' }}>
@@ -494,7 +494,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   )}
 
                   {/* Thinking/Reasoning block rendering (DeepSeek R1 style) */}
-                  {displayReasoning && (
+                  {displayReasoning && !hasStructuredEvents && (
                     <div className="reasoning-block" style={{ marginBottom: '10px' }}>
                       <div
                         onClick={() => setIsExpanded(!isExpanded)}
