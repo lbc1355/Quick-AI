@@ -54,6 +54,11 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
       continue
     }
 
+    if (line.startsWith('[final]')) {
+      logEndIdx = i + 1
+      break
+    }
+
     const thinkMatch = line.match(/^\[think (\d+)\/(\d+)\]\s*(.*)$/)
     if (thinkMatch) {
       const step = parseInt(thinkMatch[1])
@@ -65,6 +70,7 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
         const nextLine = lines[nextIdx].trim()
         if (
           nextLine.startsWith('Running agent skill:') ||
+          nextLine.startsWith('[final]') ||
           nextLine.match(/^\[tool \d+\/\d+\]/) ||
           nextLine.match(/^\[result \d+\/\d+\]/) ||
           nextLine.match(/^\[error \d+\/\d+\]/) ||
@@ -98,8 +104,12 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
         nextIdx++
       }
       if (nextIdx < lines.length) {
-        url = lines[nextIdx].trim()
-        i = nextIdx
+        // Ensure we don't accidentally treat [final] as a URL
+        const nextLine = lines[nextIdx].trim()
+        if (!nextLine.startsWith('[final]')) {
+          url = nextLine
+          i = nextIdx
+        }
       }
       logs.push({
         step,
@@ -123,8 +133,11 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
         nextIdx++
       }
       if (nextIdx < lines.length) {
-        url = lines[nextIdx].trim()
-        i = nextIdx
+        const nextLine = lines[nextIdx].trim()
+        if (!nextLine.startsWith('[final]')) {
+          url = nextLine
+          i = nextIdx
+        }
       }
       logs.push({
         step,

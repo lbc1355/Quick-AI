@@ -256,7 +256,7 @@ export const runAgentSkill = async (
           }
         }
         const finalContent = assistantMessage.content || ''
-        sendContent(mainWindow, reqId, `\n${finalContent}`)
+        sendContent(mainWindow, reqId, `\n[final]\n${finalContent}`)
         mainWindow.webContents.send('chat-chunk', { reqId, done: true })
         return
       }
@@ -287,7 +287,7 @@ export const runAgentSkill = async (
       }
     }
     const finalContent = finalMessage.content || ''
-    sendContent(mainWindow, reqId, `\n${finalContent}`)
+    sendContent(mainWindow, reqId, `\n[final]\n${finalContent}`)
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })
   } catch (error) {
     const err = error as Error
