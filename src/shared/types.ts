@@ -13,6 +13,7 @@ export interface ChatCompletionMessage {
     text?: string
     image_url?: { url: string }
   }> | null
+  reasoning_content?: string
   name?: string
   tool_call_id?: string
   tool_calls?: Array<{
