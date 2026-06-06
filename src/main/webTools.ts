@@ -441,7 +441,8 @@ const fetchSearchHtml = async (url: string, signal?: AbortSignal): Promise<strin
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} ${response.statusText}`)
     }
-    return await response.text()
+    const { text } = await readLimitedText(response)
+    return text
   } finally {
     cleanup()
   }

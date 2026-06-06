@@ -54,6 +54,8 @@ export interface UseProvidersReturn {
   handleRemoveModelDirectly: (modelId: string) => void
   handleToggleModelSelection: (modelId: string) => void
   resetLocalSettings: () => void
+  permissions: Record<string, 'allow' | 'ask' | 'deny'>
+  onChangeToolPermission: (toolName: string, policy: 'allow' | 'ask' | 'deny') => void
 }
 
 export const useProviders = (): UseProvidersReturn => {
@@ -67,6 +69,7 @@ export const useProviders = (): UseProvidersReturn => {
   const [appStorePath, setAppStorePath] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [permissions, setPermissions] = useState<Record<string, 'allow' | 'ask' | 'deny'>>({})
 
   // Providers list state
   const [providers, setProviders] = useState<ApiProvider[]>([])
@@ -112,6 +115,13 @@ export const useProviders = (): UseProvidersReturn => {
         setSystemPrompt(savedSettings.systemPrompt || '')
         setAutoHideOnBlur(savedSettings.autoHideOnBlur !== false)
         setTheme(savedSettings.theme || 'dark')
+        setPermissions(savedSettings.permissions || {
+          fetch_url: 'allow',
+          web_search: 'allow',
+          file_read: 'ask',
+          file_write: 'deny',
+          shell: 'deny'
+        })
       }
 
       // App metadata
@@ -148,10 +158,18 @@ export const useProviders = (): UseProvidersReturn => {
       savedSettings.systemPrompt = systemPrompt
       savedSettings.autoHideOnBlur = autoHideOnBlur
       savedSettings.theme = theme
+      savedSettings.permissions = permissions
       await window.api.storeSet('settings', savedSettings)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
     }
+  }
+
+  const onChangeToolPermission = (toolName: string, policy: 'allow' | 'ask' | 'deny'): void => {
+    setPermissions((prev) => ({
+      ...prev,
+      [toolName]: policy
+    }))
   }
 
   const handleSaveProviderDetails = async (): Promise<void> => {
@@ -392,6 +410,8 @@ export const useProviders = (): UseProvidersReturn => {
     handleFetchModels,
     handleRemoveModelDirectly,
     handleToggleModelSelection,
-    resetLocalSettings
+    resetLocalSettings,
+    permissions,
+    onChangeToolPermission
   }
 }

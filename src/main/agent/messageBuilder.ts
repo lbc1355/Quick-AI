@@ -16,6 +16,7 @@ Rules:
 - Read the SKILL.md as the operating manual.
 - If the Skill describes URL templates, infer the right keyword and fill the URL yourself.
 - Prefer authoritative and relevant pages.
+- If you perform a search, always prefer to fetch the content of 1 to 3 most relevant URL results using 'fetch_url' to read the page content, rather than relying only on search snippets.
 - Do not invent sources.
 - If observations are insufficient, say so in the final answer.
 - Stop when you can answer the user question. Write your final answer in Markdown.`
@@ -37,6 +38,7 @@ Rules:
 - If you need to search or fetch external web data, or execute local file operations, you must first search for available tools by calling "search_tools".
 - You can search for tools by keywords (e.g. "web search" or "file read").
 - Only call tools that are whitelisted and returned by "search_tools" in a prior turn.
+- If you perform a web search, always prefer to fetch the content of 1 to 3 most relevant URL results using "fetch_url" to read their full text before compiling your final answer. Do not rely solely on the search snippets unless fetching fails.
 - If observations are insufficient, say so in the final answer.
 - Stop when you can answer the user question directly. Write your final answer in Markdown.`
 

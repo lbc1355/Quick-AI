@@ -134,7 +134,20 @@ export const runAgentLoop = async (
         const deadlockIndices = new Set<number>()
         assistantMessage.tool_calls.forEach((toolCall, index) => {
           const toolName = toolCall.function.name
-          if (toolName === 'fetch_url') {
+          const permission = permissions?.[toolName] || 'allow'
+
+          const toolDef = ToolRegistry[toolName]
+          let isWhitelisted = false
+          if (toolDiscovery === 'static') {
+            isWhitelisted = skillTools.includes(toolName)
+          } else {
+            isWhitelisted = runCtx.isToolActive(toolName)
+          }
+
+          const isValid = toolDef && toolDef.implemented && isWhitelisted
+          const isBlocked = !isValid || permission === 'deny'
+
+          if (!isBlocked && toolName === 'fetch_url') {
             let toolArgs: ToolArgs = {}
             try {
               toolArgs = JSON.parse(toolCall.function.arguments) as ToolArgs

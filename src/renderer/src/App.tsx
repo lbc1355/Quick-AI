@@ -84,7 +84,9 @@ function App(): React.JSX.Element {
     handleFetchModels,
     handleRemoveModelDirectly,
     handleToggleModelSelection,
-    resetLocalSettings
+    resetLocalSettings,
+    permissions,
+    onChangeToolPermission
   } = useProviders()
 
   // 2. Sessions hook
@@ -517,6 +519,8 @@ function App(): React.JSX.Element {
             )
           }}
           onChangeEditingProviderApiUrl={handleApiUrlChange}
+          permissions={permissions}
+          onChangeToolPermission={onChangeToolPermission}
         />
       ) : (
         <div className="chat-area">

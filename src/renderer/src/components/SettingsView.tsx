@@ -49,6 +49,8 @@ interface SettingsViewProps {
   onRemoveSkill: (id: string) => Promise<void>
   onChangeEditingProviderName: (name: string) => void
   onChangeEditingProviderApiUrl: (url: string) => void
+  permissions: Record<string, 'allow' | 'ask' | 'deny'>
+  onChangeToolPermission: (toolName: string, policy: 'allow' | 'ask' | 'deny') => void
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -95,7 +97,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onInstallSkill,
   onRemoveSkill,
   onChangeEditingProviderName,
-  onChangeEditingProviderApiUrl
+  onChangeEditingProviderApiUrl,
+  permissions,
+  onChangeToolPermission
 }) => {
   const currentEditingProvider = providers.find((p) => p.id === editingProviderId)
 
@@ -201,6 +205,89 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   readOnly
                   disabled
                 />
+              </div>
+
+              {/* Agent Permissions UI */}
+              <div className="settings-group" style={{ marginTop: '16px', borderTop: '1px solid var(--color-border)', paddingTop: '12px' }}>
+                <span
+                  className="settings-label"
+                  style={{
+                    fontSize: '13px',
+                    color: 'var(--color-text-title)',
+                    fontWeight: 'bold',
+                    display: 'block',
+                    marginBottom: '8px'
+                  }}
+                >
+                  Agent 权限配置 (Agent Permissions)
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {[
+                    { name: 'fetch_url', label: '抓取网页 (fetch_url)', risk: 'low', riskLabel: '低风险' },
+                    { name: 'web_search', label: '网络搜索 (web_search)', risk: 'low', riskLabel: '低风险' },
+                    { name: 'file_read', label: '读取本地文件 (file_read)', risk: 'low', riskLabel: '低风险' },
+                    { name: 'file_write', label: '写入本地文件 (file_write)', risk: 'medium', riskLabel: '中风险' },
+                    { name: 'shell', label: '执行系统命令 (shell)', risk: 'high', riskLabel: '高风险' }
+                  ].map((tool) => {
+                    const getRiskStyle = (risk: string) => {
+                      if (risk === 'high') {
+                        return { color: '#ef4444', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.2)' }
+                      }
+                      if (risk === 'medium') {
+                        return { color: '#f59e0b', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.2)' }
+                      }
+                      return { color: '#10b981', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.2)' }
+                    }
+
+                    return (
+                      <div
+                        key={tool.name}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: 'rgba(255, 255, 255, 0.015)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: '8px',
+                          padding: '6px 12px',
+                          gap: '12px'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                          <span style={{ fontSize: '12.5px', color: 'var(--color-text)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {tool.label}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '9.5px',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              fontWeight: 600,
+                              ...getRiskStyle(tool.risk)
+                            }}
+                          >
+                            {tool.riskLabel}
+                          </span>
+                        </div>
+                        <select
+                          className="settings-select"
+                          style={{
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            height: '28px',
+                            minWidth: '90px'
+                          }}
+                          value={permissions[tool.name] || 'allow'}
+                          onChange={(e) => onChangeToolPermission(tool.name, e.target.value as 'allow' | 'ask' | 'deny')}
+                        >
+                          <option value="allow">允许 (Allow)</option>
+                          <option value="ask">询问 (Ask)</option>
+                          <option value="deny">拒绝 (Deny)</option>
+                        </select>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
 
               <SkillManager
