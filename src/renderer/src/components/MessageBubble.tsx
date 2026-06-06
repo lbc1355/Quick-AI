@@ -593,7 +593,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         msg.role === 'user' ||
         (isGenerating && !displayReasoning && !hasLogs)) && (
         <div className={`message-bubble ${msg.role}`}>
-          <div className={`avatar ${msg.role}`}>{msg.role === 'user' ? 'U' : 'AI'}</div>
+          {msg.role === 'user' && <div className={`avatar ${msg.role}`}>U</div>}
           <div className="message-content-wrapper" style={{ maxWidth: '100%' }}>
             {isEditing ? (
               <div className="message-edit-container">
