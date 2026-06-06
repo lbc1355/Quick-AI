@@ -41,33 +41,31 @@ const LogStepRow: React.FC<LogStepRowProps> = ({ log, resultLog, errorLog }) => 
         )}
       </div>
       
-      {isExpanded && (
-        <div style={{ 
-          paddingLeft: '14px', 
-          fontSize: '9px', 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: '2px',
-          color: 'var(--color-text-muted)',
-          opacity: 0.8
-        }}>
-          {log.url && (
-            <div style={{ wordBreak: 'break-all' }}>
-              URL: <a href={log.url} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>{log.url}</a>
-            </div>
-          )}
-          {resultLog && (
-            <div style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-              Title: {resultLog.title || 'No Title'}
-            </div>
-          )}
-          {errorLog && (
-            <div style={{ color: '#f87171' }}>
-              Error: {errorLog.error}
-            </div>
-          )}
-        </div>
-      )}
+      <div style={{ 
+        display: isExpanded ? 'flex' : 'none',
+        paddingLeft: '14px', 
+        fontSize: '9px', 
+        flexDirection: 'column', 
+        gap: '2px',
+        color: 'var(--color-text-muted)',
+        opacity: 0.8
+      }}>
+        {log.url && (
+          <div style={{ wordBreak: 'break-all' }}>
+            URL: <a href={log.url} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>{log.url}</a>
+          </div>
+        )}
+        {resultLog && (
+          <div style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            Title: {resultLog.title || 'No Title'}
+          </div>
+        )}
+        {errorLog && (
+          <div style={{ color: '#f87171' }}>
+            Error: {errorLog.error}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -96,19 +94,18 @@ const LogThinkRow: React.FC<{ log: AgentLogStep }> = ({ log }) => {
         </span>
         <span style={{ fontSize: '8px', opacity: 0.6 }}>{isExpanded ? 'v' : '>'}</span>
       </div>
-      {isExpanded && (
-        <div style={{ 
-          paddingLeft: '14px', 
-          fontSize: '9.5px',
-          fontStyle: 'italic',
-          color: 'var(--color-text-muted)',
-          whiteSpace: 'pre-wrap',
-          lineHeight: '1.4',
-          opacity: 0.85
-        }}>
-          {log.thought}
-        </div>
-      )}
+      <div style={{ 
+        display: isExpanded ? 'block' : 'none',
+        paddingLeft: '14px', 
+        fontSize: '9.5px',
+        fontStyle: 'italic',
+        color: 'var(--color-text-muted)',
+        whiteSpace: 'pre-wrap',
+        lineHeight: '1.4',
+        opacity: 0.85
+      }}>
+        {log.thought}
+      </div>
     </div>
   )
 }
@@ -177,88 +174,84 @@ const EventStepRow: React.FC<EventStepRowProps> = ({
         )}
       </div>
 
-      {permissionState === 'pending' && (
-        <div style={{
-          display: 'flex',
-          gap: '8px',
-          paddingLeft: '14px',
-          marginTop: '4px',
-          marginBottom: '4px'
-        }}>
-          <button 
-            onClick={() => handlePermission(true)}
-            style={{
-              padding: '2px 8px',
-              fontSize: '10px',
-              background: '#10b981',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500
-            }}
-          >
-            Approve
-          </button>
-          <button 
-            onClick={() => handlePermission(false)}
-            style={{
-              padding: '2px 8px',
-              fontSize: '10px',
-              background: '#ef4444',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500
-            }}
-          >
-            Deny
-          </button>
-        </div>
-      )}
+      <div style={{
+        display: permissionState === 'pending' ? 'flex' : 'none',
+        gap: '8px',
+        paddingLeft: '14px',
+        marginTop: '4px',
+        marginBottom: '4px'
+      }}>
+        <button 
+          onClick={() => handlePermission(true)}
+          style={{
+            padding: '2px 8px',
+            fontSize: '10px',
+            background: '#10b981',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500
+          }}
+        >
+          Approve
+        </button>
+        <button 
+          onClick={() => handlePermission(false)}
+          style={{
+            padding: '2px 8px',
+            fontSize: '10px',
+            background: '#ef4444',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 500
+          }}
+        >
+          Deny
+        </button>
+      </div>
       
-      {isExpanded && (
-        <div style={{ 
-          paddingLeft: '14px', 
-          fontSize: '9px', 
-          display: 'flex', 
-          flexDirection: 'column', 
-          gap: '2px',
-          color: 'var(--color-text-muted)',
-          opacity: 0.8
-        }}>
-          {url && (
-            <div style={{ wordBreak: 'break-all' }}>
-              URL: <a href={url} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>{url}</a>
-            </div>
-          )}
-          {args && typeof args === 'object' && Object.keys(args).filter(k => k !== 'url').map(key => (
-            <div key={key}>
-              {key}: {JSON.stringify(args[key])}
-            </div>
-          ))}
-          {result && (
-            <>
-              {result.title && (
-                <div style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                  Title: {result.title}
-                </div>
-              )}
-              {result.summary && (
-                <div style={{ fontStyle: 'italic', opacity: 0.9 }}>
-                  Summary: {result.summary}
-                </div>
-              )}
-            </>
-          )}
-          {error && (
-            <div style={{ color: '#f87171' }}>
-              Error: {error}
-            </div>
-          )}
-        </div>
-      )}
+      <div style={{ 
+        display: isExpanded ? 'flex' : 'none',
+        paddingLeft: '14px', 
+        fontSize: '9px', 
+        flexDirection: 'column', 
+        gap: '2px',
+        color: 'var(--color-text-muted)',
+        opacity: 0.8
+      }}>
+        {url && (
+          <div style={{ wordBreak: 'break-all' }}>
+            URL: <a href={url} target="_blank" rel="noreferrer" style={{ color: 'var(--color-primary)', textDecoration: 'none' }}>{url}</a>
+          </div>
+        )}
+        {args && typeof args === 'object' && Object.keys(args).filter(k => k !== 'url').map(key => (
+          <div key={key}>
+            {key}: {JSON.stringify(args[key])}
+          </div>
+        ))}
+        {result && (
+          <>
+            {result.title && (
+              <div style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                Title: {result.title}
+              </div>
+            )}
+            {result.summary && (
+              <div style={{ fontStyle: 'italic', opacity: 0.9 }}>
+                Summary: {result.summary}
+              </div>
+            )}
+          </>
+        )}
+        {error && (
+          <div style={{ color: '#f87171' }}>
+            Error: {error}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -362,79 +355,77 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <span style={{ fontSize: '9px', opacity: 0.7 }}>{isLogsExpanded ? 'v' : '>'}</span>
           </div>
 
-          {isLogsExpanded && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px',
-              paddingLeft: '16px'
-            }}>
-              {hasStructuredEvents ? (
-                msg.agentEvents!.reduce<React.ReactNode[]>((acc, event, eventIdx) => {
-                  if (event.type === 'reasoning') {
-                    acc.push(
-                      <LogThinkRow
-                        key={`think-${eventIdx}`}
-                        log={{
-                          step: 0,
-                          maxSteps: 0,
-                          type: 'think',
-                          thought: event.content
-                        }}
-                      />
-                    )
-                  } else if (event.type === 'tool_call') {
-                    const callId = event.callId
-                    const resultEvent = msg.agentEvents!.find(e => e.type === 'tool_result' && e.callId === callId) as any
-                    const errorEvent = msg.agentEvents!.find(e => e.type === 'tool_error' && e.callId === callId) as any
-                    
-                    const permState = localPerms[callId] || event.permissionState
+          <div style={{
+            display: isLogsExpanded ? 'flex' : 'none',
+            flexDirection: 'column',
+            gap: '6px',
+            paddingLeft: '16px'
+          }}>
+            {hasStructuredEvents ? (
+              msg.agentEvents!.reduce<React.ReactNode[]>((acc, event, eventIdx) => {
+                if (event.type === 'reasoning') {
+                  acc.push(
+                    <LogThinkRow
+                      key={`think-${eventIdx}`}
+                      log={{
+                        step: 0,
+                        maxSteps: 0,
+                        type: 'think',
+                        thought: event.content
+                      }}
+                    />
+                  )
+                } else if (event.type === 'tool_call') {
+                  const callId = event.callId
+                  const resultEvent = msg.agentEvents!.find(e => e.type === 'tool_result' && e.callId === callId) as any
+                  const errorEvent = msg.agentEvents!.find(e => e.type === 'tool_error' && e.callId === callId) as any
+                  
+                  const permState = localPerms[callId] || event.permissionState
 
-                    acc.push(
-                      <EventStepRow
-                        key={`step-${callId}-${eventIdx}`}
-                        callId={callId}
-                        agentRunId={msg.agentRunId}
-                        toolName={event.toolName}
-                        args={event.args}
-                        permissionState={permState}
-                        result={resultEvent?.result}
-                        error={errorEvent?.error}
-                        setLocalPermissionState={(state) => {
-                          setLocalPerms(prev => ({ ...prev, [callId]: state }))
-                        }}
-                      />
-                    )
-                  }
-                  return acc
-                }, [])
-              ) : (
-                legacyLogs.reduce<React.ReactNode[]>((acc, log, logIdx) => {
-                  if (log.type === 'think') {
-                    acc.push(
-                      <LogThinkRow
-                        key={`think-${log.step}-${logIdx}`}
-                        log={log}
-                      />
-                    )
-                  } else if (log.type === 'tool') {
-                    const resultLog = legacyLogs.find(l => l.step === log.step && l.type === 'result' && l.url === log.url)
-                    const errorLog = legacyLogs.find(l => l.step === log.step && l.type === 'error')
-                    
-                    acc.push(
-                      <LogStepRow
-                        key={`step-${log.step}-${logIdx}`}
-                        log={log}
-                        resultLog={resultLog}
-                        errorLog={errorLog}
-                      />
-                    )
-                  }
-                  return acc
-                }, [])
-              )}
-            </div>
-          )}
+                  acc.push(
+                    <EventStepRow
+                      key={`step-${callId}-${eventIdx}`}
+                      callId={callId}
+                      agentRunId={msg.agentRunId}
+                      toolName={event.toolName}
+                      args={event.args}
+                      permissionState={permState}
+                      result={resultEvent?.result}
+                      error={errorEvent?.error}
+                      setLocalPermissionState={(state) => {
+                        setLocalPerms(prev => ({ ...prev, [callId]: state }))
+                      }}
+                    />
+                  )
+                }
+                return acc
+              }, [])
+            ) : (
+              legacyLogs.reduce<React.ReactNode[]>((acc, log, logIdx) => {
+                if (log.type === 'think') {
+                  acc.push(
+                    <LogThinkRow
+                      key={`think-${log.step}-${logIdx}`}
+                      log={log}
+                    />
+                  )
+                } else if (log.type === 'tool') {
+                  const resultLog = legacyLogs.find(l => l.step === log.step && l.type === 'result' && l.url === log.url)
+                  const errorLog = legacyLogs.find(l => l.step === log.step && l.type === 'error')
+                  
+                  acc.push(
+                    <LogStepRow
+                      key={`step-${log.step}-${logIdx}`}
+                      log={log}
+                      resultLog={resultLog}
+                      errorLog={errorLog}
+                    />
+                  )
+                }
+                return acc
+              }, [])
+            )}
+          </div>
 
           {/* Bottom Divider Line */}
           <div style={{ display: 'flex', alignItems: 'center', color: 'var(--color-text-muted)', fontSize: '10px', marginTop: '12px', opacity: 0.5 }}>
@@ -494,58 +485,58 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   )}
 
                   {/* Thinking/Reasoning block rendering (DeepSeek R1 style) */}
-                  {displayReasoning && !hasStructuredEvents && (
-                    <div className="reasoning-block" style={{ marginBottom: '10px' }}>
-                      <div
-                        onClick={() => setIsExpanded(!isExpanded)}
+                  <div className="reasoning-block" style={{
+                    display: displayReasoning && !hasStructuredEvents ? 'block' : 'none',
+                    marginBottom: '10px'
+                  }}>
+                    <div
+                      onClick={() => setIsExpanded(!isExpanded)}
+                      style={{
+                        fontSize: '12px',
+                        color: '#60a5fa',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        userSelect: 'none',
+                        marginBottom: '6px',
+                        fontWeight: '600'
+                      }}
+                    >
+                      <Sparkles
+                        size={11}
                         style={{
-                          fontSize: '12px',
-                          color: '#60a5fa',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          userSelect: 'none',
-                          marginBottom: '6px',
-                          fontWeight: '600'
+                          animation:
+                            isGenerating && !cleanContent ? 'spin 3s linear infinite' : 'none'
                         }}
-                      >
-                        <Sparkles
-                          size={11}
-                          style={{
-                            animation:
-                              isGenerating && !cleanContent ? 'spin 3s linear infinite' : 'none'
-                          }}
-                        />
-                        <span>
-                          {isGenerating && !cleanContent
-                            ? '正在思考中..'
-                            : isExpanded
-                              ? '思考过程 (收起)'
-                              : '思考过程 (展开)'}
-                        </span>
-                      </div>
-                      {isExpanded && (
-                        <div
-                          style={{
-                            fontSize: '12px',
-                            color: 'var(--color-text-muted)',
-                            borderLeft: '2px solid rgba(96, 165, 250, 0.35)',
-                            paddingLeft: '10px',
-                            marginLeft: '4px',
-                            fontStyle: 'italic',
-                            whiteSpace: 'pre-wrap',
-                            lineHeight: '1.6',
-                            background: 'var(--color-card-bg)',
-                            padding: '6px 10px',
-                            borderRadius: '0 6px 6px 0'
-                          }}
-                        >
-                          {displayReasoning}
-                        </div>
-                      )}
+                      />
+                      <span>
+                        {isGenerating && !cleanContent
+                          ? '正在思考中..'
+                          : isExpanded
+                            ? '思考过程 (收起)'
+                            : '思考过程 (展开)'}
+                      </span>
                     </div>
-                  )}
+                    <div
+                      style={{
+                        display: isExpanded ? 'block' : 'none',
+                        fontSize: '12px',
+                        color: 'var(--color-text-muted)',
+                        borderLeft: '2px solid rgba(96, 165, 250, 0.35)',
+                        paddingLeft: '10px',
+                        marginLeft: '4px',
+                        fontStyle: 'italic',
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: '1.6',
+                        background: 'var(--color-card-bg)',
+                        padding: '6px 10px',
+                        borderRadius: '0 6px 6px 0'
+                      }}
+                    >
+                      {displayReasoning}
+                    </div>
+                  </div>
 
                   {/* Render main text content */}
                   {cleanContent ? (
