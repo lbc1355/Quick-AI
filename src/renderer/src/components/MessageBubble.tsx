@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Message, AgentEvent } from '../../../shared/types'
+import { Message, AgentEvent, ToolResultUi } from '../../../shared/types'
 import { Edit, RefreshCw, Paperclip, Sparkles } from 'lucide-react'
 import {
   parseThinkTags,
@@ -131,7 +131,7 @@ interface EventStepRowProps {
   toolName: string
   args: unknown
   permissionState?: 'pending' | 'approved' | 'denied'
-  result?: { title?: string; url?: string; summary?: string }
+  result?: ToolResultUi
   error?: string
 }
 
@@ -279,6 +279,86 @@ const EventStepRow: React.FC<EventStepRowProps> = ({
             )}
             {result.summary && (
               <div style={{ fontStyle: 'italic', opacity: 0.9 }}>Summary: {result.summary}</div>
+            )}
+            {result.items && result.items.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  marginTop: '6px',
+                  borderTop: '1px dashed var(--color-border)',
+                  paddingTop: '6px'
+                }}
+              >
+                {result.items.map((item, itemIdx) => (
+                  <div
+                    key={itemIdx}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                      paddingBottom: itemIdx < result.items!.length - 1 ? '4px' : '0',
+                      borderBottom:
+                        itemIdx < result.items!.length - 1
+                          ? '1px solid rgba(255, 255, 255, 0.03)'
+                          : 'none'
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        flexWrap: 'wrap'
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, color: 'var(--color-primary)' }}>
+                        [{itemIdx + 1}]
+                      </span>
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          color: 'var(--color-text-title)',
+                          textDecoration: 'none',
+                          fontWeight: 500
+                        }}
+                      >
+                        {item.title}
+                      </a>
+                      {item.source && (
+                        <span
+                          style={{
+                            fontSize: '9px',
+                            background: 'rgba(255, 255, 255, 0.06)',
+                            padding: '0px 4px',
+                            borderRadius: '3px',
+                            color: 'var(--color-text-muted)'
+                          }}
+                        >
+                          {item.source}
+                        </span>
+                      )}
+                    </div>
+                    {item.snippet && (
+                      <div
+                        style={{
+                          fontSize: '9px',
+                          color: 'var(--color-text-muted)',
+                          paddingLeft: '14px',
+                          lineHeight: '1.3',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word'
+                        }}
+                      >
+                        {item.snippet}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </>
         )}

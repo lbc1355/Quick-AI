@@ -68,6 +68,9 @@ export const runAgentLoop = async (
   const runCtx = createRun(reqId, initialActiveTools, toolScope, permissions)
   const signal = runCtx.signal
 
+  let fetchUrlsCount = 0
+  const MAX_FETCH_URLS_PER_RUN = 5
+
   try {
     sendEvent(mainWindow, reqId, {
       type: 'agent_start',
@@ -134,6 +137,8 @@ export const runAgentLoop = async (
         // Pre-scan for deadlocks (especially duplicate URL fetching)
         // Use a Set of indices to avoid mutating tool_call objects in the messages array
         const deadlockIndices = new Set<number>()
+        const seenFetchUrlsThisTurn = new Set<string>()
+
         assistantMessage.tool_calls.forEach((toolCall, index) => {
           const toolName = toolCall.function.name
           const permission = permissions?.[toolName] || 'allow'
@@ -159,10 +164,10 @@ export const runAgentLoop = async (
             const url = (toolArgs.url as string) || ''
             if (url) {
               const callKey = `${toolName}:${url}`
-              if (runCtx.hasExecuted(callKey)) {
+              if (runCtx.hasExecuted(callKey) || seenFetchUrlsThisTurn.has(url)) {
                 deadlockIndices.add(index)
               } else {
-                runCtx.markExecuted(callKey)
+                seenFetchUrlsThisTurn.add(url)
               }
             }
           }
@@ -232,18 +237,6 @@ export const runAgentLoop = async (
             isWhitelisted = runCtx.isToolActive(toolName)
           }
 
-          // Check deadlock via index set (avoids mutating tool_call objects)
-          if (deadlockIndices.has(toolIndex)) {
-            const deadlockWarning = `Warning: You have already fetched the URL: ${toolArgs.url}. Fetching it again will not yield new information.`
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: deadlockWarning })
-            return {
-              role: 'tool',
-              tool_call_id: callId,
-              name: toolName,
-              content: deadlockWarning
-            }
-          }
-
           if (!toolDef || !toolDef.implemented || !isWhitelisted || permission === 'deny') {
             const errorMsg = `Tool execution blocked: Tool "${toolName}" is not registered, not implemented, not whitelisted/activated, or denied by policy.`
             sendEvent(mainWindow, reqId, {
@@ -259,6 +252,34 @@ export const runAgentLoop = async (
               tool_call_id: callId,
               name: toolName,
               content: `Error: ${errorMsg}`
+            }
+          }
+
+          // Check deadlock via index set (avoids mutating tool_call objects)
+          if (deadlockIndices.has(toolIndex)) {
+            const deadlockWarning = `Warning: You have already fetched the URL: ${toolArgs.url}. Fetching it again will not yield new information.`
+            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: deadlockWarning })
+            return {
+              role: 'tool',
+              tool_call_id: callId,
+              name: toolName,
+              content: deadlockWarning
+            }
+          }
+
+          if (toolName === 'fetch_url') {
+            if (fetchUrlsCount >= MAX_FETCH_URLS_PER_RUN) {
+              const limitWarning = `Warning: You have reached the maximum fetch limit of ${MAX_FETCH_URLS_PER_RUN} pages for this run. Please summarize based only on the content you already have.`
+              sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: limitWarning })
+              return {
+                role: 'tool',
+                tool_call_id: callId,
+                name: toolName,
+                content: limitWarning
+              }
+            }
+            if (!deadlockIndices.has(toolIndex) && isApproved) {
+              fetchUrlsCount++
             }
           }
 
@@ -285,6 +306,13 @@ export const runAgentLoop = async (
             )
             if (signal.aborted) {
               throw new Error('Agent execution aborted by user.')
+            }
+
+            if (toolName === 'fetch_url') {
+              const url = (toolArgs.url as string) || ''
+              if (url) {
+                runCtx.markExecuted(`${toolName}:${url}`)
+              }
             }
 
             sendEvent(mainWindow, reqId, {

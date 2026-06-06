@@ -1,5 +1,5 @@
-import { fetchUrl, webSearch } from './webTools'
-import { ToolArgs, ChatToolDeclaration } from '../shared/types'
+import { fetchUrl, webSearch, formatSearchResultsForModel } from './webTools'
+import { ToolArgs, ChatToolDeclaration, ToolResultUi } from '../shared/types'
 import { getRun } from './agent/AgentRunContext'
 
 export interface ToolExecutionContext {
@@ -12,6 +12,7 @@ export interface ToolDefinition {
   title: string
   description: string
   tags: string[]
+  dependencies?: string[]
   category: 'web' | 'file' | 'shell' | 'memory' | 'system'
   risk: 'low' | 'medium' | 'high'
   implemented: boolean
@@ -26,7 +27,7 @@ export interface ToolDefinition {
     ctx: ToolExecutionContext
   ) => Promise<{
     resultForModel: string
-    resultForUi: { title?: string; url?: string; summary?: string }
+    resultForUi: ToolResultUi
   }>
 }
 
@@ -144,8 +145,10 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
   web_search: {
     name: 'web_search',
     title: 'Web Search',
-    description: 'Search the web using DuckDuckGo to find web pages matching a query.',
-    tags: ['web', 'search', 'query', 'duckduckgo'],
+    description:
+      'Search the web using Bing, Sogou, or DuckDuckGo fallback to find web pages matching a query.',
+    tags: ['web', 'search', 'query', 'bing', 'sogou', 'duckduckgo'],
+    dependencies: ['fetch_url'],
     category: 'web',
     risk: 'low',
     implemented: true,
@@ -163,11 +166,14 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         throw new Error('Missing or invalid query parameter')
       }
       const results = await webSearch(query, ctx.signal)
+      const formatted = formatSearchResultsForModel(results)
+      const resultForModel = `${formatted}\n\nInstruction: Pick 1 to 3 relevant URLs and call fetch_url before final answer when current page content matters.`
       return {
-        resultForModel: results,
+        resultForModel,
         resultForUi: {
           title: `Search: ${query}`,
-          summary: results.slice(0, 300) + (results.length > 300 ? '...' : '')
+          summary: `Found ${results.length} results`,
+          items: results
         }
       }
     }
@@ -265,7 +271,21 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       const matchedSummaries = searchToolDefinitions(query, scope, permissionPolicy)
 
       if (runCtx) {
-        matchedSummaries.forEach((t) => runCtx.activateTool(t.name))
+        matchedSummaries.forEach((t) => {
+          runCtx.activateTool(t.name)
+          const fullToolDef = ToolRegistry[t.name]
+          if (fullToolDef && fullToolDef.dependencies) {
+            fullToolDef.dependencies.forEach((dep) => {
+              const depDef = ToolRegistry[dep]
+              if (!depDef || !depDef.implemented) return
+              if (scope !== 'all' && !scope.has(dep)) return
+              const permission = permissionPolicy?.[dep] || 'allow'
+              if (permission === 'deny') return
+
+              runCtx.activateTool(dep)
+            })
+          }
+        })
       }
 
       const observation =

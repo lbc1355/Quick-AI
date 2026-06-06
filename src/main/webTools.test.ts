@@ -79,13 +79,15 @@ describe('parseDuckDuckGoResults', () => {
 
     expect(results[0]).toEqual({
       title: 'First Title',
-      href: 'https://example.com/page1',
-      snippet: 'Snippet one & more'
+      url: 'https://example.com/page1',
+      snippet: 'Snippet one & more',
+      source: 'DuckDuckGo'
     })
     expect(results[1]).toEqual({
       title: 'Second Title',
-      href: 'https://example.org/page2',
-      snippet: 'Snippet two'
+      url: 'https://example.org/page2',
+      snippet: 'Snippet two',
+      source: 'DuckDuckGo'
     })
   })
 
@@ -96,8 +98,9 @@ describe('parseDuckDuckGoResults', () => {
       </div>`
     const results = parseDuckDuckGoResults(reordered)
     expect(results).toHaveLength(1)
-    expect(results[0].href).toBe('https://x.test/p')
+    expect(results[0].url).toBe('https://x.test/p')
     expect(results[0].title).toBe('Reordered')
+    expect(results[0].source).toBe('DuckDuckGo')
   })
 
   it('returns an empty array when the markup matches nothing', () => {
@@ -123,13 +126,15 @@ describe('parseBingResults', () => {
     expect(results).toHaveLength(2)
     expect(results[0]).toEqual({
       title: 'Bing One',
-      href: 'https://bing1.test/x',
-      snippet: 'Caption one'
+      url: 'https://bing1.test/x',
+      snippet: 'Caption one',
+      source: 'Bing'
     })
     expect(results[1]).toEqual({
       title: 'Bing Two',
-      href: 'https://bing2.test/y',
-      snippet: 'Direct para two'
+      url: 'https://bing2.test/y',
+      snippet: 'Direct para two',
+      source: 'Bing'
     })
   })
 })
@@ -150,13 +155,15 @@ describe('parseSogouResults', () => {
     const results = parseSogouResults(html)
     expect(results).toHaveLength(2)
     expect(results[0].title).toBe('Sogou One')
-    expect(results[0].href).toBe('https://www.sogou.com/link?url=hedJjaC291Abc')
+    expect(results[0].url).toBe('https://www.sogou.com/link?url=hedJjaC291Abc')
     expect(results[0].snippet).toBe('Snippet one here')
+    expect(results[0].source).toBe('Sogou')
   })
 
   it('keeps absolute hrefs untouched', () => {
     const results = parseSogouResults(html)
-    expect(results[1].href).toBe('https://direct.test/z')
+    expect(results[1].url).toBe('https://direct.test/z')
+    expect(results[1].source).toBe('Sogou')
   })
 
   it('returns an empty array for non-matching markup', () => {

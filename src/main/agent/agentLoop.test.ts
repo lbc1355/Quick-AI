@@ -331,4 +331,178 @@ describe('runAgentLoop', () => {
     // 4th step: final summarized call (tools are undefined, returns final answer)
     expect(callCount).toBe(4)
   })
+
+  it('fetch_url=ask triggers permission request and executes if approved', async () => {
+    let callCount = 0
+    const permissionSpy = vi
+      .spyOn(globalPermissionManager, 'requestPermission')
+      .mockResolvedValue(true)
+
+    vi.mocked(callModel).mockImplementation(async (options, messages) => {
+      void options
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-search',
+              type: 'function',
+              function: { name: 'search_tools', arguments: JSON.stringify({ query: 'web' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 2) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-fetch',
+              type: 'function',
+              function: {
+                name: 'fetch_url',
+                arguments: JSON.stringify({ url: 'https://example.com' })
+              }
+            }
+          ]
+        }
+      }
+      if (callCount === 3) {
+        const lastMsg = messages[messages.length - 1]
+        expect(lastMsg.role).toBe('tool')
+        expect(lastMsg.content).toBe('Fetched page content')
+        return {
+          role: 'assistant',
+          content: 'Fetched successfully.'
+        }
+      }
+      return { role: 'assistant', content: 'done' }
+    })
+
+    await runAgentLoop(
+      mockWindow,
+      'test-req-fetch-ask',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Fetch something' }]
+      },
+      {
+        fetch_url: 'ask'
+      }
+    )
+
+    expect(permissionSpy).toHaveBeenCalled()
+    expect(callCount).toBe(3)
+  })
+
+  it('fetch_url is limited to MAX_FETCH_URLS_PER_RUN = 5', async () => {
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (options, messages) => {
+      void options
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-search',
+              type: 'function',
+              function: { name: 'search_tools', arguments: JSON.stringify({ query: 'web' }) }
+            }
+          ]
+        }
+      }
+      if (callCount >= 2 && callCount <= 7) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: `tc-fetch-${callCount}`,
+              type: 'function',
+              function: {
+                name: 'fetch_url',
+                arguments: JSON.stringify({ url: `https://example.com/p${callCount}` })
+              }
+            }
+          ]
+        }
+      }
+      // On the 8th call, check if the last message (which is from the 7th tool execution / 6th fetch_url attempt)
+      // contains the limit warning content.
+      const lastMsg = messages[messages.length - 1]
+      expect(lastMsg.role).toBe('tool')
+      expect(lastMsg.content).toContain(
+        'Warning: You have reached the maximum fetch limit of 5 pages'
+      )
+      return {
+        role: 'assistant',
+        content: 'I reached the limit and summarized.'
+      }
+    })
+
+    await runAgentLoop(
+      mockWindow,
+      'test-req-fetch-limit',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Fetch many things' }]
+      },
+      {
+        fetch_url: 'allow'
+      }
+    )
+
+    expect(callCount).toBe(8)
+  })
+
+  it('search_tools with query "web search" activates both web_search and fetch_url via dependencies', async () => {
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
+      void options
+      void messages
+      callCount++
+      if (callCount === 1) {
+        expect(tools?.map((t) => t.function.name)).toEqual(['search_tools'])
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-search',
+              type: 'function',
+              function: { name: 'search_tools', arguments: JSON.stringify({ query: 'web search' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 2) {
+        const declaredNames = tools?.map((t) => t.function.name) || []
+        expect(declaredNames).toContain('web_search')
+        expect(declaredNames).toContain('fetch_url')
+        return {
+          role: 'assistant',
+          content: 'I see search and fetch tools.'
+        }
+      }
+      return { role: 'assistant', content: 'done' }
+    })
+
+    await runAgentLoop(mockWindow, 'test-req-dependencies', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Search and read' }]
+    })
+
+    expect(callCount).toBe(2)
+  })
 })

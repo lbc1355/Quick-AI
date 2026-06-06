@@ -1,3 +1,15 @@
+export interface ToolResultUi {
+  title?: string
+  url?: string
+  summary?: string
+  items?: Array<{
+    title: string
+    url: string
+    snippet?: string
+    source?: string
+  }>
+}
+
 export type AgentEvent =
   | { type: 'agent_start'; skillName: string }
   | { type: 'reasoning'; content: string }
@@ -11,7 +23,7 @@ export type AgentEvent =
   | {
       type: 'tool_result'
       callId: string
-      result: { title?: string; url?: string; summary?: string }
+      result: ToolResultUi
     }
   | { type: 'tool_error'; callId: string; error: string }
   | { type: 'final'; content: string }
