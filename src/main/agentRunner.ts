@@ -63,9 +63,19 @@ const callModel = async (
 ): Promise<ChatCompletionMessage> => {
   const completionsUrl = `${options.apiUrl.replace(/\/$/, '')}/chat/completions`
 
+  // Sanitize messages to strip reasoning_content from assistant messages (causes issues on OpenAI-compatible APIs)
+  const sanitizedMessages = messages.map((m) => {
+    if (m.role === 'assistant') {
+      const copy = { ...m }
+      delete copy.reasoning_content
+      return copy
+    }
+    return m
+  })
+
   const body: Record<string, unknown> = {
     model: options.model,
-    messages,
+    messages: sanitizedMessages,
     stream: true
   }
 
@@ -94,6 +104,8 @@ const callModel = async (
 
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
+
+  const shouldStreamFinal = !toolsToDeclare || toolsToDeclare.length === 0
 
   const assistantMessage: ChatCompletionMessage = {
     role: 'assistant',
@@ -163,7 +175,9 @@ const callModel = async (
               if (parts[0]) {
                 if (typeof assistantMessage.content !== 'string') assistantMessage.content = ''
                 assistantMessage.content += parts[0]
-                sendEvent(mainWindow, reqId, { type: 'final', content: parts[0] })
+                if (shouldStreamFinal) {
+                  sendEvent(mainWindow, reqId, { type: 'final', content: parts[0] })
+                }
               }
               contentChunk = parts.slice(1).join('<think>')
             }
@@ -179,7 +193,9 @@ const callModel = async (
                 if (parts[1]) {
                   if (typeof assistantMessage.content !== 'string') assistantMessage.content = ''
                   assistantMessage.content += parts[1]
-                  sendEvent(mainWindow, reqId, { type: 'final', content: parts[1] })
+                  if (shouldStreamFinal) {
+                    sendEvent(mainWindow, reqId, { type: 'final', content: parts[1] })
+                  }
                 }
               } else {
                 assistantMessage.reasoning_content += contentChunk
@@ -188,7 +204,9 @@ const callModel = async (
             } else {
               if (typeof assistantMessage.content !== 'string') assistantMessage.content = ''
               assistantMessage.content += contentChunk
-              sendEvent(mainWindow, reqId, { type: 'final', content: contentChunk })
+              if (shouldStreamFinal) {
+                sendEvent(mainWindow, reqId, { type: 'final', content: contentChunk })
+              }
             }
           }
         } catch {
@@ -202,6 +220,14 @@ const callModel = async (
     assistantMessage.tool_calls = assistantMessage.tool_calls.filter(
       (tc) => tc && tc.function?.name
     )
+  }
+
+  if (!shouldStreamFinal) {
+    if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+      if (typeof assistantMessage.content === 'string' && assistantMessage.content) {
+        sendEvent(mainWindow, reqId, { type: 'final', content: assistantMessage.content })
+      }
+    }
   }
 
   return assistantMessage
@@ -304,12 +330,19 @@ export const runAgentSkill = async (
 
           const url = (toolArgs.url as string) || ''
 
-          // Double-layered check: tool registry, implementation, and permission check
+          // Double-layered check: tool registry, implementation, skill whitelist, and permission check
           const toolDef = ToolRegistry[toolName]
           const permission = permissions?.[toolName] || 'allow'
 
-          if (!toolDef || !toolDef.implemented || permission === 'deny') {
-            const errorMsg = `Tool execution blocked: Tool "${toolName}" is not registered, not implemented, or denied by policy.`
+          if (!toolDef || !toolDef.implemented || !skillTools.includes(toolName) || permission === 'deny') {
+            const errorMsg = `Tool execution blocked: Tool "${toolName}" is not registered, not implemented, not whitelisted by the current skill, or denied by policy.`
+            sendEvent(mainWindow, reqId, {
+              type: 'tool_call',
+              callId,
+              toolName,
+              args: toolArgs,
+              permissionState: 'denied'
+            })
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: errorMsg })
             messages.push({
               role: 'tool',

@@ -319,8 +319,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     msg.reasoning_content
   )
 
-  const [hasAutoCollapsed, setHasAutoCollapsed] = useState(false)
-
   // Determine if we use structured agent events or legacy string logs fallback
   const hasStructuredEvents = msg.agentEvents && msg.agentEvents.length > 0
   const legacyLogs = !hasStructuredEvents ? parseAgentLogs(displayContent).logs : []
@@ -328,7 +326,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     ? displayContent
     : parseAgentLogs(displayContent).cleanContent
 
-  const [isLogsExpanded, setIsLogsExpanded] = useState(isGenerating && !cleanContent)
+  const [userExpandedOverride, setUserExpandedOverride] = useState<boolean | null>(null)
   const isEditing = editingMessageId === msg.id
 
   const [elapsed, setElapsed] = useState<number>(0)
@@ -351,13 +349,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     return undefined
   }, [isGenerating, cleanContent, hasLogs, msg.id])
 
-  // Auto-collapse logs when final answer starts streaming
-  if (cleanContent && !hasAutoCollapsed) {
-    setHasAutoCollapsed(true)
-    setIsLogsExpanded(false)
-  } else if (!cleanContent && hasAutoCollapsed) {
-    setHasAutoCollapsed(false)
-  }
+  // Derived logs expansion state
+  const effectiveLogsExpanded = userExpandedOverride !== null
+    ? userExpandedOverride
+    : (hasLogs && !cleanContent)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
@@ -372,7 +367,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           }}
         >
           <div
-            onClick={() => setIsLogsExpanded(!isLogsExpanded)}
+            onClick={() => setUserExpandedOverride(!effectiveLogsExpanded)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -389,12 +384,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 ? `Worked for ${elapsed}s`
                 : `Called tools (${toolCallCount} steps)`}
             </span>
-            <span style={{ fontSize: '9px', opacity: 0.7 }}>{isLogsExpanded ? 'v' : '>'}</span>
+            <span style={{ fontSize: '9px', opacity: 0.7 }}>{effectiveLogsExpanded ? 'v' : '>'}</span>
           </div>
 
           <div
             style={{
-              display: isLogsExpanded ? 'flex' : 'none',
+              display: effectiveLogsExpanded ? 'flex' : 'none',
               flexDirection: 'column',
               gap: '6px',
               paddingLeft: '16px'
