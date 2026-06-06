@@ -2,12 +2,23 @@ import { fetchUrl, webSearch, formatSearchResultsForModel } from './webTools'
 import { ToolArgs, ChatToolDeclaration, ToolResultUi } from '../shared/types'
 import { getRun } from './agent/AgentRunContext'
 import { resolve, normalize, relative, isAbsolute, basename, join, dirname } from 'path'
-import { promises as fs, realpathSync } from 'fs'
+import { promises as fs, realpathSync, existsSync, mkdirSync } from 'fs'
+import { homedir } from 'os'
 
 export function getWorkspaceRoot(): string {
-  let root = normalize(resolve(process.cwd()))
+  const userHome = homedir()
+  const rootPath = normalize(resolve(userHome, 'quickai'))
+  if (!existsSync(rootPath)) {
+    try {
+      mkdirSync(rootPath, { recursive: true })
+    } catch (err) {
+      console.error('Failed to create workspace directory ~/quickai:', err)
+    }
+  }
+
+  let root = rootPath
   try {
-    root = realpathSync(root)
+    root = realpathSync(rootPath)
   } catch {
     // Ignore and fallback
   }
@@ -480,7 +491,8 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       const walk = async (dir: string): Promise<void> => {
         if (ctx.signal.aborted || scanTruncatedReason) return
 
-        if (Date.now() - startTime > SEARCH_TIMEOUT_MS) {
+        const nowVal = Date.now()
+        if (nowVal - startTime > SEARCH_TIMEOUT_MS) {
           scanTruncatedReason = 'Time limit exceeded'
           return
         }

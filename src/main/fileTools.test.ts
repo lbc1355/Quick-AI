@@ -297,12 +297,11 @@ describe('File Safety & Search Tools', () => {
     })
 
     it('handles search timeouts and reports scan truncation', async () => {
-      let callCount = 0
       const originalNow = Date.now
       const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => {
-        callCount++
-        if (callCount > 10) {
-          return originalNow() + 12000
+        const stack = new Error().stack || ''
+        if (stack.includes('walk')) {
+          return originalNow() + 15000
         }
         return originalNow()
       })
