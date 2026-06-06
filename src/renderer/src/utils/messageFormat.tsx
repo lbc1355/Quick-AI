@@ -26,11 +26,12 @@ export const parseThinkTags = (content: string, reasoningContent?: string): { co
 export interface AgentLogStep {
   step: number
   maxSteps: number
-  type: 'tool' | 'result' | 'error'
+  type: 'tool' | 'result' | 'error' | 'think'
   toolName?: string
   url?: string
   title?: string
   error?: string
+  thought?: string
 }
 
 export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanContent: string; skillName: string } => {
@@ -49,6 +50,39 @@ export const parseAgentLogs = (content: string): { logs: AgentLogStep[]; cleanCo
     
     if (line.startsWith('Running agent skill:')) {
       skillName = line.replace('Running agent skill:', '').trim()
+      logEndIdx = i + 1
+      continue
+    }
+
+    const thinkMatch = line.match(/^\[think (\d+)\/(\d+)\]\s*(.*)$/)
+    if (thinkMatch) {
+      const step = parseInt(thinkMatch[1])
+      const maxSteps = parseInt(thinkMatch[2])
+      let thought = thinkMatch[3].trim()
+      
+      let nextIdx = i + 1
+      while (nextIdx < lines.length) {
+        const nextLine = lines[nextIdx].trim()
+        if (
+          nextLine.startsWith('Running agent skill:') ||
+          nextLine.match(/^\[tool \d+\/\d+\]/) ||
+          nextLine.match(/^\[result \d+\/\d+\]/) ||
+          nextLine.match(/^\[error \d+\/\d+\]/) ||
+          nextLine.match(/^\[think \d+\/\d+\]/)
+        ) {
+          break
+        }
+        thought += (thought ? '\n' : '') + lines[nextIdx]
+        nextIdx++
+      }
+      
+      i = nextIdx - 1
+      logs.push({
+        step,
+        maxSteps,
+        type: 'think',
+        thought
+      })
       logEndIdx = i + 1
       continue
     }

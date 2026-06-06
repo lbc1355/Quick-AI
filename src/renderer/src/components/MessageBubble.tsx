@@ -72,6 +72,43 @@ const LogStepRow: React.FC<LogStepRowProps> = ({ log, resultLog, errorLog }) => 
   )
 }
 
+const LogThinkRow: React.FC<{ log: AgentLogStep }> = ({ log }) => {
+  const [isExpanded, setIsExpanded] = useState(false)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          cursor: 'pointer', 
+          userSelect: 'none',
+          color: 'var(--color-text-muted)',
+          gap: '6px'
+        }}
+      >
+        <span style={{ color: 'var(--color-text-muted)', opacity: 0.9 }}>
+          Thought (Step {log.step}/{log.maxSteps})
+        </span>
+        <span style={{ fontSize: '8px', opacity: 0.6 }}>{isExpanded ? 'v' : '>'}</span>
+      </div>
+      {isExpanded && (
+        <div style={{ 
+          paddingLeft: '14px', 
+          fontSize: '9.5px',
+          fontStyle: 'italic',
+          color: 'var(--color-text-muted)',
+          whiteSpace: 'pre-wrap',
+          lineHeight: '1.4',
+          opacity: 0.85
+        }}>
+          {log.thought}
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface MessageBubbleProps {
   msg: Message
   idx: number
@@ -166,7 +203,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               paddingLeft: '16px'
             }}>
               {logs.reduce<React.ReactNode[]>((acc, log, logIdx) => {
-                if (log.type === 'tool') {
+                if (log.type === 'think') {
+                  acc.push(
+                    <LogThinkRow
+                      key={`think-${log.step}-${logIdx}`}
+                      log={log}
+                    />
+                  )
+                } else if (log.type === 'tool') {
                   const resultLog = logs.find(l => l.step === log.step && l.type === 'result' && l.url === log.url)
                   const errorLog = logs.find(l => l.step === log.step && l.type === 'error')
                   
