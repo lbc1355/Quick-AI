@@ -4,7 +4,8 @@ import {
   ChatCompletionMessage,
   AgentEvent,
   ToolArgs,
-  ChatToolDeclaration
+  ChatToolDeclaration,
+  SessionResource
 } from '../../shared/types'
 import { ToolRegistry, toChatToolDeclaration } from '../toolRegistry'
 import { buildSkillMessages, prepareChatAgentMessages } from './messageBuilder'
@@ -49,6 +50,7 @@ export const runAgentLoop = async (
     messages?: ChatCompletionMessage[]
     skill?: AgentSkillRunOptions['skill']
     userInput?: string
+    resources?: SessionResource[]
   },
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): Promise<void> => {
@@ -72,14 +74,23 @@ export const runAgentLoop = async (
       model: options.model,
       systemPrompt: options.systemPrompt,
       skill: options.skill!,
-      userInput: options.userInput || ''
+      userInput: options.userInput || '',
+      resources: options.resources
     })
   } else {
-    messages = prepareChatAgentMessages(options.messages || [], options.systemPrompt)
+    messages = prepareChatAgentMessages(options.messages || [], options.systemPrompt, options.resources)
   }
 
   // Initialize Run Context
   const initialActiveTools = toolDiscovery === 'dynamic' ? ['search_tools'] : skillTools
+  if (options.resources && options.resources.length > 0) {
+    if (!initialActiveTools.includes('read_cached_resource')) {
+      initialActiveTools.push('read_cached_resource')
+    }
+    if (!initialActiveTools.includes('search_cached_resource')) {
+      initialActiveTools.push('search_cached_resource')
+    }
+  }
   const runCtx = createRun(reqId, initialActiveTools, toolScope, permissions)
   runCtx.maxSteps = maxSteps
   const signal = runCtx.signal
@@ -340,7 +351,7 @@ export const runAgentLoop = async (
               throw new Error('Agent execution aborted by user.')
             }
             const { resultForModel, resultForUi } = await withRetry(
-              () => toolDef.execute(toolArgs, { reqId, signal }),
+              () => toolDef.execute(toolArgs, { reqId, signal, mainWindow }),
               DEFAULT_RETRY_POLICY,
               signal
             )

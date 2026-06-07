@@ -237,6 +237,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       riskLabel: '低风险'
                     },
                     {
+                      name: 'read_cached_resource',
+                      label: '读取资源缓存 (read_cached_resource)',
+                      risk: 'low',
+                      riskLabel: '低风险'
+                    },
+                    {
+                      name: 'search_cached_resource',
+                      label: '检索资源缓存 (search_cached_resource)',
+                      risk: 'low',
+                      riskLabel: '低风险'
+                    },
+                    {
                       name: 'web_search',
                       label: '网络搜索 (web_search)',
                       risk: 'low',

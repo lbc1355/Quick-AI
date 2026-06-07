@@ -1,5 +1,25 @@
 import React, { useState } from 'react'
-import { ChatChunkData, Message, Session, Skill, RunMode, AgentEvent } from '../../../shared/types'
+import { ChatChunkData, Message, Session, Skill, RunMode, AgentEvent, SessionResource } from '../../../shared/types'
+
+const mergeResourceRanges = (
+  ranges: Array<{ start: number; end: number }>
+): Array<{ start: number; end: number }> => {
+  if (ranges.length <= 1) return ranges
+  const sorted = [...ranges].sort((a, b) => a.start - b.start)
+  const merged: Array<{ start: number; end: number }> = [sorted[0]]
+
+  for (let i = 1; i < sorted.length; i++) {
+    const last = merged[merged.length - 1]
+    const current = sorted[i]
+    if (current.start <= last.end) {
+      last.end = Math.max(last.end, current.end)
+    } else {
+      merged.push(current)
+    }
+  }
+
+  return merged
+}
 
 const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Message => {
   const currentEvents = m.agentEvents || []
@@ -203,7 +223,63 @@ export const useChatCompletion = ({
       }
 
       if (data.event) {
-        updateMessageById(assistantMsgId, (m) => applyAgentEventToMessage(m, data.event!))
+        if (data.event.type === 'resource_update') {
+          const updatedResource = data.event.resource
+          setSessions((prevSessions) => {
+            const next = prevSessions.map((s) => {
+              if (s.id !== activeSessionId) return s
+
+              const existingResources = s.resources || []
+              const resIdx = existingResources.findIndex((r) => r.id === updatedResource.id)
+
+              let newResources: SessionResource[]
+              if (resIdx !== -1) {
+                const existingRes = existingResources[resIdx]
+
+                // Merge all metadata chunks returned by the cache, not only the first one.
+                const chunkMap = new Map(existingRes.chunks.map((chunk) => [chunk.id, chunk]))
+                updatedResource.chunks.forEach((chunk) => {
+                  chunkMap.set(chunk.id, chunk)
+                })
+                const newChunks = Array.from(chunkMap.values()).sort(
+                  (a, b) => (a.offset ?? 0) - (b.offset ?? 0)
+                )
+
+                // Merge fetchedRanges
+                const fetchedRanges = mergeResourceRanges([
+                  ...(existingRes.fetchedRanges || []),
+                  ...(updatedResource.fetchedRanges || [])
+                ])
+
+                const mergedRes: SessionResource = {
+                  ...existingRes,
+                  title: updatedResource.title || existingRes.title,
+                  totalChars: updatedResource.totalChars ?? existingRes.totalChars,
+                  nextOffset: updatedResource.nextOffset,
+                  status: updatedResource.status,
+                  summary: updatedResource.summary ?? existingRes.summary,
+                  fetchedRanges,
+                  chunks: newChunks,
+                  updatedAt: updatedResource.updatedAt || Date.now()
+                }
+                newResources = [...existingResources]
+                newResources[resIdx] = mergedRes
+              } else {
+                newResources = [...existingResources, updatedResource]
+              }
+
+              return {
+                ...s,
+                resources: newResources,
+                lastActiveTime: Date.now()
+              }
+            })
+            sessionsRef.current = next
+            return next
+          })
+        } else {
+          updateMessageById(assistantMsgId, (m) => applyAgentEventToMessage(m, data.event!))
+        }
       }
     })
 
@@ -390,7 +466,8 @@ export const useChatCompletion = ({
           apiKey,
           model: selectedModel,
           messages: apiMessages,
-          runMode
+          runMode,
+          resources: currentSession.resources
         }),
       (msg) => `⚠️ 出错了：${msg || '网络连接失败'}`
     )
@@ -459,7 +536,8 @@ export const useChatCompletion = ({
           model: selectedModel,
           systemPrompt,
           skill,
-          userInput
+          userInput,
+          resources: currentSession.resources
         }),
       (msg) => `Agent Skill failed: ${msg}`
     )

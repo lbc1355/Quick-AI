@@ -1,5 +1,5 @@
 import { fetchUrl, webSearch, formatSearchResultsForModel } from './webTools'
-import { ToolArgs, ChatToolDeclaration, ToolResultUi } from '../shared/types'
+import { ToolArgs, ChatToolDeclaration, ToolResultUi, SessionResource } from '../shared/types'
 import { getRun } from './agent/AgentRunContext'
 import { resolve, normalize, relative, isAbsolute, basename, join, dirname } from 'path'
 import { promises as fs, realpathSync, existsSync, mkdirSync } from 'fs'
@@ -68,9 +68,14 @@ const SEARCH_IGNORE_EXTENSIONS = [
   '-lock.json', '.lock', '-lock.yaml', '.lockb'
 ]
 
+import { BrowserWindow } from 'electron'
+import { saveResourceChunk, readResourceChunk, getResourceId, getResourceFilePath } from './resourceCache'
+import type { CachedResourceFile } from './resourceCache'
+
 export interface ToolExecutionContext {
   reqId: string
   signal: AbortSignal
+  mainWindow?: BrowserWindow
 }
 
 export interface ToolDefinition {
@@ -243,6 +248,42 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       const maxChars = typeof args.maxChars === 'number' ? args.maxChars : undefined
       const result = await fetchUrl(url, ctx.signal, { offset, maxChars })
 
+      let sessionResource: SessionResource | undefined
+
+      // Cache non-empty fetch windows to the session resource store.
+      if (result.text.length > 0 && result.endOffset > result.offset) {
+        const resourceId = getResourceId(result.finalUrl)
+        const chunkId = `chunk-${result.offset}-${result.endOffset}`
+        const chunk = {
+          id: chunkId,
+          offset: result.offset,
+          endOffset: result.endOffset,
+          text: result.text,
+          summary: result.text.slice(0, 160) + (result.text.length > 160 ? '...' : ''),
+          createdAt: Date.now()
+        }
+
+        sessionResource = await saveResourceChunk(
+          resourceId,
+          'web',
+          result.finalUrl,
+          result.title || undefined,
+          result.totalChars,
+          result.nextOffset,
+          chunk
+        )
+
+        if (ctx.mainWindow) {
+          ctx.mainWindow.webContents.send('chat-chunk', {
+            reqId: ctx.reqId,
+            event: {
+              type: 'resource_update',
+              resource: sessionResource
+            }
+          })
+        }
+      }
+
       const formatLinks = (res: typeof result): string => {
         return res.links
           .slice(0, 25)
@@ -251,10 +292,25 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       }
 
       const links = formatLinks(result)
+      const cacheCoverage = sessionResource
+        ? [
+            `Cached coverage status: ${sessionResource.status}`,
+            sessionResource.fetchedRanges && sessionResource.fetchedRanges.length > 0
+              ? `Cached read ranges: ${sessionResource.fetchedRanges.map((range) => `${range.start}-${range.end}`).join(', ')}`
+              : '',
+            sessionResource.nextOffset !== undefined ? `Next unread offset: ${sessionResource.nextOffset}` : '',
+            sessionResource.status !== 'complete'
+              ? 'Coverage warning: this cached resource is incomplete. Do not claim the full resource has been read.'
+              : ''
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : ''
       const body = [
         `URL: ${result.finalUrl}`,
         result.title ? `Title: ${result.title}` : '',
         `Content window: characters ${result.offset}-${result.endOffset} of ${result.totalChars}`,
+        cacheCoverage,
         result.responseTruncated
           ? 'Warning: network response hit the fetch byte limit; later content may be unavailable.'
           : '',
@@ -280,6 +336,172 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
           summary: result.text
             ? `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}. ${result.text.slice(0, 160)}${result.text.length > 160 ? '...' : ''}`
             : `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}.`
+        }
+      }
+    }
+  },
+  read_cached_resource: {
+    name: 'read_cached_resource',
+    title: 'Read Cached Resource',
+    description:
+      'Reads the full text content of a previously fetched resource chunk using its resourceId and offset from the local cache.',
+    tags: ['cache', 'resource', 'read', 'local', 'history', '缓存', '资源', '读取'],
+    category: 'system',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        resourceId: {
+          type: 'string',
+          description: 'The unique ID of the cached resource (provided in the session resources summary).'
+        },
+        offset: {
+          type: 'number',
+          description: 'The starting character offset of the chunk to read (provided in the session resources summary).'
+        }
+      },
+      required: ['resourceId', 'offset']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      void ctx
+      const resourceId = args.resourceId
+      const offset = args.offset
+      if (typeof resourceId !== 'string' || !resourceId) {
+        throw new Error('Missing or invalid resourceId parameter')
+      }
+      if (typeof offset !== 'number' || Number.isNaN(offset)) {
+        throw new Error('Missing or invalid offset parameter')
+      }
+
+      console.log(`[read_cached_resource] Reading cached resource ${resourceId} at offset ${offset}`)
+      const text = await readResourceChunk(resourceId, offset)
+      const endOffset = offset + text.length
+
+      return {
+        resultForModel: `Resource ID: ${resourceId}\nOffset: ${offset}-${endOffset}\n\nContent:\n${text}`,
+        resultForUi: {
+          title: `Read Cached Resource: ${resourceId}`,
+          summary: `Read cached chunk at offset ${offset}-${endOffset} (${text.length} characters)`
+        }
+      }
+    }
+  },
+  search_cached_resource: {
+    name: 'search_cached_resource',
+    title: 'Search Cached Resource',
+    description:
+      'Searches inside a previously cached resource using a query string to find matching offsets and snippets.',
+    tags: ['cache', 'resource', 'search', 'find', 'local', 'history', '缓存', '资源', '搜索', '查找'],
+    category: 'system',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        resourceId: {
+          type: 'string',
+          description: 'The unique ID of the cached resource.'
+        },
+        query: {
+          type: 'string',
+          description: 'The search query or keywords to locate inside the resource text.'
+        }
+      },
+      required: ['resourceId', 'query']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      void ctx
+      const resourceId = args.resourceId
+      const query = args.query
+      if (typeof resourceId !== 'string' || !resourceId) {
+        throw new Error('Missing or invalid resourceId parameter')
+      }
+      if (typeof query !== 'string' || !query) {
+        throw new Error('Missing or invalid query parameter')
+      }
+
+      const filePath = getResourceFilePath(resourceId)
+      if (!existsSync(filePath)) {
+        throw new Error(`Resource cache file not found for ID: ${resourceId}`)
+      }
+
+      const fileContent = await fs.readFile(filePath, 'utf-8')
+      const resourceData = JSON.parse(fileContent) as CachedResourceFile
+
+      const queryLower = query.toLowerCase()
+      const matches: Array<{ offset: number; endOffset: number; snippet: string }> = []
+
+      for (const chunk of resourceData.chunks) {
+        if (!chunk.text) continue
+        const textLower = chunk.text.toLowerCase()
+        const idx = textLower.indexOf(queryLower)
+        if (idx !== -1) {
+          const matchStart = Math.max(0, idx - 60)
+          const matchEnd = Math.min(chunk.text.length, idx + query.length + 90)
+          let snippet = chunk.text.substring(matchStart, matchEnd)
+          if (matchStart > 0) snippet = '...' + snippet
+          if (matchEnd < chunk.text.length) snippet = snippet + '...'
+          matches.push({
+            offset: chunk.offset || 0,
+            endOffset: chunk.endOffset || 0,
+            snippet
+          })
+        }
+      }
+
+      if (matches.length === 0) {
+        const words = queryLower.split(/\s+/).filter((w) => w.length > 1)
+        for (const chunk of resourceData.chunks) {
+          if (!chunk.text) continue
+          const textLower = chunk.text.toLowerCase()
+          for (const word of words) {
+            const idx = textLower.indexOf(word)
+            if (idx !== -1) {
+              const matchStart = Math.max(0, idx - 60)
+              const matchEnd = Math.min(chunk.text.length, idx + word.length + 90)
+              let snippet = chunk.text.substring(matchStart, matchEnd)
+              if (matchStart > 0) snippet = '...' + snippet
+              if (matchEnd < chunk.text.length) snippet = snippet + '...'
+              matches.push({
+                offset: chunk.offset || 0,
+                endOffset: chunk.endOffset || 0,
+                snippet
+              })
+              break
+            }
+          }
+        }
+      }
+
+      if (matches.length === 0) {
+        return {
+          resultForModel: `No matches found for query "${query}" in cached resource ${resourceId}.`,
+          resultForUi: {
+            title: `Search Cache: ${query}`,
+            summary: `No matches found`
+          }
+        }
+      }
+
+      const bodyLines = [
+        `Search results for query "${query}" in cached resource ${resourceId}:`,
+        ''
+      ]
+      matches.forEach((m, index) => {
+        bodyLines.push(`${index + 1}. Chunk Offset: ${m.offset}-${m.endOffset}`)
+        bodyLines.push(`   Snippet: "${m.snippet.replace(/\r?\n/g, ' ')}"`)
+        bodyLines.push(`   Instruction: To read the full details, call read_cached_resource with {"resourceId":"${resourceId}","offset":${m.offset}}`)
+        bodyLines.push('')
+      })
+
+      return {
+        resultForModel: bodyLines.join('\n'),
+        resultForUi: {
+          title: `Search Cache: "${query}"`,
+          summary: `Found ${matches.length} matching offsets`
         }
       }
     }

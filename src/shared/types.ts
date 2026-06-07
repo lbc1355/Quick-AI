@@ -39,6 +39,10 @@ export type AgentEvent =
       status: 'completed' | 'cancelled' | 'failed' | 'max_steps'
       error?: string
     }
+  | {
+      type: 'resource_update'
+      resource: SessionResource
+    }
 
 export interface Message {
   id: string
@@ -73,11 +77,41 @@ export interface ChatCompletionMessage {
   }>
 }
 
+export type ResourceKind = 'web' | 'paper' | 'github_file' | 'local_file' | 'terminal' | 'doc'
+
+export interface SessionResourceChunk {
+  id: string
+  offset?: number
+  endOffset?: number
+  page?: number
+  section?: string
+  text?: string
+  summary?: string
+  createdAt: number
+}
+
+export interface SessionResource {
+  id: string
+  kind: ResourceKind
+  source: string
+  title?: string
+  fingerprint?: string
+  totalChars?: number
+  fetchedRanges?: Array<{ start: number; end: number }>
+  nextOffset?: number
+  status: 'partial' | 'complete' | 'stale'
+  summary?: string
+  chunks: SessionResourceChunk[]
+  createdAt: number
+  updatedAt: number
+}
+
 export interface Session {
   id: string
   title: string
   messages: Message[]
   lastActiveTime?: number
+  resources?: SessionResource[]
 }
 
 export interface ApiProvider {
@@ -159,6 +193,7 @@ export interface AgentSkillRunOptions {
   systemPrompt?: string
   skill: Skill
   userInput: string
+  resources?: SessionResource[]
 }
 
 export interface ChatChunkData {
@@ -194,4 +229,5 @@ export interface ChatRunOptions {
   messages: ChatCompletionMessage[]
   systemPrompt?: string
   runMode?: RunMode
+  resources?: SessionResource[]
 }
