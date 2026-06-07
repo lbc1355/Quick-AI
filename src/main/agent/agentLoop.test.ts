@@ -542,6 +542,60 @@ describe('runAgentLoop', () => {
     expect(callCount).toBe(13)
   })
 
+  it('loop guard blocks a 3rd identical tool call and stops executing it', async () => {
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (options, messages) => {
+      void options
+      void messages
+      callCount++
+      if (callCount === 1) {
+        // Discover + activate web_search
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-search-tools',
+              type: 'function',
+              function: { name: 'search_tools', arguments: JSON.stringify({ query: 'web' }) }
+            }
+          ]
+        }
+      }
+      if (callCount >= 2 && callCount <= 4) {
+        // Call web_search with identical arguments three times in a row
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: `tc-ws-${callCount}`,
+              type: 'function',
+              function: { name: 'web_search', arguments: JSON.stringify({ query: 'same query' }) }
+            }
+          ]
+        }
+      }
+      // After the 3rd identical call the loop guard should have blocked execution
+      const lastMsg = messages[messages.length - 1]
+      expect(lastMsg.role).toBe('tool')
+      expect(lastMsg.content).toContain('Loop guard')
+      return { role: 'assistant', content: 'Stopping the repeated search.' }
+    })
+
+    await runAgentLoop(mockWindow, 'test-req-loopguard', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Search repeatedly' }]
+    })
+
+    // search_tools (1) executed, web_search executed on the 2nd and 3rd model turns,
+    // blocked on the 4th, then a final answer turn — execute called exactly twice.
+    expect(ToolRegistry.web_search.execute).toHaveBeenCalledTimes(2)
+    expect(callCount).toBe(5)
+  })
+
   it('emits agent_progress and agent_end completed events on normal run', async () => {
     vi.mocked(callModel).mockResolvedValue({
       role: 'assistant',
@@ -645,27 +699,34 @@ describe('runAgentLoop', () => {
       ]
     })
 
-    const permPromise = vi.spyOn(globalPermissionManager, 'requestPermission').mockImplementation(async (reqId) => {
-      abortRun(reqId)
-      throw new Error('Agent run terminated or aborted.')
-    })
+    const permPromise = vi
+      .spyOn(globalPermissionManager, 'requestPermission')
+      .mockImplementation(async (reqId) => {
+        abortRun(reqId)
+        throw new Error('Agent run terminated or aborted.')
+      })
 
-    await runAgentLoop(mockWindow, 'test-req-abort-event', {
-      apiUrl: 'https://api.example.com',
-      apiKey: 'test-key',
-      model: 'deepseek-chat',
-      skill: {
-        id: 'test-skill-abort',
-        name: 'Test Skill Abort',
-        trigger: 'test',
-        prompt: 'test prompt',
-        tools: ['web_search'],
-        maxSteps: 5
+    await runAgentLoop(
+      mockWindow,
+      'test-req-abort-event',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        skill: {
+          id: 'test-skill-abort',
+          name: 'Test Skill Abort',
+          trigger: 'test',
+          prompt: 'test prompt',
+          tools: ['web_search'],
+          maxSteps: 5
+        },
+        userInput: 'Abort test'
       },
-      userInput: 'Abort test'
-    }, {
-      web_search: 'ask'
-    })
+      {
+        web_search: 'ask'
+      }
+    )
 
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-abort-event',

@@ -59,6 +59,7 @@ const DEFAULT_STORAGE: StorageSchema = {
       fetch_url: 'allow',
       read_cached_resource: 'allow',
       search_cached_resource: 'allow',
+      read_tool_output: 'allow',
       web_search: 'allow',
       workspace_list_files: 'allow',
       workspace_search: 'ask',

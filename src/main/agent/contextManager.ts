@@ -19,6 +19,13 @@ export const MODEL_CONTEXT_SIZES: Record<string, number> = {
 
 const DEFAULT_CONTEXT_SIZE = 16000
 
+/**
+ * Tool outputs at least this large are preserved in the run's tool-output store when produced,
+ * so that if the context manager later truncates them it can leave a retrievable pointer
+ * (read_tool_output) instead of silently discarding the content. Shared with the agent loop.
+ */
+export const TOOL_OUTPUT_SPILLOVER_THRESHOLD = 2000
+
 export function getContextWindowSize(modelName: string): number {
   if (!modelName) return DEFAULT_CONTEXT_SIZE
   const lower = modelName.toLowerCase()
@@ -63,8 +70,15 @@ export function trimMessagesToFit(
     if (msg.role === 'tool' && typeof msg.content === 'string') {
       const original = msg.content
       if (original.length > 500) {
+        // If the full output was preserved in the run's tool-output store, leave a pointer the
+        // model can follow instead of silently dropping the tail.
+        const pointer =
+          msg.tool_call_id && original.length > TOOL_OUTPUT_SPILLOVER_THRESHOLD
+            ? ` The full ${original.length}-character output can be retrieved with read_tool_output(output_id="${msg.tool_call_id}").`
+            : ''
         const truncated =
-          original.slice(0, 300) + '\n\n[... content truncated to fit context window ...]'
+          original.slice(0, 300) +
+          `\n\n[... content truncated to fit the context window.${pointer} ...]`
         const saved = estimateTokens(original) - estimateTokens(truncated)
         result[i] = { ...msg, content: truncated }
         totalTokens -= saved

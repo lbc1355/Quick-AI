@@ -90,4 +90,58 @@ describe('trimMessagesToFit', () => {
       expect(parentExists).toBe(true)
     }
   })
+
+  it('leaves a read_tool_output pointer when truncating a large tool message', () => {
+    const big = 'z'.repeat(5000)
+    const messages: ChatCompletionMessage[] = [
+      { role: 'system', content: 'sys' },
+      {
+        role: 'assistant',
+        content: 'a',
+        tool_calls: [
+          { id: 'big-call', type: 'function', function: { name: 'file_read', arguments: '{}' } }
+        ]
+      },
+      { role: 'tool', tool_call_id: 'big-call', name: 'file_read', content: big },
+      // Protected tail so the tool message is truncated (Phase 1), not dropped (Phase 2).
+      { role: 'user', content: 'q1' },
+      { role: 'user', content: 'q2' },
+      { role: 'user', content: 'q3' },
+      { role: 'user', content: 'q4' }
+    ]
+
+    const result = trimMessagesToFit(messages, { maxTokens: 700, reserveForResponse: 1 })
+    const toolMsg = result.find((m) => m.role === 'tool' && m.tool_call_id === 'big-call')
+
+    expect(toolMsg).toBeDefined()
+    expect(typeof toolMsg!.content).toBe('string')
+    const content = toolMsg!.content as string
+    expect(content.length).toBeLessThan(big.length)
+    expect(content).toContain('read_tool_output(output_id="big-call")')
+  })
+
+  it('omits the pointer for tool messages below the spillover threshold', () => {
+    const medium = 'm'.repeat(1800) // > 500 (truncatable) but < 2000 (spillover threshold)
+    const messages: ChatCompletionMessage[] = [
+      { role: 'system', content: 'sys' },
+      {
+        role: 'assistant',
+        content: 'a',
+        tool_calls: [
+          { id: 'small-call', type: 'function', function: { name: 'web_search', arguments: '{}' } }
+        ]
+      },
+      { role: 'tool', tool_call_id: 'small-call', name: 'web_search', content: medium },
+      { role: 'user', content: 'q1' },
+      { role: 'user', content: 'q2' },
+      { role: 'user', content: 'q3' },
+      { role: 'user', content: 'q4' }
+    ]
+
+    const result = trimMessagesToFit(messages, { maxTokens: 350, reserveForResponse: 1 })
+    const toolMsg = result.find((m) => m.role === 'tool' && m.tool_call_id === 'small-call')
+    const content = toolMsg!.content as string
+    expect(content).toContain('truncated')
+    expect(content).not.toContain('read_tool_output')
+  })
 })

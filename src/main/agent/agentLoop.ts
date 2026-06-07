@@ -9,11 +9,16 @@ import {
 } from '../../shared/types'
 import { ToolRegistry, toChatToolDeclaration } from '../toolRegistry'
 import { buildSkillMessages, prepareChatAgentMessages } from './messageBuilder'
-import { getContextWindowSize, trimMessagesToFit } from './contextManager'
+import {
+  getContextWindowSize,
+  trimMessagesToFit,
+  TOOL_OUTPUT_SPILLOVER_THRESHOLD
+} from './contextManager'
 import { callModel } from './callModel'
 import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy'
+import { LoopGuard } from './loopGuard'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -101,6 +106,11 @@ export const runAgentLoop = async (
 
   let fetchUrlsCount = 0
   const MAX_FETCH_URLS_PER_RUN = 10
+
+  // Behavioural guardrails (repeated-call blocking + consecutive-failure halt) that
+  // complement the hard maxSteps ceiling. Scoped to this run.
+  const loopGuard = new LoopGuard()
+  let haltRequested = false
 
   const setRunEnd = (
     status: 'completed' | 'cancelled' | 'failed' | 'max_steps',
@@ -208,6 +218,8 @@ export const runAgentLoop = async (
           permission: 'allow' | 'ask' | 'deny'
           isValid: boolean
           isDeadlock: boolean
+          /** Set when the loop guard blocks this call; answered with this message, never executed. */
+          loopBlock?: string
           classification: 'ask' | 'direct' | 'blocked'
         }
 
@@ -245,14 +257,23 @@ export const runAgentLoop = async (
           }
 
           let classification: 'ask' | 'direct' | 'blocked'
+          let loopBlock: string | undefined
           if (isDeadlock) {
             classification = 'direct'
           } else if (!isValid || permission === 'deny') {
             classification = 'blocked'
-          } else if (permission === 'ask') {
-            classification = 'ask'
           } else {
-            classification = 'direct'
+            // Executable call: apply the identical-call loop guard before routing it for
+            // permission/execution. A blocked repeat is answered with a warning and never run.
+            const repeat = loopGuard.recordCall(loopGuard.signature(toolName, args))
+            if (repeat.blocked) {
+              loopBlock = `Loop guard: "${toolName}" has been called with identical arguments ${repeat.count} times in this run. The previous result still applies — do not repeat this call; use that result, change the arguments, or try a different approach.`
+              classification = 'direct'
+            } else if (permission === 'ask') {
+              classification = 'ask'
+            } else {
+              classification = 'direct'
+            }
           }
 
           return {
@@ -264,6 +285,7 @@ export const runAgentLoop = async (
             permission,
             isValid,
             isDeadlock,
+            loopBlock,
             classification
           }
         })
@@ -309,6 +331,16 @@ export const runAgentLoop = async (
               tool_call_id: callId,
               name: toolName,
               content: deadlockWarning
+            }
+          }
+
+          if (prep.loopBlock) {
+            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: prep.loopBlock })
+            return {
+              role: 'tool',
+              tool_call_id: callId,
+              name: toolName,
+              content: prep.loopBlock
             }
           }
 
@@ -360,6 +392,15 @@ export const runAgentLoop = async (
               }
             }
 
+            loopGuard.recordSuccess(toolName)
+
+            // Preserve large outputs so a later context-window truncation can leave a retrievable
+            // pointer (read_tool_output) instead of silently discarding the tail.
+            if (resultForModel.length > TOOL_OUTPUT_SPILLOVER_THRESHOLD) {
+              runCtx.storeToolOutput(callId, resultForModel)
+              runCtx.activateTool('read_tool_output')
+            }
+
             sendEvent(mainWindow, reqId, {
               type: 'tool_result',
               callId,
@@ -385,12 +426,24 @@ export const runAgentLoop = async (
             const errorCategory = isRetryableError(err, DEFAULT_RETRY_POLICY)
               ? '[Transient Error - retries exhausted]'
               : '[Permanent Error - do not retry this action]'
+
+            // Track consecutive failures of this tool. Repeated failures first nudge the model,
+            // then halt the turn so we return a best-effort answer instead of looping.
+            const failure = loopGuard.recordFailure(toolName)
+            let guardNote = ''
+            if (failure.level === 'halt') {
+              haltRequested = true
+              guardNote = ` [Loop guard: "${toolName}" failed ${failure.count} times in a row; halting tool use and forcing a final answer.]`
+            } else if (failure.level === 'warn') {
+              guardNote = ` [Loop guard: "${toolName}" has failed ${failure.count} times in a row; try a different approach or tool.]`
+            }
+
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: err.message })
             return {
               role: 'tool',
               tool_call_id: callId,
               name: toolName,
-              content: `${errorCategory} ${err.message}`
+              content: `${errorCategory} ${err.message}${guardNote}`
             }
           }
         }
@@ -479,6 +532,11 @@ export const runAgentLoop = async (
           }
         }
 
+        // A loop-guard halt ends tool use immediately; fall through to the final-answer path.
+        if (haltRequested) {
+          break
+        }
+
         step++
       } else {
         setRunEnd('completed')
@@ -487,11 +545,13 @@ export const runAgentLoop = async (
       }
     }
 
-    // Maximum steps reached without final answer: request final summary
+    // Tool use ended without a final answer — either the step ceiling was hit or the loop
+    // guard halted on repeated failures. Ask the model for a best-effort final answer.
     messages.push({
       role: 'user',
-      content:
-        'The maximum number of tool steps has been reached. Please provide a final answer based only on the observations available.'
+      content: haltRequested
+        ? 'Tool execution was halted after repeated consecutive failures. Please provide the best final answer you can based only on the observations available.'
+        : 'The maximum number of tool steps has been reached. Please provide a final answer based only on the observations available.'
     })
 
     if (signal.aborted) {

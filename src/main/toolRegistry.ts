@@ -59,17 +59,53 @@ export function escapeRegExp(str: string): string {
 
 const SEARCH_IGNORE_EXTENSIONS = [
   // Images & Media
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svg', '.mp4', '.mp3', '.wav', '.ogg',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.ico',
+  '.svg',
+  '.mp4',
+  '.mp3',
+  '.wav',
+  '.ogg',
   // Archives & Compressed files
-  '.zip', '.tar', '.gz', '.rar', '.7z', '.bz2', '.xz',
+  '.zip',
+  '.tar',
+  '.gz',
+  '.rar',
+  '.7z',
+  '.bz2',
+  '.xz',
   // Compiled / Binary formats
-  '.exe', '.dll', '.so', '.dylib', '.bin', '.pdf', '.docx', '.xlsx', '.pptx', '.class', '.pyc', '.o', '.a',
+  '.exe',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.bin',
+  '.pdf',
+  '.docx',
+  '.xlsx',
+  '.pptx',
+  '.class',
+  '.pyc',
+  '.o',
+  '.a',
   // Heavy Lockfiles
-  '-lock.json', '.lock', '-lock.yaml', '.lockb'
+  '-lock.json',
+  '.lock',
+  '-lock.yaml',
+  '.lockb'
 ]
 
 import { BrowserWindow } from 'electron'
-import { saveResourceChunk, readResourceChunk, getResourceId, getResourceFilePath } from './resourceCache'
+import {
+  saveResourceChunk,
+  readResourceChunk,
+  getResourceId,
+  getResourceFilePath
+} from './resourceCache'
 import type { CachedResourceFile } from './resourceCache'
 
 export interface ToolExecutionContext {
@@ -298,7 +334,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
             sessionResource.fetchedRanges && sessionResource.fetchedRanges.length > 0
               ? `Cached read ranges: ${sessionResource.fetchedRanges.map((range) => `${range.start}-${range.end}`).join(', ')}`
               : '',
-            sessionResource.nextOffset !== undefined ? `Next unread offset: ${sessionResource.nextOffset}` : '',
+            sessionResource.nextOffset !== undefined
+              ? `Next unread offset: ${sessionResource.nextOffset}`
+              : '',
             sessionResource.status !== 'complete'
               ? 'Coverage warning: this cached resource is incomplete. Do not claim the full resource has been read.'
               : ''
@@ -355,11 +393,13 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       properties: {
         resourceId: {
           type: 'string',
-          description: 'The unique ID of the cached resource (provided in the session resources summary).'
+          description:
+            'The unique ID of the cached resource (provided in the session resources summary).'
         },
         offset: {
           type: 'number',
-          description: 'The starting character offset of the chunk to read (provided in the session resources summary).'
+          description:
+            'The starting character offset of the chunk to read (provided in the session resources summary).'
         }
       },
       required: ['resourceId', 'offset']
@@ -375,7 +415,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         throw new Error('Missing or invalid offset parameter')
       }
 
-      console.log(`[read_cached_resource] Reading cached resource ${resourceId} at offset ${offset}`)
+      console.log(
+        `[read_cached_resource] Reading cached resource ${resourceId} at offset ${offset}`
+      )
       const text = await readResourceChunk(resourceId, offset)
       const endOffset = offset + text.length
 
@@ -393,7 +435,18 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     title: 'Search Cached Resource',
     description:
       'Searches inside a previously cached resource using a query string to find matching offsets and snippets.',
-    tags: ['cache', 'resource', 'search', 'find', 'local', 'history', '缓存', '资源', '搜索', '查找'],
+    tags: [
+      'cache',
+      'resource',
+      'search',
+      'find',
+      'local',
+      'history',
+      '缓存',
+      '资源',
+      '搜索',
+      '查找'
+    ],
     category: 'system',
     risk: 'low',
     implemented: true,
@@ -493,7 +546,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       matches.forEach((m, index) => {
         bodyLines.push(`${index + 1}. Chunk Offset: ${m.offset}-${m.endOffset}`)
         bodyLines.push(`   Snippet: "${m.snippet.replace(/\r?\n/g, ' ')}"`)
-        bodyLines.push(`   Instruction: To read the full details, call read_cached_resource with {"resourceId":"${resourceId}","offset":${m.offset}}`)
+        bodyLines.push(
+          `   Instruction: To read the full details, call read_cached_resource with {"resourceId":"${resourceId}","offset":${m.offset}}`
+        )
         bodyLines.push('')
       })
 
@@ -502,6 +557,87 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         resultForUi: {
           title: `Search Cache: "${query}"`,
           summary: `Found ${matches.length} matching offsets`
+        }
+      }
+    }
+  },
+  read_tool_output: {
+    name: 'read_tool_output',
+    title: 'Read Truncated Tool Output',
+    description:
+      'Retrieve the full text of an earlier tool result that was truncated to fit the context window. Use the output_id shown in the truncation marker; page through long output with offset.',
+    tags: [
+      'tool',
+      'output',
+      'truncated',
+      'retrieve',
+      'read',
+      'history',
+      '工具',
+      '输出',
+      '截断',
+      '读取'
+    ],
+    category: 'system',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        output_id: {
+          type: 'string',
+          description: 'The id from the truncation marker (the originating tool call id).'
+        },
+        offset: {
+          type: 'number',
+          description: 'Starting character offset to read from. Defaults to 0.'
+        },
+        maxChars: {
+          type: 'number',
+          description: 'Maximum characters to return in this window (1000-16000). Defaults to 8000.'
+        }
+      },
+      required: ['output_id']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const outputId = typeof args.output_id === 'string' ? args.output_id : ''
+      if (!outputId) {
+        throw new Error('Missing or invalid output_id parameter')
+      }
+
+      const run = getRun(ctx.reqId)
+      const full = run?.getToolOutput(outputId)
+      if (full === undefined) {
+        return {
+          resultForModel: `No stored tool output found for output_id "${outputId}". It may have expired or never been preserved.`,
+          resultForUi: {
+            title: `Read Tool Output: ${outputId}`,
+            summary: 'No stored output found'
+          }
+        }
+      }
+
+      const rawOffset =
+        typeof args.offset === 'number' && Number.isFinite(args.offset) ? args.offset : 0
+      const offset = Math.max(0, Math.min(Math.floor(rawOffset), full.length))
+      const rawMax =
+        typeof args.maxChars === 'number' && Number.isFinite(args.maxChars) ? args.maxChars : 8000
+      const maxChars = Math.min(16000, Math.max(1000, Math.floor(rawMax)))
+
+      const slice = full.slice(offset, offset + maxChars)
+      const endOffset = offset + slice.length
+      const nextOffset = endOffset < full.length ? endOffset : undefined
+
+      const header = `Tool output ${outputId} (chars ${offset}-${endOffset} of ${full.length})${
+        nextOffset !== undefined ? `\nMore available: call again with offset=${nextOffset}.` : ''
+      }`
+
+      return {
+        resultForModel: `${header}\n\nContent:\n${slice}`,
+        resultForUi: {
+          title: `Read Tool Output: ${outputId}`,
+          summary: `Returned chars ${offset}-${endOffset} of ${full.length}`
         }
       }
     }
@@ -600,7 +736,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
 
         const MAX_FILE_BYTES = 2 * 1024 * 1024 // 2MB
         if (stats.size > MAX_FILE_BYTES) {
-          throw new Error(`File is too large (${(stats.size / 1024 / 1024).toFixed(2)} MB). Max supported size is 2 MB.`)
+          throw new Error(
+            `File is too large (${(stats.size / 1024 / 1024).toFixed(2)} MB). Max supported size is 2 MB.`
+          )
         }
       } catch (err) {
         const error = err as Error
@@ -702,10 +840,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       const startTime = Date.now()
       let scanTruncatedReason: string | undefined = undefined
 
-      const searchRegex = new RegExp(
-        escapeRegExp(query),
-        caseSensitive ? '' : 'i'
-      )
+      const searchRegex = new RegExp(escapeRegExp(query), caseSensitive ? '' : 'i')
 
       let globRegex: RegExp | undefined = undefined
       if (globPattern) {
@@ -874,7 +1009,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         }
       })
 
-      const summaryText = `Found ${matches.length} matches in ${root}` + (scanTruncatedReason ? ` (Scan truncated: ${scanTruncatedReason})` : '')
+      const summaryText =
+        `Found ${matches.length} matches in ${root}` +
+        (scanTruncatedReason ? ` (Scan truncated: ${scanTruncatedReason})` : '')
 
       return {
         resultForModel,
@@ -889,7 +1026,8 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
   workspace_list_files: {
     name: 'workspace_list_files',
     title: 'List Workspace Files',
-    description: 'Lists files matching a glob wildcard pattern within the workspace root directory.',
+    description:
+      'Lists files matching a glob wildcard pattern within the workspace root directory.',
     tags: [
       'file',
       'list',
@@ -1037,7 +1175,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         `Workspace Root: ${root}`,
         matches.length > 0
           ? matches
-              .map((m) => `File: ${m.relativePath}\nSize: ${m.size} bytes\nModified: ${m.modifiedTime}`)
+              .map(
+                (m) => `File: ${m.relativePath}\nSize: ${m.size} bytes\nModified: ${m.modifiedTime}`
+              )
               .join('\n\n')
           : `No files found matching glob: "${globPattern}"`
       ].join('\n\n')
@@ -1056,7 +1196,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         }
       })
 
-      const summaryText = `Found ${matches.length} files in ${root}` + (scanTruncatedReason ? ` (Scan truncated: ${scanTruncatedReason})` : '')
+      const summaryText =
+        `Found ${matches.length} files in ${root}` +
+        (scanTruncatedReason ? ` (Scan truncated: ${scanTruncatedReason})` : '')
 
       return {
         resultForModel,
@@ -1072,7 +1214,19 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     name: 'file_write',
     title: 'Write File',
     description: 'Writes content to a local file within the workspace root directory.',
-    tags: ['file', 'write', 'local', 'save', '文件', '写入', '保存', '修改', '编辑', '创建', '翻译'],
+    tags: [
+      'file',
+      'write',
+      'local',
+      'save',
+      '文件',
+      '写入',
+      '保存',
+      '修改',
+      '编辑',
+      '创建',
+      '翻译'
+    ],
     category: 'file',
     risk: 'medium',
     implemented: true,
@@ -1090,12 +1244,14 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         },
         mode: {
           type: 'string',
-          description: 'Whether to fail if file exists ("create") or overwrite ("overwrite"). (default: "create")',
+          description:
+            'Whether to fail if file exists ("create") or overwrite ("overwrite"). (default: "create")',
           enum: ['create', 'overwrite']
         },
         createDirs: {
           type: 'boolean',
-          description: 'Whether to automatically create parent directories if they do not exist. (default: true)'
+          description:
+            'Whether to automatically create parent directories if they do not exist. (default: true)'
         }
       },
       required: ['path', 'content']
@@ -1143,7 +1299,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       const MAX_WRITE_BYTES = 2 * 1024 * 1024 // 2MB
       const contentBuffer = Buffer.from(content, 'utf-8')
       if (contentBuffer.length > MAX_WRITE_BYTES) {
-        throw new Error(`File content is too large (${(contentBuffer.length / 1024 / 1024).toFixed(2)} MB). Max supported write size is 2 MB.`)
+        throw new Error(
+          `File content is too large (${(contentBuffer.length / 1024 / 1024).toFixed(2)} MB). Max supported write size is 2 MB.`
+        )
       }
 
       let exists = false
@@ -1158,7 +1316,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       }
 
       if (exists && mode === 'create') {
-        throw new Error(`File already exists and mode is set to "create". To overwrite, set mode to "overwrite".`)
+        throw new Error(
+          `File already exists and mode is set to "create". To overwrite, set mode to "overwrite".`
+        )
       }
 
       try {
