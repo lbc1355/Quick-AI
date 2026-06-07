@@ -19,6 +19,21 @@ const clampMaxSteps = (value: number | undefined): number => {
   return Math.max(1, Math.min(30, Math.floor(value)))
 }
 
+const getFetchUrlCallKey = (toolArgs: ToolArgs): string | undefined => {
+  const url = typeof toolArgs.url === 'string' ? toolArgs.url : ''
+  if (!url) return undefined
+
+  const rawOffset = typeof toolArgs.offset === 'number' ? toolArgs.offset : 0
+  const rawMaxChars = typeof toolArgs.maxChars === 'number' ? toolArgs.maxChars : undefined
+  const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0
+  const maxChars =
+    rawMaxChars !== undefined && Number.isFinite(rawMaxChars)
+      ? Math.min(16000, Math.max(1000, Math.floor(rawMaxChars)))
+      : 'default'
+
+  return `fetch_url:${url}:offset=${offset}:maxChars=${maxChars}`
+}
+
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
 }
@@ -70,9 +85,12 @@ export const runAgentLoop = async (
   const signal = runCtx.signal
 
   let fetchUrlsCount = 0
-  const MAX_FETCH_URLS_PER_RUN = 5
+  const MAX_FETCH_URLS_PER_RUN = 10
 
-  const setRunEnd = (status: 'completed' | 'cancelled' | 'failed' | 'max_steps', error?: string) => {
+  const setRunEnd = (
+    status: 'completed' | 'cancelled' | 'failed' | 'max_steps',
+    error?: string
+  ): void => {
     runCtx.status = status
     runCtx.completedAt = Date.now()
     if (error) {
@@ -159,7 +177,7 @@ export const runAgentLoop = async (
         // Pre-scan for deadlocks (especially duplicate URL fetching)
         // Use a Set of indices to avoid mutating tool_call objects in the messages array
         const deadlockIndices = new Set<number>()
-        const seenFetchUrlsThisTurn = new Set<string>()
+        const seenFetchCallsThisTurn = new Set<string>()
 
         assistantMessage.tool_calls.forEach((toolCall, index) => {
           const toolName = toolCall.function.name
@@ -183,13 +201,12 @@ export const runAgentLoop = async (
             } catch {
               // ignore
             }
-            const url = (toolArgs.url as string) || ''
-            if (url) {
-              const callKey = `${toolName}:${url}`
-              if (runCtx.hasExecuted(callKey) || seenFetchUrlsThisTurn.has(url)) {
+            const callKey = getFetchUrlCallKey(toolArgs)
+            if (callKey) {
+              if (runCtx.hasExecuted(callKey) || seenFetchCallsThisTurn.has(callKey)) {
                 deadlockIndices.add(index)
               } else {
-                seenFetchUrlsThisTurn.add(url)
+                seenFetchCallsThisTurn.add(callKey)
               }
             }
           }
@@ -279,7 +296,8 @@ export const runAgentLoop = async (
 
           // Check deadlock via index set (avoids mutating tool_call objects)
           if (deadlockIndices.has(toolIndex)) {
-            const deadlockWarning = `Warning: You have already fetched the URL: ${toolArgs.url}. Fetching it again will not yield new information.`
+            const offset = typeof toolArgs.offset === 'number' ? toolArgs.offset : 0
+            const deadlockWarning = `Warning: You have already fetched this URL window: ${toolArgs.url} at offset ${offset}. Use the nextOffset from the previous result to continue.`
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: deadlockWarning })
             return {
               role: 'tool',
@@ -291,7 +309,7 @@ export const runAgentLoop = async (
 
           if (toolName === 'fetch_url') {
             if (fetchUrlsCount >= MAX_FETCH_URLS_PER_RUN) {
-              const limitWarning = `Warning: You have reached the maximum fetch limit of ${MAX_FETCH_URLS_PER_RUN} pages for this run. Please summarize based only on the content you already have.`
+              const limitWarning = `Warning: You have reached the maximum fetch limit of ${MAX_FETCH_URLS_PER_RUN} page windows for this run. Please summarize based only on the content you already have.`
               sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: limitWarning })
               return {
                 role: 'tool',
@@ -331,9 +349,9 @@ export const runAgentLoop = async (
             }
 
             if (toolName === 'fetch_url') {
-              const url = (toolArgs.url as string) || ''
-              if (url) {
-                runCtx.markExecuted(`${toolName}:${url}`)
+              const callKey = getFetchUrlCallKey(toolArgs)
+              if (callKey) {
+                runCtx.markExecuted(callKey)
               }
             }
 

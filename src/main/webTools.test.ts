@@ -5,7 +5,8 @@ import {
   isPrivateIPv6,
   parseDuckDuckGoResults,
   parseBingResults,
-  parseSogouResults
+  parseSogouResults,
+  normalizeFetchUrlOptions
 } from './webTools'
 
 describe('stripHtml', () => {
@@ -18,6 +19,23 @@ describe('stripHtml', () => {
   it('decodes common HTML entities', () => {
     expect(stripHtml('a &amp; b')).toBe('a & b')
     expect(stripHtml('1 &lt; 2 &gt; 0')).toBe('1 < 2 > 0')
+  })
+})
+
+describe('normalizeFetchUrlOptions', () => {
+  it('defaults to the first fetch window', () => {
+    expect(normalizeFetchUrlOptions()).toEqual({ offset: 0, maxChars: 10000 })
+  })
+
+  it('clamps offset and maxChars to safe page-window bounds', () => {
+    expect(normalizeFetchUrlOptions({ offset: -50, maxChars: 100 })).toEqual({
+      offset: 0,
+      maxChars: 1000
+    })
+    expect(normalizeFetchUrlOptions({ offset: 42.9, maxChars: 25000 })).toEqual({
+      offset: 42,
+      maxChars: 16000
+    })
   })
 })
 

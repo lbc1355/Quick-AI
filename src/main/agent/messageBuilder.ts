@@ -17,6 +17,7 @@ Rules:
 - If the Skill describes URL templates, infer the right keyword and fill the URL yourself.
 - Prefer official docs, GitHub repos, release notes, and primary sources.
 - If you perform a search, always prefer to fetch the content of 1 to 3 most relevant URL results using 'fetch_url' to read the page content, rather than relying only on search snippets. If search results are enough only for navigation, fetch the most relevant pages before final answer.
+- For long pages, papers, documentation, or articles, fetch_url may return a content window plus nextOffset. When the user asks to read, summarize, compare, or analyze the whole source, keep calling fetch_url with the same URL and offset=nextOffset until you have enough relevant sections or reach the end/limit. Do not claim to have read the full source if only the beginning was fetched.
 - In final answers, mention the source URLs you used. Do not invent sources.
 - If observations are insufficient, say so in the final answer.
 - Stop when you can answer the user question. Write your final answer in Markdown.`
@@ -40,6 +41,7 @@ Rules:
 - Only call tools that are whitelisted and returned by "search_tools" in a prior turn.
 - Prefer official docs, GitHub repos, release notes, and primary sources.
 - If you perform a web search, always prefer to fetch the content of 1 to 3 most relevant URL results using "fetch_url" to read their full text before compiling your final answer. Do not rely solely on the search snippets unless fetching fails. If search results are enough only for navigation, fetch the most relevant pages before final answer.
+- For long pages, papers, documentation, or articles, fetch_url may return a content window plus nextOffset. When the user asks to read, summarize, compare, or analyze the whole source, keep calling fetch_url with the same URL and offset=nextOffset until you have enough relevant sections or reach the end/limit. Do not claim to have read the full source if only the beginning was fetched.
 - In final answers, mention the source URLs you used. Do not invent sources.
 - If observations are insufficient, say so in the final answer.
 - Stop when you can answer the user question directly. Write your final answer in Markdown.`

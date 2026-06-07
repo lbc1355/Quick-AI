@@ -401,7 +401,7 @@ describe('runAgentLoop', () => {
     expect(callCount).toBe(3)
   })
 
-  it('fetch_url is limited to MAX_FETCH_URLS_PER_RUN = 5', async () => {
+  it('allows fetch_url continuation for the same URL when offset changes', async () => {
     let callCount = 0
     vi.mocked(callModel).mockImplementation(async (options, messages) => {
       void options
@@ -419,7 +419,84 @@ describe('runAgentLoop', () => {
           ]
         }
       }
-      if (callCount >= 2 && callCount <= 7) {
+      if (callCount === 2) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-fetch-1',
+              type: 'function',
+              function: {
+                name: 'fetch_url',
+                arguments: JSON.stringify({ url: 'https://example.com/paper', offset: 0 })
+              }
+            }
+          ]
+        }
+      }
+      if (callCount === 3) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-fetch-2',
+              type: 'function',
+              function: {
+                name: 'fetch_url',
+                arguments: JSON.stringify({ url: 'https://example.com/paper', offset: 10000 })
+              }
+            }
+          ]
+        }
+      }
+      const lastMsg = messages[messages.length - 1]
+      expect(lastMsg.role).toBe('tool')
+      expect(lastMsg.content).toBe('Fetched page content')
+      return {
+        role: 'assistant',
+        content: 'Read two windows.'
+      }
+    })
+
+    await runAgentLoop(
+      mockWindow,
+      'test-req-fetch-continuation',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Read this long paper' }]
+      },
+      {
+        fetch_url: 'allow'
+      }
+    )
+
+    expect(ToolRegistry.fetch_url.execute).toHaveBeenCalledTimes(2)
+    expect(callCount).toBe(4)
+  })
+
+  it('fetch_url is limited to MAX_FETCH_URLS_PER_RUN = 10', async () => {
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (options, messages) => {
+      void options
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-search',
+              type: 'function',
+              function: { name: 'search_tools', arguments: JSON.stringify({ query: 'web' }) }
+            }
+          ]
+        }
+      }
+      if (callCount >= 2 && callCount <= 12) {
         return {
           role: 'assistant',
           content: '',
@@ -435,12 +512,12 @@ describe('runAgentLoop', () => {
           ]
         }
       }
-      // On the 8th call, check if the last message (which is from the 7th tool execution / 6th fetch_url attempt)
+      // On the 13th call, check if the last message (from the 11th fetch_url attempt)
       // contains the limit warning content.
       const lastMsg = messages[messages.length - 1]
       expect(lastMsg.role).toBe('tool')
       expect(lastMsg.content).toContain(
-        'Warning: You have reached the maximum fetch limit of 5 pages'
+        'Warning: You have reached the maximum fetch limit of 10 page windows'
       )
       return {
         role: 'assistant',
@@ -462,7 +539,7 @@ describe('runAgentLoop', () => {
       }
     )
 
-    expect(callCount).toBe(8)
+    expect(callCount).toBe(13)
   })
 
   it('emits agent_progress and agent_end completed events on normal run', async () => {

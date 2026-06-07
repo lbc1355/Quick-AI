@@ -12,13 +12,38 @@ export interface FetchUrlResult {
   text: string
   links: WebLink[]
   truncated: boolean
+  offset: number
+  endOffset: number
+  totalChars: number
+  nextOffset?: number
+  responseTruncated: boolean
 }
 
 const MAX_RESPONSE_BYTES = 800 * 1024
 const REQUEST_TIMEOUT_MS = 10000
 const MAX_REDIRECTS = 4
 const MAX_LINKS = 40
-const MAX_TEXT_CHARS = 18000
+const DEFAULT_FETCH_PAGE_CHARS = 10000
+const MAX_FETCH_PAGE_CHARS = 16000
+
+export interface FetchUrlOptions {
+  offset?: number
+  maxChars?: number
+}
+
+export const normalizeFetchUrlOptions = (
+  options: FetchUrlOptions = {}
+): { offset: number; maxChars: number } => {
+  const rawOffset = typeof options.offset === 'number' ? options.offset : 0
+  const rawMaxChars = typeof options.maxChars === 'number' ? options.maxChars : DEFAULT_FETCH_PAGE_CHARS
+
+  const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0
+  const maxChars = Number.isFinite(rawMaxChars)
+    ? Math.min(MAX_FETCH_PAGE_CHARS, Math.max(1000, Math.floor(rawMaxChars)))
+    : DEFAULT_FETCH_PAGE_CHARS
+
+  return { offset, maxChars }
+}
 
 export const isPrivateIPv4 = (address: string): boolean => {
   const parts = address.split('.').map((part) => Number(part))
@@ -375,20 +400,35 @@ export const fetchPublicText = async (
   }
 }
 
-export const fetchUrl = async (rawUrl: string, signal?: AbortSignal): Promise<FetchUrlResult> => {
+export const fetchUrl = async (
+  rawUrl: string,
+  signal?: AbortSignal,
+  options: FetchUrlOptions = {}
+): Promise<FetchUrlResult> => {
   const { finalUrl, text: rawText, truncated } = await fetchPublicText(rawUrl, signal)
   const isHtml = /<html[\s>]/i.test(rawText)
   const title = isHtml ? readTitle(rawText) : ''
-  const text = isHtml ? stripHtml(rawText) : rawText.trim()
+  const fullText = isHtml ? stripHtml(rawText) : rawText.trim()
   const links = isHtml ? extractLinks(rawText, finalUrl) : []
+  const { offset, maxChars } = normalizeFetchUrlOptions(options)
+  const totalChars = fullText.length
+  const boundedOffset = Math.min(offset, totalChars)
+  const endOffset = Math.min(boundedOffset + maxChars, totalChars)
+  const text = fullText.slice(boundedOffset, endOffset)
+  const nextOffset = endOffset < totalChars ? endOffset : undefined
 
   return {
     url: rawUrl,
     finalUrl,
     title,
-    text: text.slice(0, MAX_TEXT_CHARS),
+    text,
     links,
-    truncated: truncated || text.length > MAX_TEXT_CHARS
+    truncated: truncated || nextOffset !== undefined,
+    offset: boundedOffset,
+    endOffset,
+    totalChars,
+    nextOffset,
+    responseTruncated: truncated
   }
 }
 

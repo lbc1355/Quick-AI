@@ -220,6 +220,16 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         url: {
           type: 'string',
           description: 'The absolute public URL to fetch.'
+        },
+        offset: {
+          type: 'number',
+          description:
+            'Optional character offset for continuing a long page. Use nextOffset from a previous fetch_url result.'
+        },
+        maxChars: {
+          type: 'number',
+          description:
+            'Optional maximum characters to return for this page window. Clamped between 1000 and 16000.'
         }
       },
       required: ['url']
@@ -229,7 +239,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       if (typeof url !== 'string' || !url) {
         throw new Error('Missing or invalid URL parameter')
       }
-      const result = await fetchUrl(url, ctx.signal)
+      const offset = typeof args.offset === 'number' ? args.offset : undefined
+      const maxChars = typeof args.maxChars === 'number' ? args.maxChars : undefined
+      const result = await fetchUrl(url, ctx.signal, { offset, maxChars })
 
       const formatLinks = (res: typeof result): string => {
         return res.links
@@ -242,21 +254,32 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       const body = [
         `URL: ${result.finalUrl}`,
         result.title ? `Title: ${result.title}` : '',
-        result.truncated ? 'Note: page text was truncated.' : '',
+        `Content window: characters ${result.offset}-${result.endOffset} of ${result.totalChars}`,
+        result.responseTruncated
+          ? 'Warning: network response hit the fetch byte limit; later content may be unavailable.'
+          : '',
+        result.nextOffset !== undefined
+          ? `More content available. To continue, call fetch_url with {"url":"${result.finalUrl}","offset":${result.nextOffset}}.`
+          : 'End of fetched text.',
         links ? `Links:\n${links}` : '',
         `Text:\n${result.text}`
       ]
         .filter(Boolean)
         .join('\n\n')
 
+      const resultForModel =
+        body.length > 20000
+          ? `${body.slice(0, 20000)}\n\n[Tool result truncated after 20000 characters. Continue with nextOffset if more content is needed.]`
+          : body
+
       return {
-        resultForModel: body.slice(0, 12000),
+        resultForModel,
         resultForUi: {
           title: result.title || undefined,
           url: result.finalUrl || undefined,
           summary: result.text
-            ? result.text.slice(0, 200) + (result.text.length > 200 ? '...' : '')
-            : undefined
+            ? `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}. ${result.text.slice(0, 160)}${result.text.length > 160 ? '...' : ''}`
+            : `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}.`
         }
       }
     }
