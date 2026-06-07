@@ -45,6 +45,28 @@ export const normalizeFetchUrlOptions = (
   return { offset, maxChars }
 }
 
+// Rewrite known academic paper PDF URLs to their HTML abstract pages so the
+// fetch returns lightweight text instead of a multi-MB binary PDF.
+const rewriteAcademicPaperUrl = (rawUrl: string): string => {
+  const parsed = ((): URL | null => {
+    try { return new URL(rawUrl) } catch { return null }
+  })()
+  if (!parsed) return rawUrl
+
+  // arXiv: /pdf/XXXX.XXXX → /abs/XXXX.XXXX
+  if (
+    (parsed.hostname === 'arxiv.org' || parsed.hostname.endsWith('.arxiv.org')) &&
+    parsed.pathname.startsWith('/pdf/')
+  ) {
+    const id = parsed.pathname.replace(/^\/pdf\//, '')
+    const newUrl = `https://arxiv.org/abs/${id}`
+    console.log(`[fetch_url] Rewriting arXiv PDF URL → abstract page: ${rawUrl} → ${newUrl}`)
+    return newUrl
+  }
+
+  return rawUrl
+}
+
 export const isPrivateIPv4 = (address: string): boolean => {
   const parts = address.split('.').map((part) => Number(part))
   if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return true
@@ -139,9 +161,14 @@ const fetchWithCheckedRedirects = async (
 const readLimitedText = async (
   response: Response
 ): Promise<{ text: string; truncated: boolean }> => {
-  const contentLength = Number(response.headers.get('content-length') || '0')
-  if (contentLength > MAX_RESPONSE_BYTES) {
-    throw new Error(`Response too large: ${contentLength} bytes`)
+  // Reject binary (non-text) responses early so the caller gets a clear error
+  // instead of garbled binary data decoded as UTF-8.
+  const contentType = (response.headers.get('content-type') || '').toLowerCase()
+  if (contentType && !contentType.includes('text/') && !contentType.includes('html') && !contentType.includes('xml') && !contentType.includes('json')) {
+    throw new Error(
+      `Cannot fetch binary content (${contentType || 'unknown content type'}). ` +
+      `Use an abstract/HTML page instead of a PDF. For arXiv, replace "/pdf/" with "/abs/" in the URL.`
+    )
   }
 
   const reader = response.body?.getReader()
@@ -383,10 +410,11 @@ export const fetchPublicText = async (
   rawUrl: string,
   signal?: AbortSignal
 ): Promise<{ finalUrl: string; text: string; truncated: boolean }> => {
+  const rewrittenUrl = rewriteAcademicPaperUrl(rawUrl)
   const { signal: combinedSignal, cleanup } = createCombinedSignal(signal, REQUEST_TIMEOUT_MS)
 
   try {
-    const response = await fetchWithCheckedRedirects(rawUrl, combinedSignal)
+    const response = await fetchWithCheckedRedirects(rewrittenUrl, combinedSignal)
     if (!response.ok) {
       throw new Error(`Fetch failed: ${response.status} ${response.statusText}`)
     }

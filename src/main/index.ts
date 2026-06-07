@@ -6,6 +6,8 @@ import { FileStore } from './store'
 import { StorageSchema } from '../shared/types'
 import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClient'
 import { runAgentSkill, runGeneralAgent, resolveToolPermission, abortAgentSkill } from './agent'
+import { deleteActionLog } from './agent/actionLog'
+import { deleteResourceFile } from './resourceCache'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -212,6 +214,29 @@ app.whenReady().then(() => {
       storePath: store?.getStorePath() || '',
       version: '1.0.0'
     }
+  })
+
+  // Delete a session's on-disk caches (action log + orphaned resource files). Best-effort:
+  // the renderer decides which resource ids are safe to remove (no surviving session references
+  // them); this handler just deletes what it's told and never throws.
+  ipcMain.handle('clear-session-caches', async (_event, payload) => {
+    const sessionIds: string[] = Array.isArray(payload?.sessionIds)
+      ? payload.sessionIds.filter((id: unknown): id is string => typeof id === 'string')
+      : []
+    const resourceIds: string[] = Array.isArray(payload?.resourceIds)
+      ? payload.resourceIds.filter((id: unknown): id is string => typeof id === 'string')
+      : []
+
+    const results = await Promise.allSettled([
+      ...sessionIds.map((id) => deleteActionLog(id)),
+      ...resourceIds.map((id) => deleteResourceFile(id))
+    ])
+    for (const r of results) {
+      if (r.status === 'rejected') {
+        console.warn('clear-session-caches: a cache delete failed:', r.reason)
+      }
+    }
+    return { ok: true }
   })
 
   ipcMain.handle('fetch-models', (_event, fetchUrl, apiKey) => {

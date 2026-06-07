@@ -1,29 +1,37 @@
 import { ChatCompletionMessage, AgentSkillRunOptions, SessionResource } from '../../shared/types'
+import { searchToolDefinitions } from '../toolRegistry'
+import { getFirstMissingOffset } from '../resourceCache'
 
-function getFirstMissingOffset(
-  ranges: Array<{ start: number; end: number }> | undefined,
-  totalChars: number | undefined
-): number | undefined {
-  if (!ranges || totalChars === undefined || totalChars <= 0) return undefined
+export const TOOL_DIRECTORY_BUDGET = 2000 // max chars injected into system prompt
 
-  const sorted = ranges
-    .filter((range) => Number.isFinite(range.start) && Number.isFinite(range.end))
-    .map((range) => ({
-      start: Math.max(0, range.start),
-      end: Math.max(0, range.end)
-    }))
-    .filter((range) => range.end > range.start)
-    .sort((a, b) => a.start - b.start)
+/**
+ * Compact tool directory suitable for injection into the system prompt so the model knows
+ * which tools exist without having to call search_tools first. Budget-capped.
+ */
+export function buildToolDirectorySummary(
+  scope: Set<string> | 'all',
+  permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
+): string {
+  const summaries = searchToolDefinitions('', scope, permissionPolicy)
+  if (summaries.length === 0) return ''
 
-  let cursor = 0
-  for (const range of sorted) {
-    if (range.end <= cursor) continue
-    if (range.start > cursor) return cursor
-    cursor = Math.max(cursor, range.end)
-    if (cursor >= totalChars) return undefined
+  const lines = ['Available tools:']
+  let chars = lines[0].length + 1
+
+  for (const t of summaries) {
+    const desc = t.description.split('\n')[0].replace(/\s+/g, ' ').trim().slice(0, 120)
+    const line = `- ${t.name}: ${desc}`
+    if (chars + line.length + 1 > TOOL_DIRECTORY_BUDGET) {
+      const omitted = summaries.length - lines.length
+      if (omitted > 0)
+        lines.push(`(${omitted} additional tools — use search_tools to discover them)`)
+      break
+    }
+    lines.push(line)
+    chars += line.length + 1
   }
 
-  return cursor < totalChars ? cursor : undefined
+  return lines.join('\n')
 }
 
 function getPromptResourceState(res: SessionResource): {
@@ -155,14 +163,18 @@ Rules:
 export function prepareChatAgentMessages(
   messages: ChatCompletionMessage[],
   globalSystemPrompt?: string,
-  resources?: SessionResource[]
+  resources?: SessionResource[],
+  permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): ChatCompletionMessage[] {
-  const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can discover and execute dynamically.
+  const toolDirs = buildToolDirectorySummary('all', permissions)
 
-Rules:
-- If you need to search or fetch external web data, or execute local file operations, you must first search for available tools by calling "search_tools".
-- You can search for tools by keywords (e.g. "web search" or "file read").
-- Only call tools that are whitelisted and returned by "search_tools" in a prior turn.
+  const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can call to search the web, fetch pages, read and write files in the workspace, and search the codebase.
+
+${toolDirs ? `${toolDirs}\n\n` : ''}Rules:
+- The tool list above shows the tools you can use right now. You may call them directly without first calling search_tools.
+- You may also call search_tools to discover additional less common tools by keyword (e.g. "web search" or "file read").
+- Only call tools that are listed above or discovered via search_tools.
+- Your tool call history for this conversation is recorded. Before repeating work, call list_past_actions to recall what you already tried, and get_past_action to inspect a specific past call in detail.
 - Prefer official docs, GitHub repos, release notes, and primary sources.
 - If you perform a web search, always prefer to fetch the content of 1 to 3 most relevant URL results using "fetch_url" to read their full text before compiling your final answer. Do not rely solely on the search snippets unless fetching fails. If search results are enough only for navigation, fetch the most relevant pages before final answer.
 - For long pages, papers, documentation, or articles, fetch_url may return a content window plus nextOffset. When the user asks to read, summarize, compare, or analyze the whole source, keep calling fetch_url with the same URL and offset=nextOffset until you have enough relevant sections or reach the end/limit. Do not claim to have read the full source if only the beginning was fetched.

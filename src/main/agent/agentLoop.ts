@@ -7,7 +7,7 @@ import {
   ChatToolDeclaration,
   SessionResource
 } from '../../shared/types'
-import { ToolRegistry, toChatToolDeclaration } from '../toolRegistry'
+import { ToolRegistry, toChatToolDeclaration, searchToolDefinitions } from '../toolRegistry'
 import { buildSkillMessages, prepareChatAgentMessages } from './messageBuilder'
 import {
   getContextWindowSize,
@@ -19,6 +19,8 @@ import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
+import { evaluateToolGuard } from './constitution'
+import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -56,6 +58,8 @@ export const runAgentLoop = async (
     skill?: AgentSkillRunOptions['skill']
     userInput?: string
     resources?: SessionResource[]
+    /** Per-conversation id for action-log persistence. Falls back to reqId. */
+    sessionId?: string
   },
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): Promise<void> => {
@@ -86,12 +90,29 @@ export const runAgentLoop = async (
     messages = prepareChatAgentMessages(
       options.messages || [],
       options.systemPrompt,
-      options.resources
+      options.resources,
+      permissions
     )
   }
 
+  // Per-conversation action log: persists tool call history across runs so the model can
+  // consult what it did earlier in the same conversation, even after context truncation.
+  const conversationId = options.sessionId || reqId
+  const actionLog = new ActionLog(getActionLogPath(conversationId))
+
   // Initialize Run Context
   const initialActiveTools = toolDiscovery === 'dynamic' ? ['search_tools'] : skillTools
+  // Dynamic mode: pre-activate every tool surfaced in the system-prompt directory so that
+  // "you may call them directly" actually holds. Without this, a direct call to a directory
+  // tool that has not yet been discovered via search_tools fails the whitelist check and is
+  // silently denied (no permission prompt) — the model sees a tool it cannot actually call.
+  if (toolDiscovery === 'dynamic') {
+    for (const summary of searchToolDefinitions('', 'all', permissions)) {
+      if (!initialActiveTools.includes(summary.name)) {
+        initialActiveTools.push(summary.name)
+      }
+    }
+  }
   if (options.resources && options.resources.length > 0) {
     if (!initialActiveTools.includes('read_cached_resource')) {
       initialActiveTools.push('read_cached_resource')
@@ -100,7 +121,7 @@ export const runAgentLoop = async (
       initialActiveTools.push('search_cached_resource')
     }
   }
-  const runCtx = createRun(reqId, initialActiveTools, toolScope, permissions)
+  const runCtx = createRun(reqId, initialActiveTools, toolScope, actionLog, permissions)
   runCtx.maxSteps = maxSteps
   const signal = runCtx.signal
 
@@ -134,6 +155,11 @@ export const runAgentLoop = async (
       skillName: isSkill ? options.skill!.name : 'General Agent'
     })
 
+    // Declaration cache: the set of tools to declare only changes when activeTools changes
+    // (a tool is discovered), so we can avoid rebuilding and re-serialising every step.
+    let cachedDeclarations: ChatToolDeclaration[] | null = null
+    let cachedDeclarationsSignature = ''
+
     for (let step = 1; step <= maxSteps; ) {
       runCtx.currentStep = step
       if (signal.aborted) {
@@ -147,25 +173,33 @@ export const runAgentLoop = async (
         activeTools: Array.from(runCtx.activeTools)
       })
 
-      // Build tool declarations list for this step
-      const toolsToDeclare: ChatToolDeclaration[] = []
+      // Build tool declarations list for this step. Rebuild only when the active tool set
+      // changes (dynamic mode) or is never cached (static mode: first step only).
+      const declarationSig = Array.from(runCtx.activeTools).sort().join(',')
+      let toolsToDeclare: ChatToolDeclaration[]
+      if (declarationSig !== cachedDeclarationsSignature || cachedDeclarations === null) {
+        toolsToDeclare = []
+        for (const toolName in ToolRegistry) {
+          const tool = ToolRegistry[toolName]
+          if (!tool.implemented) continue
 
-      for (const toolName in ToolRegistry) {
-        const tool = ToolRegistry[toolName]
-        if (!tool.implemented) continue
+          // Whitelist checks depending on toolDiscovery mode
+          if (toolDiscovery === 'static') {
+            if (!skillTools.includes(toolName)) continue
+          } else {
+            // Dynamic tool discovery: must be active in current run context
+            if (!runCtx.isToolActive(toolName)) continue
+          }
 
-        // Whitelist checks depending on toolDiscovery mode
-        if (toolDiscovery === 'static') {
-          if (!skillTools.includes(toolName)) continue
-        } else {
-          // Dynamic tool discovery: must be active in current run context
-          if (!runCtx.isToolActive(toolName)) continue
+          const permission = permissions?.[toolName] || 'allow'
+          if (permission !== 'deny') {
+            toolsToDeclare.push(toChatToolDeclaration(tool))
+          }
         }
-
-        const permission = permissions?.[toolName] || 'allow'
-        if (permission !== 'deny') {
-          toolsToDeclare.push(toChatToolDeclaration(tool))
-        }
+        cachedDeclarations = toolsToDeclare
+        cachedDeclarationsSignature = declarationSig
+      } else {
+        toolsToDeclare = cachedDeclarations
       }
 
       // Phase 1: Context Size Control & Message Trimming
@@ -220,6 +254,8 @@ export const runAgentLoop = async (
           isDeadlock: boolean
           /** Set when the loop guard blocks this call; answered with this message, never executed. */
           loopBlock?: string
+          /** Set when a guardrail escalates/blocks this call; surfaced to the model on block. */
+          blockReason?: string
           classification: 'ask' | 'direct' | 'blocked'
         }
 
@@ -241,11 +277,23 @@ export const runAgentLoop = async (
           const toolDef = ToolRegistry[toolName]
           const isValid = !!toolDef && toolDef.implemented && isToolWhitelisted(toolName)
 
+          // Guardrail: inspect the actual arguments and escalate the static permission
+          // (allow -> ask -> deny) when they cross a danger boundary. Never weakens it.
+          let effectivePermission = permission
+          let blockReason: string | undefined
+          if (isValid && permission !== 'deny' && toolDef) {
+            const verdict = evaluateToolGuard(toolName, args, permission, toolDef.risk)
+            effectivePermission = verdict.action
+            if (verdict.action !== permission && verdict.reason) {
+              blockReason = verdict.reason
+            }
+          }
+
           // Detect duplicate fetch_url windows (same url+offset+maxChars) seen earlier in this
           // run or earlier in this same turn. Deadlocks bypass permissions and are answered with
           // a warning inside executeTool.
           let isDeadlock = false
-          if (isValid && permission !== 'deny' && toolName === 'fetch_url') {
+          if (isValid && effectivePermission !== 'deny' && toolName === 'fetch_url') {
             const callKey = getFetchUrlCallKey(args)
             if (callKey) {
               if (runCtx.hasExecuted(callKey) || seenFetchCallsThisTurn.has(callKey)) {
@@ -260,7 +308,7 @@ export const runAgentLoop = async (
           let loopBlock: string | undefined
           if (isDeadlock) {
             classification = 'direct'
-          } else if (!isValid || permission === 'deny') {
+          } else if (!isValid || effectivePermission === 'deny') {
             classification = 'blocked'
           } else {
             // Executable call: apply the identical-call loop guard before routing it for
@@ -269,7 +317,7 @@ export const runAgentLoop = async (
             if (repeat.blocked) {
               loopBlock = `Loop guard: "${toolName}" has been called with identical arguments ${repeat.count} times in this run. The previous result still applies — do not repeat this call; use that result, change the arguments, or try a different approach.`
               classification = 'direct'
-            } else if (permission === 'ask') {
+            } else if (effectivePermission === 'ask') {
               classification = 'ask'
             } else {
               classification = 'direct'
@@ -282,10 +330,11 @@ export const runAgentLoop = async (
             toolName,
             callId,
             args,
-            permission,
+            permission: effectivePermission,
             isValid,
             isDeadlock,
             loopBlock,
+            blockReason,
             classification
           }
         })
@@ -303,9 +352,31 @@ export const runAgentLoop = async (
         ): Promise<ChatCompletionMessage> => {
           const { toolName, callId, args: toolArgs } = prep
           const toolDef = ToolRegistry[toolName]
+          const toolStartTime = Date.now()
+
+          const recordAction = (
+            status: ActionRecord['resultStatus'],
+            resultContent: string
+          ): void => {
+            runCtx.actionLog.append({
+              callId: prep.callId,
+              turnIndex: step,
+              timestamp: Date.now(),
+              toolName: prep.toolName,
+              args: prep.args as Record<string, unknown>,
+              resultStatus: status,
+              resultSummary: resultContent.slice(0, 500),
+              resultSize: resultContent.length,
+              resultInOutputStore: resultContent.length > TOOL_OUTPUT_SPILLOVER_THRESHOLD,
+              permission: prep.permission,
+              durationMs: Date.now() - toolStartTime
+            })
+          }
 
           if (!prep.isValid || prep.permission === 'deny') {
-            const errorMsg = `Tool execution blocked: Tool "${toolName}" is not registered, not implemented, not whitelisted/activated, or denied by policy.`
+            const errorMsg =
+              prep.blockReason ||
+              `Tool execution blocked: Tool "${toolName}" is not registered, not implemented, not whitelisted/activated, or denied by policy.`
             sendEvent(mainWindow, reqId, {
               type: 'tool_call',
               callId,
@@ -314,11 +385,13 @@ export const runAgentLoop = async (
               permissionState: 'denied'
             })
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: errorMsg })
+            const content = `Error: ${errorMsg}`
+            recordAction('denied', content)
             return {
               role: 'tool',
               tool_call_id: callId,
               name: toolName,
-              content: `Error: ${errorMsg}`
+              content
             }
           }
 
@@ -326,6 +399,7 @@ export const runAgentLoop = async (
             const offset = typeof toolArgs.offset === 'number' ? toolArgs.offset : 0
             const deadlockWarning = `Warning: You have already fetched this URL window: ${toolArgs.url} at offset ${offset}. Use the nextOffset from the previous result to continue.`
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: deadlockWarning })
+            recordAction('blocked', deadlockWarning)
             return {
               role: 'tool',
               tool_call_id: callId,
@@ -336,6 +410,7 @@ export const runAgentLoop = async (
 
           if (prep.loopBlock) {
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: prep.loopBlock })
+            recordAction('blocked', prep.loopBlock)
             return {
               role: 'tool',
               tool_call_id: callId,
@@ -348,6 +423,7 @@ export const runAgentLoop = async (
             if (fetchUrlsCount >= MAX_FETCH_URLS_PER_RUN) {
               const limitWarning = `Warning: You have reached the maximum fetch limit of ${MAX_FETCH_URLS_PER_RUN} page windows for this run. Please summarize based only on the content you already have.`
               sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: limitWarning })
+              recordAction('blocked', limitWarning)
               return {
                 role: 'tool',
                 tool_call_id: callId,
@@ -363,11 +439,13 @@ export const runAgentLoop = async (
           if (!isApproved) {
             const errorMsg = 'Tool execution denied by user.'
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: errorMsg })
+            const content = `ERROR: ${errorMsg}`
+            recordAction('denied', content)
             return {
               role: 'tool',
               tool_call_id: callId,
               name: toolName,
-              content: `ERROR: ${errorMsg}`
+              content
             }
           }
 
@@ -415,6 +493,7 @@ export const runAgentLoop = async (
               message: `Completed ${toolName}`
             })
 
+            recordAction('success', resultForModel)
             return {
               role: 'tool',
               tool_call_id: callId,
@@ -438,12 +517,14 @@ export const runAgentLoop = async (
               guardNote = ` [Loop guard: "${toolName}" has failed ${failure.count} times in a row; try a different approach or tool.]`
             }
 
+            const errorContent = `${errorCategory} ${err.message}${guardNote}`
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: err.message })
+            recordAction('error', errorContent)
             return {
               role: 'tool',
               tool_call_id: callId,
               name: toolName,
-              content: `${errorCategory} ${err.message}${guardNote}`
+              content: errorContent
             }
           }
         }
@@ -603,6 +684,7 @@ export const runAgentLoop = async (
     }
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })
   } finally {
+    actionLog.save()
     destroyRun(reqId)
   }
 }

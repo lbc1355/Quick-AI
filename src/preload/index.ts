@@ -5,7 +5,8 @@ import {
   StoreValue,
   AgentSkillRunOptions,
   ChatChunkData,
-  ChatRunOptions
+  ChatRunOptions,
+  ClearSessionCachesPayload
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -28,6 +29,8 @@ const api = {
   respondToolPermission: (reqId: string, callId: string, approved: boolean): void =>
     ipcRenderer.send('respond-tool-permission', reqId, callId, approved),
   abortGeneration: (reqId: string): void => ipcRenderer.send('abort-generation', reqId),
+  clearSessionCaches: (payload: ClearSessionCachesPayload): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('clear-session-caches', payload),
   onChatChunk: (callback: (data: ChatChunkData) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, data: ChatChunkData): void => callback(data)
     ipcRenderer.on('chat-chunk', listener)

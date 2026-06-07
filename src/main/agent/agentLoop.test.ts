@@ -1,4 +1,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { rmSync } from 'fs'
 import { runAgentLoop } from './agentLoop'
 import { callModel } from './callModel'
 import { ToolRegistry } from '../toolRegistry'
@@ -7,7 +10,10 @@ import { BrowserWindow } from 'electron'
 import { abortRun } from './AgentRunContext'
 
 vi.mock('electron', () => ({
-  BrowserWindow: {}
+  BrowserWindow: {},
+  app: {
+    getPath: () => join(tmpdir(), 'quickai-agentloop-test')
+  }
 }))
 
 vi.mock('./callModel', () => ({
@@ -20,6 +26,12 @@ describe('runAgentLoop', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    // Clear any persisted action logs so each test starts with an empty history (otherwise
+    // a prior run's log would auto-activate the list_past_actions/get_past_action tools).
+    rmSync(join(tmpdir(), 'quickai-agentloop-test', 'action_logs'), {
+      recursive: true,
+      force: true
+    })
     sendMock = vi.fn()
     mockWindow = {
       webContents: {
@@ -46,25 +58,29 @@ describe('runAgentLoop', () => {
     vi.restoreAllMocks()
   })
 
-  it('unactivated tool is not declared and returns error on execution attempt', async () => {
+  it('directory tools are declared up front and an unknown tool is blocked', async () => {
     let callCount = 0
     vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
       void options
       callCount++
       if (callCount === 1) {
-        // First turn: declare only search_tools (dynamic mode default)
-        expect(tools?.map((t) => t.function.name)).toEqual(['search_tools'])
-        // Model tries to call fetch_url (which is not active yet)
+        // First turn (dynamic mode): the discoverable directory tools are declared up front
+        // alongside search_tools, so the model can call them directly.
+        const names = tools?.map((t) => t.function.name) || []
+        expect(names).toContain('search_tools')
+        expect(names).toContain('fetch_url')
+        expect(names).toContain('web_search')
+        // Model tries to call a tool that does not exist in the registry at all.
         return {
           role: 'assistant',
           content: '',
           tool_calls: [
             {
-              id: 'tc-unactive',
+              id: 'tc-unknown',
               type: 'function',
               function: {
-                name: 'fetch_url',
-                arguments: JSON.stringify({ url: 'https://example.com' })
+                name: 'nonexistent_tool',
+                arguments: JSON.stringify({ foo: 'bar' })
               }
             }
           ]
@@ -99,9 +115,11 @@ describe('runAgentLoop', () => {
       void options
       callCount++
       if (callCount === 1) {
-        // search_tools should be declared, but web_search should NOT be because it is denied in policy
-        expect(tools?.map((t) => t.function.name)).toEqual(['search_tools'])
-        // Try calling it anyway
+        // Directory tools are declared, but web_search must NOT be — it is denied in policy.
+        const names = tools?.map((t) => t.function.name) || []
+        expect(names).toContain('search_tools')
+        expect(names).not.toContain('web_search')
+        // Try calling the denied tool anyway
         return {
           role: 'assistant',
           content: '',
@@ -140,6 +158,60 @@ describe('runAgentLoop', () => {
       }
     )
 
+    expect(callCount).toBe(2)
+  })
+
+  it('directly-called ask directory tool prompts for permission (no search_tools first)', async () => {
+    // Regression: directory tools are declared up front, so calling an `ask` tool directly must
+    // route through the permission prompt instead of being silently denied by the whitelist.
+    let callCount = 0
+    const permissionSpy = vi
+      .spyOn(globalPermissionManager, 'requestPermission')
+      .mockResolvedValue(true)
+
+    vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
+      void options
+      callCount++
+      if (callCount === 1) {
+        // web_search is declared from the start even though no search_tools call happened.
+        expect(tools?.map((t) => t.function.name)).toContain('web_search')
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-direct-ask',
+              type: 'function',
+              function: { name: 'web_search', arguments: JSON.stringify({ query: 'direct ask' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 2) {
+        const lastMsg = messages[messages.length - 1]
+        expect(lastMsg.role).toBe('tool')
+        // Executed (approved) — not blocked/denied.
+        expect(lastMsg.content).toContain('Search results')
+        return { role: 'assistant', content: 'Done.' }
+      }
+      return { role: 'assistant', content: 'done' }
+    })
+
+    await runAgentLoop(
+      mockWindow,
+      'test-req-direct-ask',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Search directly' }]
+      },
+      {
+        web_search: 'ask'
+      }
+    )
+
+    expect(permissionSpy).toHaveBeenCalled()
     expect(callCount).toBe(2)
   })
 
@@ -594,6 +666,59 @@ describe('runAgentLoop', () => {
     // blocked on the 4th, then a final answer turn — execute called exactly twice.
     expect(ToolRegistry.web_search.execute).toHaveBeenCalledTimes(2)
     expect(callCount).toBe(5)
+  })
+
+  it('guardrail blocks a workspace-escaping file_write before it executes', async () => {
+    const writeSpy = vi.spyOn(ToolRegistry.file_write, 'execute')
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (options, messages) => {
+      void options
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-write',
+              type: 'function',
+              function: {
+                name: 'file_write',
+                arguments: JSON.stringify({ path: '../../etc/evil', content: 'x' })
+              }
+            }
+          ]
+        }
+      }
+      const lastMsg = messages[messages.length - 1]
+      expect(lastMsg.role).toBe('tool')
+      expect(lastMsg.content).toContain('escapes the workspace')
+      return { role: 'assistant', content: 'I will not write outside the workspace.' }
+    })
+
+    // Static skill grants file_write and the policy ALLOWS it — only the guardrail should stop it.
+    await runAgentLoop(
+      mockWindow,
+      'test-req-guardrail',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        skill: {
+          id: 'writer-skill',
+          name: 'Writer',
+          trigger: 'write',
+          prompt: 'write things',
+          tools: ['file_write'],
+          maxSteps: 5
+        },
+        userInput: 'Write a file outside the workspace'
+      },
+      { file_write: 'allow' }
+    )
+
+    expect(writeSpy).not.toHaveBeenCalled()
+    expect(callCount).toBe(2)
   })
 
   it('emits agent_progress and agent_end completed events on normal run', async () => {

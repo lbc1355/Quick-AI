@@ -2,6 +2,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
 import { getResourceId, saveResourceChunk, readResourceChunk, mergeRanges, getFirstMissingOffset } from './resourceCache'
+import { closeDb } from './database'
 import { SessionResourceChunk } from '../shared/types'
 
 const testDir = join(__dirname, '../../temp-resource-cache-test')
@@ -14,7 +15,8 @@ vi.mock('electron', () => ({
 
 describe('resourceCache', () => {
   beforeEach(async () => {
-    // Clean up test directory if exists
+    // Clean up test directory and close any leftover db connection
+    closeDb()
     if (existsSync(testDir)) {
       await fs.rm(testDir, { recursive: true, force: true })
     }
@@ -22,6 +24,7 @@ describe('resourceCache', () => {
   })
 
   afterEach(async () => {
+    closeDb()
     if (existsSync(testDir)) {
       await fs.rm(testDir, { recursive: true, force: true })
     }
@@ -77,7 +80,7 @@ describe('resourceCache', () => {
   })
 
   describe('saveResourceChunk and readResourceChunk', () => {
-    it('saves chunks to file and retrieves them', async () => {
+    it('saves chunks to database and retrieves them', async () => {
       const source = 'https://example.com/test'
       const resourceId = getResourceId(source)
 
@@ -107,14 +110,14 @@ describe('resourceCache', () => {
       expect(resMetadata.fetchedRanges).toEqual([{ start: 0, end: 100 }])
       // Chunks in returned metadata should NOT contain the full raw text
       expect(resMetadata.chunks[0].text).toBeUndefined()
-      expect(resMetadata.chunks[0].summary).toBe('First chunk summary')
+      expect(resMetadata.chunks[0].summary).toBeUndefined() // summary stripped from metadata return
 
       // Retrieve full text from cache
       const retrievedText = await readResourceChunk(resourceId, 0)
       expect(retrievedText).toBe(chunk1.text)
     })
 
-    it('rejects invalid resource IDs before reading cache files', async () => {
+    it('rejects invalid resource IDs before reading', async () => {
       await expect(readResourceChunk('../quickai_store', 0)).rejects.toThrow('Invalid resource ID')
     })
 

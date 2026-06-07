@@ -4,7 +4,8 @@ import {
   StoreValue,
   AgentSkillRunOptions,
   ChatChunkData,
-  ChatRunOptions
+  ChatRunOptions,
+  ClearSessionCachesPayload
 } from '../shared/types'
 
 declare global {
@@ -22,6 +23,7 @@ declare global {
       startAgentSkill: (reqId: string, options: AgentSkillRunOptions) => void
       respondToolPermission: (reqId: string, callId: string, approved: boolean) => void
       abortGeneration: (reqId: string) => void
+      clearSessionCaches: (payload: ClearSessionCachesPayload) => Promise<{ ok: boolean }>
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
     }

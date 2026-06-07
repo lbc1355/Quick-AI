@@ -695,9 +695,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     </div>
                   </div>
 
-                  {/* Render main text content */}
+                  {/* Render main text content — plain text for user, markdown for assistant */}
                   {cleanContent
-                    ? renderMessageContent(cleanContent)
+                    ? msg.role === 'user'
+                      ? cleanContent
+                    : renderMessageContent(cleanContent)
                     : /* Show small thinking pulsing dot if thinking and content is empty */
                       isGenerating &&
                       displayReasoning && (

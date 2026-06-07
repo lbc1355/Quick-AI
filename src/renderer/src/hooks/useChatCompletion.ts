@@ -467,7 +467,8 @@ export const useChatCompletion = ({
           model: selectedModel,
           messages: apiMessages,
           runMode,
-          resources: currentSession.resources
+          resources: currentSession.resources,
+          sessionId: currentSession.id
         }),
       (msg) => `⚠️ 出错了：${msg || '网络连接失败'}`
     )
@@ -537,7 +538,8 @@ export const useChatCompletion = ({
           systemPrompt,
           skill,
           userInput,
-          resources: currentSession.resources
+          resources: currentSession.resources,
+          sessionId: currentSession.id
         }),
       (msg) => `Agent Skill failed: ${msg}`
     )

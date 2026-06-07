@@ -1,4 +1,5 @@
 import { PermissionManager, globalPermissionManager } from './permissionManager'
+import { ActionLog } from './actionLog'
 
 export class AgentRunContext {
   status: 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' = 'running'
@@ -22,11 +23,15 @@ export class AgentRunContext {
   private toolOutputsBytes = 0
   private static readonly MAX_TOOL_OUTPUT_BYTES = 5 * 1024 * 1024
 
+  /** Per-conversation action log (persisted to disk). Shared across runs of the same session. */
+  readonly actionLog: ActionLog
+
   constructor(
     reqId: string,
     initialTools: string[],
     toolScope: Set<string> | 'all',
     permissionManager: PermissionManager,
+    actionLog: ActionLog,
     permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
   ) {
     this.reqId = reqId
@@ -36,6 +41,7 @@ export class AgentRunContext {
     this.toolScope = toolScope
     this.permissionPolicy = permissionPolicy
     this.permissions = permissionManager
+    this.actionLog = actionLog
   }
 
   get signal(): AbortSignal {
@@ -95,6 +101,7 @@ export function createRun(
   reqId: string,
   initialTools: string[],
   toolScope: Set<string> | 'all',
+  actionLog: ActionLog,
   permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): AgentRunContext {
   const ctx = new AgentRunContext(
@@ -102,6 +109,7 @@ export function createRun(
     initialTools,
     toolScope,
     globalPermissionManager,
+    actionLog,
     permissionPolicy
   )
   activeRuns.set(reqId, ctx)

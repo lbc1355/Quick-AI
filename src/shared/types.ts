@@ -194,6 +194,8 @@ export interface AgentSkillRunOptions {
   skill: Skill
   userInput: string
   resources?: SessionResource[]
+  /** Conversation id used to persist the agent's action log across runs. */
+  sessionId?: string
 }
 
 export interface ChatChunkData {
@@ -203,6 +205,14 @@ export interface ChatChunkData {
   done?: boolean
   error?: string
   event?: AgentEvent
+}
+
+export interface ClearSessionCachesPayload {
+  /** Conversation ids whose action-log files should be deleted. */
+  sessionIds: string[]
+  /** Resource ids (md5 of source url) whose cache files should be deleted — caller ensures no
+   * surviving session still references them. */
+  resourceIds: string[]
 }
 
 export type ToolArgs = Record<string, unknown>
@@ -230,4 +240,6 @@ export interface ChatRunOptions {
   systemPrompt?: string
   runMode?: RunMode
   resources?: SessionResource[]
+  /** Conversation id used to persist the agent's action log across runs. */
+  sessionId?: string
 }
