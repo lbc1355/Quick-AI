@@ -136,6 +136,14 @@ function createSchema(database: Database.Database): void {
       createdAt  INTEGER NOT NULL,
       PRIMARY KEY (resourceId, id)
     );
+
+    CREATE TABLE IF NOT EXISTS resource_links (
+      resourceId TEXT NOT NULL REFERENCES resource_cache(id) ON DELETE CASCADE,
+      linkId     INTEGER NOT NULL,
+      text       TEXT NOT NULL,
+      href       TEXT NOT NULL,
+      PRIMARY KEY (resourceId, linkId)
+    );
   `)
 }
 
@@ -825,4 +833,51 @@ export function getResourceChunksMetadata(
 
 export function isDatabaseInitialized(): boolean {
   return db !== null
+}
+
+// ── Resource Links (for click_link) ──────────────────────────────────────
+
+export function saveResourceLinks(
+  resourceId: string,
+  links: Array<{ id: number; text: string; href: string }>
+): void {
+  const database = getDb()
+  database.prepare('DELETE FROM resource_links WHERE resourceId = ?').run(resourceId)
+  if (links.length === 0) return
+  const insert = database.prepare(
+    'INSERT OR REPLACE INTO resource_links (resourceId, linkId, text, href) VALUES (?, ?, ?, ?)'
+  )
+  for (const link of links) {
+    insert.run(resourceId, link.id, link.text, link.href)
+  }
+}
+
+export function loadResourceLinks(
+  resourceId: string
+): Array<{ id: number; text: string; href: string }> {
+  const database = getDb()
+  const rows = database
+    .prepare('SELECT linkId, text, href FROM resource_links WHERE resourceId = ? ORDER BY linkId ASC')
+    .all(resourceId) as Array<{ linkId: number; text: string; href: string }>
+  return rows.map((r) => ({ id: r.linkId, text: r.text, href: r.href }))
+}
+
+export function getResourceLink(
+  resourceId: string,
+  linkId: number
+): { id: number; text: string; href: string } | null {
+  const database = getDb()
+  const row = database
+    .prepare('SELECT linkId, text, href FROM resource_links WHERE resourceId = ? AND linkId = ?')
+    .get(resourceId, linkId) as { linkId: number; text: string; href: string } | undefined
+  return row ? { id: row.linkId, text: row.text, href: row.href } : null
+}
+
+// Concatenate all cached chunk texts in offset order — used by find_in_page.
+export function getResourceFullText(resourceId: string): string {
+  const database = getDb()
+  const rows = database
+    .prepare('SELECT text FROM resource_chunks WHERE resourceId = ? ORDER BY offset ASC')
+    .all(resourceId) as Array<{ text: string | null }>
+  return rows.map((r) => r.text || '').join('')
 }

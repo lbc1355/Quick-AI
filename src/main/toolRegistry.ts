@@ -1,4 +1,4 @@
-import { fetchUrl, webSearch, formatSearchResultsForModel } from './webTools'
+import { fetchUrl, webSearch, formatSearchResultsForModel, renderWithLineNumbers } from './webTools'
 import { ToolArgs, ChatToolDeclaration, ToolResultUi, SessionResource } from '../shared/types'
 import { getRun } from './agent/AgentRunContext'
 import { resolve, normalize, relative, isAbsolute, basename, join, dirname } from 'path'
@@ -103,7 +103,9 @@ import { BrowserWindow } from 'electron'
 import {
   saveResourceChunk,
   readResourceChunk,
-  getResourceId
+  getResourceId,
+  getCachedLink,
+  findInResource
 } from './resourceCache'
 import { loadResourceCache } from './database'
 
@@ -243,6 +245,116 @@ export function searchToolDefinitions(
   return resultsWithScore.map((r) => r.tool)
 }
 
+// Shared fetch + cache + format pipeline used by both fetch_url and click_link.
+// Caches the fetched window (with its inline link table) and renders a model-facing
+// result with line-numbered text and a numbered link table.
+async function fetchCacheAndFormat(
+  url: string,
+  ctx: ToolExecutionContext,
+  opts: { offset?: number; maxChars?: number }
+): Promise<{ resultForModel: string; resultForUi: ToolResultUi }> {
+  const result = await fetchUrl(url, ctx.signal, opts)
+  const resourceId = getResourceId(result.finalUrl)
+
+  let sessionResource: SessionResource | undefined
+
+  // Cache non-empty fetch windows to the session resource store.
+  if (result.text.length > 0 && result.endOffset > result.offset) {
+    const chunkId = `chunk-${result.offset}-${result.endOffset}`
+    const chunk = {
+      id: chunkId,
+      offset: result.offset,
+      endOffset: result.endOffset,
+      text: result.text,
+      summary: result.text.slice(0, 160) + (result.text.length > 160 ? '...' : ''),
+      createdAt: Date.now()
+    }
+
+    sessionResource = await saveResourceChunk(
+      resourceId,
+      'web',
+      result.finalUrl,
+      result.title || undefined,
+      result.totalChars,
+      result.nextOffset,
+      chunk,
+      result.links
+    )
+
+    if (ctx.mainWindow) {
+      ctx.mainWindow.webContents.send('chat-chunk', {
+        reqId: ctx.reqId,
+        event: {
+          type: 'resource_update',
+          resource: sessionResource
+        }
+      })
+    }
+  }
+
+  const links = result.links
+    .slice(0, 25)
+    .map((link) => `[${link.id}] ${link.text} - ${link.href}`)
+    .join('\n')
+
+  const cacheCoverage = sessionResource
+    ? [
+        `Cached coverage status: ${sessionResource.status}`,
+        sessionResource.fetchedRanges && sessionResource.fetchedRanges.length > 0
+          ? `Cached read ranges: ${sessionResource.fetchedRanges.map((range) => `${range.start}-${range.end}`).join(', ')}`
+          : '',
+        sessionResource.nextOffset !== undefined
+          ? `Next unread offset: ${sessionResource.nextOffset}`
+          : '',
+        sessionResource.status !== 'complete'
+          ? 'Coverage warning: this cached resource is incomplete. Do not claim the full resource has been read.'
+          : ''
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : ''
+
+  // Render text with line numbers (line 1 = start of this window)
+  const numberedText = renderWithLineNumbers(result.text, 1)
+
+  const body = [
+    `URL: ${result.finalUrl}`,
+    `Resource ID: ${resourceId}`,
+    result.title ? `Title: ${result.title}` : '',
+    `Content window: characters ${result.offset}-${result.endOffset} of ${result.totalChars}`,
+    cacheCoverage,
+    result.responseTruncated
+      ? 'Warning: network response hit the fetch byte limit; later content may be unavailable.'
+      : '',
+    result.nextOffset !== undefined
+      ? `More content available. To continue, call fetch_url with {"url":"${result.finalUrl}","offset":${result.nextOffset}}.`
+      : 'End of fetched text.',
+    links
+      ? `Links (inlined in text as [N]; click with click_link {"resourceId":"${resourceId}","linkId":N}):\n${links}`
+      : '',
+    `Tip: search this page with find_in_page {"resourceId":"${resourceId}","query":"..."}.`,
+    `Text (line-numbered):\n${numberedText}`
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+
+  const resultForModel =
+    body.length > 20000
+      ? `${body.slice(0, 20000)}\n\n[Tool result truncated after 20000 characters. Continue with nextOffset if more content is needed.]`
+      : body
+
+  return {
+    resultForModel,
+    resultForUi: {
+      title: result.title || undefined,
+      url: result.finalUrl || undefined,
+      summary: result.text
+        ? `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}. ${result.text.slice(0, 160)}${result.text.length > 160 ? '...' : ''}`
+        : `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}.`
+    }
+  }
+}
+
 export const ToolRegistry: Record<string, ToolDefinition> = {
   fetch_url: {
     name: 'fetch_url',
@@ -281,98 +393,145 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       }
       const offset = typeof args.offset === 'number' ? args.offset : undefined
       const maxChars = typeof args.maxChars === 'number' ? args.maxChars : undefined
-      const result = await fetchUrl(url, ctx.signal, { offset, maxChars })
-
-      let sessionResource: SessionResource | undefined
-
-      // Cache non-empty fetch windows to the session resource store.
-      if (result.text.length > 0 && result.endOffset > result.offset) {
-        const resourceId = getResourceId(result.finalUrl)
-        const chunkId = `chunk-${result.offset}-${result.endOffset}`
-        const chunk = {
-          id: chunkId,
-          offset: result.offset,
-          endOffset: result.endOffset,
-          text: result.text,
-          summary: result.text.slice(0, 160) + (result.text.length > 160 ? '...' : ''),
-          createdAt: Date.now()
+      return fetchCacheAndFormat(url, ctx, { offset, maxChars })
+    }
+  },
+  click_link: {
+    name: 'click_link',
+    title: 'Click Link',
+    description:
+      'Follow a numbered link ([N]) from a previously fetched page. Provide the resourceId of the page and the linkId shown inline in the text. Fetches and caches the target page.',
+    tags: [
+      'web',
+      'link',
+      'click',
+      'follow',
+      'navigate',
+      'browse',
+      '链接',
+      '点击',
+      '跳转',
+      '导航',
+      '浏览'
+    ],
+    dependencies: ['fetch_url'],
+    category: 'web',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        resourceId: {
+          type: 'string',
+          description: 'The resourceId of the page containing the link (from a fetch_url result).'
+        },
+        linkId: {
+          type: 'number',
+          description: 'The inline link number [N] shown in the page text.'
         }
+      },
+      required: ['resourceId', 'linkId']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const resourceId = args.resourceId
+      const linkId = args.linkId
+      if (typeof resourceId !== 'string' || !resourceId) {
+        throw new Error('Missing or invalid resourceId parameter')
+      }
+      if (typeof linkId !== 'number' || Number.isNaN(linkId)) {
+        throw new Error('Missing or invalid linkId parameter')
+      }
 
-        sessionResource = await saveResourceChunk(
-          resourceId,
-          'web',
-          result.finalUrl,
-          result.title || undefined,
-          result.totalChars,
-          result.nextOffset,
-          chunk
-        )
-
-        if (ctx.mainWindow) {
-          ctx.mainWindow.webContents.send('chat-chunk', {
-            reqId: ctx.reqId,
-            event: {
-              type: 'resource_update',
-              resource: sessionResource
-            }
-          })
+      const link = getCachedLink(resourceId, linkId)
+      if (!link) {
+        return {
+          resultForModel: `No link [${linkId}] found for resource ${resourceId}. The page may not have that many links, or it was not fetched with link extraction.`,
+          resultForUi: {
+            title: `Click Link [${linkId}]`,
+            summary: 'Link not found'
+          }
         }
       }
 
-      const formatLinks = (res: typeof result): string => {
-        return res.links
-          .slice(0, 25)
-          .map((link, index) => `${index + 1}. ${link.text} - ${link.href}`)
-          .join('\n')
+      return fetchCacheAndFormat(link.href, ctx, {})
+    }
+  },
+  find_in_page: {
+    name: 'find_in_page',
+    title: 'Find In Page',
+    description:
+      'Search the full cached text of a previously fetched page for a query string, returning matching line numbers and lines. Like Ctrl+F. Use the resourceId from a fetch_url result.',
+    tags: [
+      'web',
+      'find',
+      'search',
+      'grep',
+      'page',
+      'locate',
+      '查找',
+      '搜索',
+      '页内',
+      '定位'
+    ],
+    dependencies: ['fetch_url'],
+    category: 'web',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        resourceId: {
+          type: 'string',
+          description: 'The resourceId of the page to search (from a fetch_url result).'
+        },
+        query: {
+          type: 'string',
+          description: 'The text to search for within the cached page.'
+        },
+        maxMatches: {
+          type: 'number',
+          description: 'Maximum number of matching lines to return (default 15).'
+        }
+      },
+      required: ['resourceId', 'query']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      void ctx
+      const resourceId = args.resourceId
+      const query = args.query
+      if (typeof resourceId !== 'string' || !resourceId) {
+        throw new Error('Missing or invalid resourceId parameter')
+      }
+      if (typeof query !== 'string' || !query) {
+        throw new Error('Missing or invalid query parameter')
+      }
+      const maxMatches =
+        typeof args.maxMatches === 'number' ? Math.min(50, Math.max(1, args.maxMatches)) : 15
+
+      const matches = findInResource(resourceId, query, maxMatches)
+      if (matches.length === 0) {
+        return {
+          resultForModel: `No matches for "${query}" in cached page ${resourceId}. The page may not be fully cached — fetch more with fetch_url offset, or refine the query.`,
+          resultForUi: {
+            title: `Find: "${query}"`,
+            summary: 'No matches found'
+          }
+        }
       }
 
-      const links = formatLinks(result)
-      const cacheCoverage = sessionResource
-        ? [
-            `Cached coverage status: ${sessionResource.status}`,
-            sessionResource.fetchedRanges && sessionResource.fetchedRanges.length > 0
-              ? `Cached read ranges: ${sessionResource.fetchedRanges.map((range) => `${range.start}-${range.end}`).join(', ')}`
-              : '',
-            sessionResource.nextOffset !== undefined
-              ? `Next unread offset: ${sessionResource.nextOffset}`
-              : '',
-            sessionResource.status !== 'complete'
-              ? 'Coverage warning: this cached resource is incomplete. Do not claim the full resource has been read.'
-              : ''
-          ]
-            .filter(Boolean)
-            .join('\n')
-        : ''
       const body = [
-        `URL: ${result.finalUrl}`,
-        result.title ? `Title: ${result.title}` : '',
-        `Content window: characters ${result.offset}-${result.endOffset} of ${result.totalChars}`,
-        cacheCoverage,
-        result.responseTruncated
-          ? 'Warning: network response hit the fetch byte limit; later content may be unavailable.'
-          : '',
-        result.nextOffset !== undefined
-          ? `More content available. To continue, call fetch_url with {"url":"${result.finalUrl}","offset":${result.nextOffset}}.`
-          : 'End of fetched text.',
-        links ? `Links:\n${links}` : '',
-        `Text:\n${result.text}`
-      ]
-        .filter(Boolean)
-        .join('\n\n')
-
-      const resultForModel =
-        body.length > 20000
-          ? `${body.slice(0, 20000)}\n\n[Tool result truncated after 20000 characters. Continue with nextOffset if more content is needed.]`
-          : body
+        `Found ${matches.length} matching line(s) for "${query}" in ${resourceId}:`,
+        '',
+        ...matches.map((m) => `${String(m.lineNumber).padStart(5, ' ')}  ${m.text}`)
+      ].join('\n')
 
       return {
-        resultForModel,
+        resultForModel: body,
         resultForUi: {
-          title: result.title || undefined,
-          url: result.finalUrl || undefined,
-          summary: result.text
-            ? `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}. ${result.text.slice(0, 160)}${result.text.length > 160 ? '...' : ''}`
-            : `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}.`
+          title: `Find: "${query}"`,
+          summary: `Found ${matches.length} matching line(s)`
         }
       }
     }

@@ -1,6 +1,7 @@
 import { lookup } from 'dns/promises'
 
 export interface WebLink {
+  id: number
   text: string
   href: string
 }
@@ -233,6 +234,71 @@ export const stripHtml = (html: string): string => {
   ).trim()
 }
 
+// Strip HTML to text while inlining anchors as "[N] text" markers and collecting a
+// numbered link table. Block tags become newlines so document structure is preserved.
+// This lets the model later "click" a link by its id (see click_link tool).
+export const stripHtmlWithLinks = (
+  html: string,
+  baseUrl: string
+): { text: string; links: WebLink[] } => {
+  const links: WebLink[] = []
+
+  // 1. Remove non-content blocks first (content included)
+  let work = html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+
+  // 2. Replace anchors with "[N] text" markers, collecting the link table
+  work = work.replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (full, attrs: string, inner: string) => {
+    const hrefMatch = attrs.match(/\shref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i)
+    const rawHref = hrefMatch?.[1] || hrefMatch?.[2] || hrefMatch?.[3] || ''
+    const text = stripHtml(inner).replace(/\s+/g, ' ').trim()
+
+    if (!rawHref || rawHref.startsWith('#')) {
+      return text || full
+    }
+
+    try {
+      const href = new URL(decodeHtmlEntities(rawHref), baseUrl)
+      if (href.protocol !== 'http:' && href.protocol !== 'https:') {
+        return text
+      }
+      if (links.length >= MAX_LINKS) {
+        return text
+      }
+      const id = links.length + 1
+      const linkText = text || href.hostname
+      links.push({ id, text: linkText.slice(0, 160), href: href.toString() })
+      return `[${id}] ${linkText}`
+    } catch {
+      return text
+    }
+  })
+
+  // 3. Block tags → newlines, strip remaining tags, decode + normalize
+  const text = decodeHtmlEntities(
+    work
+      .replace(/<\/(p|div|section|article|header|footer|li|ul|ol|h[1-6]|tr|br)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+  ).trim()
+
+  return { text, links }
+}
+
+// Prefix each line with a right-aligned line number, starting at startLine (1-indexed).
+export const renderWithLineNumbers = (text: string, startLine = 1): string => {
+  const lines = text.split('\n')
+  return lines
+    .map((line, idx) => `${String(startLine + idx).padStart(5, ' ')}  ${line}`)
+    .join('\n')
+}
+
 export interface WebSearchResult {
   title: string
   url: string
@@ -346,31 +412,6 @@ const readTitle = (html: string): string => {
   return titleMatch ? stripHtml(titleMatch[1]).slice(0, 160) : ''
 }
 
-const extractLinks = (html: string, baseUrl: string): WebLink[] => {
-  const links: WebLink[] = []
-  const anchorRegex = /<a\b[^>]*>([\s\S]*?)<\/a>/gi
-  let match: RegExpExecArray | null
-
-  while ((match = anchorRegex.exec(html)) && links.length < MAX_LINKS) {
-    const anchor = match[0]
-    const hrefMatch = anchor.match(/\shref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i)
-    const rawHref = hrefMatch?.[1] || hrefMatch?.[2] || hrefMatch?.[3] || ''
-    if (!rawHref || rawHref.startsWith('#')) continue
-
-    try {
-      const href = new URL(decodeHtmlEntities(rawHref), baseUrl)
-      if (href.protocol !== 'http:' && href.protocol !== 'https:') continue
-      const text = stripHtml(match[1]).replace(/\s+/g, ' ').slice(0, 160)
-      if (!text && links.some((link) => link.href === href.toString())) continue
-      links.push({ text: text || href.hostname, href: href.toString() })
-    } catch {
-      // Ignore malformed links.
-    }
-  }
-
-  return links
-}
-
 function createCombinedSignal(
   externalSignal?: AbortSignal,
   timeoutMs = 10000
@@ -436,8 +477,9 @@ export const fetchUrl = async (
   const { finalUrl, text: rawText, truncated } = await fetchPublicText(rawUrl, signal)
   const isHtml = /<html[\s>]/i.test(rawText)
   const title = isHtml ? readTitle(rawText) : ''
-  const fullText = isHtml ? stripHtml(rawText) : rawText.trim()
-  const links = isHtml ? extractLinks(rawText, finalUrl) : []
+  const { text: fullText, links } = isHtml
+    ? stripHtmlWithLinks(rawText, finalUrl)
+    : { text: rawText.trim(), links: [] as WebLink[] }
   const { offset, maxChars } = normalizeFetchUrlOptions(options)
   const totalChars = fullText.length
   const boundedOffset = Math.min(offset, totalChars)

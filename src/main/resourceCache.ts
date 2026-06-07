@@ -7,9 +7,23 @@ import {
   deleteResourceFromDb,
   getResourceChunkText,
   pruneResourceChunks,
-  getResourceChunksMetadata
+  getResourceChunksMetadata,
+  saveResourceLinks,
+  getResourceLink,
+  getResourceFullText
 } from './database'
 import { SessionResource, SessionResourceChunk, ResourceKind } from '../shared/types'
+
+export interface CachedLink {
+  id: number
+  text: string
+  href: string
+}
+
+export interface FindMatch {
+  lineNumber: number
+  text: string
+}
 
 // Cache file structure on disk — kept for type compatibility
 export interface CachedResourceFile {
@@ -127,7 +141,8 @@ export async function saveResourceChunk(
   title: string | undefined,
   totalChars: number | undefined,
   nextOffset: number | undefined,
-  newChunk: SessionResourceChunk
+  newChunk: SessionResourceChunk,
+  links?: CachedLink[]
 ): Promise<SessionResource> {
   const now = Date.now()
   const existing = loadResourceCache(resourceId)
@@ -146,6 +161,11 @@ export async function saveResourceChunk(
       undefined,
       now
     )
+  }
+
+  // Persist link table (for click_link) when provided
+  if (links && links.length > 0) {
+    saveResourceLinks(resourceId, links)
   }
 
   // Upsert the chunk
@@ -224,4 +244,36 @@ export async function readResourceChunk(resourceId: string, offset: number): Pro
     )
   }
   return text
+}
+
+// Look up a cached link by its inline id (for click_link).
+export function getCachedLink(resourceId: string, linkId: number): CachedLink | null {
+  if (!RESOURCE_ID_PATTERN.test(resourceId)) {
+    throw new Error('Invalid resource ID')
+  }
+  return getResourceLink(resourceId, linkId)
+}
+
+// Grep a cached resource's full text, returning matching lines with 1-indexed line numbers.
+export function findInResource(
+  resourceId: string,
+  query: string,
+  maxMatches = 15
+): FindMatch[] {
+  if (!RESOURCE_ID_PATTERN.test(resourceId)) {
+    throw new Error('Invalid resource ID')
+  }
+  const fullText = getResourceFullText(resourceId)
+  if (!fullText) return []
+
+  const needle = query.toLowerCase()
+  const lines = fullText.split('\n')
+  const matches: FindMatch[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toLowerCase().includes(needle)) {
+      matches.push({ lineNumber: i + 1, text: lines[i] })
+      if (matches.length >= maxMatches) break
+    }
+  }
+  return matches
 }

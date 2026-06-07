@@ -118,6 +118,8 @@ export const useProviders = (): UseProvidersReturn => {
         setPermissions(
           savedSettings.permissions || {
             fetch_url: 'allow',
+            click_link: 'allow',
+            find_in_page: 'allow',
             web_search: 'allow',
             workspace_list_files: 'allow',
             workspace_search: 'ask',
