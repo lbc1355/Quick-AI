@@ -306,9 +306,10 @@ export const useChatCompletion = ({
 
   const handleAbortGeneration = (): void => {
     if (activeReqId) {
+      // Just signal the main process. It always replies with a { cancelled, done }
+      // chunk, which drives cleanup() — keeping teardown on a single source of truth
+      // and preserving whatever content was already streamed.
       window.api.abortGeneration(activeReqId)
-      setIsGenerating(false)
-      setActiveReqId(null)
     }
   }
 

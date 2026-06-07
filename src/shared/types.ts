@@ -203,6 +203,7 @@ export interface ChatChunkData {
   content?: string
   reasoningContent?: string
   done?: boolean
+  cancelled?: boolean
   error?: string
   event?: AgentEvent
 }

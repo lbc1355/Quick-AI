@@ -858,6 +858,12 @@ describe('runAgentLoop', () => {
       event: { type: 'agent_end', status: 'cancelled' }
     })
 
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'test-req-abort-event',
+      cancelled: true,
+      done: true
+    })
+
     permPromise.mockRestore()
   })
 })

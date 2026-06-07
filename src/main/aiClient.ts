@@ -47,8 +47,13 @@ export async function handleChatCompletion(
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })
   } catch (error) {
     const err = error as Error
-    console.error('Chat Completion Main process error:', err)
-    mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || '网络连接失败' })
+    const isAborted = controller.signal.aborted || err.name === 'AbortError'
+    if (isAborted) {
+      mainWindow.webContents.send('chat-chunk', { reqId, cancelled: true, done: true })
+    } else {
+      console.error('Chat Completion Main process error:', err)
+      mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || '网络连接失败' })
+    }
   } finally {
     activeChatSessions.delete(reqId)
   }

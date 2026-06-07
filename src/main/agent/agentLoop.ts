@@ -675,14 +675,15 @@ export const runAgentLoop = async (
       signal.aborted || err.message?.includes('aborted') || err.name === 'AbortError'
     if (isAborted) {
       setRunEnd('cancelled')
+      mainWindow.webContents.send('chat-chunk', { reqId, cancelled: true, done: true })
     } else {
       mainWindow.webContents.send('chat-chunk', {
         reqId,
         error: err.message || 'Agent Loop failed'
       })
       setRunEnd('failed', err.message || 'Agent Loop failed')
+      mainWindow.webContents.send('chat-chunk', { reqId, done: true })
     }
-    mainWindow.webContents.send('chat-chunk', { reqId, done: true })
   } finally {
     actionLog.save()
     destroyRun(reqId)
