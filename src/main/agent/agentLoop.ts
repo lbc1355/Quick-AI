@@ -78,7 +78,11 @@ export const runAgentLoop = async (
       resources: options.resources
     })
   } else {
-    messages = prepareChatAgentMessages(options.messages || [], options.systemPrompt, options.resources)
+    messages = prepareChatAgentMessages(
+      options.messages || [],
+      options.systemPrompt,
+      options.resources
+    )
   }
 
   // Initialize Run Context
@@ -185,109 +189,100 @@ export const runAgentLoop = async (
       messages.push(assistantMessage)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-        // Pre-scan for deadlocks (especially duplicate URL fetching)
-        // Use a Set of indices to avoid mutating tool_call objects in the messages array
-        const deadlockIndices = new Set<number>()
-        const seenFetchCallsThisTurn = new Set<string>()
+        type RawToolCall = (typeof assistantMessage.tool_calls)[number]
 
-        assistantMessage.tool_calls.forEach((toolCall, index) => {
-          const toolName = toolCall.function.name
-          const permission = permissions?.[toolName] || 'allow'
+        // Single source of truth for the whitelist check (was previously duplicated in three
+        // places, each of which had to be kept in sync by hand).
+        const isToolWhitelisted = (toolName: string): boolean =>
+          toolDiscovery === 'static' ? skillTools.includes(toolName) : runCtx.isToolActive(toolName)
 
-          const toolDef = ToolRegistry[toolName]
-          let isWhitelisted = false
-          if (toolDiscovery === 'static') {
-            isWhitelisted = skillTools.includes(toolName)
-          } else {
-            isWhitelisted = runCtx.isToolActive(toolName)
-          }
-
-          const isValid = toolDef && toolDef.implemented && isWhitelisted
-          const isBlocked = !isValid || permission === 'deny'
-
-          if (!isBlocked && toolName === 'fetch_url') {
-            let toolArgs: ToolArgs = {}
-            try {
-              toolArgs = JSON.parse(toolCall.function.arguments) as ToolArgs
-            } catch {
-              // ignore
-            }
-            const callKey = getFetchUrlCallKey(toolArgs)
-            if (callKey) {
-              if (runCtx.hasExecuted(callKey) || seenFetchCallsThisTurn.has(callKey)) {
-                deadlockIndices.add(index)
-              } else {
-                seenFetchCallsThisTurn.add(callKey)
-              }
-            }
-          }
-        })
-
-        // Separate tool calls into serial (ask), parallel (allow/direct), and blocked (invalid/deny)
-        interface ToolCallItem {
+        // A tool call resolved once: arguments parsed a single time, validity/permission
+        // computed once, classification decided once. Everything downstream reads these fields
+        // instead of recomputing them.
+        interface PreparedCall {
           index: number
-          toolCall: (typeof assistantMessage.tool_calls)[0]
+          toolCall: RawToolCall
+          toolName: string
+          callId: string
+          args: ToolArgs
+          permission: 'allow' | 'ask' | 'deny'
+          isValid: boolean
+          isDeadlock: boolean
+          classification: 'ask' | 'direct' | 'blocked'
         }
 
-        const askCalls: ToolCallItem[] = []
-        const directCalls: ToolCallItem[] = []
-        const blockedCalls: ToolCallItem[] = []
+        // Tracks duplicate fetch_url windows emitted within this same turn.
+        const seenFetchCallsThisTurn = new Set<string>()
 
-        assistantMessage.tool_calls.forEach((toolCall, index) => {
-          const toolName = toolCall.function.name
-          const permission = permissions?.[toolName] || 'allow'
-
-          const toolDef = ToolRegistry[toolName]
-          let isWhitelisted = false
-          if (toolDiscovery === 'static') {
-            isWhitelisted = skillTools.includes(toolName)
-          } else {
-            isWhitelisted = runCtx.isToolActive(toolName)
-          }
-
-          const isValid = toolDef && toolDef.implemented && isWhitelisted
-
-          if (deadlockIndices.has(index)) {
-            // Deadlocks bypass permissions and are handled directly in executeTool
-            directCalls.push({ index, toolCall })
-          } else if (!isValid || permission === 'deny') {
-            blockedCalls.push({ index, toolCall })
-          } else if (permission === 'ask') {
-            askCalls.push({ index, toolCall })
-          } else {
-            directCalls.push({ index, toolCall })
-          }
-        })
-
-        const toolResponses = new Array<ChatCompletionMessage>(assistantMessage.tool_calls.length)
-
-        // Helper to execute a single tool call and return its result message
-        const executeTool = async (
-          toolCall: (typeof assistantMessage.tool_calls)[0],
-          toolIndex: number,
-          isApproved = true
-        ): Promise<ChatCompletionMessage> => {
+        const prepared: PreparedCall[] = assistantMessage.tool_calls.map((toolCall, index) => {
           const toolName = toolCall.function.name
           const callId = toolCall.id
+          const permission = permissions?.[toolName] || 'allow'
 
-          let toolArgs: ToolArgs = {}
+          let args: ToolArgs = {}
           try {
-            toolArgs = JSON.parse(toolCall.function.arguments) as ToolArgs
+            args = JSON.parse(toolCall.function.arguments) as ToolArgs
           } catch {
             console.warn('Failed to parse tool call arguments:', toolCall.function.arguments)
           }
 
           const toolDef = ToolRegistry[toolName]
-          const permission = permissions?.[toolName] || 'allow'
+          const isValid = !!toolDef && toolDef.implemented && isToolWhitelisted(toolName)
 
-          let isWhitelisted = false
-          if (toolDiscovery === 'static') {
-            isWhitelisted = skillTools.includes(toolName)
-          } else {
-            isWhitelisted = runCtx.isToolActive(toolName)
+          // Detect duplicate fetch_url windows (same url+offset+maxChars) seen earlier in this
+          // run or earlier in this same turn. Deadlocks bypass permissions and are answered with
+          // a warning inside executeTool.
+          let isDeadlock = false
+          if (isValid && permission !== 'deny' && toolName === 'fetch_url') {
+            const callKey = getFetchUrlCallKey(args)
+            if (callKey) {
+              if (runCtx.hasExecuted(callKey) || seenFetchCallsThisTurn.has(callKey)) {
+                isDeadlock = true
+              } else {
+                seenFetchCallsThisTurn.add(callKey)
+              }
+            }
           }
 
-          if (!toolDef || !toolDef.implemented || !isWhitelisted || permission === 'deny') {
+          let classification: 'ask' | 'direct' | 'blocked'
+          if (isDeadlock) {
+            classification = 'direct'
+          } else if (!isValid || permission === 'deny') {
+            classification = 'blocked'
+          } else if (permission === 'ask') {
+            classification = 'ask'
+          } else {
+            classification = 'direct'
+          }
+
+          return {
+            index,
+            toolCall,
+            toolName,
+            callId,
+            args,
+            permission,
+            isValid,
+            isDeadlock,
+            classification
+          }
+        })
+
+        const askCalls = prepared.filter((p) => p.classification === 'ask')
+        const directCalls = prepared.filter((p) => p.classification === 'direct')
+        const blockedCalls = prepared.filter((p) => p.classification === 'blocked')
+
+        const toolResponses = new Array<ChatCompletionMessage>(assistantMessage.tool_calls.length)
+
+        // Helper to execute a single (already-prepared) tool call and return its result message
+        const executeTool = async (
+          prep: PreparedCall,
+          isApproved = true
+        ): Promise<ChatCompletionMessage> => {
+          const { toolName, callId, args: toolArgs } = prep
+          const toolDef = ToolRegistry[toolName]
+
+          if (!prep.isValid || prep.permission === 'deny') {
             const errorMsg = `Tool execution blocked: Tool "${toolName}" is not registered, not implemented, not whitelisted/activated, or denied by policy.`
             sendEvent(mainWindow, reqId, {
               type: 'tool_call',
@@ -305,8 +300,7 @@ export const runAgentLoop = async (
             }
           }
 
-          // Check deadlock via index set (avoids mutating tool_call objects)
-          if (deadlockIndices.has(toolIndex)) {
+          if (prep.isDeadlock) {
             const offset = typeof toolArgs.offset === 'number' ? toolArgs.offset : 0
             const deadlockWarning = `Warning: You have already fetched this URL window: ${toolArgs.url} at offset ${offset}. Use the nextOffset from the previous result to continue.`
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: deadlockWarning })
@@ -329,7 +323,7 @@ export const runAgentLoop = async (
                 content: limitWarning
               }
             }
-            if (!deadlockIndices.has(toolIndex) && isApproved) {
+            if (isApproved) {
               fetchUrlsCount++
             }
           }
@@ -402,17 +396,9 @@ export const runAgentLoop = async (
         }
 
         // 1. Process askCalls sequentially
-        for (const { index, toolCall } of askCalls) {
+        for (const prep of askCalls) {
           if (signal.aborted) break
-          const toolName = toolCall.function.name
-          const callId = toolCall.id
-
-          let toolArgs: ToolArgs = {}
-          try {
-            toolArgs = JSON.parse(toolCall.function.arguments) as ToolArgs
-          } catch {
-            // ignore
-          }
+          const { index, toolName, callId, args: toolArgs } = prep
 
           // Emit tool_call event with pending permission state
           sendEvent(mainWindow, reqId, {
@@ -456,7 +442,7 @@ export const runAgentLoop = async (
             permissionState: isApproved ? 'approved' : 'denied'
           })
 
-          toolResponses[index] = await executeTool(toolCall, index, isApproved)
+          toolResponses[index] = await executeTool(prep, isApproved)
         }
 
         if (signal.aborted) {
@@ -465,38 +451,28 @@ export const runAgentLoop = async (
 
         // 2. Process directCalls concurrently (validated and allowed)
         await Promise.all(
-          directCalls.map(async ({ index, toolCall }) => {
-            const toolName = toolCall.function.name
-            const callId = toolCall.id
-
-            let toolArgs: ToolArgs = {}
-            try {
-              toolArgs = JSON.parse(toolCall.function.arguments) as ToolArgs
-            } catch {
-              // ignore
-            }
-
+          directCalls.map(async (prep) => {
             // Emit tool_call event
             sendEvent(mainWindow, reqId, {
               type: 'tool_call',
-              callId,
-              toolName,
-              args: toolArgs,
+              callId: prep.callId,
+              toolName: prep.toolName,
+              args: prep.args,
               permissionState: 'approved'
             })
 
-            toolResponses[index] = await executeTool(toolCall, index, true)
+            toolResponses[prep.index] = await executeTool(prep, true)
           })
         )
 
         // 3. Process blockedCalls concurrently (no permission request, immediately run executeTool which blocks/denies it)
         await Promise.all(
-          blockedCalls.map(async ({ index, toolCall }) => {
-            toolResponses[index] = await executeTool(toolCall, index, false)
+          blockedCalls.map(async (prep) => {
+            toolResponses[prep.index] = await executeTool(prep, false)
           })
         )
 
-        // 3. Append all responses in correct index order to messages array
+        // 4. Append all responses in correct index order to messages array
         for (const response of toolResponses) {
           if (response) {
             messages.push(response)
@@ -554,11 +530,15 @@ export const runAgentLoop = async (
   } catch (error) {
     const err = error as Error
     console.error('Agent Loop error:', err)
-    const isAborted = signal.aborted || err.message?.includes('aborted') || err.name === 'AbortError'
+    const isAborted =
+      signal.aborted || err.message?.includes('aborted') || err.name === 'AbortError'
     if (isAborted) {
       setRunEnd('cancelled')
     } else {
-      mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || 'Agent Loop failed' })
+      mainWindow.webContents.send('chat-chunk', {
+        reqId,
+        error: err.message || 'Agent Loop failed'
+      })
       setRunEnd('failed', err.message || 'Agent Loop failed')
     }
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })

@@ -1,0 +1,130 @@
+import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest'
+import { callModel } from './callModel'
+
+const encoder = new TextEncoder()
+
+const sseLine = (delta: object): string => `data: ${JSON.stringify({ choices: [{ delta }] })}\n`
+
+const sseStream = (chunks: string[]): ReadableStream<Uint8Array> => {
+  let i = 0
+  return new ReadableStream({
+    pull(controller) {
+      if (i < chunks.length) {
+        controller.enqueue(encoder.encode(chunks[i++]))
+      } else {
+        controller.close()
+      }
+    }
+  })
+}
+
+const okResponse = (stream: ReadableStream<Uint8Array>): Response =>
+  ({ ok: true, body: stream }) as unknown as Response
+
+describe('callModel retry behavior', () => {
+  let fetchMock: Mock
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('retries a transient network failure that occurs before any output', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        okResponse(sseStream([sseLine({ content: 'Hello' }), 'data: [DONE]\n']))
+      )
+
+    const onFinalChunk = vi.fn()
+    const promise = callModel(
+      { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model' },
+      [{ role: 'user', content: 'hi' }],
+      undefined,
+      undefined,
+      { onReasoning: vi.fn(), onFinalChunk }
+    )
+
+    // First attempt fails -> backoff timer (1000ms) -> second attempt succeeds
+    await vi.advanceTimersByTimeAsync(1000)
+    const result = await promise
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.content).toBe('Hello')
+    expect(onFinalChunk).toHaveBeenCalledTimes(1)
+    expect(onFinalChunk).toHaveBeenCalledWith('Hello')
+  })
+
+  it('does not retry a non-retryable API error', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      text: async () => 'invalid api key'
+    } as unknown as Response)
+
+    await expect(
+      callModel({ apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model' }, [
+        { role: 'user', content: 'hi' }
+      ])
+    ).rejects.toThrow('API Error: 401 - invalid api key')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry once user-visible output has started streaming', async () => {
+    // Reading a real ReadableStream relies on the runtime scheduler; use real timers here.
+    // No backoff delay is exercised in this case (a streamed failure is never retried).
+    vi.useRealTimers()
+    let stage = 0
+    const brokenStream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (stage === 0) {
+          stage++
+          controller.enqueue(encoder.encode(sseLine({ content: 'partial answer' })))
+        } else {
+          controller.error(new TypeError('fetch failed'))
+        }
+      }
+    })
+    fetchMock.mockResolvedValue(okResponse(brokenStream))
+
+    const onFinalChunk = vi.fn()
+    await expect(
+      callModel(
+        { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model' },
+        [{ role: 'user', content: 'hi' }],
+        undefined,
+        undefined,
+        { onReasoning: vi.fn(), onFinalChunk }
+      )
+    ).rejects.toThrow('fetch failed')
+
+    // No second attempt: retrying would duplicate the already-streamed chunk
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(onFinalChunk).toHaveBeenCalledWith('partial answer')
+  })
+
+  it('gives up after retries are exhausted on persistent transient failure', async () => {
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'))
+
+    const promise = callModel(
+      { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model' },
+      [{ role: 'user', content: 'hi' }]
+    )
+    const assertion = expect(promise).rejects.toThrow('fetch failed')
+
+    // maxRetries = 2 -> backoffs of 1000ms then 2000ms before the final failing attempt
+    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(2000)
+    await assertion
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+})
