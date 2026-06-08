@@ -38,7 +38,8 @@ function getCommandPrefixes(command: string): string[] {
   const prefixes: string[] = []
   if (tokens.length > 0) {
     prefixes.push(tokens[0])
-    if (tokens.length > 1) {
+    // Only allow second token if it matches a valid alphanumeric subcommand pattern (no paths, dots, slashes)
+    if (tokens.length > 1 && /^[a-zA-Z0-9_-]+$/.test(tokens[1])) {
       prefixes.push(`${tokens[0]} ${tokens[1]}`)
     }
   }
