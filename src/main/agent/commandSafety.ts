@@ -114,36 +114,81 @@ function isDangerousRmTarget(target: string): boolean {
   return false
 }
 
+const SEVERITY: Record<CommandSafetyLevel, number> = {
+  safe: 0,
+  requires_approval: 1,
+  dangerous: 2
+}
+
+/** Return the stricter of two verdicts (used to combine independent command segments). */
+function stricterVerdict(a: CommandSafetyVerdict, b: CommandSafetyVerdict): CommandSafetyVerdict {
+  return SEVERITY[b.level] > SEVERITY[a.level] ? b : a
+}
+
 /**
- * Classify a shell command. Conservative by design: clearly destructive forms are `dangerous`,
- * unknown-but-mutating forms are `requires_approval`, and obviously read-only forms are `safe`.
+ * Split a command line into independently-executed segments on shell control operators
+ * (`;` `&&` `||` `|` `&` and newlines), while respecting single/double quotes so separators
+ * inside string literals do not split. Conservative: when in doubt it produces MORE segments,
+ * which only ever increases scrutiny.
  */
-export function analyzeCommand(command: string): CommandSafetyVerdict {
-  if (typeof command !== 'string' || command.trim() === '') {
-    return { level: 'requires_approval', reason: 'Empty command.' }
-  }
+export function splitCommandSegments(command: string): string[] {
+  const segments: string[] = []
+  let current = ''
+  let quote: '"' | "'" | null = null
 
-  // Null bytes and multi-line commands are a strong smell of injection / obfuscation.
-  if (command.includes('\0')) {
-    return { level: 'dangerous', reason: 'Command contains a null byte.' }
-  }
-  if (/\r?\n/.test(command.trim())) {
-    return { level: 'dangerous', reason: 'Multi-line command.' }
-  }
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]
+    const next = command[i + 1]
 
-  const lower = command.toLowerCase()
-
-  // Piping remote content straight into a shell.
-  if (/\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh|fish|dash)\b/.test(lower)) {
-    return { level: 'dangerous', reason: 'Pipes remote content into a shell.' }
+    if (quote) {
+      current += ch
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      current += ch
+      continue
+    }
+    // Two-char operators.
+    if ((ch === '&' && next === '&') || (ch === '|' && next === '|')) {
+      segments.push(current)
+      current = ''
+      i++
+      continue
+    }
+    // Single-char separators.
+    if (ch === ';' || ch === '|' || ch === '&' || ch === '\n') {
+      segments.push(current)
+      current = ''
+      continue
+    }
+    current += ch
   }
+  segments.push(current)
+  return segments.map((s) => s.trim()).filter((s) => s.length > 0)
+}
 
-  // Fork bomb.
-  if (/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/.test(command.replace(/\s+/g, ' '))) {
-    return { level: 'dangerous', reason: 'Fork bomb pattern.' }
+/** Extract the bodies of command substitutions: `$(...)` and backtick spans. */
+function extractSubstitutions(command: string): string[] {
+  const found: string[] = []
+  // $( ... ) with simple nesting support.
+  const dollar = /\$\(([^)]*)\)/g
+  let m: RegExpExecArray | null
+  while ((m = dollar.exec(command)) !== null) {
+    if (m[1].trim()) found.push(m[1])
   }
+  const backtick = /`([^`]*)`/g
+  while ((m = backtick.exec(command)) !== null) {
+    if (m[1].trim()) found.push(m[1])
+  }
+  return found
+}
 
-  const tokens = tokenizeCommand(command)
+/** Classify a SINGLE command segment by its primary token. No separator handling here. */
+function analyzeSegment(segment: string): CommandSafetyVerdict {
+  const lower = segment.toLowerCase()
+  const tokens = tokenizeCommand(segment)
   const idx = primaryTokenIndex(tokens)
   const primary = (tokens[idx] || '').replace(/.*\//, '') // strip any path prefix
   const rest = tokens.slice(idx + 1)
@@ -205,4 +250,50 @@ export function analyzeCommand(command: string): CommandSafetyVerdict {
 
   // Anything else that mutates is unknown — default to asking.
   return { level: 'requires_approval', reason: `Unrecognized command: ${primary || 'unknown'}.` }
+}
+
+/**
+ * Classify a shell command. Conservative by design: clearly destructive forms are `dangerous`,
+ * unknown-but-mutating forms are `requires_approval`, and obviously read-only forms are `safe`.
+ *
+ * A command line may chain several commands with `;` `&&` `||` `|` or embed command
+ * substitutions. Each independently-executed part is classified and the STRICTEST verdict wins,
+ * so a benign-looking prefix (e.g. `git log`) cannot smuggle a destructive tail (`&& rm -rf ~`)
+ * past the guard.
+ */
+export function analyzeCommand(command: string): CommandSafetyVerdict {
+  if (typeof command !== 'string' || command.trim() === '') {
+    return { level: 'requires_approval', reason: 'Empty command.' }
+  }
+
+  // Null bytes and multi-line commands are a strong smell of injection / obfuscation.
+  if (command.includes('\0')) {
+    return { level: 'dangerous', reason: 'Command contains a null byte.' }
+  }
+  if (/\r?\n/.test(command.trim())) {
+    return { level: 'dangerous', reason: 'Multi-line command.' }
+  }
+
+  const lower = command.toLowerCase()
+
+  // Piping remote content straight into a shell (spans a pipe, so check the whole line first).
+  if (/\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(sh|bash|zsh|fish|dash)\b/.test(lower)) {
+    return { level: 'dangerous', reason: 'Pipes remote content into a shell.' }
+  }
+
+  // Fork bomb.
+  if (/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/.test(command.replace(/\s+/g, ' '))) {
+    return { level: 'dangerous', reason: 'Fork bomb pattern.' }
+  }
+
+  // Classify each chained segment and each command substitution; the strictest verdict wins.
+  let verdict: CommandSafetyVerdict = { level: 'safe' }
+  const segments = splitCommandSegments(command)
+  for (const seg of segments) {
+    verdict = stricterVerdict(verdict, analyzeSegment(seg))
+  }
+  for (const sub of extractSubstitutions(command)) {
+    verdict = stricterVerdict(verdict, analyzeCommand(sub))
+  }
+  return verdict
 }

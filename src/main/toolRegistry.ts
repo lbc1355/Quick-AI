@@ -1689,6 +1689,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       }
 
       const root = getWorkspaceRoot()
+      const TIMEOUT_MS = 60000
 
       return new Promise((resolvePromise) => {
         const startTime = Date.now()
@@ -1697,24 +1698,36 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
           {
             cwd: root,
             signal: ctx.signal,
-            timeout: 60000,
+            timeout: TIMEOUT_MS,
             maxBuffer: 10 * 1024 * 1024
           },
           (error, stdout, stderr) => {
             const durationMs = Date.now() - startTime
             const code = error ? (error.code ?? 1) : 0
 
+            // The user explicitly aborted the run (ctx.signal). exec also kills with SIGTERM on
+            // timeout, so we MUST gate cancellation on ctx.signal.aborted — otherwise a timeout
+            // would be misreported as a user cancellation.
             const isCancelled =
-              ctx.signal?.aborted ||
-              (error &&
-                (error.name === 'AbortError' ||
-                  String(error.code) === 'ABORT_ERR' ||
-                  error.signal === 'SIGTERM' ||
-                  error.signal === 'SIGKILL'))
+              !!ctx.signal?.aborted ||
+              !!(error && (error.name === 'AbortError' || String(error.code) === 'ABORT_ERR'))
+
+            // exec sets killed=true when it enforces the timeout; distinguish from a cancel.
+            const isTimedOut =
+              !isCancelled &&
+              !!error &&
+              (error as { killed?: boolean }).killed === true &&
+              (error.signal === 'SIGTERM' || error.signal === 'SIGKILL')
+
+            let status: 'cancelled' | 'timeout' | 'ok' = 'ok'
+            if (isCancelled) status = 'cancelled'
+            else if (isTimedOut) status = 'timeout'
 
             let resultText = `Command: ${command}\nCwd: ${root}\nExit Code: ${code}\nDuration: ${durationMs}ms\n\n`
-            if (isCancelled) {
+            if (status === 'cancelled') {
               resultText += `Status: Command execution was cancelled.\n`
+            } else if (status === 'timeout') {
+              resultText += `Status: Command timed out after ${TIMEOUT_MS}ms and was terminated.\n`
             }
             if (stdout) {
               resultText += `Stdout:\n${stdout}\n`
@@ -1722,16 +1735,26 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
             if (stderr) {
               resultText += `Stderr:\n${stderr}\n`
             }
-            if (error && error.message && !error.message.includes('Command failed')) {
+            if (
+              status === 'ok' &&
+              error &&
+              error.message &&
+              !error.message.includes('Command failed')
+            ) {
               resultText += `Execution Error:\n${error.message}\n`
             }
 
             const title = `Execute Command: ${
               command.length > 50 ? command.slice(0, 47) + '...' : command
             }`
-            const summary = isCancelled
-              ? `Command execution cancelled after ${durationMs}ms`
-              : `Command exited with code ${code} after ${durationMs}ms`
+            let summary: string
+            if (status === 'cancelled') {
+              summary = `Command execution cancelled after ${durationMs}ms`
+            } else if (status === 'timeout') {
+              summary = `Command timed out after ${durationMs}ms`
+            } else {
+              summary = `Command exited with code ${code} after ${durationMs}ms`
+            }
 
             resolvePromise({
               resultForModel: resultText,

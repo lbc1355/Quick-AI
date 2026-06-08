@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { pathEscapesWorkspace, analyzeCommand, tokenizeCommand } from './commandSafety'
+import {
+  pathEscapesWorkspace,
+  analyzeCommand,
+  tokenizeCommand,
+  splitCommandSegments
+} from './commandSafety'
 
 describe('pathEscapesWorkspace', () => {
   it('treats in-workspace relative paths as safe', () => {
@@ -73,5 +78,43 @@ describe('analyzeCommand', () => {
   it('skips env-assignment prefixes when finding the primary command', () => {
     expect(analyzeCommand('FOO=bar ls').level).toBe('safe')
     expect(analyzeCommand('env NODE_ENV=prod cat x').level).toBe('safe')
+  })
+
+  it('classifies every chained segment, not just the first (the strictest wins)', () => {
+    // A benign prefix must not smuggle a destructive tail past the guard.
+    expect(analyzeCommand('git log && rm -rf ~').level).toBe('dangerous')
+    expect(analyzeCommand('ls; rm -rf /').level).toBe('dangerous')
+    expect(analyzeCommand('cat a.txt | rm -rf ../../etc').level).toBe('dangerous')
+    // A read-only chain stays safe.
+    expect(analyzeCommand('ls && cat foo.txt').level).toBe('safe')
+    // A mutating tail escalates a safe head to approval.
+    expect(analyzeCommand('ls && npm install').level).toBe('requires_approval')
+  })
+
+  it('inspects command substitutions', () => {
+    expect(analyzeCommand('echo $(rm -rf ~)').level).toBe('dangerous')
+    expect(analyzeCommand('echo `rm -rf /`').level).toBe('dangerous')
+    expect(analyzeCommand('echo $(date)').level).toBe('safe')
+  })
+
+  it('does not split on separators inside quotes', () => {
+    expect(analyzeCommand('echo "a && b"').level).toBe('safe')
+    expect(analyzeCommand("grep ';' file.txt").level).toBe('safe')
+  })
+})
+
+describe('splitCommandSegments', () => {
+  it('splits on shell control operators', () => {
+    expect(splitCommandSegments('a && b || c')).toEqual(['a', 'b', 'c'])
+    expect(splitCommandSegments('a; b | c & d')).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('respects quotes', () => {
+    expect(splitCommandSegments('echo "a; b" && ls')).toEqual(['echo "a; b"', 'ls'])
+    expect(splitCommandSegments("echo 'x | y'")).toEqual(["echo 'x | y'"])
+  })
+
+  it('drops empty segments', () => {
+    expect(splitCommandSegments('ls ;; cat')).toEqual(['ls', 'cat'])
   })
 })

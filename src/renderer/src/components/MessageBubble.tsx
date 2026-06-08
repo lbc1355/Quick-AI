@@ -427,13 +427,157 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       statusColor = '#f59e0b' // yellow/orange
     }
 
+    // Find the index of the last 'final' event in msg.agentEvents
+    let lastFinalEventIdx = -1
+    if (msg.agentEvents) {
+      for (let i = msg.agentEvents.length - 1; i >= 0; i--) {
+        if (msg.agentEvents[i].type === 'final') {
+          lastFinalEventIdx = i
+          break
+        }
+      }
+    }
+
     // Derived logs expansion state
     const effectiveLogsExpanded =
-      userExpandedOverride !== null ? userExpandedOverride : hasLogs && !cleanContent
+      userExpandedOverride !== null
+        ? userExpandedOverride
+        : hasStructuredEvents
+          ? (isGenerating || !cleanContent)
+          : (hasLogs && !cleanContent)
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-        {hasLogs && (
+        {/* 1. Collapsible logs area for structured events */}
+        {hasStructuredEvents && (
+          <div
+            className="agent-logs-container-fullwidth"
+            style={{
+              margin: '12px 0 8px 0',
+              padding: '0 4px',
+              fontSize: '11px',
+              color: 'var(--color-text-muted)'
+            }}
+          >
+            <div
+              onClick={() => setUserExpandedOverride(!effectiveLogsExpanded)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                userSelect: 'none',
+                fontWeight: '500',
+                color: 'var(--color-text-muted)',
+                gap: '8px'
+              }}
+            >
+              <span style={{ fontSize: '9px', opacity: 0.7 }}>
+                {effectiveLogsExpanded ? '▼' : '▶'}
+              </span>
+              {statusLabel && (
+                <span
+                  style={{
+                    color: statusColor,
+                    backgroundColor: `${statusColor}14`,
+                    border: `1px solid ${statusColor}2c`,
+                    padding: '1px 5px',
+                    borderRadius: '3px',
+                    fontSize: '9.5px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {statusLabel}
+                </span>
+              )}
+              <span>
+                {`Called tools (${toolCallCount} steps)`}
+              </span>
+              {agentStatus === 'running' && (
+                <span style={{ fontSize: '10px', opacity: 0.6 }}>
+                  • {elapsed}s
+                </span>
+              )}
+            </div>
+
+            {/* Intermediate event stream inside the collapsible container */}
+            <div
+              style={{
+                display: effectiveLogsExpanded ? 'flex' : 'none',
+                flexDirection: 'column',
+                gap: '6px',
+                paddingLeft: '16px',
+                marginTop: '8px'
+              }}
+            >
+              {msg.agentEvents!.reduce<React.ReactNode[]>((acc, event, eventIdx) => {
+                // Skip the last final event (which is the final answer rendered outside)
+                if (eventIdx === lastFinalEventIdx) {
+                  return acc
+                }
+
+                if (event.type === 'final') {
+                  acc.push(
+                    <div key={`final-${eventIdx}`} className="agent-event-final-text" style={{ margin: '4px 0' }}>
+                      {renderMessageContent(event.content)}
+                    </div>
+                  )
+                } else if (event.type === 'reasoning') {
+                  acc.push(
+                    <div
+                      key={`think-${eventIdx}`}
+                      style={{
+                        margin: '6px 0'
+                      }}
+                    >
+                      <LogThinkRow
+                        log={{
+                          step: 0,
+                          maxSteps: 0,
+                          type: 'think',
+                          thought: event.content
+                        }}
+                      />
+                    </div>
+                  )
+                } else if (event.type === 'tool_call') {
+                  const callId = event.callId
+                  const resultEvent = msg.agentEvents!.find(
+                    (e): e is Extract<AgentEvent, { type: 'tool_result' }> =>
+                      e.type === 'tool_result' && e.callId === callId
+                  )
+                  const errorEvent = msg.agentEvents!.find(
+                    (e): e is Extract<AgentEvent, { type: 'tool_error' }> =>
+                      e.type === 'tool_error' && e.callId === callId
+                  )
+                  const permState = event.permissionState
+
+                  acc.push(
+                    <div
+                      key={`step-${callId}-${eventIdx}`}
+                      style={{
+                        margin: '6px 0'
+                      }}
+                    >
+                      <EventStepRow
+                        callId={callId}
+                        agentRunId={msg.agentRunId}
+                        toolName={event.toolName}
+                        args={event.args}
+                        permissionState={permState}
+                        result={resultEvent?.result}
+                        error={errorEvent?.error}
+                      />
+                    </div>
+                  )
+                }
+                return acc
+              }, [])}
+            </div>
+          </div>
+        )}
+
+        {/* 2. Legacy logs wrapper */}
+        {!hasStructuredEvents && hasLogs && (
           <div
             className="agent-logs-container-fullwidth"
             style={{
@@ -492,70 +636,28 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                 paddingLeft: '16px'
               }}
             >
-              {hasStructuredEvents
-                ? msg.agentEvents!.reduce<React.ReactNode[]>((acc, event, eventIdx) => {
-                    if (event.type === 'reasoning') {
-                      acc.push(
-                        <LogThinkRow
-                          key={`think-${eventIdx}`}
-                          log={{
-                            step: 0,
-                            maxSteps: 0,
-                            type: 'think',
-                            thought: event.content
-                          }}
-                        />
-                      )
-                    } else if (event.type === 'tool_call') {
-                      const callId = event.callId
-                      const resultEvent = msg.agentEvents!.find(
-                        (e): e is Extract<AgentEvent, { type: 'tool_result' }> =>
-                          e.type === 'tool_result' && e.callId === callId
-                      )
-                      const errorEvent = msg.agentEvents!.find(
-                        (e): e is Extract<AgentEvent, { type: 'tool_error' }> =>
-                          e.type === 'tool_error' && e.callId === callId
-                      )
+              {legacyLogs.reduce<React.ReactNode[]>((acc, log, logIdx) => {
+                if (log.type === 'think') {
+                  acc.push(<LogThinkRow key={`think-${log.step}-${logIdx}`} log={log} />)
+                } else if (log.type === 'tool') {
+                  const resultLog = legacyLogs.find(
+                    (l) => l.step === log.step && l.type === 'result' && l.url === log.url
+                  )
+                  const errorLog = legacyLogs.find(
+                    (l) => l.step === log.step && l.type === 'error'
+                  )
 
-                      const permState = event.permissionState
-
-                      acc.push(
-                        <EventStepRow
-                          key={`step-${callId}-${eventIdx}`}
-                          callId={callId}
-                          agentRunId={msg.agentRunId}
-                          toolName={event.toolName}
-                          args={event.args}
-                          permissionState={permState}
-                          result={resultEvent?.result}
-                          error={errorEvent?.error}
-                        />
-                      )
-                    }
-                    return acc
-                  }, [])
-                : legacyLogs.reduce<React.ReactNode[]>((acc, log, logIdx) => {
-                    if (log.type === 'think') {
-                      acc.push(<LogThinkRow key={`think-${log.step}-${logIdx}`} log={log} />)
-                    } else if (log.type === 'tool') {
-                      const resultLog = legacyLogs.find(
-                        (l) => l.step === log.step && l.type === 'result' && l.url === log.url
-                      )
-                      const errorLog = legacyLogs.find(
-                        (l) => l.step === log.step && l.type === 'error'
-                      )
-
-                      acc.push(
-                        <LogStepRow
-                          key={`step-${log.step}-${logIdx}`}
-                          log={log}
-                          resultLog={resultLog}
-                          errorLog={errorLog}
-                        />
-                      )
-                    }
-                    return acc
-                  }, [])}
+                  acc.push(
+                    <LogStepRow
+                      key={`step-${log.step}-${logIdx}`}
+                      log={log}
+                      resultLog={resultLog}
+                      errorLog={errorLog}
+                    />
+                  )
+                }
+                return acc
+              }, [])}
             </div>
 
             {/* Bottom Divider Line */}
@@ -588,11 +690,12 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
           </div>
         )}
 
-        {/* 2. Standard message bubble wrapper */}
+        {/* 3. Message bubble wrapper */}
         {(cleanContent ||
           (displayReasoning && !hasStructuredEvents) ||
           msg.role === 'user' ||
-          (isGenerating && !displayReasoning && !hasLogs)) && (
+          (isGenerating && !displayReasoning && !hasLogs) ||
+          (hasStructuredEvents && (lastFinalEventIdx !== -1 || isGenerating))) && (
           <div className={`message-bubble ${msg.role}`}>
             {msg.role === 'user' && <div className={`avatar ${msg.role}`}>U</div>}
             <div className="message-content-wrapper" style={{ maxWidth: '100%' }}>
@@ -639,75 +742,96 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       </div>
                     )}
 
-                    {/* Thinking/Reasoning block rendering (DeepSeek R1 style) */}
-                    <div
-                      className="reasoning-block"
-                      style={{
-                        display: displayReasoning && !hasStructuredEvents ? 'block' : 'none',
-                        marginBottom: '10px'
-                      }}
-                    >
+                    {/* Thinking/Reasoning block rendering (DeepSeek R1 style for legacy messages) */}
+                    {!hasStructuredEvents && displayReasoning && (
                       <div
-                        onClick={() => setIsExpanded(!isExpanded)}
+                        className="reasoning-block"
                         style={{
-                          fontSize: '12px',
-                          color: '#60a5fa',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          userSelect: 'none',
-                          marginBottom: '6px',
-                          fontWeight: '600'
+                          marginBottom: '10px'
                         }}
                       >
-                        <Sparkles
-                          size={11}
+                        <div
+                          onClick={() => setIsExpanded(!isExpanded)}
                           style={{
-                            animation:
-                              isGenerating && !cleanContent ? 'spin 3s linear infinite' : 'none'
+                            fontSize: '12px',
+                            color: '#60a5fa',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            userSelect: 'none',
+                            marginBottom: '6px',
+                            fontWeight: '600'
                           }}
-                        />
-                        <span>
-                          {isGenerating && !cleanContent
-                            ? '正在思考中..'
-                            : isExpanded
-                              ? '思考过程 (收起)'
-                              : '思考过程 (展开)'}
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          display: isExpanded ? 'block' : 'none',
-                          fontSize: '12px',
-                          color: 'var(--color-text-muted)',
-                          borderLeft: '2px solid rgba(96, 165, 250, 0.35)',
-                          paddingLeft: '10px',
-                          marginLeft: '4px',
-                          fontStyle: 'italic',
-                          whiteSpace: 'pre-wrap',
-                          lineHeight: '1.6',
-                          background: 'var(--color-card-bg)',
-                          padding: '6px 10px',
-                          borderRadius: '0 6px 6px 0'
-                        }}
-                      >
-                        {displayReasoning}
-                      </div>
-                    </div>
-
-                    {/* Render main text content — plain text for user, markdown for assistant */}
-                    {cleanContent
-                      ? msg.role === 'user'
-                        ? cleanContent
-                        : renderMessageContent(cleanContent)
-                      : /* Show small thinking pulsing dot if thinking and content is empty */
-                        isGenerating &&
-                        displayReasoning && (
-                          <span style={{ opacity: 0.5, fontSize: '13px', fontStyle: 'italic' }}>
-                            思考完毕，正在生成回答..
+                        >
+                          <Sparkles
+                            size={11}
+                            style={{
+                              animation:
+                                isGenerating && !cleanContent ? 'spin 3s linear infinite' : 'none'
+                            }}
+                          />
+                          <span>
+                            {isGenerating && !cleanContent
+                              ? '正在思考中..'
+                              : isExpanded
+                                ? '思考过程 (收起)'
+                                : '思考过程 (展开)'}
                           </span>
-                        )}
+                        </div>
+                        <div
+                          style={{
+                            display: isExpanded ? 'block' : 'none',
+                            fontSize: '12px',
+                            color: 'var(--color-text-muted)',
+                            borderLeft: '2px solid rgba(96, 165, 250, 0.35)',
+                            paddingLeft: '10px',
+                            marginLeft: '4px',
+                            fontStyle: 'italic',
+                            whiteSpace: 'pre-wrap',
+                            lineHeight: '1.6',
+                            background: 'var(--color-card-bg)',
+                            padding: '6px 10px',
+                            borderRadius: '0 6px 6px 0'
+                          }}
+                        >
+                          {displayReasoning}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Render main text content */}
+                    {hasStructuredEvents ? (
+                      /* Final answer for structured events */
+                      lastFinalEventIdx !== -1 ? (
+                        <div className="agent-event-final-text">
+                          {renderMessageContent(
+                            (msg.agentEvents![lastFinalEventIdx] as Extract<AgentEvent, { type: 'final' }>).content
+                          )}
+                        </div>
+                      ) : null
+                    ) : (
+                      /* Legacy standard rendering */
+                      cleanContent
+                        ? msg.role === 'user'
+                          ? cleanContent
+                          : renderMessageContent(cleanContent)
+                        : isGenerating &&
+                          displayReasoning && (
+                            <span style={{ opacity: 0.5, fontSize: '13px', fontStyle: 'italic' }}>
+                              思考完毕，正在生成回答..
+                            </span>
+                          )
+                    )}
+
+                    {/* Show small thinking pulsing dot if we are generating structured events and haven't produced any text blocks yet */}
+                    {hasStructuredEvents &&
+                      isGenerating &&
+                      lastFinalEventIdx === -1 && (
+                        <span style={{ opacity: 0.5, fontSize: '13px', fontStyle: 'italic' }}>
+                          正在启动中..
+                        </span>
+                      )}
                   </div>
 
                   {!isGenerating && (

@@ -238,9 +238,20 @@ export const useChatCompletion = ({
       if (data.reqId !== reqId) return
 
       if (data.error) {
+        const errorText = formatError(data.error!)
         updateMessageById(
           assistantMsgId,
-          (m) => ({ ...m, content: formatError(data.error!) }),
+          (m) => {
+            const currentEvents = m.agentEvents || []
+            const hasEvents = currentEvents.length > 0
+            return {
+              ...m,
+              content: errorText,
+              agentEvents: hasEvents
+                ? [...currentEvents, { type: 'final', content: errorText }]
+                : currentEvents
+            }
+          },
           false
         )
         cleanup()
@@ -311,9 +322,20 @@ export const useChatCompletion = ({
     } catch (err) {
       const error = err as Error
       console.error(error)
+      const errorText = formatError(error.message)
       updateMessageById(
         assistantMsgId,
-        (m) => ({ ...m, content: formatError(error.message) }),
+        (m) => {
+          const currentEvents = m.agentEvents || []
+          const hasEvents = currentEvents.length > 0
+          return {
+            ...m,
+            content: errorText,
+            agentEvents: hasEvents
+              ? [...currentEvents, { type: 'final', content: errorText }]
+              : currentEvents
+          }
+        },
         false
       )
       cleanup()

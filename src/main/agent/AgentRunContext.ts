@@ -84,8 +84,14 @@ export class AgentRunContext {
 
   isCommandPrefixApproved(command: string): boolean {
     const trimmed = command.trim()
+    // A previously-approved prefix only covers a SINGLE simple command. If the command chains or
+    // embeds another command (`;` `&&` `||` `|` `&`, newline, or `$(...)`/backtick substitution),
+    // the approved prefix must not silently cover the tail — force a fresh confirmation.
+    if (/[;&|\n]|\$\(|`/.test(trimmed)) return false
     return this.approvedCommandPrefixes.some((prefix) => {
-      return trimmed === prefix || trimmed.startsWith(prefix + ' ') || trimmed.startsWith(prefix + '\t')
+      return (
+        trimmed === prefix || trimmed.startsWith(prefix + ' ') || trimmed.startsWith(prefix + '\t')
+      )
     })
   }
 
