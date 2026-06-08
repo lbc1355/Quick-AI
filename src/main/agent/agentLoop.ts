@@ -360,6 +360,7 @@ export const runAgentLoop = async (
           ): void => {
             runCtx.actionLog.append({
               callId: prep.callId,
+              reqId,
               turnIndex: step,
               timestamp: Date.now(),
               toolName: prep.toolName,

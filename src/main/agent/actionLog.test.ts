@@ -7,6 +7,7 @@ import { ActionLog, ActionRecord } from './actionLog'
 function makeRecord(overrides: Partial<ActionRecord> = {}): ActionRecord {
   return {
     callId: 'call-1',
+    reqId: 'run-1',
     turnIndex: 1,
     timestamp: 1000,
     toolName: 'fetch_url',
@@ -102,6 +103,40 @@ describe('ActionLog (in-memory)', () => {
   })
 })
 
+describe('ActionLog.deleteByRunIds', () => {
+  it('removes only records of the given runs and returns the count', () => {
+    const log = new ActionLog()
+    log.append(makeRecord({ callId: 'a', reqId: 'A' }))
+    log.append(makeRecord({ callId: 'b', reqId: 'B' }))
+    log.append(makeRecord({ callId: 'c', reqId: 'C' }))
+
+    const removed = log.deleteByRunIds(['B'])
+    expect(removed).toBe(1)
+    expect(log.get('a')).toBeDefined()
+    expect(log.get('b')).toBeUndefined()
+    expect(log.get('c')).toBeDefined()
+  })
+
+  it('removes every record sharing a run id', () => {
+    const log = new ActionLog()
+    log.append(makeRecord({ callId: 'a', reqId: 'X' }))
+    log.append(makeRecord({ callId: 'b', reqId: 'X' }))
+    log.append(makeRecord({ callId: 'c', reqId: 'Y' }))
+
+    expect(log.deleteByRunIds(['X'])).toBe(2)
+    expect(log.size).toBe(1)
+    expect(log.get('c')).toBeDefined()
+  })
+
+  it('returns 0 for empty input or unknown runs without removing anything', () => {
+    const log = new ActionLog()
+    log.append(makeRecord({ callId: 'a', reqId: 'A' }))
+    expect(log.deleteByRunIds([])).toBe(0)
+    expect(log.deleteByRunIds(['nope'])).toBe(0)
+    expect(log.size).toBe(1)
+  })
+})
+
 describe('ActionLog (persistence)', () => {
   let dir: string
   let filePath: string
@@ -125,6 +160,18 @@ describe('ActionLog (persistence)', () => {
     const reloaded = new ActionLog(filePath)
     expect(reloaded.size).toBe(2)
     expect(reloaded.get('a')).toBeDefined()
+    expect(reloaded.get('b')).toBeDefined()
+  })
+
+  it('deleteByRunIds rewrites the file so removed runs are gone on reload', () => {
+    const log = new ActionLog(filePath)
+    log.append(makeRecord({ callId: 'a', reqId: 'A' }))
+    log.append(makeRecord({ callId: 'b', reqId: 'B' }))
+    log.deleteByRunIds(['A'])
+
+    const reloaded = new ActionLog(filePath)
+    expect(reloaded.size).toBe(1)
+    expect(reloaded.get('a')).toBeUndefined()
     expect(reloaded.get('b')).toBeDefined()
   })
 

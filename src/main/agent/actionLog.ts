@@ -46,6 +46,8 @@ export async function deleteActionLog(conversationId: string): Promise<void> {
 
 export interface ActionRecord {
   callId: string
+  /** Run id (reqId / agentRunId) this call belongs to. Used to delete records for removed turns. */
+  reqId: string
   turnIndex: number
   timestamp: number
   toolName: string
@@ -222,6 +224,21 @@ export class ActionLog {
   /** Number of stored records. */
   get size(): number {
     return this.records.length
+  }
+
+  /**
+   * Remove every record belonging to the given run ids, rewriting the file. Returns the count
+   * removed. Used by edit/regenerate cleanup: the conversation drops some turns but survives, so
+   * the whole-file deleteActionLog is too coarse.
+   */
+  deleteByRunIds(runIds: string[]): number {
+    if (runIds.length === 0) return 0
+    const remove = new Set(runIds)
+    const before = this.records.length
+    this.records = this.records.filter((r) => !remove.has(r.reqId))
+    const removed = before - this.records.length
+    if (removed > 0) this.flush()
+    return removed
   }
 
   /** Write in-memory state to disk. Called on run end. */

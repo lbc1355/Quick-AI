@@ -101,6 +101,9 @@ export interface SessionResource {
   nextOffset?: number
   status: 'partial' | 'complete' | 'stale'
   summary?: string
+  /** Run ids (reqId / agentRunId) that fetched or touched this resource. Used to prune the
+   * resource when the conversation turns that produced it are removed by an edit/regenerate. */
+  runIds?: string[]
   chunks: SessionResourceChunk[]
   createdAt: number
   updatedAt: number
@@ -209,11 +212,14 @@ export interface ChatChunkData {
 }
 
 export interface ClearSessionCachesPayload {
-  /** Conversation ids whose action-log files should be deleted. */
+  /** Conversation ids whose action-log files should be deleted (whole file). */
   sessionIds: string[]
   /** Resource ids (md5 of source url) whose cache files should be deleted — caller ensures no
    * surviving session still references them. */
   resourceIds: string[]
+  /** Partial action-log cleanup: within a surviving session, delete only the records belonging
+   * to the given run ids (used by edit/regenerate, which removes some turns but not the session). */
+  partialActions?: Array<{ sessionId: string; runIds: string[] }>
 }
 
 export type ToolArgs = Record<string, unknown>

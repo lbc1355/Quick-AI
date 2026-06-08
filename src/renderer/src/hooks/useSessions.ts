@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Session } from '../../../shared/types'
+import { Session, SessionResource } from '../../../shared/types'
 
 /**
  * Resource cache files are keyed by md5(url) and shared across sessions, so a resource is only
@@ -9,6 +9,41 @@ import { Session } from '../../../shared/types'
 export const computeOrphanResourceIds = (target: Session, survivors: Session[]): string[] => {
   const survivorIds = new Set(survivors.flatMap((s) => (s.resources ?? []).map((r) => r.id)))
   return (target.resources ?? []).map((r) => r.id).filter((id) => !survivorIds.has(id))
+}
+
+/**
+ * Partial-prune analogue of computeOrphanResourceIds for edit/regenerate: given the run ids removed
+ * by a message slice, decide which of the target session's resources to drop and which are safe to
+ * physically delete from the global cache.
+ *
+ * - A resource is pruned from the session only when EVERY run that touched it was removed
+ *   (runIds ⊆ removedRunIds). A resource still touched by a surviving run is kept.
+ * - Legacy resources without runIds are never auto-pruned (conservative).
+ * - deletableIds excludes ids still referenced by any OTHER session (cross-session cache is shared).
+ *
+ * Pure — exported for testing.
+ */
+export const computeResourcePrune = (
+  target: Session,
+  otherSessions: Session[],
+  removedRunIds: string[]
+): { keptResources: SessionResource[]; prunedIds: string[]; deletableIds: string[] } => {
+  const removed = new Set(removedRunIds)
+  const kept: SessionResource[] = []
+  const prunedIds: string[] = []
+
+  for (const r of target.resources ?? []) {
+    const runIds = r.runIds ?? []
+    const fullyRemoved = runIds.length > 0 && runIds.every((id) => removed.has(id))
+    if (fullyRemoved) prunedIds.push(r.id)
+    else kept.push(r)
+  }
+
+  const otherIds = new Set(otherSessions.flatMap((s) => (s.resources ?? []).map((x) => x.id)))
+  const keptIds = new Set(kept.map((x) => x.id))
+  const deletableIds = prunedIds.filter((id) => !otherIds.has(id) && !keptIds.has(id))
+
+  return { keptResources: kept, prunedIds, deletableIds }
 }
 
 /** Best-effort: delete a session's action log + orphaned resource caches. Never throws. */

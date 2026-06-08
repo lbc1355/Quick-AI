@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { ChatChunkData, Message, Session, Skill, RunMode, AgentEvent, SessionResource } from '../../../shared/types'
+import { computeResourcePrune } from './useSessions'
 
 const mergeResourceRanges = (
   ranges: Array<{ start: number; end: number }>
@@ -19,6 +20,48 @@ const mergeResourceRanges = (
   }
 
   return merged
+}
+
+/**
+ * Merge an incoming resource_update into the existing session resource (or create it), stamping the
+ * producing run id into `runIds`. Pure — exported for testing. The runIds set is what later lets an
+ * edit/regenerate prune resources whose every producing turn was removed.
+ */
+export const mergeResourceUpdate = (
+  existing: SessionResource | undefined,
+  incoming: SessionResource,
+  reqId: string
+): SessionResource => {
+  if (!existing) {
+    return { ...incoming, runIds: [reqId] }
+  }
+
+  // Merge all metadata chunks returned by the cache, not only the first one.
+  const chunkMap = new Map(existing.chunks.map((chunk) => [chunk.id, chunk]))
+  incoming.chunks.forEach((chunk) => {
+    chunkMap.set(chunk.id, chunk)
+  })
+  const newChunks = Array.from(chunkMap.values()).sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0))
+
+  const fetchedRanges = mergeResourceRanges([
+    ...(existing.fetchedRanges || []),
+    ...(incoming.fetchedRanges || [])
+  ])
+
+  const runIds = Array.from(new Set([...(existing.runIds ?? []), reqId]))
+
+  return {
+    ...existing,
+    title: incoming.title || existing.title,
+    totalChars: incoming.totalChars ?? existing.totalChars,
+    nextOffset: incoming.nextOffset,
+    status: incoming.status,
+    summary: incoming.summary ?? existing.summary,
+    fetchedRanges,
+    runIds,
+    chunks: newChunks,
+    updatedAt: incoming.updatedAt || Date.now()
+  }
 }
 
 const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Message => {
@@ -231,42 +274,15 @@ export const useChatCompletion = ({
 
               const existingResources = s.resources || []
               const resIdx = existingResources.findIndex((r) => r.id === updatedResource.id)
-
-              let newResources: SessionResource[]
-              if (resIdx !== -1) {
-                const existingRes = existingResources[resIdx]
-
-                // Merge all metadata chunks returned by the cache, not only the first one.
-                const chunkMap = new Map(existingRes.chunks.map((chunk) => [chunk.id, chunk]))
-                updatedResource.chunks.forEach((chunk) => {
-                  chunkMap.set(chunk.id, chunk)
-                })
-                const newChunks = Array.from(chunkMap.values()).sort(
-                  (a, b) => (a.offset ?? 0) - (b.offset ?? 0)
-                )
-
-                // Merge fetchedRanges
-                const fetchedRanges = mergeResourceRanges([
-                  ...(existingRes.fetchedRanges || []),
-                  ...(updatedResource.fetchedRanges || [])
-                ])
-
-                const mergedRes: SessionResource = {
-                  ...existingRes,
-                  title: updatedResource.title || existingRes.title,
-                  totalChars: updatedResource.totalChars ?? existingRes.totalChars,
-                  nextOffset: updatedResource.nextOffset,
-                  status: updatedResource.status,
-                  summary: updatedResource.summary ?? existingRes.summary,
-                  fetchedRanges,
-                  chunks: newChunks,
-                  updatedAt: updatedResource.updatedAt || Date.now()
-                }
-                newResources = [...existingResources]
-                newResources[resIdx] = mergedRes
-              } else {
-                newResources = [...existingResources, updatedResource]
-              }
+              const merged = mergeResourceUpdate(
+                resIdx !== -1 ? existingResources[resIdx] : undefined,
+                updatedResource,
+                reqId
+              )
+              const newResources =
+                resIdx !== -1
+                  ? existingResources.map((r, i) => (i === resIdx ? merged : r))
+                  : [...existingResources, merged]
 
               return {
                 ...s,
@@ -379,11 +395,35 @@ export const useChatCompletion = ({
     if (customMsgId) {
       const idx = currentSession.messages.findIndex((m) => m.id === customMsgId)
       if (idx !== -1) {
+        // Runs whose turns are about to be sliced away: clean up their cached resources/actions so
+        // the operation history stays consistent with the dialogue after the edit/regenerate.
+        const removedRunIds = currentSession.messages
+          .slice(idx + 1)
+          .filter((m) => m.role === 'assistant' && m.agentRunId)
+          .map((m) => m.agentRunId as string)
+
         currentSession.messages[idx] = {
           ...currentSession.messages[idx],
           content: promptToSend
         }
         currentSession.messages = currentSession.messages.slice(0, idx + 1)
+
+        if (removedRunIds.length > 0) {
+          const others = currentSessions.filter((s) => s.id !== currentSession.id)
+          const { keptResources, deletableIds } = computeResourcePrune(
+            currentSession,
+            others,
+            removedRunIds
+          )
+          currentSession.resources = keptResources
+          void window.api
+            .clearSessionCaches({
+              sessionIds: [],
+              resourceIds: deletableIds,
+              partialActions: [{ sessionId: currentSession.id, runIds: removedRunIds }]
+            })
+            .catch(console.warn)
+        }
       }
     } else {
       // Normal message send

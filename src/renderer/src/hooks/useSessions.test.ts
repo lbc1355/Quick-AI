@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { computeOrphanResourceIds } from './useSessions'
+import { computeOrphanResourceIds, computeResourcePrune } from './useSessions'
 import { Session, SessionResource } from '../../../shared/types'
 
-function res(id: string): SessionResource {
+function res(id: string, runIds?: string[]): SessionResource {
   return {
     id,
     kind: 'web',
     source: `https://example.com/${id}`,
     status: 'complete',
+    ...(runIds ? { runIds } : {}),
     chunks: [],
     createdAt: 1,
     updatedAt: 1
@@ -19,8 +20,13 @@ function session(id: string, resourceIds: string[]): Session {
     id,
     title: id,
     messages: [],
-    resources: resourceIds.map(res)
+    resources: resourceIds.map((rid) => res(rid))
   }
+}
+
+/** Session whose resources carry runIds, for prune tests. */
+function sessionWith(id: string, resources: SessionResource[]): Session {
+  return { id, title: id, messages: [], resources }
 }
 
 describe('computeOrphanResourceIds', () => {
@@ -58,5 +64,55 @@ describe('computeOrphanResourceIds', () => {
   it('treats an empty survivor list as all-orphaned', () => {
     const target = session('A', ['r1', 'r2'])
     expect(computeOrphanResourceIds(target, []).sort()).toEqual(['r1', 'r2'])
+  })
+})
+
+describe('computeResourcePrune', () => {
+  it('keeps a resource still touched by a surviving run (multi-run)', () => {
+    const target = sessionWith('A', [res('r1', ['runX', 'runY'])])
+    const { keptResources, prunedIds, deletableIds } = computeResourcePrune(target, [], ['runX'])
+    // Only runX removed; runY survives → r1 kept.
+    expect(keptResources.map((r) => r.id)).toEqual(['r1'])
+    expect(prunedIds).toEqual([])
+    expect(deletableIds).toEqual([])
+  })
+
+  it('prunes and deletes a resource whose every run was removed', () => {
+    const target = sessionWith('A', [res('r1', ['runX'])])
+    const { keptResources, prunedIds, deletableIds } = computeResourcePrune(target, [], ['runX'])
+    expect(keptResources).toEqual([])
+    expect(prunedIds).toEqual(['r1'])
+    expect(deletableIds).toEqual(['r1'])
+  })
+
+  it('prunes from the session but does NOT delete a resource another session references', () => {
+    const target = sessionWith('A', [res('shared', ['runX'])])
+    const other = sessionWith('B', [res('shared', ['runZ'])])
+    const { prunedIds, deletableIds } = computeResourcePrune(target, [other], ['runX'])
+    expect(prunedIds).toEqual(['shared'])
+    expect(deletableIds).toEqual([]) // B still uses it
+  })
+
+  it('never prunes a legacy resource without runIds', () => {
+    const target = sessionWith('A', [res('legacy')])
+    const { keptResources, prunedIds, deletableIds } = computeResourcePrune(target, [], ['runX'])
+    expect(keptResources.map((r) => r.id)).toEqual(['legacy'])
+    expect(prunedIds).toEqual([])
+    expect(deletableIds).toEqual([])
+  })
+
+  it('prunes nothing when no runs were removed', () => {
+    const target = sessionWith('A', [res('r1', ['runX'])])
+    const { keptResources, prunedIds } = computeResourcePrune(target, [], [])
+    expect(keptResources.map((r) => r.id)).toEqual(['r1'])
+    expect(prunedIds).toEqual([])
+  })
+
+  it('handles a target with undefined resources', () => {
+    const target: Session = { id: 'A', title: 'A', messages: [] }
+    const out = computeResourcePrune(target, [], ['runX'])
+    expect(out.keptResources).toEqual([])
+    expect(out.prunedIds).toEqual([])
+    expect(out.deletableIds).toEqual([])
   })
 })

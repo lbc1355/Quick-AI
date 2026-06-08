@@ -6,7 +6,7 @@ import { FileStore } from './store'
 import { StorageSchema } from '../shared/types'
 import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClient'
 import { runAgentSkill, runGeneralAgent, resolveToolPermission, abortAgentSkill } from './agent'
-import { deleteActionLog } from './agent/actionLog'
+import { deleteActionLog, ActionLog, getActionLogPath } from './agent/actionLog'
 import { deleteResourceFile } from './resourceCache'
 
 let mainWindow: BrowserWindow | null = null
@@ -226,6 +226,28 @@ app.whenReady().then(() => {
     const resourceIds: string[] = Array.isArray(payload?.resourceIds)
       ? payload.resourceIds.filter((id: unknown): id is string => typeof id === 'string')
       : []
+
+    // Partial action-log cleanup for surviving sessions (edit/regenerate): delete only the records
+    // of the removed runs, not the whole file. Done synchronously before the async deletes below.
+    const partialActions: Array<{ sessionId: string; runIds: string[] }> = Array.isArray(
+      payload?.partialActions
+    )
+      ? payload.partialActions.filter(
+          (e: unknown): e is { sessionId: string; runIds: string[] } =>
+            !!e &&
+            typeof (e as { sessionId?: unknown }).sessionId === 'string' &&
+            Array.isArray((e as { runIds?: unknown }).runIds)
+        )
+      : []
+    for (const entry of partialActions) {
+      const runIds = entry.runIds.filter((id): id is string => typeof id === 'string')
+      if (runIds.length === 0) continue
+      try {
+        new ActionLog(getActionLogPath(entry.sessionId)).deleteByRunIds(runIds)
+      } catch (err) {
+        console.warn('clear-session-caches: partial action delete failed:', (err as Error).message)
+      }
+    }
 
     const results = await Promise.allSettled([
       ...sessionIds.map((id) => deleteActionLog(id)),
