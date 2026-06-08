@@ -8,6 +8,7 @@ import { ToolRegistry } from '../toolRegistry'
 import { globalPermissionManager } from './permissionManager'
 import { BrowserWindow } from 'electron'
 import { abortRun } from './AgentRunContext'
+import { ActionLog, getActionLogPath } from './actionLog'
 
 vi.mock('electron', () => ({
   BrowserWindow: {},
@@ -29,6 +30,10 @@ describe('runAgentLoop', () => {
     // Clear any persisted action logs so each test starts with an empty history (otherwise
     // a prior run's log would auto-activate the list_past_actions/get_past_action tools).
     rmSync(join(tmpdir(), 'quickai-agentloop-test', 'action_logs'), {
+      recursive: true,
+      force: true
+    })
+    rmSync(join(tmpdir(), 'quickai-agentloop-test', 'run_checkpoints'), {
       recursive: true,
       force: true
     })
@@ -403,6 +408,181 @@ describe('runAgentLoop', () => {
     // 3rd step: callCount 3 (returns tool)
     // 4th step: final summarized call (tools are undefined, returns final answer)
     expect(callCount).toBe(4)
+  })
+
+  it('injects prior action history when continuing after a failed run', async () => {
+    vi.spyOn(ToolRegistry.file_read, 'execute').mockResolvedValue({
+      resultForModel: 'File content already read before the API failure.',
+      resultForUi: {
+        title: 'Read file',
+        summary: 'File content already read before the API failure.'
+      }
+    })
+
+    let firstRunCallCount = 0
+    vi.mocked(callModel).mockImplementation(async () => {
+      firstRunCallCount++
+      if (firstRunCallCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-read-before-failure',
+              type: 'function',
+              function: {
+                name: 'file_read',
+                arguments: JSON.stringify({ path: 'src/main/index.ts' })
+              }
+            }
+          ]
+        }
+      }
+      throw new Error('API unavailable')
+    })
+
+    await runAgentLoop(mockWindow, 'resume-run-1', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Read files and edit the app' }],
+      sessionId: 'resume-session'
+    })
+
+    let sawResumeContext = false
+    vi.mocked(callModel).mockImplementation(async (_options, messages) => {
+      const joined = messages
+        .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+        .join('\n')
+
+      expect(joined).toContain('[RESUME CONTEXT]')
+      expect(joined).toContain('file_read')
+      expect(joined).toContain('src/main/index.ts')
+      expect(joined).toContain('File content already read before the API failure.')
+      sawResumeContext = true
+
+      return {
+        role: 'assistant',
+        content: 'Continued without repeating the file read.'
+      }
+    })
+
+    await runAgentLoop(mockWindow, 'resume-run-2', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: '继续' }],
+      sessionId: 'resume-session'
+    })
+
+    expect(sawResumeContext).toBe(true)
+  })
+
+  it('resumes from the last persisted checkpoint without adding a continue user message', async () => {
+    vi.spyOn(ToolRegistry.file_read, 'execute').mockResolvedValue({
+      resultForModel: 'Checkpoint file content from the previous successful tool call.',
+      resultForUi: {
+        title: 'Read file',
+        summary: 'Checkpoint file content from the previous successful tool call.'
+      }
+    })
+
+    let firstRunCallCount = 0
+    vi.mocked(callModel).mockImplementation(async () => {
+      firstRunCallCount++
+      if (firstRunCallCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-checkpoint-read',
+              type: 'function',
+              function: {
+                name: 'file_read',
+                arguments: JSON.stringify({ path: 'src/main/index.ts' })
+              }
+            }
+          ]
+        }
+      }
+      throw new Error('API unavailable after tool success')
+    })
+
+    await runAgentLoop(mockWindow, 'checkpoint-run-1', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Read the project then edit it' }],
+      sessionId: 'checkpoint-session'
+    })
+
+    let sawCheckpoint = false
+    vi.mocked(callModel).mockImplementation(async (_options, messages) => {
+      const joined = messages
+        .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+        .join('\n')
+
+      expect(joined).toContain('[RESUME MODE]')
+      expect(joined).toContain('Read the project then edit it')
+      expect(joined).toContain('Checkpoint file content from the previous successful tool call.')
+      expect(joined).not.toContain('继续')
+      expect(
+        messages.some((m) => m.role === 'tool' && m.tool_call_id === 'tc-checkpoint-read')
+      ).toBe(true)
+      sawCheckpoint = true
+
+      return {
+        role: 'assistant',
+        content: 'Resumed from checkpoint.'
+      }
+    })
+
+    await runAgentLoop(mockWindow, 'checkpoint-run-2', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'this should be ignored in resume mode' }],
+      sessionId: 'checkpoint-session',
+      resumeFromRunId: 'checkpoint-run-1'
+    })
+
+    expect(sawCheckpoint).toBe(true)
+  })
+
+  it('records interrupted shell execution as ambiguous instead of safe-to-repeat error', async () => {
+    vi.spyOn(globalPermissionManager, 'requestPermission').mockResolvedValue(true)
+    vi.spyOn(ToolRegistry.shell, 'execute').mockImplementation(async (_args, ctx) => {
+      abortRun(ctx.reqId)
+      throw new Error('Agent execution aborted by user.')
+    })
+
+    vi.mocked(callModel).mockResolvedValue({
+      role: 'assistant',
+      content: '',
+      tool_calls: [
+        {
+          id: 'tc-shell-ambiguous',
+          type: 'function',
+          function: {
+            name: 'shell',
+            arguments: JSON.stringify({ command: 'npm install example-package' })
+          }
+        }
+      ]
+    })
+
+    await runAgentLoop(mockWindow, 'ambiguous-run-1', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Install something' }],
+      sessionId: 'ambiguous-session'
+    })
+
+    const record = new ActionLog(getActionLogPath('ambiguous-session')).get('tc-shell-ambiguous')
+    expect(record?.resultStatus).toBe('ambiguous')
+    expect(record?.resultSummary).toContain('inspect state before repeating')
   })
 
   it('fetch_url=ask triggers permission request and executes if approved', async () => {
@@ -908,7 +1088,7 @@ describe('runAgentLoop', () => {
           scope: 'prefix',
           prefix: 'git'
         })
-        
+
         return {
           role: 'assistant',
           content: '',
@@ -997,7 +1177,7 @@ describe('runAgentLoop', () => {
           scope: 'tool',
           tool: 'file_read'
         })
-        
+
         return {
           role: 'assistant',
           content: '',

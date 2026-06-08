@@ -288,6 +288,7 @@ function App(): React.JSX.Element {
     handleStartEdit,
     handleSaveEdit,
     handleRegenerate,
+    handleResumeAgentRun,
     showHelpMessage,
     handleAbortGeneration
   } = useChatCompletion({
@@ -944,6 +945,7 @@ function App(): React.JSX.Element {
                     onCancelEdit={() => setEditingMessageId(null)}
                     onSaveEdit={handleSaveEdit}
                     onRegenerate={handleRegenerate}
+                    onResumeAgentRun={handleResumeAgentRun}
                     onChangeEditingText={setEditingText}
                   />
                 ))}

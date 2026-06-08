@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { mergeResourceUpdate } from './useChatCompletion'
-import { SessionResource } from '../../../shared/types'
+import { isRuntimeErrorAssistantMessage, mergeResourceUpdate } from './useChatCompletion'
+import { Message, SessionResource } from '../../../shared/types'
 
 function res(over: Partial<SessionResource> = {}): SessionResource {
   return {
@@ -53,5 +53,38 @@ describe('mergeResourceUpdate', () => {
     expect(out.fetchedRanges).toEqual([{ start: 0, end: 200 }])
     expect(out.nextOffset).toBe(200)
     expect(out.runIds).toEqual(['runA', 'runB'])
+  })
+})
+
+describe('isRuntimeErrorAssistantMessage', () => {
+  it('recognizes explicitly-marked runtime errors', () => {
+    const msg: Message = {
+      id: 'm1',
+      role: 'assistant',
+      content: 'temporary provider error',
+      isRuntimeError: true
+    }
+
+    expect(isRuntimeErrorAssistantMessage(msg)).toBe(true)
+  })
+
+  it('recognizes older API error messages by prefix', () => {
+    const msg: Message = {
+      id: 'm1',
+      role: 'assistant',
+      content: 'Agent resume failed: API Error: 429 - insufficient quota'
+    }
+
+    expect(isRuntimeErrorAssistantMessage(msg)).toBe(true)
+  })
+
+  it('does not hide normal assistant content', () => {
+    const msg: Message = {
+      id: 'm1',
+      role: 'assistant',
+      content: 'Here is the result of the task.'
+    }
+
+    expect(isRuntimeErrorAssistantMessage(msg)).toBe(false)
   })
 })

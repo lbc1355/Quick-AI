@@ -52,6 +52,8 @@ export interface Message {
   files?: Array<{ name: string; content: string; type: string }>
   agentRunId?: string
   agentEvents?: AgentEvent[]
+  /** UI-visible runtime/API failure. Kept in history but omitted from future model context. */
+  isRuntimeError?: boolean
 }
 
 export interface ChatCompletionMessage {
@@ -211,6 +213,8 @@ export interface AgentSkillRunOptions {
   resources?: SessionResource[]
   /** Conversation id used to persist the agent's action log across runs. */
   sessionId?: string
+  /** Resume from a persisted run checkpoint without adding a new user message. */
+  resumeFromRunId?: string
 }
 
 export interface ChatChunkData {
@@ -261,4 +265,6 @@ export interface ChatRunOptions {
   resources?: SessionResource[]
   /** Conversation id used to persist the agent's action log across runs. */
   sessionId?: string
+  /** Resume from a persisted run checkpoint without adding a new user message. */
+  resumeFromRunId?: string
 }

@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Paperclip,
   Sparkles,
+  Play,
   Copy,
   Check,
   ChevronDown,
@@ -373,6 +374,7 @@ interface MessageBubbleProps {
   onCancelEdit: () => void
   onSaveEdit: (msgId: string, text: string) => void
   onRegenerate: (idx: number) => void
+  onResumeAgentRun: (idx: number) => void
   onChangeEditingText: (text: string) => void
 }
 
@@ -387,6 +389,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onCancelEdit,
     onSaveEdit,
     onRegenerate,
+    onResumeAgentRun,
     onChangeEditingText
   }) => {
     const [isExpanded, setIsExpanded] = useState(true)
@@ -991,6 +994,15 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                         </button>
                       ) : (
                         <>
+                          {msg.agentRunId && agentStatus === 'failed' && (
+                            <button
+                              className="msg-action-btn"
+                              onClick={() => onResumeAgentRun(idx)}
+                            >
+                              <Play size={10} />
+                              <span>继续执行</span>
+                            </button>
+                          )}
                           <button className="msg-action-btn" onClick={() => onRegenerate(idx)}>
                             <RefreshCw size={10} />
                             <span>重新生成</span>

@@ -21,6 +21,16 @@ import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy
 import { LoopGuard } from './loopGuard'
 import { evaluateToolGuard } from './constitution'
 import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
+import {
+  AmbiguousAction,
+  loadRunCheckpoint,
+  RunCheckpoint,
+  saveRunCheckpoint
+} from './runCheckpoint'
+
+const ACTION_HISTORY_RESUME_LIMIT = 12
+const RESUME_MODE_PROMPT_PREFIX = '[RESUME MODE]'
+const SIDE_EFFECTING_TOOLS = new Set(['shell', 'file_write', 'remember'])
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -46,6 +56,118 @@ const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent):
   mainWindow.webContents.send('chat-chunk', { reqId, event })
 }
 
+const truncateForPrompt = (value: string, maxChars: number): string => {
+  if (value.length <= maxChars) return value
+  return `${value.slice(0, Math.max(0, maxChars - 3))}...`
+}
+
+const compactJsonForPrompt = (value: unknown, maxChars = 220): string => {
+  try {
+    return truncateForPrompt(JSON.stringify(value), maxChars)
+  } catch {
+    return '[unserializable]'
+  }
+}
+
+const buildResumeActionHistoryPrompt = (actionLog: ActionLog): string => {
+  if (actionLog.size === 0) return ''
+
+  const actions = actionLog.list({ limit: ACTION_HISTORY_RESUME_LIMIT })
+  if (actions.length === 0) return ''
+
+  const lines = [
+    '[RESUME CONTEXT]',
+    'Recent tool actions already completed in this conversation are listed below. Use this before deciding whether to call tools again.',
+    'Do not repeat successful reads, searches, fetches, or shell commands unless the user explicitly asked to regenerate, verify again, or the prior result is insufficient for the current request.',
+    'If you need exact details for an earlier action, call get_past_action with its callId instead of repeating the original tool call.',
+    '',
+    `Recent actions (${actions.length} shown, newest first):`
+  ]
+
+  actions.forEach((action, index) => {
+    const record = actionLog.get(action.callId)
+    lines.push(
+      `${index + 1}. [Turn ${action.turnIndex}] ${action.toolName} - ${action.resultStatus} (${action.durationMs}ms, ${action.resultSize} chars)`
+    )
+    lines.push(`   callId: ${action.callId}`)
+    if (record) {
+      lines.push(`   args: ${compactJsonForPrompt(record.args)}`)
+    }
+    lines.push(`   summary: ${truncateForPrompt(action.resultSummary.replace(/\s+/g, ' '), 260)}`)
+  })
+
+  return lines.join('\n')
+}
+
+const injectPromptBeforeLatestUser = (
+  messages: ChatCompletionMessage[],
+  prompt: string
+): ChatCompletionMessage[] => {
+  if (!prompt) return messages
+  const insertAt = Math.max(1, messages.length - 1)
+  messages.splice(insertAt, 0, {
+    role: 'system',
+    content: prompt
+  })
+  return messages
+}
+
+const isResumeModePrompt = (message: ChatCompletionMessage): boolean =>
+  message.role === 'system' &&
+  typeof message.content === 'string' &&
+  message.content.startsWith(RESUME_MODE_PROMPT_PREFIX)
+
+const cloneMessagesForCheckpoint = (messages: ChatCompletionMessage[]): ChatCompletionMessage[] => {
+  return JSON.parse(
+    JSON.stringify(messages.filter((message) => !isResumeModePrompt(message)))
+  ) as ChatCompletionMessage[]
+}
+
+const buildCheckpointResumePrompt = (checkpoint: RunCheckpoint, actionLog: ActionLog): string => {
+  const lines = [
+    RESUME_MODE_PROMPT_PREFIX,
+    'This is an automatic continuation of the same agent task after a previous execution failure.',
+    'No new user request was added. Continue the original task from the completed tool observations already present in the message history.',
+    'The failed or incomplete model step was discarded. Do not restart the task and do not repeat successful actions unless verification is necessary.',
+    'If a prior side-effecting action is marked ambiguous, do not run it again blindly. Inspect the current workspace/process state first, or ask the user before repeating it.',
+    '',
+    `Resuming from run: ${checkpoint.reqId}`,
+    `Checkpoint step: ${checkpoint.step}`,
+    `Last completed call: ${checkpoint.lastCompletedCallId || 'none'}`
+  ]
+
+  const ambiguousActionEntries = [
+    ...(checkpoint.ambiguousActions || []),
+    ...actionLog
+      .list({ limit: ACTION_HISTORY_RESUME_LIMIT })
+      .filter((action) => action.resultStatus === 'ambiguous')
+      .map((action): AmbiguousAction => {
+        const record = actionLog.get(action.callId)
+        return {
+          callId: action.callId,
+          toolName: action.toolName,
+          args: (record?.args || {}) as ToolArgs,
+          reason: action.resultSummary,
+          timestamp: record?.timestamp || Date.now()
+        }
+      })
+  ]
+  const ambiguousActions = Array.from(
+    new Map(ambiguousActionEntries.map((action) => [action.callId, action])).values()
+  )
+
+  if (ambiguousActions.length > 0) {
+    lines.push('', 'Ambiguous side-effecting actions:')
+    ambiguousActions.slice(0, ACTION_HISTORY_RESUME_LIMIT).forEach((action, index) => {
+      lines.push(`${index + 1}. ${action.toolName} (${action.callId})`)
+      lines.push(`   args: ${compactJsonForPrompt(action.args)}`)
+      lines.push(`   reason: ${truncateForPrompt(action.reason.replace(/\s+/g, ' '), 260)}`)
+    })
+  }
+
+  return lines.join('\n')
+}
+
 export const runAgentLoop = async (
   mainWindow: BrowserWindow,
   reqId: string,
@@ -60,6 +182,8 @@ export const runAgentLoop = async (
     resources?: SessionResource[]
     /** Per-conversation id for action-log persistence. Falls back to reqId. */
     sessionId?: string
+    /** Existing run checkpoint to continue without adding a new user message. */
+    resumeFromRunId?: string
   },
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): Promise<void> => {
@@ -74,9 +198,30 @@ export const runAgentLoop = async (
   const skillTools = isSkill ? options.skill!.tools || [] : []
   const toolScope = isSkill ? new Set<string>(skillTools) : 'all'
 
+  // Per-conversation action log: persists tool call history across runs so the model can
+  // consult what it did earlier in the same conversation, even after context truncation.
+  const conversationId = options.sessionId || reqId
+  const actionLog = new ActionLog(getActionLogPath(conversationId))
+  const resumeCheckpoint = options.resumeFromRunId
+    ? loadRunCheckpoint(conversationId, options.resumeFromRunId)
+    : undefined
+
+  const resumeLoadError =
+    options.resumeFromRunId && !resumeCheckpoint
+      ? `No resumable checkpoint found for run ${options.resumeFromRunId}. Regenerate the message if you want to start over.`
+      : undefined
+
   // Prepare messages history
   let messages: ChatCompletionMessage[] = []
-  if (isSkill) {
+  if (resumeLoadError) {
+    messages = []
+  } else if (resumeCheckpoint) {
+    messages = cloneMessagesForCheckpoint(resumeCheckpoint.messages)
+    messages.push({
+      role: 'system',
+      content: buildCheckpointResumePrompt(resumeCheckpoint, actionLog)
+    })
+  } else if (isSkill) {
     messages = buildSkillMessages({
       apiUrl: options.apiUrl,
       apiKey: options.apiKey,
@@ -93,15 +238,18 @@ export const runAgentLoop = async (
       options.resources,
       permissions
     )
+    messages = injectPromptBeforeLatestUser(messages, buildResumeActionHistoryPrompt(actionLog))
   }
 
-  // Per-conversation action log: persists tool call history across runs so the model can
-  // consult what it did earlier in the same conversation, even after context truncation.
-  const conversationId = options.sessionId || reqId
-  const actionLog = new ActionLog(getActionLogPath(conversationId))
-
   // Initialize Run Context
-  const initialActiveTools = toolDiscovery === 'dynamic' ? ['search_tools'] : skillTools
+  const initialActiveTools = toolDiscovery === 'dynamic' ? ['search_tools'] : [...skillTools]
+  if (resumeCheckpoint) {
+    for (const toolName of resumeCheckpoint.activeTools) {
+      if (!initialActiveTools.includes(toolName)) {
+        initialActiveTools.push(toolName)
+      }
+    }
+  }
   // Dynamic mode: pre-activate every tool surfaced in the system-prompt directory so that
   // "you may call them directly" actually holds. Without this, a direct call to a directory
   // tool that has not yet been discovered via search_tools fails the whitelist check and is
@@ -132,6 +280,18 @@ export const runAgentLoop = async (
   runCtx.maxSteps = maxSteps
   const signal = runCtx.signal
 
+  for (const message of messages) {
+    if (
+      message.role === 'tool' &&
+      message.tool_call_id &&
+      typeof message.content === 'string' &&
+      message.content.length > TOOL_OUTPUT_SPILLOVER_THRESHOLD
+    ) {
+      runCtx.storeToolOutput(message.tool_call_id, message.content)
+      runCtx.activateTool('read_tool_output')
+    }
+  }
+
   let fetchUrlsCount = 0
   const MAX_FETCH_URLS_PER_RUN = 10
 
@@ -139,6 +299,23 @@ export const runAgentLoop = async (
   // complement the hard maxSteps ceiling. Scoped to this run.
   const loopGuard = new LoopGuard()
   let haltRequested = false
+  const ambiguousActions: AmbiguousAction[] = [...(resumeCheckpoint?.ambiguousActions || [])]
+
+  const persistCheckpoint = (checkpointStep: number, lastCompletedCallId?: string): void => {
+    try {
+      saveRunCheckpoint({
+        sessionId: conversationId,
+        reqId,
+        step: checkpointStep,
+        messages: cloneMessagesForCheckpoint(messages),
+        activeTools: Array.from(runCtx.activeTools),
+        lastCompletedCallId,
+        ambiguousActions: ambiguousActions.slice(-ACTION_HISTORY_RESUME_LIMIT)
+      })
+    } catch (err) {
+      console.warn('Failed to save run checkpoint:', (err as Error).message)
+    }
+  }
 
   const setRunEnd = (
     status: 'completed' | 'cancelled' | 'failed' | 'max_steps',
@@ -157,10 +334,15 @@ export const runAgentLoop = async (
   }
 
   try {
+    if (resumeLoadError) {
+      throw new Error(resumeLoadError)
+    }
+
     sendEvent(mainWindow, reqId, {
       type: 'agent_start',
       skillName: isSkill ? options.skill!.name : 'General Agent'
     })
+    persistCheckpoint(0)
 
     // Declaration cache: the set of tools to declare only changes when activeTools changes
     // (a tool is discovered), so we can avoid rebuilding and re-serialising every step.
@@ -522,9 +704,17 @@ export const runAgentLoop = async (
             }
           } catch (error) {
             const err = error as Error
-            const errorCategory = isRetryableError(err, DEFAULT_RETRY_POLICY)
-              ? '[Transient Error - retries exhausted]'
-              : '[Permanent Error - do not retry this action]'
+            const interrupted =
+              signal.aborted ||
+              err.name === 'AbortError' ||
+              err.message.toLowerCase().includes('aborted') ||
+              err.message.toLowerCase().includes('cancelled')
+            const isAmbiguousSideEffect = SIDE_EFFECTING_TOOLS.has(toolName) && interrupted
+            const errorCategory = isAmbiguousSideEffect
+              ? '[Ambiguous Side Effect - inspect state before repeating]'
+              : isRetryableError(err, DEFAULT_RETRY_POLICY)
+                ? '[Transient Error - retries exhausted]'
+                : '[Permanent Error - do not retry this action]'
 
             // Track consecutive failures of this tool. Repeated failures first nudge the model,
             // then halt the turn so we return a best-effort answer instead of looping.
@@ -539,7 +729,16 @@ export const runAgentLoop = async (
 
             const errorContent = `${errorCategory} ${err.message}${guardNote}`
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: err.message })
-            recordAction('error', errorContent)
+            if (isAmbiguousSideEffect) {
+              ambiguousActions.push({
+                callId,
+                toolName,
+                args: toolArgs,
+                reason: errorContent,
+                timestamp: Date.now()
+              })
+            }
+            recordAction(isAmbiguousSideEffect ? 'ambiguous' : 'error', errorContent)
             return {
               role: 'tool',
               tool_call_id: callId,
@@ -644,6 +843,10 @@ export const runAgentLoop = async (
             messages.push(response)
           }
         }
+        const lastRecordedCallId = [...toolResponses]
+          .reverse()
+          .find((response): response is ChatCompletionMessage => !!response)?.tool_call_id
+        persistCheckpoint(step, lastRecordedCallId)
 
         // A loop-guard halt ends tool use immediately; fall through to the final-answer path.
         if (haltRequested) {
@@ -709,11 +912,11 @@ export const runAgentLoop = async (
       setRunEnd('cancelled')
       mainWindow.webContents.send('chat-chunk', { reqId, cancelled: true, done: true })
     } else {
+      setRunEnd('failed', err.message || 'Agent Loop failed')
       mainWindow.webContents.send('chat-chunk', {
         reqId,
         error: err.message || 'Agent Loop failed'
       })
-      setRunEnd('failed', err.message || 'Agent Loop failed')
       mainWindow.webContents.send('chat-chunk', { reqId, done: true })
     }
   } finally {

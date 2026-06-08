@@ -159,6 +159,7 @@ export interface UseChatCompletionReturn {
   handleStartEdit: (msg: Message) => void
   handleSaveEdit: (msgId: string) => void
   handleRegenerate: (msgIdx: number) => void
+  handleResumeAgentRun: (msgIdx: number) => void
   showHelpMessage: () => Promise<void>
   handleAbortGeneration: () => void
 }
@@ -172,6 +173,20 @@ interface ApiMessage {
         text?: string
         image_url?: { url: string }
       }>
+}
+
+const RUNTIME_ERROR_PREFIXES = [
+  '⚠️ 出错了：',
+  '⚠️ 出错了:',
+  'Agent Skill failed:',
+  'Agent resume failed:'
+]
+
+export const isRuntimeErrorAssistantMessage = (msg: Message): boolean => {
+  if (msg.role !== 'assistant') return false
+  if (msg.isRuntimeError) return true
+  const content = (msg.content || '').trim()
+  return RUNTIME_ERROR_PREFIXES.some((prefix) => content.startsWith(prefix))
 }
 
 const SESSION_SEND_TIMEOUT_MS = 5 * 60 * 1000
@@ -298,6 +313,7 @@ export const useChatCompletion = ({
             return {
               ...m,
               content: errorText,
+              isRuntimeError: true,
               agentEvents: hasEvents
                 ? [...currentEvents, { type: 'final', content: errorText }]
                 : currentEvents
@@ -398,6 +414,7 @@ export const useChatCompletion = ({
           return {
             ...m,
             content: errorText,
+            isRuntimeError: true,
             agentEvents: hasEvents
               ? [...currentEvents, { type: 'final', content: errorText }]
               : currentEvents
@@ -556,6 +573,8 @@ export const useChatCompletion = ({
     }
 
     currentSession.messages.slice(0, -1).forEach((msg) => {
+      if (isRuntimeErrorAssistantMessage(msg)) return
+
       let content:
         | string
         | Array<{
@@ -717,6 +736,63 @@ export const useChatCompletion = ({
     }
   }
 
+  const handleResumeAgentRun = (msgIdx: number): void => {
+    if (isGenerating) return
+    if (!apiKey && apiUrl.includes('deepseek.com')) {
+      alert('Please set the DeepSeek API Key in Settings first.')
+      setShowSettings(true)
+      return
+    }
+
+    const currentSessions: Session[] = sessionsRef.current.map((s) => ({
+      ...s,
+      messages: s.messages.map((m) => ({ ...m }))
+    }))
+    const currentSession = currentSessions.find((s) => s.id === activeSessionId)
+    const failedMsg = currentSession?.messages[msgIdx]
+    const resumeFromRunId = failedMsg?.agentRunId
+    if (!currentSession || !resumeFromRunId) return
+
+    setIsGenerating(true)
+    setInputVal('')
+
+    const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    setActiveReqId(reqId)
+
+    const assistantMsgId = (Date.now() + 1).toString()
+    const assistantMsg: Message = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      reasoning_content: '',
+      agentRunId: reqId,
+      agentEvents: []
+    }
+
+    currentSession.messages.push(assistantMsg)
+    currentSession.lastActiveTime = Date.now()
+    setSessions([...currentSessions])
+    sessionsRef.current = currentSessions
+
+    startStreamingRun(
+      reqId,
+      currentSession.id,
+      assistantMsgId,
+      () =>
+        window.api.startChatCompletion(reqId, {
+          apiUrl,
+          apiKey,
+          model: selectedModel,
+          messages: [],
+          runMode: 'agent',
+          resources: currentSession.resources,
+          sessionId: currentSession.id,
+          resumeFromRunId
+        }),
+      (msg) => `Agent resume failed: ${msg || 'network connection failed'}`
+    )
+  }
+
   return {
     inputVal,
     setInputVal,
@@ -733,6 +809,7 @@ export const useChatCompletion = ({
     handleStartEdit,
     handleSaveEdit,
     handleRegenerate,
+    handleResumeAgentRun,
     showHelpMessage,
     handleAbortGeneration
   }
