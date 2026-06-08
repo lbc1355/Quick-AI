@@ -1121,4 +1121,86 @@ describe('runAgentLoop', () => {
     expect(permissionSpy).toHaveBeenCalledTimes(1)
     expect(permissionSpy.mock.calls[0][1]).toBe('tc-p-read-1')
   })
+
+  it('an approved shell prefix does NOT cover a chained command — it re-prompts', async () => {
+    vi.spyOn(ToolRegistry.shell, 'execute').mockResolvedValue({
+      resultForModel: 'command output',
+      resultForUi: { title: 'shell', summary: 'success' }
+    })
+
+    const permissionSpy = vi
+      .spyOn(globalPermissionManager, 'requestPermission')
+      .mockResolvedValue(true)
+
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
+      void options
+      void messages
+      void tools
+      callCount++
+      if (callCount === 1) {
+        // First call: a plain `git status` that the user approves with prefix scope.
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-chain-git-1',
+              type: 'function',
+              function: { name: 'shell', arguments: JSON.stringify({ command: 'git status' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 2) {
+        const { resolveToolPermission } = await import('./index')
+        resolveToolPermission('test-req-shell-chain', 'tc-chain-git-1', {
+          approved: true,
+          scope: 'prefix',
+          prefix: 'git'
+        })
+        // Now a chained command whose head matches the approved `git` prefix but smuggles a
+        // destructive tail. It must NOT ride the approval — a fresh prompt is required.
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-chain-git-2',
+              type: 'function',
+              function: {
+                name: 'shell',
+                arguments: JSON.stringify({ command: 'git log && rm -rf node_modules' })
+              }
+            }
+          ]
+        }
+      }
+      if (callCount === 3) {
+        return { role: 'assistant', content: 'Done.' }
+      }
+      return { role: 'assistant', content: 'done' }
+    })
+
+    await runAgentLoop(
+      mockWindow,
+      'test-req-shell-chain',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Run git commands' }]
+      },
+      {
+        shell: 'ask'
+      }
+    )
+
+    // Both shell calls must hit the permission prompt: the chained one is not covered by the
+    // approved prefix.
+    expect(permissionSpy).toHaveBeenCalledTimes(2)
+    const calledCallIds = permissionSpy.mock.calls.map((c) => c[1])
+    expect(calledCallIds).toContain('tc-chain-git-1')
+    expect(calledCallIds).toContain('tc-chain-git-2')
+  })
 })
