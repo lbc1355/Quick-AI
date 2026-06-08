@@ -2374,6 +2374,81 @@ select {
   font-size: 11px;
 }
 
+.message-branch-children {
+  margin: 10px 0 2px 0;
+  padding-left: 10px;
+  border-left: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--color-text-faint);
+  font-size: 12px;
+}
+
+.message-branch-children-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.message-branch-children-label svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  opacity: 0.76;
+}
+
+.message-branch-children-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.message-branch-link {
+  width: 100%;
+  min-height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.message-branch-link:hover {
+  color: var(--color-primary);
+}
+
+.message-branch-link-title,
+.message-branch-link-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-branch-link-title {
+  color: var(--color-text-title);
+  font-weight: 500;
+}
+
+.message-branch-link-meta {
+  color: var(--color-text-faint);
+}
+
+.message-branch-link svg {
+  justify-self: end;
+  color: currentColor;
+  opacity: 0.72;
+}
+
 .message-text p {
   margin: 0 0 0.85em 0;
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { getBranchDisplayInfo, shortBranchRunId } from './branchDisplay'
+import {
+  buildBranchChildIndex,
+  getBranchDisplayInfo,
+  getBranchSourceKey,
+  shortBranchRunId
+} from './branchDisplay'
 
 describe('shortBranchRunId', () => {
   it('keeps short run ids unchanged', () => {
@@ -12,6 +17,61 @@ describe('shortBranchRunId', () => {
 
   it('returns undefined for empty run ids', () => {
     expect(shortBranchRunId('  ')).toBeUndefined()
+  })
+})
+
+describe('buildBranchChildIndex', () => {
+  it('groups branch sessions by their source message', () => {
+    const index = buildBranchChildIndex([
+      {
+        id: 'root',
+        title: 'Root',
+        messages: [{ id: 'm1', role: 'user', content: 'hi' }],
+        lastActiveTime: 1
+      },
+      {
+        id: 'branch-a',
+        title: 'Branch A',
+        messages: [],
+        lastActiveTime: 2,
+        branchOf: { sessionId: 'root', messageId: 'm1', runId: 'run-123456789' }
+      }
+    ])
+
+    expect(index[getBranchSourceKey('root', 'm1')]).toEqual([
+      {
+        sessionId: 'branch-a',
+        title: 'Branch A',
+        messageCount: 0,
+        lastActiveTime: 2,
+        sourceRunId: 'run-123456789',
+        shortRunId: 'run-1234'
+      }
+    ])
+  })
+
+  it('sorts branch children newest first', () => {
+    const index = buildBranchChildIndex([
+      {
+        id: 'old',
+        title: 'Old branch',
+        messages: [],
+        lastActiveTime: 1,
+        branchOf: { sessionId: 'root', messageId: 'm1' }
+      },
+      {
+        id: 'new',
+        title: 'New branch',
+        messages: [],
+        lastActiveTime: 10,
+        branchOf: { sessionId: 'root', messageId: 'm1' }
+      }
+    ])
+
+    expect(index[getBranchSourceKey('root', 'm1')].map((child) => child.sessionId)).toEqual([
+      'new',
+      'old'
+    ])
   })
 })
 

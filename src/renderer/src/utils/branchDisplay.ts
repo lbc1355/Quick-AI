@@ -16,6 +16,19 @@ export interface BranchDisplayInfo {
   sourceExists: boolean
 }
 
+export interface BranchChildInfo {
+  sessionId: string
+  title: string
+  messageCount: number
+  lastActiveTime?: number
+  sourceRunId?: string
+  shortRunId?: string
+}
+
+export function getBranchSourceKey(sessionId: string, messageId: string): string {
+  return `${sessionId}::${messageId}`
+}
+
 export function shortBranchRunId(runId?: string): string | undefined {
   const value = runId?.trim()
   if (!value) return undefined
@@ -43,4 +56,35 @@ export function getBranchDisplayInfo(
     sourceLabel,
     sourceExists: Boolean(sourceSession)
   }
+}
+
+export function buildBranchChildIndex(
+  sessions: Pick<Session, 'id' | 'title' | 'messages' | 'lastActiveTime' | 'branchOf'>[]
+): Record<string, BranchChildInfo[]> {
+  const index: Record<string, BranchChildInfo[]> = {}
+
+  for (const session of sessions) {
+    if (!session.branchOf) continue
+    const key = getBranchSourceKey(session.branchOf.sessionId, session.branchOf.messageId)
+    const item: BranchChildInfo = {
+      sessionId: session.id,
+      title: session.title?.trim() || 'Branch chat',
+      messageCount: session.messages.length,
+      lastActiveTime: session.lastActiveTime,
+      sourceRunId: session.branchOf.runId,
+      shortRunId: shortBranchRunId(session.branchOf.runId)
+    }
+
+    index[key] = [...(index[key] || []), item]
+  }
+
+  for (const children of Object.values(index)) {
+    children.sort((a, b) => {
+      const aTime = a.lastActiveTime || 0
+      const bTime = b.lastActiveTime || 0
+      return bTime - aTime
+    })
+  }
+
+  return index
 }

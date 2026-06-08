@@ -22,7 +22,7 @@ import {
   parseAgentLogs,
   AgentLogStep
 } from '../utils/messageFormat'
-import { shortBranchRunId } from '../utils/branchDisplay'
+import { shortBranchRunId, type BranchChildInfo } from '../utils/branchDisplay'
 
 interface LogStepRowProps {
   log: AgentLogStep
@@ -369,6 +369,7 @@ const EventToolGroup: React.FC<{
 interface MessageBubbleProps {
   msg: Message
   idx: number
+  branchChildren?: BranchChildInfo[]
   isGenerating: boolean
   editingMessageId: string | null
   editingText: string
@@ -377,6 +378,7 @@ interface MessageBubbleProps {
   onSaveEdit: (msgId: string, text: string) => void
   onRegenerate: (idx: number) => void
   onResumeAgentRun: (idx: number) => void
+  onOpenBranch: (sessionId: string) => void
   onChangeEditingText: (text: string) => void
 }
 
@@ -384,6 +386,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
   ({
     msg,
     idx,
+    branchChildren = [],
     isGenerating,
     editingMessageId,
     editingText,
@@ -392,6 +395,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onSaveEdit,
     onRegenerate,
     onResumeAgentRun,
+    onOpenBranch,
     onChangeEditingText
   }) => {
     const [isExpanded, setIsExpanded] = useState(true)
@@ -524,7 +528,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       thoughtCount > 0 && toolCallCount > 0 ? `含 ${thoughtCount} 条思考` : undefined
 
     return (
-      <div className={`message-row-shell ${msg.role}`}>
+      <div className={`message-row-shell ${msg.role}`} data-message-id={msg.id}>
         {/* 1. Collapsible logs area for structured events */}
         {hasStructuredEvents && (
           <div
@@ -993,6 +997,33 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                     )}
                   </div>
 
+                  {branchChildren.length > 0 && (
+                    <div className="message-branch-children">
+                      <div className="message-branch-children-label">
+                        <GitBranch size={12} />
+                        <span>派生分支</span>
+                      </div>
+                      <div className="message-branch-children-list">
+                        {branchChildren.map((branch) => (
+                          <button
+                            key={branch.sessionId}
+                            type="button"
+                            className="message-branch-link"
+                            onClick={() => onOpenBranch(branch.sessionId)}
+                            title={`打开分支：${branch.title}`}
+                          >
+                            <span className="message-branch-link-title">{branch.title}</span>
+                            <span className="message-branch-link-meta">
+                              {branch.messageCount} msg{branch.messageCount === 1 ? '' : 's'}
+                              {branch.shortRunId ? ` · run ${branch.shortRunId}` : ''}
+                            </span>
+                            <ChevronRight size={12} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {!isGenerating && (
                     <div
                       className="message-actions"
@@ -1039,10 +1070,23 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
   (prevProps, nextProps) => {
     const prevIsEditing = prevProps.editingMessageId === prevProps.msg.id
     const nextIsEditing = nextProps.editingMessageId === nextProps.msg.id
+    const prevBranches = prevProps.branchChildren || []
+    const nextBranches = nextProps.branchChildren || []
 
     if (prevIsEditing !== nextIsEditing) return false
     if (nextIsEditing && prevProps.editingText !== nextProps.editingText) return false
     if (prevProps.msg !== nextProps.msg) return false
+    if (prevBranches.length !== nextBranches.length) return false
+    for (let i = 0; i < prevBranches.length; i += 1) {
+      if (
+        prevBranches[i].sessionId !== nextBranches[i].sessionId ||
+        prevBranches[i].title !== nextBranches[i].title ||
+        prevBranches[i].messageCount !== nextBranches[i].messageCount ||
+        prevBranches[i].shortRunId !== nextBranches[i].shortRunId
+      ) {
+        return false
+      }
+    }
     if (prevProps.isGenerating !== nextProps.isGenerating) return false
     if (prevProps.idx !== nextProps.idx) return false
 

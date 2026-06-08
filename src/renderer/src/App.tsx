@@ -29,7 +29,11 @@ import { useAttachments } from './hooks/useAttachments'
 import { useAutocomplete } from './hooks/useAutocomplete'
 import { useChatCompletion } from './hooks/useChatCompletion'
 import { useSkills } from './hooks/useSkills'
-import { getBranchDisplayInfo } from './utils/branchDisplay'
+import {
+  buildBranchChildIndex,
+  getBranchDisplayInfo,
+  getBranchSourceKey
+} from './utils/branchDisplay'
 
 interface PopupOption {
   label: string
@@ -260,6 +264,7 @@ function App(): React.JSX.Element {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
   const isProgrammaticScrollRef = useRef(false)
+  const [pendingScrollMessageId, setPendingScrollMessageId] = useState<string | null>(null)
 
   // 3. Attachments hook
   const {
@@ -369,6 +374,26 @@ function App(): React.JSX.Element {
     }
     return undefined
   }, [sessions, activeSessionId, isGenerating])
+
+  useEffect(() => {
+    if (!pendingScrollMessageId) return
+
+    const container = messagesContainerRef.current
+    const target = container?.querySelector<HTMLElement>(
+      `[data-message-id="${pendingScrollMessageId}"]`
+    )
+    if (!target) return
+
+    shouldAutoScrollRef.current = false
+    isProgrammaticScrollRef.current = true
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+
+    const timeoutId = setTimeout(() => {
+      isProgrammaticScrollRef.current = false
+      setPendingScrollMessageId(null)
+    }, 500)
+    return () => clearTimeout(timeoutId)
+  }, [activeSessionId, activeSession?.messages.length, pendingScrollMessageId])
 
   // Handle manual scroll detection
   const handleScroll = (): void => {
@@ -689,6 +714,14 @@ function App(): React.JSX.Element {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
   }
   const activeBranchInfo = getBranchDisplayInfo(activeSession?.branchOf, sessions, '源会话')
+  const branchChildIndex = buildBranchChildIndex(sessions)
+  const openSession = (sessionId: string, messageId?: string): void => {
+    if (messageId) {
+      setPendingScrollMessageId(messageId)
+    }
+    setActiveSessionId(sessionId)
+    setAutocompleteItems([])
+  }
 
   return (
     <div
@@ -862,8 +895,7 @@ function App(): React.JSX.Element {
                       type="button"
                       className="session-main-btn"
                       onClick={() => {
-                        setActiveSessionId(session.id)
-                        setAutocompleteItems([])
+                        openSession(session.id)
                       }}
                       title={
                         branchInfo
@@ -933,8 +965,7 @@ function App(): React.JSX.Element {
                   type="button"
                   className="branch-context-link"
                   onClick={() => {
-                    setActiveSessionId(activeBranchInfo.sourceSessionId)
-                    setAutocompleteItems([])
+                    openSession(activeBranchInfo.sourceSessionId, activeBranchInfo.sourceMessageId)
                   }}
                   disabled={!activeBranchInfo.sourceExists}
                   title={activeBranchInfo.sourceExists ? '打开源会话' : '源会话已不存在'}
@@ -989,6 +1020,9 @@ function App(): React.JSX.Element {
                     key={msg.id}
                     msg={msg}
                     idx={idx}
+                    branchChildren={
+                      branchChildIndex[getBranchSourceKey(activeSessionId, msg.id)] || []
+                    }
                     isGenerating={isGenerating}
                     editingMessageId={editingMessageId}
                     editingText={editingText}
@@ -997,6 +1031,7 @@ function App(): React.JSX.Element {
                     onSaveEdit={handleSaveEdit}
                     onRegenerate={handleRegenerate}
                     onResumeAgentRun={handleResumeAgentRun}
+                    onOpenBranch={(sessionId) => openSession(sessionId)}
                     onChangeEditingText={setEditingText}
                   />
                 ))}
