@@ -72,6 +72,15 @@ interface SendMessageOptions {
 
 const SESSION_SEND_TIMEOUT_MS = 5 * 60 * 1000
 
+export const touchSessionInSnapshot = (
+  sessions: Session[],
+  sessionId: string,
+  timestamp: number
+): Session[] =>
+  sessions.map((session) =>
+    session.id === sessionId ? { ...session, lastActiveTime: timestamp } : session
+  )
+
 export const useChatCompletion = ({
   setSessions,
   setActiveSessionId,
@@ -153,19 +162,24 @@ export const useChatCompletion = ({
     })
   }
 
-  // Persist the active session after a run finishes, merging into the latest stored state.
+  const persistSessionsSnapshot = async (snapshot: Session[]): Promise<void> => {
+    await window.api.storeSet('sessions', snapshot)
+  }
+
+  const persistSessionsSnapshotSoon = (snapshot: Session[]): void => {
+    void persistSessionsSnapshot(snapshot).catch((err) => {
+      console.warn('Failed to persist sessions snapshot:', err)
+    })
+  }
+
+  // Persist the full in-memory snapshot after a run finishes. Branch relationships are spread
+  // across sessions, so persisting only one session can lose newly-created branch metadata.
   const persistActiveSession = (sessionId = activeSessionId): void => {
-    setTimeout(async () => {
-      const finalSessions = ((await window.api.storeGet('sessions')) as Session[]) || []
-      const currentActive = sessionsRef.current.find((s) => s.id === sessionId)
-      if (currentActive) {
-        currentActive.lastActiveTime = Date.now()
-        const updatedSessions = finalSessions.map((s) => (s.id === sessionId ? currentActive : s))
-        if (!updatedSessions.some((s) => s.id === sessionId)) {
-          updatedSessions.push(currentActive)
-        }
-        await window.api.storeSet('sessions', updatedSessions)
-      }
+    setTimeout(() => {
+      const updatedSessions = touchSessionInSnapshot(sessionsRef.current, sessionId, Date.now())
+      sessionsRef.current = updatedSessions
+      setSessions(updatedSessions)
+      persistSessionsSnapshotSoon(updatedSessions)
     }, 300)
   }
 
@@ -374,6 +388,7 @@ export const useChatCompletion = ({
     setActiveGenerationSessionId(targetSession.id)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
+    persistSessionsSnapshotSoon(currentSessions)
 
     // Load full messages block
     const apiMessages: ApiMessage[] = []
@@ -493,6 +508,7 @@ export const useChatCompletion = ({
     setActiveGenerationSessionId(currentSession.id)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
+    persistSessionsSnapshotSoon(currentSessions)
 
     const reqId = assistantMsgId
     setActiveReqId(reqId)
@@ -627,6 +643,7 @@ export const useChatCompletion = ({
     }
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
+    persistSessionsSnapshotSoon(currentSessions)
 
     startStreamingRun(
       reqId,

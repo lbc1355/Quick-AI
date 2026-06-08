@@ -4,7 +4,8 @@ import {
   forkResourcesForRuns,
   getRunIdsThroughMessage,
   isRuntimeErrorAssistantMessage,
-  mergeResourceUpdate
+  mergeResourceUpdate,
+  touchSessionInSnapshot
 } from './useChatCompletion'
 import { Message, Session, SessionResource } from '../../../shared/types'
 
@@ -155,5 +156,34 @@ describe('branch fork helpers', () => {
     })
     expect(forked.messages.map((m) => m.content)).toEqual(['one', 'one', 'edited two'])
     expect(forked.resources?.map((r) => r.id)).toEqual(['old'])
+  })
+})
+
+describe('touchSessionInSnapshot', () => {
+  it('updates one session timestamp without dropping branch metadata from other sessions', () => {
+    const sessions: Session[] = [
+      {
+        id: 'source',
+        title: 'Source',
+        messages: [],
+        lastActiveTime: 1
+      },
+      {
+        id: 'branch',
+        title: 'Branch',
+        messages: [],
+        lastActiveTime: 2,
+        branchOf: { sessionId: 'source', messageId: 'm1', runId: 'run-1' }
+      }
+    ]
+
+    const touched = touchSessionInSnapshot(sessions, 'source', 10)
+
+    expect(touched.find((session) => session.id === 'source')?.lastActiveTime).toBe(10)
+    expect(touched.find((session) => session.id === 'branch')?.branchOf).toEqual({
+      sessionId: 'source',
+      messageId: 'm1',
+      runId: 'run-1'
+    })
   })
 })
