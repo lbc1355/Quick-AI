@@ -90,34 +90,9 @@ export const useSessions = (): UseSessionsReturn => {
     const activeSess = currentSessions.find((s) => s.id === currentActiveId)
     if (!activeSess) return
 
-    // If the active session is empty, do nothing
-    if (activeSess.messages.length === 0) return
-
-    const lastActive = activeSess.lastActiveTime || Number(activeSess.id)
-    const elapsed = Date.now() - lastActive
-    const fiveMinutes = 5 * 60 * 1000
-
-    if (elapsed > fiveMinutes) {
-      // Create new session
-      const newSession: Session = {
-        id: Date.now().toString(),
-        title: '新对话',
-        messages: [],
-        lastActiveTime: Date.now()
-      }
-      const updated = [newSession, ...currentSessions]
-      setSessions(updated)
-      sessionsRef.current = updated
-      setActiveSessionId(newSession.id)
-      await window.api.storeSet('sessions', updated)
-    } else {
-      // Within 5 minutes, only persist the active timer. Avoid a visible rerender on every summon.
-      const updated = currentSessions.map((s) =>
-        s.id === currentActiveId ? { ...s, lastActiveTime: Date.now() } : s
-      )
-      sessionsRef.current = updated
-      await window.api.storeSet('sessions', updated)
-    }
+    // Summoning the panel should never create or touch a conversation. Timeout splitting happens
+    // only when the user actually sends a message.
+    sessionsRef.current = currentSessions
   }
 
   // Load sessions from storage on startup

@@ -31,7 +31,9 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
   useEffect(() => {
     if (autocompleteItems.length > 0 && skillsMenuRef.current) {
       const container = skillsMenuRef.current
-      const selectedElement = container.children[selectedItemIdx] as HTMLElement
+      const selectedElement = container.querySelector<HTMLElement>(
+        `[data-autocomplete-index="${selectedItemIdx}"]`
+      )
       if (selectedElement) {
         selectedElement.scrollIntoView({ block: 'nearest' })
       }

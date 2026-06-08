@@ -15,6 +15,8 @@ let tray: Tray | null = null
 let store: FileStore | null = null
 let isWindowVisible = false
 let isFilePickerActive = false
+let isQuitting = false
+let isWindowPinned = false
 const winWidth = 780
 const winHeight = 520
 const hiddenX = -9999
@@ -51,7 +53,7 @@ function createWindow(): void {
 
   // Focus-loss auto-hide behavior
   mainWindow.on('blur', () => {
-    if (isFilePickerActive) return
+    if (isFilePickerActive || isWindowPinned) return
     if (store) {
       const autoHide = store.get('settings').autoHideOnBlur
       if (autoHide && mainWindow && isWindowVisible) {
@@ -70,8 +72,13 @@ function createWindow(): void {
 
   // Prevent window from being destroyed on close (e.g. Alt+F4) and hide instead
   mainWindow.on('close', (event) => {
+    if (isQuitting) return
     event.preventDefault()
     hideWindow()
+  })
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -152,6 +159,7 @@ function createTray(): void {
     {
       label: '退出 QuickAI',
       click: () => {
+        isQuitting = true
         app.quit()
       }
     }
@@ -285,6 +293,10 @@ app.whenReady().then(() => {
     isFilePickerActive = active
   })
 
+  ipcMain.on('set-window-pinned', (_event, pinned) => {
+    isWindowPinned = pinned === true
+  })
+
   ipcMain.on('re-summon-window', () => {
     if (mainWindow) {
       showWindow()
@@ -340,6 +352,10 @@ app.whenReady().then(() => {
       createWindow()
     }
   })
+})
+
+app.on('before-quit', () => {
+  isQuitting = true
 })
 
 // Clean up global shortcuts when app closes

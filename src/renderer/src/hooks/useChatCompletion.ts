@@ -1,5 +1,13 @@
 import React, { useState } from 'react'
-import { ChatChunkData, Message, Session, Skill, RunMode, AgentEvent, SessionResource } from '../../../shared/types'
+import {
+  ChatChunkData,
+  Message,
+  Session,
+  Skill,
+  RunMode,
+  AgentEvent,
+  SessionResource
+} from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
 
 const mergeResourceRanges = (
@@ -121,6 +129,7 @@ const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Message => 
 
 interface UseChatCompletionProps {
   setSessions: React.Dispatch<React.SetStateAction<Session[]>>
+  setActiveSessionId: React.Dispatch<React.SetStateAction<string>>
   activeSessionId: string
   sessionsRef: React.MutableRefObject<Session[]>
   apiKey: string
@@ -165,8 +174,11 @@ interface ApiMessage {
       }>
 }
 
+const SESSION_SEND_TIMEOUT_MS = 5 * 60 * 1000
+
 export const useChatCompletion = ({
   setSessions,
+  setActiveSessionId,
   activeSessionId,
   sessionsRef,
   apiKey,
@@ -184,15 +196,55 @@ export const useChatCompletion = ({
   const [activeReqId, setActiveReqId] = useState<string | null>(null)
   const [runMode, setRunMode] = useState<RunMode>('chat')
 
+  const resolveSessionForSend = (
+    currentSessions: Session[],
+    allowTimeoutSplit: boolean
+  ): Session => {
+    const now = Date.now()
+    let currentSession = currentSessions.find((s) => s.id === activeSessionId)
+
+    if (!currentSession) {
+      currentSession = {
+        id: now.toString(),
+        title: 'New chat',
+        messages: [],
+        lastActiveTime: now
+      }
+      currentSessions.unshift(currentSession)
+      setActiveSessionId(currentSession.id)
+      return currentSession
+    }
+
+    const lastActive = currentSession.lastActiveTime || Number(currentSession.id)
+    const shouldSplitForTimeout =
+      allowTimeoutSplit &&
+      currentSession.messages.length > 0 &&
+      Number.isFinite(lastActive) &&
+      now - lastActive > SESSION_SEND_TIMEOUT_MS
+
+    if (!shouldSplitForTimeout) return currentSession
+
+    const newSession: Session = {
+      id: now.toString(),
+      title: 'New chat',
+      messages: [],
+      lastActiveTime: now
+    }
+    currentSessions.unshift(newSession)
+    setActiveSessionId(newSession.id)
+    return newSession
+  }
+
   // Replace a single message in the active session, keeping sessionsRef in sync.
   const updateMessageById = (
     msgId: string,
     updater: (m: Message) => Message,
-    touchActiveTime = true
+    touchActiveTime = true,
+    sessionId = activeSessionId
   ): void => {
     setSessions((prevSessions) => {
       const next = prevSessions.map((s) => {
-        if (s.id !== activeSessionId) return s
+        if (s.id !== sessionId) return s
         return {
           ...s,
           messages: s.messages.map((m) => (m.id === msgId ? updater(m) : m)),
@@ -205,16 +257,14 @@ export const useChatCompletion = ({
   }
 
   // Persist the active session after a run finishes, merging into the latest stored state.
-  const persistActiveSession = (): void => {
+  const persistActiveSession = (sessionId = activeSessionId): void => {
     setTimeout(async () => {
       const finalSessions = ((await window.api.storeGet('sessions')) as Session[]) || []
-      const currentActive = sessionsRef.current.find((s) => s.id === activeSessionId)
+      const currentActive = sessionsRef.current.find((s) => s.id === sessionId)
       if (currentActive) {
         currentActive.lastActiveTime = Date.now()
-        const updatedSessions = finalSessions.map((s) =>
-          s.id === activeSessionId ? currentActive : s
-        )
-        if (!updatedSessions.some((s) => s.id === activeSessionId)) {
+        const updatedSessions = finalSessions.map((s) => (s.id === sessionId ? currentActive : s))
+        if (!updatedSessions.some((s) => s.id === sessionId)) {
           updatedSessions.push(currentActive)
         }
         await window.api.storeSet('sessions', updatedSessions)
@@ -227,6 +277,7 @@ export const useChatCompletion = ({
   // tears down on done/error. `start` kicks off the underlying IPC request.
   const startStreamingRun = (
     reqId: string,
+    sessionId: string,
     assistantMsgId: string,
     start: () => void,
     formatError: (msg: string) => string
@@ -252,7 +303,8 @@ export const useChatCompletion = ({
                 : currentEvents
             }
           },
-          false
+          false,
+          sessionId
         )
         cleanup()
         return
@@ -265,15 +317,25 @@ export const useChatCompletion = ({
 
       if (data.reasoningContent) {
         accumulatedReasoning += data.reasoningContent
-        updateMessageById(assistantMsgId, (m) => ({
-          ...m,
-          reasoning_content: accumulatedReasoning
-        }))
+        updateMessageById(
+          assistantMsgId,
+          (m) => ({
+            ...m,
+            reasoning_content: accumulatedReasoning
+          }),
+          true,
+          sessionId
+        )
       }
 
       if (data.content) {
         accumulatedText += data.content
-        updateMessageById(assistantMsgId, (m) => ({ ...m, content: accumulatedText }))
+        updateMessageById(
+          assistantMsgId,
+          (m) => ({ ...m, content: accumulatedText }),
+          true,
+          sessionId
+        )
       }
 
       if (data.event) {
@@ -281,7 +343,7 @@ export const useChatCompletion = ({
           const updatedResource = data.event.resource
           setSessions((prevSessions) => {
             const next = prevSessions.map((s) => {
-              if (s.id !== activeSessionId) return s
+              if (s.id !== sessionId) return s
 
               const existingResources = s.resources || []
               const resIdx = existingResources.findIndex((r) => r.id === updatedResource.id)
@@ -305,7 +367,12 @@ export const useChatCompletion = ({
             return next
           })
         } else {
-          updateMessageById(assistantMsgId, (m) => applyAgentEventToMessage(m, data.event!))
+          updateMessageById(
+            assistantMsgId,
+            (m) => applyAgentEventToMessage(m, data.event!),
+            true,
+            sessionId
+          )
         }
       }
     })
@@ -314,7 +381,7 @@ export const useChatCompletion = ({
       unsubscribe()
       setIsGenerating(false)
       setActiveReqId(null)
-      persistActiveSession()
+      persistActiveSession(sessionId)
     }
 
     try {
@@ -336,7 +403,8 @@ export const useChatCompletion = ({
               : currentEvents
           }
         },
-        false
+        false,
+        sessionId
       )
       cleanup()
     }
@@ -407,11 +475,7 @@ export const useChatCompletion = ({
       ...s,
       messages: s.messages.map((m) => ({ ...m }))
     }))
-    const currentSession = currentSessions.find((s) => s.id === activeSessionId)
-    if (!currentSession) {
-      setIsGenerating(false)
-      return
-    }
+    const currentSession = resolveSessionForSend(currentSessions, !customMsgId)
 
     // 1. If we are editing, update message content and slice trailing messages
     if (customMsgId) {
@@ -461,6 +525,9 @@ export const useChatCompletion = ({
 
     // Update session metadata
     currentSession.lastActiveTime = Date.now()
+    if (!customMsgId && currentSession.messages.length === 1) {
+      currentSession.title = promptToSend.substring(0, 15) || 'Chat'
+    }
     if (currentSession.title === '新对话') {
       currentSession.title = promptToSend.substring(0, 15) || '聊天对话'
     }
@@ -522,6 +589,7 @@ export const useChatCompletion = ({
 
     startStreamingRun(
       reqId,
+      currentSession.id,
       assistantMsgId,
       () =>
         window.api.startChatCompletion(reqId, {
@@ -553,11 +621,7 @@ export const useChatCompletion = ({
       ...s,
       messages: s.messages.map((m) => ({ ...m }))
     }))
-    const currentSession = currentSessions.find((s) => s.id === activeSessionId)
-    if (!currentSession) {
-      setIsGenerating(false)
-      return
-    }
+    const currentSession = resolveSessionForSend(currentSessions, true)
 
     const displayPrompt = `/${skill.trigger}${userInput.trim() ? ` ${userInput.trim()}` : ''}`
     const userMsg: Message = {
@@ -570,7 +634,7 @@ export const useChatCompletion = ({
     setAttachedFiles([])
 
     currentSession.lastActiveTime = Date.now()
-    if (currentSession.messages.length === 2) {
+    if (currentSession.messages.length === 1) {
       currentSession.title = displayPrompt.substring(0, 15) || 'Agent Skill'
     }
 
@@ -592,6 +656,7 @@ export const useChatCompletion = ({
 
     startStreamingRun(
       reqId,
+      currentSession.id,
       assistantMsgId,
       () =>
         window.api.startAgentSkill(reqId, {

@@ -13,7 +13,7 @@ export const FilePreviewList: React.FC<FilePreviewListProps> = ({
   if (attachedFiles.length === 0) return null
 
   return (
-    <div style={{ padding: '0 16px', background: 'rgba(15, 15, 18, 0.4)' }}>
+    <div className="file-preview-shell">
       <div className="file-preview-list">
         {attachedFiles.map((file, idx) => (
           <div key={idx} className="file-preview-card">

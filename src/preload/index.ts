@@ -21,6 +21,7 @@ const api = {
   toggleDevTools: (): void => ipcRenderer.send('toggle-devtools'),
   setFilePickerActive: (active: boolean): void =>
     ipcRenderer.send('set-file-picker-active', active),
+  setWindowPinned: (pinned: boolean): void => ipcRenderer.send('set-window-pinned', pinned),
   reSummonWindow: (): void => ipcRenderer.send('re-summon-window'),
   startChatCompletion: (reqId: string, options: ChatRunOptions): void =>
     ipcRenderer.send('start-chat-completion', reqId, options),
@@ -29,7 +30,9 @@ const api = {
   respondToolPermission: (
     reqId: string,
     callId: string,
-    approved: boolean | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+    approved:
+      | boolean
+      | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
   ): void => ipcRenderer.send('respond-tool-permission', reqId, callId, approved),
   abortGeneration: (reqId: string): void => ipcRenderer.send('abort-generation', reqId),
   clearSessionCaches: (payload: ClearSessionCachesPayload): Promise<{ ok: boolean }> =>

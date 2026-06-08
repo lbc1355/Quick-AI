@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Settings,
   Send,
@@ -7,14 +7,16 @@ import {
   Sparkles,
   Trash2,
   Undo2,
-  Plus,
   Sun,
   Moon,
-  Square
+  Square,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Pin,
+  PinOff
 } from 'lucide-react'
 
 import { AutocompleteItem, AppSettings } from '../../shared/types'
-import { getTriggerColor } from './utils/messageFormat'
 import { ModelsModal } from './components/ModelsModal'
 import { FilePreviewList } from './components/FilePreviewList'
 import { MessageBubble } from './components/MessageBubble'
@@ -29,12 +31,17 @@ import { useSkills } from './hooks/useSkills'
 
 interface PopupOption {
   label: string
-  payload: boolean | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+  payload:
+    | boolean
+    | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
 }
 
 function getCommandPrefixes(command: string): string[] {
   if (!command) return []
-  const tokens = command.trim().split(/\s+/).filter((t) => !t.startsWith('-'))
+  const tokens = command
+    .trim()
+    .split(/\s+/)
+    .filter((t) => !t.startsWith('-'))
   const prefixes: string[] = []
   if (tokens.length > 0) {
     prefixes.push(tokens[0])
@@ -73,16 +80,105 @@ function getPopupOptions(pending: { toolName: string; args: unknown } | null): P
   return options
 }
 
+const commandText: Record<string, { title: string; description: string }> = {
+  new: { title: '新对话', description: '开始一个空白对话' },
+  clear: { title: '清空当前对话', description: '移除当前对话里的消息' },
+  settings: { title: '设置', description: '打开模型、服务商和应用设置' },
+  help: { title: '帮助', description: '显示快捷命令说明' },
+  exit: { title: '隐藏面板', description: '收起 QuickAI 窗口' }
+}
+
+const autocompleteTypeOrder: AutocompleteItem['type'][] = [
+  'command',
+  'skill',
+  'model',
+  'provider',
+  'session',
+  'delete-session'
+]
+
+const autocompleteGroupLabels: Record<AutocompleteItem['type'], string> = {
+  command: '命令',
+  skill: '技能',
+  model: '模型',
+  provider: '服务商',
+  session: '历史对话',
+  'delete-session': '删除对话'
+}
+
+const emojiPattern =
+  /[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g
+
+function cleanAutocompleteText(value: string): string {
+  return value.replace(emojiPattern, '').replace(/\s+/g, ' ').trim()
+}
+
+function splitAutocompleteName(value: string): { title: string; description: string } {
+  const clean = cleanAutocompleteText(value)
+  const parts = clean.split(/\s+-\s+/)
+  return {
+    title: parts[0] || clean,
+    description: parts.slice(1).join(' - ')
+  }
+}
+
+function getAutocompleteTitle(item: AutocompleteItem): string {
+  if (item.type === 'command' && item.cmd && commandText[item.cmd]) {
+    return commandText[item.cmd].title
+  }
+  if (item.type === 'model') return item.modelId || splitAutocompleteName(item.name).title
+  if (item.type === 'provider')
+    return splitAutocompleteName(item.name).title.replace(/^切换服务商\s*/, '')
+  if (item.type === 'delete-session') {
+    return splitAutocompleteName(item.name).title.replace(/^删除会话[:：]?\s*/, '')
+  }
+  return splitAutocompleteName(item.name).title
+}
+
+function getAutocompleteDescription(item: AutocompleteItem): string {
+  if (item.type === 'command' && item.cmd && commandText[item.cmd]) {
+    return commandText[item.cmd].description
+  }
+  const split = splitAutocompleteName(item.name)
+  if (item.type === 'skill') return split.description || '插入或运行自定义技能'
+  if (item.type === 'model') return '切换当前模型'
+  if (item.type === 'provider') return '切换当前服务商'
+  if (item.type === 'session') return '打开历史对话'
+  if (item.type === 'delete-session') return '删除这个历史对话'
+  return split.description
+}
+
+function getAutocompleteMeta(item: AutocompleteItem): string {
+  if (item.type === 'skill') {
+    if (item.skillMode === 'run') return '运行'
+    if (item.skillMode === 'send') return '发送'
+    return '插入'
+  }
+  return autocompleteGroupLabels[item.type]
+}
+
+function groupAutocompleteItems(items: AutocompleteItem[]): Array<{
+  type: AutocompleteItem['type']
+  label: string
+  items: Array<{ item: AutocompleteItem; index: number }>
+}> {
+  const indexedItems = items.map((item, index) => ({ item, index }))
+
+  return autocompleteTypeOrder
+    .map((type) => ({
+      type,
+      label: autocompleteGroupLabels[type],
+      items: indexedItems.filter(({ item }) => item.type === type)
+    }))
+    .filter((group) => group.items.length > 0)
+}
+
 function App(): React.JSX.Element {
   // Navigation
   const [showSettings, setShowSettings] = useState(false)
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number>(0)
-
-  // Close settings panel and restore local editor states
-  const handleCloseSettings = (): void => {
-    setShowSettings(false)
-    resetLocalSettings()
-  }
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isPanelPinned, setIsPanelPinned] = useState(false)
 
   // 1. Providers hook
   const {
@@ -135,6 +231,12 @@ function App(): React.JSX.Element {
     permissions,
     onChangeToolPermission
   } = useProviders()
+
+  // Close settings panel and restore local editor states
+  const handleCloseSettings = useCallback((): void => {
+    setShowSettings(false)
+    resetLocalSettings()
+  }, [resetLocalSettings])
 
   // 2. Sessions hook
   const {
@@ -190,6 +292,7 @@ function App(): React.JSX.Element {
     handleAbortGeneration
   } = useChatCompletion({
     setSessions,
+    setActiveSessionId,
     activeSessionId,
     sessionsRef,
     apiKey,
@@ -227,6 +330,11 @@ function App(): React.JSX.Element {
       window.electron.ipcRenderer.removeAllListeners('window-shown')
     }
   }, [activeSessionId, sessions, checkSessionTimeout])
+
+  useEffect(() => {
+    window.api.setWindowPinned(isPanelPinned)
+    return () => window.api.setWindowPinned(false)
+  }, [isPanelPinned])
 
   // Reset auto-scroll flag to true when a new message starts generating
   useEffect(() => {
@@ -476,7 +584,9 @@ function App(): React.JSX.Element {
   }
 
   const handlePermissionResponse = (
-    approved: boolean | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+    approved:
+      | boolean
+      | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
   ): void => {
     const pending = getPendingPermission()
     if (pending) {
@@ -557,6 +667,24 @@ function App(): React.JSX.Element {
 
   // Check if current active session is a clean "new session" with no message history
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
+  const activeProviderName = providers.find((p) => p.id === activeProviderId)?.name || 'No provider'
+  const activeModelName = selectedModel || 'No model'
+  const orderedSessions = [...sessions].sort((a, b) => {
+    const aTime = a.lastActiveTime || Number(a.id)
+    const bTime = b.lastActiveTime || Number(b.id)
+    return bTime - aTime
+  })
+  const autocompleteGroups = groupAutocompleteItems(autocompleteItems)
+  const formatSessionStamp = (timestamp: number | undefined, id: string): string => {
+    const value = timestamp || Number(id)
+    if (!Number.isFinite(value)) return ''
+    const date = new Date(value)
+    const today = new Date()
+    if (date.toDateString() === today.toDateString()) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  }
 
   return (
     <div
@@ -587,19 +715,19 @@ function App(): React.JSX.Element {
           >
             {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
           </button>
+          <button
+            className={`header-action-btn ${isPanelPinned ? 'active' : ''}`}
+            onClick={() => setIsPanelPinned((value) => !value)}
+            title={isPanelPinned ? '取消固定' : '固定窗口'}
+          >
+            {isPanelPinned ? <PinOff size={14} /> : <Pin size={14} />}
+          </button>
           {showSettings ? (
             <button className="header-action-btn" onClick={handleCloseSettings} title="返回聊天">
               <Undo2 size={14} />
             </button>
           ) : (
             <>
-              <button
-                className="header-action-btn"
-                onClick={() => handleNewSession()}
-                title="新建对话"
-              >
-                <Plus size={14} />
-              </button>
               <button
                 className="header-action-btn"
                 onClick={handleClearCurrentSession}
@@ -679,220 +807,314 @@ function App(): React.JSX.Element {
           onChangeToolPermission={onChangeToolPermission}
         />
       ) : (
-        <div className="chat-area">
-          {isNewSessionEmpty ? (
-            /* Claude Code Style clean watermark interface */
-            <div className="empty-state">
-              <Sparkles
-                size={40}
-                style={{
-                  color: 'rgba(59, 130, 246, 0.4)',
-                  filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.2))'
-                }}
-              />
-              <div
-                className="empty-title"
-                style={{
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: 'var(--color-text-title)',
-                  marginTop: '14px'
-                }}
-              >
-                QuickAI Chat Launcher
+        <div className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+          <aside className="session-sidebar">
+            <div className="session-sidebar-header">
+              <div className="sidebar-heading">
+                <div className="sidebar-title">Recent</div>
+                <div className="sidebar-subtitle">{sessions.length} conversations</div>
               </div>
-              <div
-                className="empty-desc"
-                style={{
-                  fontSize: '12.5px',
-                  color: '#6b7280',
-                  marginTop: '6px',
-                  maxWidth: '380px'
-                }}
-              >
-                按 Alt+/ 快速显示/隐藏。输入问句直接开始；输入 `/` 可以触发技能或选择加载历史聊天。
+              <div className="sidebar-actions">
+                <button
+                  type="button"
+                  className="sidebar-icon-btn"
+                  onClick={() => setIsSidebarCollapsed((value) => !value)}
+                  title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
+                  {isSidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+                </button>
               </div>
             </div>
-          ) : (
-            /* Scrollable Conversation History */
-            <div ref={messagesContainerRef} className="messages-container" onScroll={handleScroll}>
-              {activeSession?.messages.map((msg, idx) => (
-                <MessageBubble
-                  key={msg.id}
-                  msg={msg}
-                  idx={idx}
-                  isGenerating={isGenerating}
-                  editingMessageId={editingMessageId}
-                  editingText={editingText}
-                  onStartEdit={handleStartEdit}
-                  onCancelEdit={() => setEditingMessageId(null)}
-                  onSaveEdit={handleSaveEdit}
-                  onRegenerate={handleRegenerate}
-                  onChangeEditingText={setEditingText}
-                />
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
 
-          <FilePreviewList attachedFiles={attachedFiles} onRemoveFile={handleRemoveFile} />
-
-          {/* Input Area */}
-          <div className="chat-input-section">
-            {autocompleteItems.length > 0 && (
-              <div ref={skillsMenuRef} className="skills-menu">
-                {autocompleteItems.map((item, idx) => (
-                  <div
-                    key={item.id}
-                    className={`skills-item ${selectedItemIdx === idx ? 'selected' : ''}`}
-                    onClick={() => triggerAutocompleteItem(item)}
-                  >
-                    <span className="skills-trigger" style={{ color: getTriggerColor(item.type) }}>
-                      {item.trigger}
-                    </span>
-                    <span className="skills-name">
-                      {item.name
-                        .replace(
-                          /[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g,
-                          ''
-                        )
-                        .trim()}
-                    </span>
+            <div className="session-list">
+              <div className="session-item new-session-item">
+                <button
+                  type="button"
+                  className="session-main-btn"
+                  onClick={() => {
+                    void handleNewSession()
+                    setAutocompleteItems([])
+                  }}
+                  title="New chat"
+                >
+                  <span className="session-initial" aria-hidden="true">
+                    +
+                  </span>
+                  <span className="session-title">New chat</span>
+                  <span className="session-meta">Start a blank conversation</span>
+                </button>
+              </div>
+              {orderedSessions.map((session) => {
+                const isActive = session.id === activeSessionId
+                const messageCount = session.messages.length
+                return (
+                  <div key={session.id} className={`session-item ${isActive ? 'active' : ''}`}>
+                    <button
+                      type="button"
+                      className="session-main-btn"
+                      onClick={() => {
+                        setActiveSessionId(session.id)
+                        setAutocompleteItems([])
+                      }}
+                      title={session.title || 'New chat'}
+                    >
+                      <span className="session-initial" aria-hidden="true">
+                        {(session.title || 'N').trim().charAt(0).toUpperCase()}
+                      </span>
+                      <span className="session-title">{session.title || 'New chat'}</span>
+                      <span className="session-meta">
+                        {messageCount} msg{messageCount === 1 ? '' : 's'} -{' '}
+                        {formatSessionStamp(session.lastActiveTime, session.id)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="session-delete-btn"
+                      onClick={() => void handleDeleteSession(session.id)}
+                      disabled={sessions.length <= 1}
+                      title="Delete chat"
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   </div>
+                )
+              })}
+            </div>
+
+            <div className="sidebar-model-card">
+              <div className={`status-dot ${isGenerating ? 'loading' : ''}`} />
+              <div className="sidebar-model-text">
+                <span>{activeProviderName}</span>
+                <strong>{activeModelName}</strong>
+              </div>
+            </div>
+          </aside>
+
+          <section className="conversation-panel">
+            {isNewSessionEmpty ? (
+              /* Claude Code Style clean watermark interface */
+              <div className="empty-state">
+                <Sparkles
+                  size={40}
+                  style={{
+                    color: 'rgba(59, 130, 246, 0.4)',
+                    filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.2))'
+                  }}
+                />
+                <div
+                  className="empty-title"
+                  style={{
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    color: 'var(--color-text-title)',
+                    marginTop: '14px'
+                  }}
+                >
+                  QuickAI Chat Launcher
+                </div>
+                <div
+                  className="empty-desc"
+                  style={{
+                    fontSize: '12.5px',
+                    color: '#6b7280',
+                    marginTop: '6px',
+                    maxWidth: '380px'
+                  }}
+                >
+                  按 Alt+/ 快速显示/隐藏。输入问句直接开始；输入 `/`
+                  可以触发技能或选择加载历史聊天。
+                </div>
+              </div>
+            ) : (
+              /* Scrollable Conversation History */
+              <div
+                ref={messagesContainerRef}
+                className="messages-container"
+                onScroll={handleScroll}
+              >
+                {activeSession?.messages.map((msg, idx) => (
+                  <MessageBubble
+                    key={msg.id}
+                    msg={msg}
+                    idx={idx}
+                    isGenerating={isGenerating}
+                    editingMessageId={editingMessageId}
+                    editingText={editingText}
+                    onStartEdit={handleStartEdit}
+                    onCancelEdit={() => setEditingMessageId(null)}
+                    onSaveEdit={handleSaveEdit}
+                    onRegenerate={handleRegenerate}
+                    onChangeEditingText={setEditingText}
+                  />
                 ))}
+                <div ref={messagesEndRef} />
               </div>
             )}
 
-            {(() => {
-              const pending = getPendingPermission()
-              if (!pending) return null
-              const argsText = getArgsText(pending.toolName, pending.args)
+            <FilePreviewList attachedFiles={attachedFiles} onRemoveFile={handleRemoveFile} />
 
-              return (
-                <div className="permission-popup-container">
-                  <div className="permission-popup-header">
-                    <Terminal size={14} style={{ color: 'var(--color-primary)' }} />
-                    <span>是否允许执行此工具？</span>
-                  </div>
-
-                  {argsText && (
-                    <div className="permission-popup-code">
-                      {pending.toolName} {argsText}
+            {/* Input Area */}
+            <div className="chat-input-section">
+              {autocompleteItems.length > 0 && (
+                <div ref={skillsMenuRef} className="skills-menu">
+                  {autocompleteGroups.map((group) => (
+                    <div key={group.type} className="command-group">
+                      <div className="command-group-label">{group.label}</div>
+                      {group.items.map(({ item, index: itemIndex }) => {
+                        return (
+                          <div
+                            key={item.id}
+                            data-autocomplete-index={itemIndex}
+                            className={`skills-item ${selectedItemIdx === itemIndex ? 'selected' : ''}`}
+                            onClick={() => triggerAutocompleteItem(item)}
+                          >
+                            <span className="skills-trigger">{item.trigger}</span>
+                            <span className="skills-name">
+                              <span className="skills-title">{getAutocompleteTitle(item)}</span>
+                              <span className="skills-description">
+                                {getAutocompleteDescription(item)}
+                              </span>
+                            </span>
+                            <span className="skills-kind">{getAutocompleteMeta(item)}</span>
+                          </div>
+                        )
+                      })}
                     </div>
-                  )}
-
-                  <div className="permission-popup-options">
-                    {getPopupOptions(pending).map((opt, idx) => (
-                      <div
-                        key={idx}
-                        className={`permission-popup-option ${selectedOptionIndex === idx ? 'selected' : ''}`}
-                        onClick={() => handlePermissionResponse(opt.payload)}
-                      >
-                        <span className="permission-popup-badge">{idx + 1}</span>
-                        <span>{opt.label}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="permission-popup-footer">
-                    <button
-                      className="permission-popup-btn skip"
-                      onClick={() => {
-                        const options = getPopupOptions(pending)
-                        const denyOption = options.find((o) => {
-                          if (typeof o.payload === 'boolean') return !o.payload
-                          return !o.payload.approved
-                        })
-                        handlePermissionResponse(denyOption ? denyOption.payload : false)
-                      }}
-                    >
-                      Skip
-                    </button>
-                    <button
-                      className="permission-popup-btn submit"
-                      onClick={() => {
-                        const options = getPopupOptions(pending)
-                        if (options[selectedOptionIndex]) {
-                          handlePermissionResponse(options[selectedOptionIndex].payload)
-                        }
-                      }}
-                    >
-                      Submit
-                    </button>
-                  </div>
+                  ))}
                 </div>
-              )
-            })()}
+              )}
 
-            <div className="input-container">
-              <label
-                htmlFor="file-input"
-                className="input-action-btn"
-                title="上传文件 (支持拖拽/粘贴图片)"
-                style={{ cursor: 'pointer' }}
-              >
-                <Paperclip size={16} />
-                <input
-                  ref={fileInputRef}
-                  id="file-input"
-                  type="file"
-                  style={{ display: 'none' }}
-                  multiple
-                  onChange={handleFileChange}
-                  onClick={() => window.api.setFilePickerActive(true)}
-                />
-              </label>
-              <textarea
-                ref={textareaRef}
-                className="chat-input"
-                placeholder={
-                  pendingPermission
-                    ? '请先响应上方的工具执行权限请求...'
-                    : '输入您的问题... (Esc 隐藏, Shift+Enter 换行, / 命令快捷词)'
-                }
-                value={pendingPermission ? '' : inputVal}
-                onChange={handleInputChange}
-                onKeyDown={handleInputKeyDown}
-                onPaste={handlePaste}
-                rows={1}
-                disabled={!!pendingPermission}
-              />
-              <div className="chat-actions">
-                <button
-                  type="button"
-                  className={`run-mode-btn ${runMode}`}
-                  onClick={() => setRunMode(runMode === 'chat' ? 'agent' : 'chat')}
-                  title={
-                    runMode === 'agent'
-                      ? '当前为 Agent 模式 (支持动态工具发现)'
-                      : '当前为普通 Chat 模式'
-                  }
+              {(() => {
+                const pending = getPendingPermission()
+                if (!pending) return null
+                const argsText = getArgsText(pending.toolName, pending.args)
+
+                return (
+                  <div className="permission-popup-container">
+                    <div className="permission-popup-header">
+                      <Terminal size={14} style={{ color: 'var(--color-primary)' }} />
+                      <span>是否允许执行此工具？</span>
+                    </div>
+
+                    {argsText && (
+                      <div className="permission-popup-code">
+                        {pending.toolName} {argsText}
+                      </div>
+                    )}
+
+                    <div className="permission-popup-options">
+                      {getPopupOptions(pending).map((opt, idx) => (
+                        <div
+                          key={idx}
+                          className={`permission-popup-option ${selectedOptionIndex === idx ? 'selected' : ''}`}
+                          onClick={() => handlePermissionResponse(opt.payload)}
+                        >
+                          <span className="permission-popup-badge">{idx + 1}</span>
+                          <span>{opt.label}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="permission-popup-footer">
+                      <button
+                        className="permission-popup-btn skip"
+                        onClick={() => {
+                          const options = getPopupOptions(pending)
+                          const denyOption = options.find((o) => {
+                            if (typeof o.payload === 'boolean') return !o.payload
+                            return !o.payload.approved
+                          })
+                          handlePermissionResponse(denyOption ? denyOption.payload : false)
+                        }}
+                      >
+                        Skip
+                      </button>
+                      <button
+                        className="permission-popup-btn submit"
+                        onClick={() => {
+                          const options = getPopupOptions(pending)
+                          if (options[selectedOptionIndex]) {
+                            handlePermissionResponse(options[selectedOptionIndex].payload)
+                          }
+                        }}
+                      >
+                        Submit
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              <div className="input-container">
+                <label
+                  htmlFor="file-input"
+                  className="input-action-btn"
+                  title="上传文件 (支持拖拽/粘贴图片)"
+                  style={{ cursor: 'pointer' }}
                 >
-                  <Sparkles size={13} className="sparkle-icon" />
-                  <span>{runMode === 'agent' ? 'Agent' : 'Chat'}</span>
-                </button>
-                {isGenerating ? (
+                  <Paperclip size={16} />
+                  <input
+                    ref={fileInputRef}
+                    id="file-input"
+                    type="file"
+                    style={{ display: 'none' }}
+                    multiple
+                    onChange={handleFileChange}
+                    onClick={() => window.api.setFilePickerActive(true)}
+                  />
+                </label>
+                <textarea
+                  ref={textareaRef}
+                  className="chat-input"
+                  placeholder={
+                    pendingPermission
+                      ? '请先响应上方的工具执行权限请求...'
+                      : '输入您的问题... (Esc 隐藏, Shift+Enter 换行, / 命令快捷词)'
+                  }
+                  value={pendingPermission ? '' : inputVal}
+                  onChange={handleInputChange}
+                  onKeyDown={handleInputKeyDown}
+                  onPaste={handlePaste}
+                  rows={1}
+                  disabled={!!pendingPermission}
+                />
+                <div className="chat-actions">
                   <button
-                    className="input-action-btn stop"
-                    onClick={handleAbortGeneration}
-                    title="终止回答"
-                    style={{ color: '#ef4444' }}
+                    type="button"
+                    className={`run-mode-btn ${runMode}`}
+                    onClick={() => setRunMode(runMode === 'chat' ? 'agent' : 'chat')}
+                    title={
+                      runMode === 'agent'
+                        ? '当前为 Agent 模式 (支持动态工具发现)'
+                        : '当前为普通 Chat 模式'
+                    }
                   >
-                    <Square size={14} fill="#ef4444" />
+                    <Sparkles size={13} className="sparkle-icon" />
+                    <span>{runMode === 'agent' ? 'Agent' : 'Chat'}</span>
                   </button>
-                ) : (
-                  <button
-                    className="input-action-btn send"
-                    onClick={() => handleSendMessage()}
-                    disabled={!inputVal.trim() && attachedFiles.length === 0}
-                    title="发送消息"
-                  >
-                    <Send size={14} />
-                  </button>
-                )}
+                  {isGenerating ? (
+                    <button
+                      className="input-action-btn stop"
+                      onClick={handleAbortGeneration}
+                      title="终止回答"
+                      style={{ color: '#ef4444' }}
+                    >
+                      <Square size={14} fill="#ef4444" />
+                    </button>
+                  ) : (
+                    <button
+                      className="input-action-btn send"
+                      onClick={() => handleSendMessage()}
+                      disabled={!inputVal.trim() && attachedFiles.length === 0}
+                      title="发送消息"
+                    >
+                      <Send size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          </section>
         </div>
       )}
 
