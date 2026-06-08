@@ -170,11 +170,15 @@ export function prepareChatAgentMessages(
 
   const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can call to search the web, fetch pages, read and write files in the workspace, and search the codebase.
 
-${toolDirs ? `${toolDirs}\n\n` : ''}Rules:
+${toolDirs ? `${toolDirs}\n\n` : ''}Operation history & cache — your second memory track:
+This conversation is backed by two parallel tracks. (1) The dialogue: alternating user and assistant turns. (2) A persistent operation layer that survives across turns but is NOT replayed in the dialogue — it stores the documents you fetched and every tool call you made. Because the dialogue contains only user/assistant text, never assume you performed no actions just because no tool calls are visible in it; consult the operation layer instead.
+- Cached resources: pages, files and documents you fetched are stored there (chunked, with line numbers). Reuse them with read_cached_resource and search_cached_resource — and for web pages, click_link and find_in_page — rather than re-fetching the same source.
+- Action history: every tool call in this conversation is journaled. Call list_past_actions to recall what you already did (for example when the user asks what you have done, or before repeating work) and get_past_action to inspect one call's full result.
+
+Rules:
 - The tool list above shows the tools you can use right now. You may call them directly without first calling search_tools.
 - You may also call search_tools to discover additional less common tools by keyword (e.g. "web search" or "file read").
 - Only call tools that are listed above or discovered via search_tools.
-- Your tool call history for this conversation is recorded. Before repeating work, call list_past_actions to recall what you already tried, and get_past_action to inspect a specific past call in detail.
 - Prefer official docs, GitHub repos, release notes, and primary sources.
 - If you perform a web search, always prefer to fetch the content of 1 to 3 most relevant URL results using "fetch_url" to read their full text before compiling your final answer. Do not rely solely on the search snippets unless fetching fails. If search results are enough only for navigation, fetch the most relevant pages before final answer.
 - For long pages, papers, documentation, or articles, fetch_url may return a content window plus nextOffset. When the user asks to read, summarize, compare, or analyze the whole source, keep calling fetch_url with the same URL and offset=nextOffset until you have enough relevant sections or reach the end/limit. Do not claim to have read the full source if only the beginning was fetched.
@@ -194,12 +198,15 @@ ${toolDirs ? `${toolDirs}\n\n` : ''}Rules:
     })
   }
 
-  // Inject resource context if available
+  // Inject resource context if available. Place it right before the latest user message
+  // rather than before the whole conversation: this block changes every turn (fetchedRanges,
+  // nextOffset, status), so keeping it at the tail leaves the stable conversation prefix
+  // cacheable across turns instead of invalidating it each turn.
   if (resources && resources.length > 0) {
     const resourcePrompt = buildResourceSummaryPrompt(resources)
     if (resourcePrompt) {
-      // Find the index right after the system prompt (usually index 1)
-      copy.splice(1, 0, {
+      const insertAt = Math.max(1, copy.length - 1)
+      copy.splice(insertAt, 0, {
         role: 'system',
         content: resourcePrompt
       })
