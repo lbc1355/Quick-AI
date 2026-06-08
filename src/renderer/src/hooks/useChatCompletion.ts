@@ -191,6 +191,38 @@ export const isRuntimeErrorAssistantMessage = (msg: Message): boolean => {
 
 const SESSION_SEND_TIMEOUT_MS = 5 * 60 * 1000
 
+export const getRunIdsThroughMessage = (messages: Message[], throughIdx: number): string[] => {
+  return Array.from(
+    new Set(
+      messages
+        .slice(0, throughIdx + 1)
+        .filter((m) => m.role === 'assistant' && m.agentRunId)
+        .map((m) => m.agentRunId as string)
+    )
+  )
+}
+
+export const forkResourcesForRuns = (
+  resources: SessionResource[] | undefined,
+  keptRunIds: string[]
+): SessionResource[] => {
+  if (!resources || resources.length === 0) return []
+  const kept = new Set(keptRunIds)
+
+  return resources
+    .map((resource) => {
+      const runIds = resource.runIds ?? []
+      if (runIds.length === 0) return resource
+      const retainedRunIds = runIds.filter((id) => kept.has(id))
+      if (retainedRunIds.length === 0) return undefined
+      return {
+        ...resource,
+        runIds: retainedRunIds
+      }
+    })
+    .filter((resource): resource is SessionResource => !!resource)
+}
+
 export const useChatCompletion = ({
   setSessions,
   setActiveSessionId,
@@ -493,6 +525,7 @@ export const useChatCompletion = ({
       messages: s.messages.map((m) => ({ ...m }))
     }))
     const currentSession = resolveSessionForSend(currentSessions, !customMsgId)
+    let sourceMessageId = customMsgId
 
     // 1. If we are editing, update message content and slice trailing messages
     if (customMsgId) {
@@ -536,6 +569,7 @@ export const useChatCompletion = ({
         content: promptToSend,
         files: [...attachedFiles]
       }
+      sourceMessageId = userMsg.id
       currentSession.messages.push(userMsg)
       setAttachedFiles([])
     }
@@ -618,7 +652,9 @@ export const useChatCompletion = ({
           messages: apiMessages,
           runMode,
           resources: currentSession.resources,
-          sessionId: currentSession.id
+          sessionId: currentSession.id,
+          sourceMessageId,
+          assistantMessageId: assistantMsgId
         }),
       (msg) => `⚠️ 出错了：${msg || '网络连接失败'}`
     )
@@ -686,7 +722,9 @@ export const useChatCompletion = ({
           skill,
           userInput,
           resources: currentSession.resources,
-          sessionId: currentSession.id
+          sessionId: currentSession.id,
+          sourceMessageId: userMsg.id,
+          assistantMessageId: assistantMsgId
         }),
       (msg) => `Agent Skill failed: ${msg}`
     )
@@ -759,6 +797,28 @@ export const useChatCompletion = ({
     const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
     setActiveReqId(reqId)
 
+    const isHistoricalResume = msgIdx < currentSession.messages.length - 1
+    const branchOf = isHistoricalResume
+      ? { sessionId: currentSession.id, messageId: failedMsg.id, runId: resumeFromRunId }
+      : undefined
+    const targetSession = isHistoricalResume
+      ? (() => {
+          const keptMessages = currentSession.messages.slice(0, msgIdx + 1).map((m) => ({ ...m }))
+          const keptRunIds = getRunIdsThroughMessage(currentSession.messages, msgIdx)
+          const forkedSession: Session = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            title: `${currentSession.title || 'Chat'} 分支`,
+            messages: keptMessages,
+            resources: forkResourcesForRuns(currentSession.resources, keptRunIds),
+            lastActiveTime: Date.now(),
+            branchOf
+          }
+          currentSessions.unshift(forkedSession)
+          setActiveSessionId(forkedSession.id)
+          return forkedSession
+        })()
+      : currentSession
+
     const assistantMsgId = (Date.now() + 1).toString()
     const assistantMsg: Message = {
       id: assistantMsgId,
@@ -766,17 +826,18 @@ export const useChatCompletion = ({
       content: '',
       reasoning_content: '',
       agentRunId: reqId,
-      agentEvents: []
+      agentEvents: [],
+      ...(branchOf ? { isBranchFork: true, forkedFrom: branchOf } : {})
     }
 
-    currentSession.messages.push(assistantMsg)
-    currentSession.lastActiveTime = Date.now()
+    targetSession.messages.push(assistantMsg)
+    targetSession.lastActiveTime = Date.now()
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
 
     startStreamingRun(
       reqId,
-      currentSession.id,
+      targetSession.id,
       assistantMsgId,
       () =>
         window.api.startChatCompletion(reqId, {
@@ -785,9 +846,13 @@ export const useChatCompletion = ({
           model: selectedModel,
           messages: [],
           runMode: 'agent',
-          resources: currentSession.resources,
-          sessionId: currentSession.id,
-          resumeFromRunId
+          resources: targetSession.resources,
+          sessionId: targetSession.id,
+          resumeFromRunId,
+          resumeSourceSessionId: currentSession.id,
+          sourceMessageId: failedMsg.id,
+          assistantMessageId: assistantMsgId,
+          branchOf
         }),
       (msg) => `Agent resume failed: ${msg || 'network connection failed'}`
     )

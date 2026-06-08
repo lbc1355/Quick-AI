@@ -9,6 +9,7 @@ import { globalPermissionManager } from './permissionManager'
 import { BrowserWindow } from 'electron'
 import { abortRun } from './AgentRunContext'
 import { ActionLog, getActionLogPath } from './actionLog'
+import { loadRunManifest } from './runManifest'
 
 vi.mock('electron', () => ({
   BrowserWindow: {},
@@ -34,6 +35,10 @@ describe('runAgentLoop', () => {
       force: true
     })
     rmSync(join(tmpdir(), 'quickai-agentloop-test', 'run_checkpoints'), {
+      recursive: true,
+      force: true
+    })
+    rmSync(join(tmpdir(), 'quickai-agentloop-test', 'run_manifests'), {
       recursive: true,
       force: true
     })
@@ -583,6 +588,70 @@ describe('runAgentLoop', () => {
     const record = new ActionLog(getActionLogPath('ambiguous-session')).get('tc-shell-ambiguous')
     expect(record?.resultStatus).toBe('ambiguous')
     expect(record?.resultSummary).toContain('inspect state before repeating')
+
+    const manifest = loadRunManifest('ambiguous-session', 'ambiguous-run-1')
+    expect(manifest?.status).toBe('cancelled')
+    expect(manifest?.actionCallIds).toContain('tc-shell-ambiguous')
+    expect(manifest?.sideEffects[0]).toMatchObject({
+      actionId: 'tc-shell-ambiguous',
+      toolName: 'shell',
+      kind: 'shell',
+      reversibility: 'ambiguous',
+      status: 'ambiguous'
+    })
+  })
+
+  it('records run manifest source ids and successful actions', async () => {
+    vi.spyOn(ToolRegistry.file_read, 'execute').mockResolvedValue({
+      resultForModel: 'Read manifest file content.',
+      resultForUi: { title: 'Read file', summary: 'Read manifest file content.' }
+    })
+
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async () => {
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-manifest-read',
+              type: 'function',
+              function: {
+                name: 'file_read',
+                arguments: JSON.stringify({ path: 'src/main/index.ts' })
+              }
+            }
+          ]
+        }
+      }
+      return { role: 'assistant', content: 'done' }
+    })
+
+    await runAgentLoop(mockWindow, 'manifest-run-1', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Read one file' }],
+      sessionId: 'manifest-session',
+      sourceMessageId: 'user-msg-1',
+      assistantMessageId: 'assistant-msg-1'
+    })
+
+    const manifest = loadRunManifest('manifest-session', 'manifest-run-1')
+    expect(manifest?.status).toBe('completed')
+    expect(manifest?.sourceMessageId).toBe('user-msg-1')
+    expect(manifest?.assistantMessageId).toBe('assistant-msg-1')
+    expect(manifest?.createdMessageIds).toEqual(['user-msg-1', 'assistant-msg-1'])
+    expect(manifest?.actionCallIds).toContain('tc-manifest-read')
+    expect(manifest?.checkpointIds).toContain('manifest-run-1')
+    expect(manifest?.sideEffects[0]).toMatchObject({
+      actionId: 'tc-manifest-read',
+      kind: 'read',
+      reversibility: 'metadata_only',
+      status: 'success'
+    })
   })
 
   it('fetch_url=ask triggers permission request and executes if approved', async () => {

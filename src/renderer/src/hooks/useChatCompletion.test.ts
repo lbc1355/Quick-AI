@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { isRuntimeErrorAssistantMessage, mergeResourceUpdate } from './useChatCompletion'
+import {
+  forkResourcesForRuns,
+  getRunIdsThroughMessage,
+  isRuntimeErrorAssistantMessage,
+  mergeResourceUpdate
+} from './useChatCompletion'
 import { Message, SessionResource } from '../../../shared/types'
 
 function res(over: Partial<SessionResource> = {}): SessionResource {
@@ -86,5 +91,33 @@ describe('isRuntimeErrorAssistantMessage', () => {
     }
 
     expect(isRuntimeErrorAssistantMessage(msg)).toBe(false)
+  })
+})
+
+describe('branch fork helpers', () => {
+  it('collects assistant run ids through a historical message index', () => {
+    const messages: Message[] = [
+      { id: 'u1', role: 'user', content: 'one' },
+      { id: 'a1', role: 'assistant', content: 'one', agentRunId: 'run-1' },
+      { id: 'u2', role: 'user', content: 'two' },
+      { id: 'a2', role: 'assistant', content: 'two', agentRunId: 'run-2' }
+    ]
+
+    expect(getRunIdsThroughMessage(messages, 2)).toEqual(['run-1'])
+  })
+
+  it('keeps only resource run ids that belong to the forked history', () => {
+    const forked = forkResourcesForRuns(
+      [
+        res({ id: 'legacy' }),
+        res({ id: 'old', runIds: ['run-1'] }),
+        res({ id: 'mixed', runIds: ['run-1', 'run-2'] }),
+        res({ id: 'future', runIds: ['run-2'] })
+      ],
+      ['run-1']
+    )
+
+    expect(forked.map((r) => r.id)).toEqual(['legacy', 'old', 'mixed'])
+    expect(forked.find((r) => r.id === 'mixed')?.runIds).toEqual(['run-1'])
   })
 })

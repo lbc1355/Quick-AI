@@ -54,6 +54,10 @@ export interface Message {
   agentEvents?: AgentEvent[]
   /** UI-visible runtime/API failure. Kept in history but omitted from future model context. */
   isRuntimeError?: boolean
+  /** True when this visible message belongs to a lightweight fork created from history. */
+  isBranchFork?: boolean
+  /** Source session/message when a branch-like session was forked from history. */
+  forkedFrom?: { sessionId: string; messageId: string; runId?: string }
 }
 
 export interface ChatCompletionMessage {
@@ -117,6 +121,7 @@ export interface Session {
   messages: Message[]
   lastActiveTime?: number
   resources?: SessionResource[]
+  branchOf?: { sessionId: string; messageId: string; runId?: string }
 }
 
 export interface ApiProvider {
@@ -215,6 +220,10 @@ export interface AgentSkillRunOptions {
   sessionId?: string
   /** Resume from a persisted run checkpoint without adding a new user message. */
   resumeFromRunId?: string
+  resumeSourceSessionId?: string
+  sourceMessageId?: string
+  assistantMessageId?: string
+  branchOf?: { sessionId: string; messageId: string; runId?: string }
 }
 
 export interface ChatChunkData {
@@ -267,4 +276,8 @@ export interface ChatRunOptions {
   sessionId?: string
   /** Resume from a persisted run checkpoint without adding a new user message. */
   resumeFromRunId?: string
+  resumeSourceSessionId?: string
+  sourceMessageId?: string
+  assistantMessageId?: string
+  branchOf?: { sessionId: string; messageId: string; runId?: string }
 }

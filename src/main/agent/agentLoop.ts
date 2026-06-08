@@ -20,6 +20,7 @@ import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
 import { evaluateToolGuard } from './constitution'
+import { analyzeCommand } from './commandSafety'
 import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
 import {
   AmbiguousAction,
@@ -27,10 +28,28 @@ import {
   RunCheckpoint,
   saveRunCheckpoint
 } from './runCheckpoint'
+import {
+  appendRunAction,
+  appendRunCheckpoint,
+  createRunManifest,
+  finishRunManifest,
+  SideEffectEntry,
+  SideEffectKind,
+  SideEffectReversibility,
+  updateRunManifest
+} from './runManifest'
 
 const ACTION_HISTORY_RESUME_LIMIT = 12
 const RESUME_MODE_PROMPT_PREFIX = '[RESUME MODE]'
 const SIDE_EFFECTING_TOOLS = new Set(['shell', 'file_write', 'remember'])
+const IRREVERSIBLE_SHELL_PATTERNS = [
+  /\b(npm|pnpm|yarn)\s+(install|add|remove|uninstall)\b/i,
+  /\bgit\s+(commit|push|merge|rebase|reset|checkout|clean)\b/i,
+  /\b(prisma|typeorm|sequelize|knex)\s+.*\bmigrate\b/i,
+  /\bmigrate\b/i,
+  /\bRemove-Item\b/i,
+  /\b(del|erase|rmdir|move|mv|rm)\b/i
+]
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -168,6 +187,102 @@ const buildCheckpointResumePrompt = (checkpoint: RunCheckpoint, actionLog: Actio
   return lines.join('\n')
 }
 
+const buildBranchForkPrompt = (branchOf: {
+  sessionId: string
+  messageId: string
+  runId?: string
+}): string => {
+  return [
+    '[BRANCH MODE]',
+    'This run was forked from an older point in the conversation history.',
+    'The visible conversation branch starts from that older checkpoint, but the real workspace may still include side effects from later discarded or sibling runs.',
+    'Do not assume files, dependencies, git state, memories, or external systems were rolled back. Inspect current state before relying on it.',
+    '',
+    `Fork source session: ${branchOf.sessionId}`,
+    `Fork source message: ${branchOf.messageId}`,
+    `Fork source run: ${branchOf.runId || 'none'}`
+  ].join('\n')
+}
+
+const extractResourceIds = (resultContent: string): string[] => {
+  const ids = new Set<string>()
+  for (const match of resultContent.matchAll(
+    /\bResource ID:\s*([a-fA-F0-9]{16,}|[A-Za-z0-9_-]{12,})/g
+  )) {
+    ids.add(match[1])
+  }
+  return Array.from(ids)
+}
+
+const getShellReversibility = (
+  command: string,
+  status: ActionRecord['resultStatus']
+): SideEffectReversibility => {
+  if (status === 'ambiguous') return 'ambiguous'
+  if (IRREVERSIBLE_SHELL_PATTERNS.some((pattern) => pattern.test(command))) return 'irreversible'
+  const verdict = analyzeCommand(command)
+  if (verdict.level === 'safe') return 'metadata_only'
+  if (status === 'success') return 'ambiguous'
+  return 'metadata_only'
+}
+
+const buildSideEffectEntry = (
+  runId: string,
+  callId: string,
+  toolName: string,
+  args: ToolArgs,
+  status: ActionRecord['resultStatus'],
+  resultContent: string
+): SideEffectEntry => {
+  let kind: SideEffectKind = 'system'
+  let reversibility: SideEffectReversibility = 'metadata_only'
+  const filesTouched: string[] = []
+  const command = typeof args.command === 'string' ? args.command : undefined
+
+  if (toolName === 'shell') {
+    kind = 'shell'
+    reversibility = getShellReversibility(command || '', status)
+  } else if (toolName === 'file_write') {
+    kind = 'file_write'
+    reversibility = status === 'success' ? 'ambiguous' : 'metadata_only'
+    if (typeof args.path === 'string') filesTouched.push(args.path)
+  } else if (toolName === 'remember') {
+    kind = 'memory'
+    reversibility = status === 'success' ? 'reversible' : 'metadata_only'
+  } else if (toolName === 'fetch_url' || toolName === 'click_link') {
+    kind = 'cache'
+    reversibility = 'metadata_only'
+  } else if (toolName === 'web_search') {
+    kind = 'external'
+    reversibility = 'metadata_only'
+  } else if (
+    toolName.includes('read') ||
+    toolName.includes('search') ||
+    toolName.includes('list')
+  ) {
+    kind = 'read'
+    reversibility = 'metadata_only'
+  }
+
+  if (status === 'denied' || status === 'blocked' || status === 'error') {
+    reversibility = reversibility === 'irreversible' ? 'irreversible' : 'metadata_only'
+  }
+
+  return {
+    actionId: callId,
+    runId,
+    toolName,
+    kind,
+    reversibility,
+    status: status === 'timeout' ? 'error' : status,
+    summary: resultContent.slice(0, 300),
+    args,
+    command,
+    filesTouched,
+    createdAt: Date.now()
+  }
+}
+
 export const runAgentLoop = async (
   mainWindow: BrowserWindow,
   reqId: string,
@@ -184,6 +299,10 @@ export const runAgentLoop = async (
     sessionId?: string
     /** Existing run checkpoint to continue without adding a new user message. */
     resumeFromRunId?: string
+    resumeSourceSessionId?: string
+    sourceMessageId?: string
+    assistantMessageId?: string
+    branchOf?: { sessionId: string; messageId: string; runId?: string }
   },
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): Promise<void> => {
@@ -202,8 +321,9 @@ export const runAgentLoop = async (
   // consult what it did earlier in the same conversation, even after context truncation.
   const conversationId = options.sessionId || reqId
   const actionLog = new ActionLog(getActionLogPath(conversationId))
+  const resumeSourceSessionId = options.resumeSourceSessionId || conversationId
   const resumeCheckpoint = options.resumeFromRunId
-    ? loadRunCheckpoint(conversationId, options.resumeFromRunId)
+    ? loadRunCheckpoint(resumeSourceSessionId, options.resumeFromRunId)
     : undefined
 
   const resumeLoadError =
@@ -239,6 +359,9 @@ export const runAgentLoop = async (
       permissions
     )
     messages = injectPromptBeforeLatestUser(messages, buildResumeActionHistoryPrompt(actionLog))
+  }
+  if (options.branchOf) {
+    messages = injectPromptBeforeLatestUser(messages, buildBranchForkPrompt(options.branchOf))
   }
 
   // Initialize Run Context
@@ -280,6 +403,15 @@ export const runAgentLoop = async (
   runCtx.maxSteps = maxSteps
   const signal = runCtx.signal
 
+  createRunManifest({
+    runId: reqId,
+    sessionId: conversationId,
+    sourceMessageId: options.sourceMessageId,
+    assistantMessageId: options.assistantMessageId,
+    parentRunId: options.resumeFromRunId,
+    branchOf: options.branchOf
+  })
+
   for (const message of messages) {
     if (
       message.role === 'tool' &&
@@ -312,6 +444,7 @@ export const runAgentLoop = async (
         lastCompletedCallId,
         ambiguousActions: ambiguousActions.slice(-ACTION_HISTORY_RESUME_LIMIT)
       })
+      appendRunCheckpoint(conversationId, reqId, reqId)
     } catch (err) {
       console.warn('Failed to save run checkpoint:', (err as Error).message)
     }
@@ -326,6 +459,7 @@ export const runAgentLoop = async (
     if (error) {
       runCtx.error = error
     }
+    finishRunManifest(conversationId, reqId, status, error)
     sendEvent(mainWindow, reqId, {
       type: 'agent_end',
       status,
@@ -559,6 +693,7 @@ export const runAgentLoop = async (
             status: ActionRecord['resultStatus'],
             resultContent: string
           ): void => {
+            const resourceIds = extractResourceIds(resultContent)
             runCtx.actionLog.append({
               callId: prep.callId,
               reqId,
@@ -573,6 +708,23 @@ export const runAgentLoop = async (
               permission: prep.permission,
               durationMs: Date.now() - toolStartTime
             })
+            const sideEffect = buildSideEffectEntry(
+              reqId,
+              prep.callId,
+              prep.toolName,
+              prep.args,
+              status,
+              resultContent
+            )
+            appendRunAction(conversationId, reqId, prep.callId, sideEffect)
+            if (resourceIds.length > 0) {
+              // Resource ids are also tracked in renderer session state; the manifest keeps a
+              // run-local ledger so branch/delete semantics do not have to infer from messages.
+              updateRunManifest(conversationId, reqId, (manifest) => ({
+                ...manifest,
+                resourceIds: Array.from(new Set([...manifest.resourceIds, ...resourceIds]))
+              }))
+            }
           }
 
           if (!prep.isValid || prep.permission === 'deny') {

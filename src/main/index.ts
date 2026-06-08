@@ -8,6 +8,7 @@ import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClie
 import { runAgentSkill, runGeneralAgent, resolveToolPermission, abortAgentSkill } from './agent'
 import { deleteActionLog, ActionLog, getActionLogPath } from './agent/actionLog'
 import { deleteRunCheckpoint, deleteRunCheckpoints } from './agent/runCheckpoint'
+import { deleteRunManifest, deleteRunManifests } from './agent/runManifest'
 import { deleteResourceFile } from './resourceCache'
 import { deleteSessionMemories } from './database'
 
@@ -255,6 +256,7 @@ app.whenReady().then(() => {
       try {
         new ActionLog(getActionLogPath(entry.sessionId)).deleteByRunIds(runIds)
         await Promise.all(runIds.map((runId) => deleteRunCheckpoint(entry.sessionId, runId)))
+        await Promise.all(runIds.map((runId) => deleteRunManifest(entry.sessionId, runId)))
       } catch (err) {
         console.warn('clear-session-caches: partial action delete failed:', (err as Error).message)
       }
@@ -273,6 +275,7 @@ app.whenReady().then(() => {
     const results = await Promise.allSettled([
       ...sessionIds.map((id) => deleteActionLog(id)),
       ...sessionIds.map((id) => deleteRunCheckpoints(id)),
+      ...sessionIds.map((id) => deleteRunManifests(id)),
       ...resourceIds.map((id) => deleteResourceFile(id))
     ])
     for (const r of results) {
