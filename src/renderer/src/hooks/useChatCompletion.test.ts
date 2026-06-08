@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
+  createForkedSession,
   forkResourcesForRuns,
   getRunIdsThroughMessage,
   isRuntimeErrorAssistantMessage,
   mergeResourceUpdate
 } from './useChatCompletion'
-import { Message, SessionResource } from '../../../shared/types'
+import { Message, Session, SessionResource } from '../../../shared/types'
 
 function res(over: Partial<SessionResource> = {}): SessionResource {
   return {
@@ -119,5 +120,40 @@ describe('branch fork helpers', () => {
 
     expect(forked.map((r) => r.id)).toEqual(['legacy', 'old', 'mixed'])
     expect(forked.find((r) => r.id === 'mixed')?.runIds).toEqual(['run-1'])
+  })
+
+  it('creates a branch session through a source message without mutating the source session', () => {
+    const source: Session = {
+      id: 'source',
+      title: 'Original',
+      messages: [
+        { id: 'u1', role: 'user', content: 'one' },
+        { id: 'a1', role: 'assistant', content: 'one', agentRunId: 'run-1' },
+        { id: 'u2', role: 'user', content: 'two' },
+        { id: 'a2', role: 'assistant', content: 'two', agentRunId: 'run-2' }
+      ],
+      resources: [res({ id: 'old', runIds: ['run-1'] }), res({ id: 'future', runIds: ['run-2'] })],
+      lastActiveTime: 1
+    }
+
+    const forked = createForkedSession({
+      sourceSession: source,
+      throughIdx: 2,
+      id: 'branch',
+      now: 10,
+      branchOf: { sessionId: 'source', messageId: 'u2' },
+      transformMessage: (message, idx) =>
+        idx === 2 ? { ...message, content: 'edited two' } : message
+    })
+
+    expect(source.messages[2].content).toBe('two')
+    expect(forked).toMatchObject({
+      id: 'branch',
+      title: 'Original 分支',
+      lastActiveTime: 10,
+      branchOf: { sessionId: 'source', messageId: 'u2' }
+    })
+    expect(forked.messages.map((m) => m.content)).toEqual(['one', 'one', 'edited two'])
+    expect(forked.resources?.map((r) => r.id)).toEqual(['old'])
   })
 })

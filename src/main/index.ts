@@ -7,8 +7,12 @@ import { StorageSchema } from '../shared/types'
 import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClient'
 import { runAgentSkill, runGeneralAgent, resolveToolPermission, abortAgentSkill } from './agent'
 import { deleteActionLog, ActionLog, getActionLogPath } from './agent/actionLog'
-import { deleteRunCheckpoint, deleteRunCheckpoints } from './agent/runCheckpoint'
-import { deleteRunManifest, deleteRunManifests } from './agent/runManifest'
+import {
+  copyRunCheckpointsForRuns,
+  deleteRunCheckpoint,
+  deleteRunCheckpoints
+} from './agent/runCheckpoint'
+import { copyRunManifestsForRuns, deleteRunManifest, deleteRunManifests } from './agent/runManifest'
 import { deleteResourceFile } from './resourceCache'
 import { deleteSessionMemories } from './database'
 
@@ -284,6 +288,32 @@ app.whenReady().then(() => {
       }
     }
     return { ok: true }
+  })
+
+  ipcMain.handle('fork-session-caches', async (_event, payload) => {
+    const sourceSessionId =
+      typeof payload?.sourceSessionId === 'string' ? payload.sourceSessionId : ''
+    const targetSessionId =
+      typeof payload?.targetSessionId === 'string' ? payload.targetSessionId : ''
+    const runIds: string[] = Array.isArray(payload?.runIds)
+      ? payload.runIds.filter((id: unknown): id is string => typeof id === 'string')
+      : []
+
+    if (!sourceSessionId || !targetSessionId || sourceSessionId === targetSessionId) {
+      return { ok: true, actions: 0, checkpoints: 0, manifests: 0 }
+    }
+
+    try {
+      const sourceLog = new ActionLog(getActionLogPath(sourceSessionId))
+      const targetLog = new ActionLog(getActionLogPath(targetSessionId))
+      const actions = sourceLog.copyByRunIdsTo(targetLog, runIds)
+      const checkpoints = copyRunCheckpointsForRuns(sourceSessionId, targetSessionId, runIds)
+      const manifests = copyRunManifestsForRuns(sourceSessionId, targetSessionId, runIds)
+      return { ok: true, actions, checkpoints, manifests }
+    } catch (err) {
+      console.warn('fork-session-caches failed:', (err as Error).message)
+      return { ok: false, actions: 0, checkpoints: 0, manifests: 0 }
+    }
   })
 
   ipcMain.handle('fetch-models', (_event, fetchUrl, apiKey) => {

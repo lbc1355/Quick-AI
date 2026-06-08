@@ -5,7 +5,8 @@ import {
   AgentSkillRunOptions,
   ChatChunkData,
   ChatRunOptions,
-  ClearSessionCachesPayload
+  ClearSessionCachesPayload,
+  ForkSessionCachesPayload
 } from '../shared/types'
 
 declare global {
@@ -31,6 +32,9 @@ declare global {
       ) => void
       abortGeneration: (reqId: string) => void
       clearSessionCaches: (payload: ClearSessionCachesPayload) => Promise<{ ok: boolean }>
+      forkSessionCaches: (
+        payload: ForkSessionCachesPayload
+      ) => Promise<{ ok: boolean; actions: number; checkpoints: number; manifests: number }>
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
     }

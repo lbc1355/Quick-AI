@@ -77,6 +77,31 @@ export function loadRunCheckpoint(sessionId: string, reqId: string): RunCheckpoi
   }
 }
 
+export function copyRunCheckpointsForRuns(
+  sourceSessionId: string,
+  targetSessionId: string,
+  runIds: string[]
+): number {
+  if (sourceSessionId === targetSessionId || runIds.length === 0) return 0
+
+  let copied = 0
+  for (const runId of runIds) {
+    const checkpoint = loadRunCheckpoint(sourceSessionId, runId)
+    if (!checkpoint) continue
+    saveRunCheckpoint({
+      sessionId: targetSessionId,
+      reqId: checkpoint.reqId,
+      step: checkpoint.step,
+      messages: checkpoint.messages,
+      activeTools: checkpoint.activeTools,
+      lastCompletedCallId: checkpoint.lastCompletedCallId,
+      ambiguousActions: checkpoint.ambiguousActions
+    })
+    copied += 1
+  }
+  return copied
+}
+
 export async function deleteRunCheckpoint(sessionId: string, reqId: string): Promise<void> {
   try {
     await fsp.unlink(getRunCheckpointPath(sessionId, reqId))

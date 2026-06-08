@@ -1,4 +1,10 @@
-import { Message, SessionResource } from '../../../shared/types'
+import { Message, Session, SessionResource } from '../../../shared/types'
+
+export interface BranchRef {
+  sessionId: string
+  messageId: string
+  runId?: string
+}
 
 export const getRunIdsThroughMessage = (messages: Message[], throughIdx: number): string[] => {
   return Array.from(
@@ -30,4 +36,40 @@ export const forkResourcesForRuns = (
       }
     })
     .filter((resource): resource is SessionResource => !!resource)
+}
+
+export const createForkedSession = ({
+  sourceSession,
+  throughIdx,
+  id,
+  now,
+  branchOf,
+  titleSuffix = ' 分支',
+  transformMessage
+}: {
+  sourceSession: Session
+  throughIdx: number
+  id: string
+  now: number
+  branchOf: BranchRef
+  titleSuffix?: string
+  transformMessage?: (message: Message, index: number) => Message
+}): Session => {
+  const clampedThroughIdx = Math.max(-1, Math.min(throughIdx, sourceSession.messages.length - 1))
+  const keptRunIds = getRunIdsThroughMessage(sourceSession.messages, clampedThroughIdx)
+  const keptMessages = sourceSession.messages
+    .slice(0, clampedThroughIdx + 1)
+    .map((message, idx) => {
+      const copied = { ...message }
+      return transformMessage ? transformMessage(copied, idx) : copied
+    })
+
+  return {
+    id,
+    title: `${sourceSession.title || 'Chat'}${titleSuffix}`,
+    messages: keptMessages,
+    resources: forkResourcesForRuns(sourceSession.resources, keptRunIds),
+    lastActiveTime: now,
+    branchOf
+  }
 }

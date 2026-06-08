@@ -247,6 +247,12 @@ export interface ClearSessionCachesPayload {
   partialActions?: Array<{ sessionId: string; runIds: string[] }>
 }
 
+export interface ForkSessionCachesPayload {
+  sourceSessionId: string
+  targetSessionId: string
+  runIds: string[]
+}
+
 export type ToolArgs = Record<string, unknown>
 
 export interface ChatToolDeclaration {

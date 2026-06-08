@@ -124,6 +124,27 @@ export function loadRunManifest(sessionId: string, runId: string): AgentRunManif
   }
 }
 
+export function copyRunManifestsForRuns(
+  sourceSessionId: string,
+  targetSessionId: string,
+  runIds: string[]
+): number {
+  if (sourceSessionId === targetSessionId || runIds.length === 0) return 0
+
+  let copied = 0
+  for (const runId of runIds) {
+    const manifest = loadRunManifest(sourceSessionId, runId)
+    if (!manifest) continue
+    saveManifest({
+      ...manifest,
+      sessionId: targetSessionId,
+      updatedAt: Date.now()
+    })
+    copied += 1
+  }
+  return copied
+}
+
 export function updateRunManifest(
   sessionId: string,
   runId: string,

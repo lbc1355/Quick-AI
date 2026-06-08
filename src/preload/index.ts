@@ -6,7 +6,8 @@ import {
   AgentSkillRunOptions,
   ChatChunkData,
   ChatRunOptions,
-  ClearSessionCachesPayload
+  ClearSessionCachesPayload,
+  ForkSessionCachesPayload
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -37,6 +38,10 @@ const api = {
   abortGeneration: (reqId: string): void => ipcRenderer.send('abort-generation', reqId),
   clearSessionCaches: (payload: ClearSessionCachesPayload): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('clear-session-caches', payload),
+  forkSessionCaches: (
+    payload: ForkSessionCachesPayload
+  ): Promise<{ ok: boolean; actions: number; checkpoints: number; manifests: number }> =>
+    ipcRenderer.invoke('fork-session-caches', payload),
   onChatChunk: (callback: (data: ChatChunkData) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, data: ChatChunkData): void => callback(data)
     ipcRenderer.on('chat-chunk', listener)

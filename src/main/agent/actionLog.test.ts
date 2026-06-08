@@ -137,6 +137,31 @@ describe('ActionLog.deleteByRunIds', () => {
   })
 })
 
+describe('ActionLog.copyByRunIdsTo', () => {
+  it('copies only records from selected runs', () => {
+    const source = new ActionLog()
+    const target = new ActionLog()
+    source.append(makeRecord({ callId: 'a', reqId: 'A' }))
+    source.append(makeRecord({ callId: 'b', reqId: 'B' }))
+    source.append(makeRecord({ callId: 'c', reqId: 'A' }))
+
+    expect(source.copyByRunIdsTo(target, ['A'])).toBe(2)
+    expect(target.size).toBe(2)
+    expect(target.get('a')).toBeDefined()
+    expect(target.get('b')).toBeUndefined()
+    expect(target.get('c')).toBeDefined()
+  })
+
+  it('returns 0 for empty run ids', () => {
+    const source = new ActionLog()
+    const target = new ActionLog()
+    source.append(makeRecord({ callId: 'a', reqId: 'A' }))
+
+    expect(source.copyByRunIdsTo(target, [])).toBe(0)
+    expect(target.size).toBe(0)
+  })
+})
+
 describe('ActionLog (persistence)', () => {
   let dir: string
   let filePath: string

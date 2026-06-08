@@ -241,6 +241,17 @@ export class ActionLog {
     return removed
   }
 
+  /** Copy records for the given runs into another log. Used when a conversation branch is forked. */
+  copyByRunIdsTo(target: ActionLog, runIds: string[]): number {
+    if (runIds.length === 0) return 0
+    const keep = new Set(runIds)
+    const copied = this.records.filter((record) => keep.has(record.reqId))
+    for (const record of copied) {
+      target.append(record)
+    }
+    return copied.length
+  }
+
   /** Write in-memory state to disk. Called on run end. */
   save(): void {
     this.flush()

@@ -2,11 +2,15 @@ import React, { useState } from 'react'
 import { Message, Session, Skill, RunMode } from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
 import { isRuntimeErrorAssistantMessage } from './chatMessageEvents'
-import { forkResourcesForRuns, getRunIdsThroughMessage } from './sessionBranching'
+import { createForkedSession, getRunIdsThroughMessage } from './sessionBranching'
 import { startStreamingRun as startChatStreamingRun } from './chatStreaming'
 
 export { isRuntimeErrorAssistantMessage, mergeResourceUpdate } from './chatMessageEvents'
-export { forkResourcesForRuns, getRunIdsThroughMessage } from './sessionBranching'
+export {
+  createForkedSession,
+  forkResourcesForRuns,
+  getRunIdsThroughMessage
+} from './sessionBranching'
 
 interface UseChatCompletionProps {
   setSessions: React.Dispatch<React.SetStateAction<Session[]>>
@@ -35,7 +39,11 @@ export interface UseChatCompletionReturn {
   setEditingText: React.Dispatch<React.SetStateAction<string>>
   runMode: RunMode
   setRunMode: React.Dispatch<React.SetStateAction<RunMode>>
-  handleSendMessage: (customPrompt?: string, customMsgId?: string) => Promise<void>
+  handleSendMessage: (
+    customPrompt?: string,
+    customMsgId?: string,
+    options?: SendMessageOptions
+  ) => Promise<void>
   handleRunAgentSkill: (skill: Skill, userInput: string) => Promise<void>
   handleStartEdit: (msg: Message) => void
   handleSaveEdit: (msgId: string) => void
@@ -54,6 +62,11 @@ interface ApiMessage {
         text?: string
         image_url?: { url: string }
       }>
+}
+
+interface SendMessageOptions {
+  branchSource?: { messageId: string; runId?: string }
+  forceBranch?: boolean
 }
 
 const SESSION_SEND_TIMEOUT_MS = 5 * 60 * 1000
@@ -222,7 +235,11 @@ export const useChatCompletion = ({
     await window.api.storeSet('sessions', updated)
   }
 
-  const handleSendMessage = async (customPrompt?: string, customMsgId?: string): Promise<void> => {
+  const handleSendMessage = async (
+    customPrompt?: string,
+    customMsgId?: string,
+    options: SendMessageOptions = {}
+  ): Promise<void> => {
     const promptToSend = customPrompt !== undefined ? customPrompt : inputVal
     if (!promptToSend.trim() && attachedFiles.length === 0 && !customPrompt) return
     if (isGenerating) return
@@ -242,12 +259,47 @@ export const useChatCompletion = ({
       messages: s.messages.map((m) => ({ ...m }))
     }))
     const currentSession = resolveSessionForSend(currentSessions, !customMsgId)
+    let targetSession = currentSession
     let sourceMessageId = customMsgId
+    let branchOf: { sessionId: string; messageId: string; runId?: string } | undefined
+    let forkedCachePayload:
+      | { sourceSessionId: string; targetSessionId: string; runIds: string[] }
+      | undefined
 
     // 1. If we are editing, update message content and slice trailing messages
     if (customMsgId) {
       const idx = currentSession.messages.findIndex((m) => m.id === customMsgId)
-      if (idx !== -1) {
+      if (idx === -1) {
+        setIsGenerating(false)
+        return
+      }
+
+      const shouldFork = options.forceBranch ?? idx < currentSession.messages.length - 1
+
+      if (shouldFork) {
+        branchOf = {
+          sessionId: currentSession.id,
+          messageId: options.branchSource?.messageId || customMsgId,
+          ...(options.branchSource?.runId ? { runId: options.branchSource.runId } : {})
+        }
+
+        targetSession = createForkedSession({
+          sourceSession: currentSession,
+          throughIdx: idx,
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          now: Date.now(),
+          branchOf,
+          transformMessage: (message, messageIdx) =>
+            messageIdx === idx ? { ...message, content: promptToSend } : message
+        })
+        currentSessions.unshift(targetSession)
+        setActiveSessionId(targetSession.id)
+        forkedCachePayload = {
+          sourceSessionId: currentSession.id,
+          targetSessionId: targetSession.id,
+          runIds: getRunIdsThroughMessage(currentSession.messages, idx)
+        }
+      } else {
         // Runs whose turns are about to be sliced away: clean up their cached resources/actions so
         // the operation history stays consistent with the dialogue after the edit/regenerate.
         const removedRunIds = currentSession.messages
@@ -287,17 +339,17 @@ export const useChatCompletion = ({
         files: [...attachedFiles]
       }
       sourceMessageId = userMsg.id
-      currentSession.messages.push(userMsg)
+      targetSession.messages.push(userMsg)
       setAttachedFiles([])
     }
 
     // Update session metadata
-    currentSession.lastActiveTime = Date.now()
-    if (!customMsgId && currentSession.messages.length === 1) {
-      currentSession.title = promptToSend.substring(0, 15) || 'Chat'
+    targetSession.lastActiveTime = Date.now()
+    if (!customMsgId && targetSession.messages.length === 1) {
+      targetSession.title = promptToSend.substring(0, 15) || 'Chat'
     }
-    if (currentSession.title === '新对话') {
-      currentSession.title = promptToSend.substring(0, 15) || '聊天对话'
+    if (targetSession.title === '新对话') {
+      targetSession.title = promptToSend.substring(0, 15) || '聊天对话'
     }
 
     // Construct request ID
@@ -311,9 +363,10 @@ export const useChatCompletion = ({
       role: 'assistant',
       content: '',
       reasoning_content: '',
-      ...(runMode === 'agent' ? { agentRunId: reqId, agentEvents: [] } : {})
+      ...(runMode === 'agent' ? { agentRunId: reqId, agentEvents: [] } : {}),
+      ...(branchOf ? { isBranchFork: true, forkedFrom: branchOf } : {})
     }
-    currentSession.messages.push(assistantMsg)
+    targetSession.messages.push(assistantMsg)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
 
@@ -323,7 +376,7 @@ export const useChatCompletion = ({
       apiMessages.push({ role: 'system', content: systemPrompt })
     }
 
-    currentSession.messages.slice(0, -1).forEach((msg) => {
+    targetSession.messages.slice(0, -1).forEach((msg) => {
       if (isRuntimeErrorAssistantMessage(msg)) return
 
       let content:
@@ -357,9 +410,20 @@ export const useChatCompletion = ({
       apiMessages.push({ role: msg.role, content })
     })
 
+    if (forkedCachePayload && forkedCachePayload.runIds.length > 0) {
+      try {
+        const copyResult = await window.api.forkSessionCaches(forkedCachePayload)
+        if (!copyResult.ok) {
+          console.warn('Failed to fork session caches:', forkedCachePayload)
+        }
+      } catch (err) {
+        console.warn('Failed to fork session caches:', forkedCachePayload, err)
+      }
+    }
+
     startStreamingRun(
       reqId,
-      currentSession.id,
+      targetSession.id,
       assistantMsgId,
       () =>
         window.api.startChatCompletion(reqId, {
@@ -368,10 +432,11 @@ export const useChatCompletion = ({
           model: selectedModel,
           messages: apiMessages,
           runMode,
-          resources: currentSession.resources,
-          sessionId: currentSession.id,
+          resources: targetSession.resources,
+          sessionId: targetSession.id,
           sourceMessageId,
-          assistantMessageId: assistantMsgId
+          assistantMessageId: assistantMsgId,
+          branchOf
         }),
       (msg) => `出错了：${msg || '网络连接失败'}`
     )
@@ -453,26 +518,10 @@ export const useChatCompletion = ({
   }
 
   const handleSaveEdit = (msgId: string): void => {
-    const nextSessions = sessionsRef.current.map((s) => {
-      if (s.id === activeSessionId) {
-        return {
-          ...s,
-          messages: s.messages.map((m) => {
-            if (m.id === msgId) {
-              return { ...m, content: editingText }
-            }
-            return m
-          }),
-          lastActiveTime: Date.now()
-        }
-      }
-      return s
-    })
-    setSessions(nextSessions)
-    sessionsRef.current = nextSessions
+    const nextText = editingText
     setEditingMessageId(null)
     setTimeout(() => {
-      const promiseOrVoid = handleSendMessage(editingText, msgId)
+      const promiseOrVoid = handleSendMessage(nextText, msgId)
       if (promiseOrVoid instanceof Promise) {
         promiseOrVoid.catch(console.error)
       }
@@ -482,9 +531,20 @@ export const useChatCompletion = ({
   const handleRegenerate = (msgIdx: number): void => {
     const currentSession = sessionsRef.current.find((s) => s.id === activeSessionId)
     if (!currentSession) return
+    const assistantMsg = currentSession.messages[msgIdx]
     const precedingUserMsg = currentSession.messages[msgIdx - 1]
-    if (precedingUserMsg && precedingUserMsg.role === 'user') {
-      const promiseOrVoid = handleSendMessage(precedingUserMsg.content, precedingUserMsg.id)
+    if (
+      assistantMsg?.role === 'assistant' &&
+      precedingUserMsg &&
+      precedingUserMsg.role === 'user'
+    ) {
+      const promiseOrVoid = handleSendMessage(precedingUserMsg.content, precedingUserMsg.id, {
+        forceBranch: msgIdx < currentSession.messages.length - 1,
+        branchSource: {
+          messageId: assistantMsg.id,
+          ...(assistantMsg.agentRunId ? { runId: assistantMsg.agentRunId } : {})
+        }
+      })
       if (promiseOrVoid instanceof Promise) {
         promiseOrVoid.catch(console.error)
       }
@@ -520,16 +580,13 @@ export const useChatCompletion = ({
       : undefined
     const targetSession = isHistoricalResume
       ? (() => {
-          const keptMessages = currentSession.messages.slice(0, msgIdx + 1).map((m) => ({ ...m }))
-          const keptRunIds = getRunIdsThroughMessage(currentSession.messages, msgIdx)
-          const forkedSession: Session = {
+          const forkedSession = createForkedSession({
+            sourceSession: currentSession,
+            throughIdx: msgIdx,
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            title: `${currentSession.title || 'Chat'} 分支`,
-            messages: keptMessages,
-            resources: forkResourcesForRuns(currentSession.resources, keptRunIds),
-            lastActiveTime: Date.now(),
-            branchOf
-          }
+            now: Date.now(),
+            branchOf: branchOf!
+          })
           currentSessions.unshift(forkedSession)
           setActiveSessionId(forkedSession.id)
           return forkedSession
@@ -549,6 +606,18 @@ export const useChatCompletion = ({
 
     targetSession.messages.push(assistantMsg)
     targetSession.lastActiveTime = Date.now()
+    if (branchOf) {
+      const runIds = getRunIdsThroughMessage(currentSession.messages, msgIdx)
+      if (runIds.length > 0) {
+        void window.api
+          .forkSessionCaches({
+            sourceSessionId: currentSession.id,
+            targetSessionId: targetSession.id,
+            runIds
+          })
+          .catch(console.warn)
+      }
+    }
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
 
