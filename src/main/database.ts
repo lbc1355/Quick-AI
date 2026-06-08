@@ -8,6 +8,7 @@ import {
   Message,
   Skill,
   Memory,
+  UserMemory,
   AppSettings,
   ApiProvider,
   SessionResourceChunk
@@ -108,6 +109,18 @@ function createSchema(database: Database.Database): void {
       content   TEXT NOT NULL,
       createdAt INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS user_memories (
+      id        TEXT PRIMARY KEY,
+      scope     TEXT NOT NULL DEFAULT 'global',
+      sessionId TEXT,
+      category  TEXT NOT NULL DEFAULT 'general',
+      content   TEXT NOT NULL,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_memories_scope ON user_memories(scope);
+    CREATE INDEX IF NOT EXISTS idx_user_memories_session ON user_memories(sessionId);
 
     CREATE TABLE IF NOT EXISTS resource_cache (
       id            TEXT PRIMARY KEY,
@@ -634,6 +647,117 @@ export function saveMemories(memories: Memory[]): void {
   for (const m of memories) {
     insert.run(m.id, m.content, m.createdAt)
   }
+}
+
+// ── User Memories CRUD helpers (layered: global / session) ───────────────
+
+const rowToUserMemory = (r: {
+  id: string
+  scope: string
+  sessionId: string | null
+  category: string
+  content: string
+  createdAt: number
+  updatedAt: number
+}): UserMemory => ({
+  id: r.id,
+  scope: r.scope === 'session' ? 'session' : 'global',
+  sessionId: r.sessionId ?? undefined,
+  category: r.category,
+  content: r.content,
+  createdAt: r.createdAt,
+  updatedAt: r.updatedAt
+})
+
+export function addMemory(m: UserMemory): void {
+  const database = getDb()
+  database
+    .prepare(
+      `INSERT OR REPLACE INTO user_memories (id, scope, sessionId, category, content, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      m.id,
+      m.scope,
+      m.scope === 'session' ? (m.sessionId ?? null) : null,
+      m.category,
+      m.content,
+      m.createdAt,
+      m.updatedAt
+    )
+}
+
+export interface MemoryQuery {
+  /** When set, restrict to this scope. Omit to return both global and the given session's. */
+  scope?: 'global' | 'session'
+  /** The current conversation; its session-scoped memories are included. */
+  sessionId?: string
+  category?: string
+  limit?: number
+}
+
+/** Build the WHERE clause + params shared by list and search. The default (no scope) returns
+ * all global memories plus the current session's session-scoped memories. */
+function buildMemoryFilter(opts: MemoryQuery): { where: string; params: unknown[] } {
+  const clauses: string[] = []
+  const params: unknown[] = []
+
+  if (opts.scope === 'global') {
+    clauses.push(`scope = 'global'`)
+  } else if (opts.scope === 'session') {
+    clauses.push(`(scope = 'session' AND sessionId = ?)`)
+    params.push(opts.sessionId ?? '')
+  } else {
+    // Both layers: every global memory, plus this session's session memories.
+    if (opts.sessionId) {
+      clauses.push(`(scope = 'global' OR (scope = 'session' AND sessionId = ?))`)
+      params.push(opts.sessionId)
+    } else {
+      clauses.push(`scope = 'global'`)
+    }
+  }
+
+  if (opts.category) {
+    clauses.push(`category = ?`)
+    params.push(opts.category)
+  }
+
+  return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params }
+}
+
+export function listMemories(opts: MemoryQuery = {}): UserMemory[] {
+  const database = getDb()
+  const { where, params } = buildMemoryFilter(opts)
+  const limit = Math.min(100, Math.max(1, opts.limit ?? 50))
+  const rows = database
+    .prepare(`SELECT * FROM user_memories ${where} ORDER BY updatedAt DESC LIMIT ?`)
+    .all(...params, limit) as Parameters<typeof rowToUserMemory>[0][]
+  return rows.map(rowToUserMemory)
+}
+
+export function searchMemories(query: string, opts: MemoryQuery = {}): UserMemory[] {
+  const q = query.trim()
+  if (!q) return listMemories(opts)
+  const database = getDb()
+  const { where, params } = buildMemoryFilter(opts)
+  const limit = Math.min(100, Math.max(1, opts.limit ?? 50))
+  const likeClause = where ? `${where} AND content LIKE ?` : `WHERE content LIKE ?`
+  const rows = database
+    .prepare(`SELECT * FROM user_memories ${likeClause} ORDER BY updatedAt DESC LIMIT ?`)
+    .all(...params, `%${q}%`, limit) as Parameters<typeof rowToUserMemory>[0][]
+  return rows.map(rowToUserMemory)
+}
+
+export function deleteMemory(id: string): void {
+  getDb().prepare('DELETE FROM user_memories WHERE id = ?').run(id)
+}
+
+/** Cascade-delete a conversation's session-scoped memories. Global memories are never touched. */
+export function deleteSessionMemories(sessionId: string): number {
+  const info = getDb()
+    .prepare(`DELETE FROM user_memories WHERE scope = 'session' AND sessionId = ?`)
+    .run(sessionId)
+  return info.changes
 }
 
 // ── Resource Cache CRUD helpers ──────────────────────────────────────────

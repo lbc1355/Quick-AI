@@ -121,7 +121,14 @@ export const runAgentLoop = async (
       initialActiveTools.push('search_cached_resource')
     }
   }
-  const runCtx = createRun(reqId, initialActiveTools, toolScope, actionLog, permissions)
+  const runCtx = createRun(
+    reqId,
+    initialActiveTools,
+    toolScope,
+    actionLog,
+    permissions,
+    options.sessionId
+  )
   runCtx.maxSteps = maxSteps
   const signal = runCtx.signal
 

@@ -9,6 +9,9 @@ export class AgentRunContext {
   completedAt?: number
   error?: string
   readonly reqId: string
+  /** The conversation this run belongs to. Used by memory tools to scope session memories.
+   * Undefined for runs started without a session (memory falls back to global-only). */
+  readonly sessionId?: string
   readonly controller: AbortController
   readonly activeTools: Set<string>
   readonly executedCalls: Set<string>
@@ -34,9 +37,11 @@ export class AgentRunContext {
     toolScope: Set<string> | 'all',
     permissionManager: PermissionManager,
     actionLog: ActionLog,
-    permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
+    permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' },
+    sessionId?: string
   ) {
     this.reqId = reqId
+    this.sessionId = sessionId
     this.controller = new AbortController()
     this.activeTools = new Set(initialTools)
     this.executedCalls = new Set()
@@ -136,7 +141,8 @@ export function createRun(
   initialTools: string[],
   toolScope: Set<string> | 'all',
   actionLog: ActionLog,
-  permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
+  permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' },
+  sessionId?: string
 ): AgentRunContext {
   const ctx = new AgentRunContext(
     reqId,
@@ -144,7 +150,8 @@ export function createRun(
     toolScope,
     globalPermissionManager,
     actionLog,
-    permissionPolicy
+    permissionPolicy,
+    sessionId
   )
   activeRuns.set(reqId, ctx)
   return ctx

@@ -165,6 +165,18 @@ export interface Memory {
   createdAt: number
 }
 
+/** A persistent user memory. `global` survives across all conversations; `session` is bound to
+ * one conversation and is cascade-deleted with it. Stored in the user_memories table. */
+export interface UserMemory {
+  id: string
+  scope: 'global' | 'session'
+  sessionId?: string
+  category: string
+  content: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface StorageSchema {
   sessions: Session[]
   settings: AppSettings

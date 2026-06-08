@@ -59,6 +59,18 @@ describe('prepareChatAgentMessages date injection', () => {
   })
 })
 
+describe('prepareChatAgentMessages memory capability hint', () => {
+  it('describes remember/recall as a persistent memory capability', () => {
+    const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }])
+    const content = msgs.find((m) => m.role === 'system')!.content as string
+    expect(content).toContain('Persistent memory')
+    expect(content).toContain('remember')
+    expect(content).toContain('recall')
+    // The model must be told memories are not auto-injected.
+    expect(content).toContain('NOT shown to you automatically')
+  })
+})
+
 describe('prepareChatAgentMessages tool directory injection', () => {
   it('injects the tool directory and drops mandatory search_tools', () => {
     const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }], undefined, undefined, {

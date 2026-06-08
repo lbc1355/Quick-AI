@@ -8,6 +8,7 @@ import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClie
 import { runAgentSkill, runGeneralAgent, resolveToolPermission, abortAgentSkill } from './agent'
 import { deleteActionLog, ActionLog, getActionLogPath } from './agent/actionLog'
 import { deleteResourceFile } from './resourceCache'
+import { deleteSessionMemories } from './database'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -246,6 +247,16 @@ app.whenReady().then(() => {
         new ActionLog(getActionLogPath(entry.sessionId)).deleteByRunIds(runIds)
       } catch (err) {
         console.warn('clear-session-caches: partial action delete failed:', (err as Error).message)
+      }
+    }
+
+    // Cascade-delete session-scoped memories for fully-removed conversations. Global memories
+    // are never touched (deleteSessionMemories filters on scope='session').
+    for (const id of sessionIds) {
+      try {
+        deleteSessionMemories(id)
+      } catch (err) {
+        console.warn('clear-session-caches: session memory delete failed:', (err as Error).message)
       }
     }
 

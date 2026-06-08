@@ -41,3 +41,21 @@ describe('AgentRunContext command-prefix approval', () => {
     expect(run.isToolApproved('shell')).toBe(true)
   })
 })
+
+describe('AgentRunContext sessionId', () => {
+  it('defaults to undefined and carries a provided sessionId', () => {
+    const noSession = new AgentRunContext('r1', [], 'all', globalPermissionManager, new ActionLog())
+    expect(noSession.sessionId).toBeUndefined()
+
+    const withSession = new AgentRunContext(
+      'r2',
+      [],
+      'all',
+      globalPermissionManager,
+      new ActionLog(),
+      undefined,
+      'sess-A'
+    )
+    expect(withSession.sessionId).toBe('sess-A')
+  })
+})

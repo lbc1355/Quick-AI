@@ -1,5 +1,11 @@
 import { fetchUrl, webSearch, formatSearchResultsForModel, renderWithLineNumbers } from './webTools'
-import { ToolArgs, ChatToolDeclaration, ToolResultUi, SessionResource } from '../shared/types'
+import {
+  ToolArgs,
+  ChatToolDeclaration,
+  ToolResultUi,
+  SessionResource,
+  UserMemory
+} from '../shared/types'
 import { getRun } from './agent/AgentRunContext'
 import { pathEscapesWorkspace } from './agent/commandSafety'
 import { resolve, normalize, relative, isAbsolute, basename, join, dirname } from 'path'
@@ -109,7 +115,14 @@ import {
   getCachedLink,
   findInResource
 } from './resourceCache'
-import { loadResourceCache } from './database'
+import {
+  loadResourceCache,
+  addMemory,
+  listMemories,
+  searchMemories,
+  MemoryQuery
+} from './database'
+import { randomUUID } from 'crypto'
 
 export interface ToolExecutionContext {
   reqId: string
@@ -943,6 +956,185 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         resultForUi: {
           title: `Past Action: ${record.toolName}`,
           summary: `Turn ${record.turnIndex} — ${record.resultStatus} (${record.durationMs}ms)`
+        }
+      }
+    }
+  },
+  remember: {
+    name: 'remember',
+    title: 'Remember',
+    description:
+      'Persist a fact, preference, or piece of context as a durable memory so you can recall it in later turns or future conversations. Use scope="global" for things true across all conversations (user preferences, identity, long-lived facts) and scope="session" for context specific to the current conversation. Memories are NOT shown to you automatically — you must call recall to retrieve them.',
+    tags: [
+      'memory',
+      'remember',
+      'save',
+      'persist',
+      'preference',
+      'fact',
+      '记忆',
+      '记住',
+      '偏好'
+    ],
+    category: 'memory',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        content: {
+          type: 'string',
+          description: 'The memory text to store. Be concise and self-contained.'
+        },
+        scope: {
+          type: 'string',
+          description:
+            'global = remember across all conversations; session = only this conversation. Default: session.',
+          enum: ['global', 'session']
+        },
+        category: {
+          type: 'string',
+          description:
+            'A short tag to organize the memory, e.g. "preference", "fact", "project", "task". Default: general.'
+        }
+      },
+      required: ['content']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const content = typeof args.content === 'string' ? args.content.trim() : ''
+      if (!content) {
+        throw new Error('Missing or invalid content parameter')
+      }
+      const MAX_MEMORY_CHARS = 4000
+      if (content.length > MAX_MEMORY_CHARS) {
+        throw new Error(
+          `Memory content is too long (${content.length} chars). Keep a single memory under ${MAX_MEMORY_CHARS} characters; store concise facts, not whole documents.`
+        )
+      }
+      const category =
+        typeof args.category === 'string' && args.category.trim()
+          ? args.category.trim().slice(0, 60)
+          : 'general'
+      let scope: 'global' | 'session' = args.scope === 'global' ? 'global' : 'session'
+
+      const run = getRun(ctx.reqId)
+      const sessionId = run?.sessionId
+      let note = ''
+      if (scope === 'session' && !sessionId) {
+        scope = 'global'
+        note = ' (no active conversation id, stored as global)'
+      }
+
+      const now = Date.now()
+      const memory: UserMemory = {
+        id: `mem_${randomUUID()}`,
+        scope,
+        sessionId: scope === 'session' ? sessionId : undefined,
+        category,
+        content,
+        createdAt: now,
+        updatedAt: now
+      }
+      addMemory(memory)
+
+      return {
+        resultForModel: `Stored ${scope} memory [${category}]${note}: "${content.slice(0, 120)}${
+          content.length > 120 ? '…' : ''
+        }"`,
+        resultForUi: {
+          title: 'Remember',
+          summary: `Saved ${scope} memory (${category})`
+        }
+      }
+    }
+  },
+  recall: {
+    name: 'recall',
+    title: 'Recall Memories',
+    description:
+      'Retrieve durable memories you stored earlier with remember. By default returns both global memories and the current conversation\'s session memories. Call this before answering when the user refers to past preferences, facts, or prior context — memories do not appear automatically.',
+    tags: [
+      'memory',
+      'recall',
+      'retrieve',
+      'remember',
+      'preference',
+      'fact',
+      '记忆',
+      '回忆',
+      '偏好'
+    ],
+    category: 'memory',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Optional text filter (substring match on memory content). Omit to list all.'
+        },
+        scope: {
+          type: 'string',
+          description:
+            'Restrict to a layer: global or session. Omit to search both global and this conversation.',
+          enum: ['global', 'session']
+        },
+        category: {
+          type: 'string',
+          description: 'Optional filter by category tag.'
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum memories to return (1-30, default 10).'
+        }
+      }
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const run = getRun(ctx.reqId)
+      const sessionId = run?.sessionId
+
+      const query: MemoryQuery = {
+        scope: args.scope === 'global' ? 'global' : args.scope === 'session' ? 'session' : undefined,
+        sessionId,
+        category:
+          typeof args.category === 'string' && args.category.trim()
+            ? args.category.trim()
+            : undefined,
+        limit:
+          typeof args.limit === 'number' && Number.isFinite(args.limit)
+            ? Math.min(30, Math.max(1, Math.floor(args.limit)))
+            : 10
+      }
+
+      const queryText = typeof args.query === 'string' ? args.query.trim() : ''
+      const results = queryText ? searchMemories(queryText, query) : listMemories(query)
+
+      if (results.length === 0) {
+        return {
+          resultForModel: queryText
+            ? `No memories found matching "${queryText}".`
+            : 'No memories stored yet.',
+          resultForUi: {
+            title: 'Recall',
+            summary: 'No memories found'
+          }
+        }
+      }
+
+      const lines = [`Found ${results.length} memory item(s) (newest first):`, '']
+      results.forEach((m, i) => {
+        const date = new Date(m.createdAt).toLocaleDateString('en-CA')
+        lines.push(`${i + 1}. [${m.scope} · ${m.category} · ${date}] ${m.content}`)
+      })
+
+      return {
+        resultForModel: lines.join('\n'),
+        resultForUi: {
+          title: 'Recall',
+          summary: `Recalled ${results.length} memory item(s)`
         }
       }
     }
