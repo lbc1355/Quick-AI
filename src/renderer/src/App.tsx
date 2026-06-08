@@ -34,6 +34,7 @@ import {
   getBranchDisplayInfo,
   getBranchSourceKey
 } from './utils/branchDisplay'
+import { getSessionGenerationState } from './utils/generationState'
 
 interface PopupOption {
   label: string
@@ -284,6 +285,7 @@ function App(): React.JSX.Element {
     inputVal,
     setInputVal,
     isGenerating,
+    activeGenerationSessionId,
     editingMessageId,
     setEditingMessageId,
     editingText,
@@ -311,6 +313,12 @@ function App(): React.JSX.Element {
     attachedFiles,
     setAttachedFiles
   })
+
+  const { isCurrentSessionGenerating, isOtherSessionGenerating } = getSessionGenerationState(
+    isGenerating,
+    activeGenerationSessionId,
+    activeSessionId
+  )
 
   // 5. Autocomplete hook
   const {
@@ -346,17 +354,17 @@ function App(): React.JSX.Element {
 
   // Reset auto-scroll flag to true when a new message starts generating
   useEffect(() => {
-    if (isGenerating) {
+    if (isCurrentSessionGenerating) {
       shouldAutoScrollRef.current = true
     }
-  }, [isGenerating])
+  }, [isCurrentSessionGenerating])
 
   // Auto-scroll when messages update
   useEffect(() => {
     if (shouldAutoScrollRef.current) {
       const container = messagesContainerRef.current
       if (container) {
-        const behavior = isGenerating ? 'auto' : 'smooth'
+        const behavior = isCurrentSessionGenerating ? 'auto' : 'smooth'
         if (behavior === 'smooth') {
           isProgrammaticScrollRef.current = true
           container.scrollTo({
@@ -373,7 +381,7 @@ function App(): React.JSX.Element {
       }
     }
     return undefined
-  }, [sessions, activeSessionId, isGenerating])
+  }, [activeSession?.messages, activeSessionId, isCurrentSessionGenerating])
 
   useEffect(() => {
     if (!pendingScrollMessageId) return
@@ -439,7 +447,7 @@ function App(): React.JSX.Element {
       if (e.key !== 'Escape') return
 
       // Do not allow ESC action during active AI generation to prevent accidental interruption
-      if (isGenerating) return
+      if (isCurrentSessionGenerating) return
 
       if (showModelsModal) {
         e.preventDefault()
@@ -460,7 +468,7 @@ function App(): React.JSX.Element {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
-    isGenerating,
+    isCurrentSessionGenerating,
     showModelsModal,
     showAddForm,
     isEditingProviderDetail,
@@ -1023,7 +1031,7 @@ function App(): React.JSX.Element {
                     branchChildren={
                       branchChildIndex[getBranchSourceKey(activeSessionId, msg.id)] || []
                     }
-                    isGenerating={isGenerating}
+                    isGenerating={isCurrentSessionGenerating}
                     editingMessageId={editingMessageId}
                     editingText={editingText}
                     onStartEdit={handleStartEdit}
@@ -1180,7 +1188,7 @@ function App(): React.JSX.Element {
                     <Sparkles size={13} className="sparkle-icon" />
                     <span>{runMode === 'agent' ? 'Agent' : 'Chat'}</span>
                   </button>
-                  {isGenerating ? (
+                  {isCurrentSessionGenerating ? (
                     <button
                       className="input-action-btn stop"
                       onClick={handleAbortGeneration}
@@ -1193,8 +1201,10 @@ function App(): React.JSX.Element {
                     <button
                       className="input-action-btn send"
                       onClick={() => handleSendMessage()}
-                      disabled={!inputVal.trim() && attachedFiles.length === 0}
-                      title="发送消息"
+                      disabled={
+                        isOtherSessionGenerating || (!inputVal.trim() && attachedFiles.length === 0)
+                      }
+                      title={isOtherSessionGenerating ? '另一个会话正在生成' : '发送消息'}
                     >
                       <Send size={14} />
                     </button>

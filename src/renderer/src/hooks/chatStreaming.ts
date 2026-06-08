@@ -21,6 +21,7 @@ interface StartStreamingRunOptions {
   setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>
   setActiveReqId: React.Dispatch<React.SetStateAction<string | null>>
   persistActiveSession: (sessionId?: string) => void
+  onCleanup?: () => void
 }
 
 const applyRuntimeError = (errorText: string): ((m: Message) => Message) => {
@@ -31,7 +32,9 @@ const applyRuntimeError = (errorText: string): ((m: Message) => Message) => {
       ...m,
       content: errorText,
       isRuntimeError: true,
-      agentEvents: hasEvents ? [...currentEvents, { type: 'final', content: errorText }] : currentEvents
+      agentEvents: hasEvents
+        ? [...currentEvents, { type: 'final', content: errorText }]
+        : currentEvents
     }
   }
 }
@@ -47,7 +50,8 @@ export const startStreamingRun = ({
   updateMessageById,
   setIsGenerating,
   setActiveReqId,
-  persistActiveSession
+  persistActiveSession,
+  onCleanup
 }: StartStreamingRunOptions): void => {
   let accumulatedText = ''
   let accumulatedReasoning = ''
@@ -57,6 +61,7 @@ export const startStreamingRun = ({
     unsubscribe()
     setIsGenerating(false)
     setActiveReqId(null)
+    onCleanup?.()
     persistActiveSession(sessionId)
   }
 

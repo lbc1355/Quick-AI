@@ -33,6 +33,7 @@ export interface UseChatCompletionReturn {
   setInputVal: React.Dispatch<React.SetStateAction<string>>
   isGenerating: boolean
   setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>
+  activeGenerationSessionId: string | null
   editingMessageId: string | null
   setEditingMessageId: React.Dispatch<React.SetStateAction<string | null>>
   editingText: string
@@ -89,6 +90,7 @@ export const useChatCompletion = ({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
   const [activeReqId, setActiveReqId] = useState<string | null>(null)
+  const [activeGenerationSessionId, setActiveGenerationSessionId] = useState<string | null>(null)
   const [runMode, setRunMode] = useState<RunMode>('chat')
 
   const resolveSessionForSend = (
@@ -174,6 +176,7 @@ export const useChatCompletion = ({
     start: () => void,
     formatError: (msg: string) => string
   ): void => {
+    setActiveGenerationSessionId(sessionId)
     startChatStreamingRun({
       reqId,
       sessionId,
@@ -185,6 +188,7 @@ export const useChatCompletion = ({
       updateMessageById,
       setIsGenerating,
       setActiveReqId,
+      onCleanup: () => setActiveGenerationSessionId(null),
       persistActiveSession
     })
   }
@@ -367,6 +371,7 @@ export const useChatCompletion = ({
       ...(branchOf ? { isBranchFork: true, forkedFrom: branchOf } : {})
     }
     targetSession.messages.push(assistantMsg)
+    setActiveGenerationSessionId(targetSession.id)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
 
@@ -485,6 +490,7 @@ export const useChatCompletion = ({
       agentEvents: []
     }
     currentSession.messages.push(assistantMsg)
+    setActiveGenerationSessionId(currentSession.id)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
 
@@ -606,6 +612,7 @@ export const useChatCompletion = ({
 
     targetSession.messages.push(assistantMsg)
     targetSession.lastActiveTime = Date.now()
+    setActiveGenerationSessionId(targetSession.id)
     if (branchOf) {
       const runIds = getRunIdsThroughMessage(currentSession.messages, msgIdx)
       if (runIds.length > 0) {
@@ -649,6 +656,7 @@ export const useChatCompletion = ({
     setInputVal,
     isGenerating,
     setIsGenerating,
+    activeGenerationSessionId,
     editingMessageId,
     setEditingMessageId,
     editingText,
