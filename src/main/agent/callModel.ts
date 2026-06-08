@@ -12,6 +12,20 @@ export interface CallModelCallbacks {
   onFinalChunk: (content: string) => void
 }
 
+export function prepareMessagesForModel(
+  messages: ChatCompletionMessage[]
+): ChatCompletionMessage[] {
+  return messages.map((m) => {
+    if (m.role !== 'assistant') return m
+
+    const copy = { ...m }
+    if (!copy.reasoning_content) {
+      delete copy.reasoning_content
+    }
+    return copy
+  })
+}
+
 export async function callModel(
   options: CallModelOptions,
   messages: ChatCompletionMessage[],
@@ -21,19 +35,9 @@ export async function callModel(
 ): Promise<ChatCompletionMessage> {
   const completionsUrl = `${options.apiUrl.replace(/\/$/, '')}/chat/completions`
 
-  // Sanitize messages to strip reasoning_content from assistant messages (causes issues on OpenAI-compatible APIs)
-  const sanitizedMessages = messages.map((m) => {
-    if (m.role === 'assistant') {
-      const copy = { ...m }
-      delete copy.reasoning_content
-      return copy
-    }
-    return m
-  })
-
   const body: Record<string, unknown> = {
     model: options.model,
-    messages: sanitizedMessages,
+    messages: prepareMessagesForModel(messages),
     stream: true
   }
 

@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest'
-import { callModel } from './callModel'
+import { callModel, prepareMessagesForModel } from './callModel'
 
 const encoder = new TextEncoder()
 
@@ -20,6 +20,40 @@ const sseStream = (chunks: string[]): ReadableStream<Uint8Array> => {
 
 const okResponse = (stream: ReadableStream<Uint8Array>): Response =>
   ({ ok: true, body: stream }) as unknown as Response
+
+describe('prepareMessagesForModel', () => {
+  it('keeps non-empty assistant reasoning content for thinking-mode history replay', () => {
+    const messages = prepareMessagesForModel([
+      { role: 'user', content: 'read the file' },
+      {
+        role: 'assistant',
+        content: '',
+        reasoning_content: 'I need to inspect the project first.',
+        tool_calls: [
+          {
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'file_read', arguments: '{"path":"src/main/index.ts"}' }
+          }
+        ]
+      },
+      { role: 'tool', tool_call_id: 'call-1', name: 'file_read', content: 'file contents' }
+    ])
+
+    expect(messages[1]).toMatchObject({
+      role: 'assistant',
+      reasoning_content: 'I need to inspect the project first.'
+    })
+  })
+
+  it('removes empty assistant reasoning content from request history', () => {
+    const messages = prepareMessagesForModel([
+      { role: 'assistant', content: 'done', reasoning_content: '' }
+    ])
+
+    expect(messages[0]).not.toHaveProperty('reasoning_content')
+  })
+})
 
 describe('callModel retry behavior', () => {
   let fetchMock: Mock
