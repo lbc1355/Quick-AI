@@ -1,9 +1,9 @@
 /**
- * Constitution — a structured, machine-readable guardrail policy, inspired by CodeWhale's
+ * Constitution - a structured, machine-readable guardrail policy, inspired by CodeWhale's
  * `.codewhale/constitution.json` and execpolicy escalation. Instead of scattering safety rules
  * across prose in the system prompt, the agent loop consults this policy before dispatching a
  * tool call and may ESCALATE the static per-tool permission (allow -> ask -> deny) based on the
- * call's actual arguments. It never weakens a permission — only tightens it.
+ * call's actual arguments. It never weakens a permission; it only tightens it.
  */
 
 import { analyzeCommand, pathEscapesWorkspace } from './commandSafety'
@@ -77,7 +77,10 @@ export function evaluateToolGuard(
     const value = args[key]
     if (typeof value !== 'string' || value === '') continue
     if (pathEscapesWorkspace(value)) {
-      tighten('ask', `Guardrail: "${key}" ("${value}") escapes the workspace / is outside the workspace; confirmation required.`)
+      tighten(
+        'ask',
+        `Guardrail: "${key}" ("${value}") escapes the workspace / is outside the workspace; confirmation required.`
+      )
     } else if (isSensitiveFileName(value)) {
       tighten(
         'ask',

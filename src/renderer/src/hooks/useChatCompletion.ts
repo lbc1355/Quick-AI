@@ -179,7 +179,7 @@ export const useChatCompletion = ({
   const handleAbortGeneration = (): void => {
     if (activeReqId) {
       // Just signal the main process. It always replies with a { cancelled, done }
-      // chunk, which drives cleanup() — keeping teardown on a single source of truth
+      // chunk, which drives cleanup() from a single source of truth
       // and preserving whatever content was already streamed.
       window.api.abortGeneration(activeReqId)
     }
@@ -190,22 +190,22 @@ export const useChatCompletion = ({
     const helpMsg: Message = {
       id: `help-${Date.now()}`,
       role: 'assistant',
-      content: `### 💡 QuickAI 快捷操作与命令指南
-      
-* 🔑 **全局快捷键**：\`Alt + /\` (瞬间召唤/隐藏)
-* ❌ **快速隐藏**：\`Esc\`
-* ↩️ **换行**：\`Shift + Enter\`
-* 🚀 **发送消息**：\`Enter\`
-* ⚙️ **窗口拖动**：鼠标按住顶部标题栏空白区域可自由移动窗口
+      content: `### QuickAI 快捷操作与命令
 
-#### 🛠️ 可用的 "/" 快捷指令：
-* 🆕 \`/new\` - 新建空白对话
-* 🧹 \`/clear\` - 清空当前对话的所有记录
-* ⚙️ \`/settings\` - 打开设置面板配置 API Key 与模型
-* ℹ️ \`/help\` - 显示本帮助指引信息
-* 🔄 \`/model:模型名\` - 快速点选并切换大模型
-* 🕒 \`/history:会话名\` - 快捷加载以往历史对话
-* ❌ \`/delete:会话名\` - 删除历史对话会话`
+* **全局快捷键**：\`Alt + /\`（显示或隐藏）
+* **快速隐藏**：\`Esc\`
+* **换行**：\`Shift + Enter\`
+* **发送消息**：\`Enter\`
+* **窗口拖动**：按住顶部标题栏空白区域可移动窗口
+
+#### 可用的 "/" 快捷指令
+* \`/new\` - 新建空白对话
+* \`/clear\` - 清空当前对话
+* \`/settings\` - 打开设置面板
+* \`/help\` - 显示帮助信息
+* \`/model:模型名\` - 切换模型
+* \`/history:会话名\` - 加载历史对话
+* \`/delete:会话名\` - 删除历史对话`
     }
     const updated = sessionsRef.current.map((s) => {
       if (s.id === activeSessionId) {
@@ -373,7 +373,7 @@ export const useChatCompletion = ({
           sourceMessageId,
           assistantMessageId: assistantMsgId
         }),
-      (msg) => `⚠️ 出错了：${msg || '网络连接失败'}`
+      (msg) => `出错了：${msg || '网络连接失败'}`
     )
   }
 

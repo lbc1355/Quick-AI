@@ -3,7 +3,6 @@ import {
   AgentSkillRunOptions,
   ChatCompletionMessage,
   AgentEvent,
-  ToolArgs,
   ChatToolDeclaration,
   SessionResource
 } from '../../shared/types'
@@ -19,7 +18,6 @@ import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
-import { evaluateToolGuard } from './constitution'
 import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
 import { AmbiguousAction, loadRunCheckpoint, saveRunCheckpoint } from './runCheckpoint'
 import {
@@ -38,25 +36,11 @@ import {
   injectPromptBeforeLatestUser
 } from './resumePrompts'
 import { buildSideEffectEntry, extractResourceIds, SIDE_EFFECTING_TOOLS } from './sideEffects'
+import { getFetchUrlCallKey, prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
   return Math.max(1, Math.min(30, Math.floor(value)))
-}
-
-const getFetchUrlCallKey = (toolArgs: ToolArgs): string | undefined => {
-  const url = typeof toolArgs.url === 'string' ? toolArgs.url : ''
-  if (!url) return undefined
-
-  const rawOffset = typeof toolArgs.offset === 'number' ? toolArgs.offset : 0
-  const rawMaxChars = typeof toolArgs.maxChars === 'number' ? toolArgs.maxChars : undefined
-  const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0
-  const maxChars =
-    rawMaxChars !== undefined && Number.isFinite(rawMaxChars)
-      ? Math.min(16000, Math.max(1000, Math.floor(rawMaxChars)))
-      : 'default'
-
-  return `fetch_url:${url}:offset=${offset}:maxChars=${maxChars}`
 }
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
@@ -336,133 +320,24 @@ export const runAgentLoop = async (
       messages.push(assistantMessage)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-        type RawToolCall = (typeof assistantMessage.tool_calls)[number]
-
-        // Single source of truth for the whitelist check (was previously duplicated in three
-        // places, each of which had to be kept in sync by hand).
         const isToolWhitelisted = (toolName: string): boolean =>
           toolDiscovery === 'static' ? skillTools.includes(toolName) : runCtx.isToolActive(toolName)
 
-        // A tool call resolved once: arguments parsed a single time, validity/permission
-        // computed once, classification decided once. Everything downstream reads these fields
-        // instead of recomputing them.
-        interface PreparedCall {
-          index: number
-          toolCall: RawToolCall
-          toolName: string
-          callId: string
-          args: ToolArgs
-          permission: 'allow' | 'ask' | 'deny'
-          isValid: boolean
-          isDeadlock: boolean
-          /** Set when the loop guard blocks this call; answered with this message, never executed. */
-          loopBlock?: string
-          /** Set when a guardrail escalates/blocks this call; surfaced to the model on block. */
-          blockReason?: string
-          classification: 'ask' | 'direct' | 'blocked'
-        }
-
-        // Tracks duplicate fetch_url windows emitted within this same turn.
-        const seenFetchCallsThisTurn = new Set<string>()
-
-        const prepared: PreparedCall[] = assistantMessage.tool_calls.map((toolCall, index) => {
-          const toolName = toolCall.function.name
-          const callId = toolCall.id
-          const permission = permissions?.[toolName] || 'allow'
-
-          let args: ToolArgs = {}
-          try {
-            args = JSON.parse(toolCall.function.arguments) as ToolArgs
-          } catch {
-            console.warn('Failed to parse tool call arguments:', toolCall.function.arguments)
-          }
-
-          const toolDef = ToolRegistry[toolName]
-          const isValid = !!toolDef && toolDef.implemented && isToolWhitelisted(toolName)
-
-          // Guardrail: inspect the actual arguments and escalate the static permission
-          // (allow -> ask -> deny) when they cross a danger boundary. Never weakens it.
-          let effectivePermission = permission
-          let blockReason: string | undefined
-          if (isValid && permission !== 'deny' && toolDef) {
-            const verdict = evaluateToolGuard(toolName, args, permission, toolDef.risk)
-            effectivePermission = verdict.action
-            if (verdict.action !== permission && verdict.reason) {
-              blockReason = verdict.reason
-            }
-          }
-
-          if (effectivePermission === 'ask') {
-            if (runCtx.isToolApproved(toolName)) {
-              effectivePermission = 'allow'
-            } else if (
-              toolName === 'shell' &&
-              typeof args.command === 'string' &&
-              runCtx.isCommandPrefixApproved(args.command)
-            ) {
-              effectivePermission = 'allow'
-            }
-          }
-
-          // Detect duplicate fetch_url windows (same url+offset+maxChars) seen earlier in this
-          // run or earlier in this same turn. Deadlocks bypass permissions and are answered with
-          // a warning inside executeTool.
-          let isDeadlock = false
-          if (isValid && effectivePermission !== 'deny' && toolName === 'fetch_url') {
-            const callKey = getFetchUrlCallKey(args)
-            if (callKey) {
-              if (runCtx.hasExecuted(callKey) || seenFetchCallsThisTurn.has(callKey)) {
-                isDeadlock = true
-              } else {
-                seenFetchCallsThisTurn.add(callKey)
-              }
-            }
-          }
-
-          let classification: 'ask' | 'direct' | 'blocked'
-          let loopBlock: string | undefined
-          if (isDeadlock) {
-            classification = 'direct'
-          } else if (!isValid || effectivePermission === 'deny') {
-            classification = 'blocked'
-          } else {
-            // Executable call: apply the identical-call loop guard before routing it for
-            // permission/execution. A blocked repeat is answered with a warning and never run.
-            const repeat = loopGuard.recordCall(loopGuard.signature(toolName, args))
-            if (repeat.blocked) {
-              loopBlock = `Loop guard: "${toolName}" has been called with identical arguments ${repeat.count} times in this run. The previous result still applies — do not repeat this call; use that result, change the arguments, or try a different approach.`
-              classification = 'direct'
-            } else if (effectivePermission === 'ask') {
-              classification = 'ask'
-            } else {
-              classification = 'direct'
-            }
-          }
-
-          return {
-            index,
-            toolCall,
-            toolName,
-            callId,
-            args,
-            permission: effectivePermission,
-            isValid,
-            isDeadlock,
-            loopBlock,
-            blockReason,
-            classification
-          }
+        const { askCalls, directCalls, blockedCalls } = prepareToolCalls({
+          toolCalls: assistantMessage.tool_calls,
+          permissions,
+          isToolWhitelisted,
+          isToolApproved: (toolName) => runCtx.isToolApproved(toolName),
+          isCommandPrefixApproved: (command) => runCtx.isCommandPrefixApproved(command),
+          hasExecuted: (callKey) => runCtx.hasExecuted(callKey),
+          loopGuard
         })
-
-        const askCalls = prepared.filter((p) => p.classification === 'ask')
-        const directCalls = prepared.filter((p) => p.classification === 'direct')
-        const blockedCalls = prepared.filter((p) => p.classification === 'blocked')
 
         const toolResponses = new Array<ChatCompletionMessage>(assistantMessage.tool_calls.length)
 
         // Helper to execute a single (already-prepared) tool call and return its result message
         const executeTool = async (
-          prep: PreparedCall,
+          prep: PreparedToolCall,
           isApproved = true
         ): Promise<ChatCompletionMessage> => {
           const { toolName, callId, args: toolArgs } = prep

@@ -1,12 +1,12 @@
 /**
- * LoopGuard — behavioural guardrails that stop an agent run from spinning on
+ * LoopGuard - behavioural guardrails that stop an agent run from spinning on
  * unproductive work, independent of the hard `maxSteps` ceiling.
  *
  * Two distinct protections (modelled on CodeWhale's loop_guard):
- *   1. Identical-call blocking — the same tool invoked with the same arguments
+ *   1. Identical-call blocking - the same tool invoked with the same arguments
  *      too many times in a run is almost always a loop; block it and tell the
  *      model to use the existing result or change approach.
- *   2. Consecutive-failure escalation — a tool that keeps throwing should first
+ *   2. Consecutive-failure escalation - a tool that keeps throwing should first
  *      warn the model, then halt the turn so we surface a best-effort answer
  *      instead of burning every remaining step on the same broken action.
  */
