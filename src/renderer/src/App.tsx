@@ -27,6 +27,51 @@ import { useAutocomplete } from './hooks/useAutocomplete'
 import { useChatCompletion } from './hooks/useChatCompletion'
 import { useSkills } from './hooks/useSkills'
 
+interface PopupOption {
+  label: string
+  payload: boolean | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+}
+
+function getCommandPrefixes(command: string): string[] {
+  if (!command) return []
+  const tokens = command.trim().split(/\s+/).filter((t) => !t.startsWith('-'))
+  const prefixes: string[] = []
+  if (tokens.length > 0) {
+    prefixes.push(tokens[0])
+    if (tokens.length > 1) {
+      prefixes.push(`${tokens[0]} ${tokens[1]}`)
+    }
+  }
+  return prefixes
+}
+
+function getPopupOptions(pending: { toolName: string; args: unknown } | null): PopupOption[] {
+  if (!pending) return []
+
+  const options: PopupOption[] = [
+    { label: '允许本次执行 (Yes, allow this time)', payload: { approved: true } },
+    {
+      label: `在此任务中允许所有 "${pending.toolName}" 工具的调用`,
+      payload: { approved: true, scope: 'tool', tool: pending.toolName }
+    }
+  ]
+
+  if (pending.toolName === 'shell' && pending.args && typeof pending.args === 'object') {
+    const argsObj = pending.args as Record<string, unknown>
+    const command = typeof argsObj.command === 'string' ? argsObj.command : ''
+    const prefixes = getCommandPrefixes(command)
+    for (const prefix of prefixes) {
+      options.push({
+        label: `在此任务中允许所有 "${prefix}" 开头的命令`,
+        payload: { approved: true, scope: 'prefix', prefix }
+      })
+    }
+  }
+
+  options.push({ label: '拒绝执行 (No)', payload: { approved: false } })
+  return options
+}
+
 function App(): React.JSX.Element {
   // Navigation
   const [showSettings, setShowSettings] = useState(false)
@@ -429,7 +474,9 @@ function App(): React.JSX.Element {
     return null
   }
 
-  const handlePermissionResponse = (approved: boolean): void => {
+  const handlePermissionResponse = (
+    approved: boolean | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+  ): void => {
     const pending = getPendingPermission()
     if (pending) {
       window.api.respondToolPermission(pending.agentRunId, pending.callId, approved)
@@ -454,21 +501,31 @@ function App(): React.JSX.Element {
       const pending = getPendingPermission()
       if (!pending) return
 
-      if (e.key === '1') {
+      const options = getPopupOptions(pending)
+      if (options.length === 0) return
+
+      const num = parseInt(e.key, 10)
+      if (!isNaN(num) && num >= 1 && num <= options.length) {
         e.preventDefault()
-        handlePermissionResponse(true)
-      } else if (e.key === '2') {
+        handlePermissionResponse(options[num - 1].payload)
+      } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        handlePermissionResponse(false)
-      } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        setSelectedOptionIndex((prev) => (prev - 1 + options.length) % options.length)
+      } else if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setSelectedOptionIndex((prev) => (prev === 0 ? 1 : 0))
+        setSelectedOptionIndex((prev) => (prev + 1) % options.length)
       } else if (e.key === 'Enter') {
         e.preventDefault()
-        handlePermissionResponse(selectedOptionIndex === 0)
+        if (options[selectedOptionIndex]) {
+          handlePermissionResponse(options[selectedOptionIndex].payload)
+        }
       } else if (e.key === 'Escape') {
         e.preventDefault()
-        handlePermissionResponse(false)
+        const denyOption = options.find((o) => {
+          if (typeof o.payload === 'boolean') return !o.payload
+          return !o.payload.approved
+        })
+        handlePermissionResponse(denyOption ? denyOption.payload : false)
       }
     }
 
@@ -724,32 +781,40 @@ function App(): React.JSX.Element {
                   )}
 
                   <div className="permission-popup-options">
-                    <div
-                      className={`permission-popup-option ${selectedOptionIndex === 0 ? 'selected' : ''}`}
-                      onClick={() => handlePermissionResponse(true)}
-                    >
-                      <span className="permission-popup-badge">1</span>
-                      <span>允许本次执行 (Yes, allow this time)</span>
-                    </div>
-                    <div
-                      className={`permission-popup-option ${selectedOptionIndex === 1 ? 'selected' : ''}`}
-                      onClick={() => handlePermissionResponse(false)}
-                    >
-                      <span className="permission-popup-badge">2</span>
-                      <span>拒绝执行 (No)</span>
-                    </div>
+                    {getPopupOptions(pending).map((opt, idx) => (
+                      <div
+                        key={idx}
+                        className={`permission-popup-option ${selectedOptionIndex === idx ? 'selected' : ''}`}
+                        onClick={() => handlePermissionResponse(opt.payload)}
+                      >
+                        <span className="permission-popup-badge">{idx + 1}</span>
+                        <span>{opt.label}</span>
+                      </div>
+                    ))}
                   </div>
 
                   <div className="permission-popup-footer">
                     <button
                       className="permission-popup-btn skip"
-                      onClick={() => handlePermissionResponse(false)}
+                      onClick={() => {
+                        const options = getPopupOptions(pending)
+                        const denyOption = options.find((o) => {
+                          if (typeof o.payload === 'boolean') return !o.payload
+                          return !o.payload.approved
+                        })
+                        handlePermissionResponse(denyOption ? denyOption.payload : false)
+                      }}
                     >
                       Skip
                     </button>
                     <button
                       className="permission-popup-btn submit"
-                      onClick={() => handlePermissionResponse(selectedOptionIndex === 0)}
+                      onClick={() => {
+                        const options = getPopupOptions(pending)
+                        if (options[selectedOptionIndex]) {
+                          handlePermissionResponse(options[selectedOptionIndex].payload)
+                        }
+                      }}
                     >
                       Submit
                     </button>

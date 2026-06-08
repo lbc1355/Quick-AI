@@ -10,9 +10,9 @@ describe('evaluateToolGuard', () => {
     expect(evaluateToolGuard('file_read', { path: 'src/a.ts' }, 'ask', 'low').action).toBe('ask')
   })
 
-  it('denies a file path that escapes the workspace', () => {
+  it('asks for permission on a file path that escapes the workspace', () => {
     const v = evaluateToolGuard('file_write', { path: '../../etc/passwd' }, 'allow', 'medium')
-    expect(v.action).toBe('deny')
+    expect(v.action).toBe('ask')
     expect(v.reason).toContain('escapes the workspace')
   })
 

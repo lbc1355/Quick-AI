@@ -336,402 +336,416 @@ interface MessageBubbleProps {
   onChangeEditingText: (text: string) => void
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({
-  msg,
-  idx,
-  isGenerating,
-  editingMessageId,
-  editingText,
-  onStartEdit,
-  onCancelEdit,
-  onSaveEdit,
-  onRegenerate,
-  onChangeEditingText
-}) => {
-  const [isExpanded, setIsExpanded] = useState(true)
-  const { content: displayContent, reasoning: displayReasoning } = parseThinkTags(
-    msg.content,
-    msg.reasoning_content
-  )
+export const MessageBubble = React.memo<MessageBubbleProps>(
+  ({
+    msg,
+    idx,
+    isGenerating,
+    editingMessageId,
+    editingText,
+    onStartEdit,
+    onCancelEdit,
+    onSaveEdit,
+    onRegenerate,
+    onChangeEditingText
+  }) => {
+    const [isExpanded, setIsExpanded] = useState(true)
+    const { content: displayContent, reasoning: displayReasoning } = parseThinkTags(
+      msg.content,
+      msg.reasoning_content
+    )
 
-  // Determine if we use structured agent events or legacy string logs fallback
-  const hasStructuredEvents = msg.agentEvents && msg.agentEvents.length > 0
-  const legacyLogs = !hasStructuredEvents ? parseAgentLogs(displayContent).logs : []
-  const cleanContent = hasStructuredEvents
-    ? displayContent
-    : parseAgentLogs(displayContent).cleanContent
+    // Determine if we use structured agent events or legacy string logs fallback
+    const hasStructuredEvents = msg.agentEvents && msg.agentEvents.length > 0
+    const legacyLogs = !hasStructuredEvents ? parseAgentLogs(displayContent).logs : []
+    const cleanContent = hasStructuredEvents
+      ? displayContent
+      : parseAgentLogs(displayContent).cleanContent
 
-  const [userExpandedOverride, setUserExpandedOverride] = useState<boolean | null>(null)
-  const isEditing = editingMessageId === msg.id
+    const [userExpandedOverride, setUserExpandedOverride] = useState<boolean | null>(null)
+    const isEditing = editingMessageId === msg.id
 
-  const [elapsed, setElapsed] = useState<number>(0)
+    const [elapsed, setElapsed] = useState<number>(0)
 
-  const toolCallCount = hasStructuredEvents
-    ? msg.agentEvents!.filter((e) => e.type === 'tool_call').length
-    : legacyLogs.filter((l) => l.type === 'tool').length
+    const toolCallCount = hasStructuredEvents
+      ? msg.agentEvents!.filter((e) => e.type === 'tool_call').length
+      : legacyLogs.filter((l) => l.type === 'tool').length
 
-  const hasLogs = hasStructuredEvents || legacyLogs.length > 0
+    const hasLogs = hasStructuredEvents || legacyLogs.length > 0
 
-  useEffect(() => {
-    if (isGenerating && !cleanContent && hasLogs) {
-      const startTime = parseInt(msg.id) || Date.now()
-      const timer = setInterval(() => {
-        setElapsed(Math.round((Date.now() - startTime) / 1000))
-      }, 500)
-      return () => clearInterval(timer)
+    useEffect(() => {
+      if (isGenerating && !cleanContent && hasLogs) {
+        const startTime = parseInt(msg.id) || Date.now()
+        const timer = setInterval(() => {
+          setElapsed(Math.round((Date.now() - startTime) / 1000))
+        }, 500)
+        return () => clearInterval(timer)
+      }
+      return undefined
+    }, [isGenerating, cleanContent, hasLogs, msg.id])
+
+    // Find agent_end event in the events list
+    const agentEndEvent = msg.agentEvents?.find(
+      (e): e is Extract<AgentEvent, { type: 'agent_end' }> => e.type === 'agent_end'
+    )
+    // Find the last agent_progress event in the events list
+    const lastProgressEvent = msg.agentEvents?.reduce<Extract<AgentEvent, { type: 'agent_progress' }> | null>(
+      (last, e) => (e.type === 'agent_progress' ? e : last),
+      null
+    )
+
+    let agentStatus: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' = 'idle'
+    if (msg.agentEvents || msg.agentRunId) {
+      if (agentEndEvent) {
+        agentStatus = agentEndEvent.status
+      } else if (isGenerating) {
+        agentStatus = 'running'
+      } else {
+        agentStatus = cleanContent ? 'completed' : 'idle'
+      }
     }
-    return undefined
-  }, [isGenerating, cleanContent, hasLogs, msg.id])
 
-  // Find agent_end event in the events list
-  const agentEndEvent = msg.agentEvents?.find(
-    (e): e is Extract<AgentEvent, { type: 'agent_end' }> => e.type === 'agent_end'
-  )
-  // Find the last agent_progress event in the events list
-  const lastProgressEvent = msg.agentEvents?.reduce<Extract<AgentEvent, { type: 'agent_progress' }> | null>(
-    (last, e) => (e.type === 'agent_progress' ? e : last),
-    null
-  )
+    const currentStep = lastProgressEvent?.step || 1
+    const maxSteps = lastProgressEvent?.maxSteps || 30
 
-  let agentStatus: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' = 'idle'
-  if (msg.agentEvents || msg.agentRunId) {
-    if (agentEndEvent) {
-      agentStatus = agentEndEvent.status
-    } else if (isGenerating) {
-      agentStatus = 'running'
-    } else {
-      agentStatus = cleanContent ? 'completed' : 'idle'
+    let statusLabel = ''
+    let statusColor = 'var(--color-text-muted)'
+    if (agentStatus === 'running') {
+      statusLabel = `Running (Step ${currentStep}/${maxSteps})`
+      statusColor = '#3b82f6' // nice blue
+    } else if (agentStatus === 'completed') {
+      statusLabel = 'Completed'
+      statusColor = '#10b981' // nice green
+    } else if (agentStatus === 'cancelled') {
+      statusLabel = 'Cancelled'
+      statusColor = '#f59e0b' // nice yellow/orange
+    } else if (agentStatus === 'failed') {
+      statusLabel = 'Failed'
+      statusColor = '#ef4444' // nice red
+    } else if (agentStatus === 'max_steps') {
+      statusLabel = 'Step Limit Reached'
+      statusColor = '#f59e0b' // yellow/orange
     }
-  }
 
-  const currentStep = lastProgressEvent?.step || 1
-  const maxSteps = lastProgressEvent?.maxSteps || 30
+    // Derived logs expansion state
+    const effectiveLogsExpanded =
+      userExpandedOverride !== null ? userExpandedOverride : hasLogs && !cleanContent
 
-  let statusLabel = ''
-  let statusColor = 'var(--color-text-muted)'
-  if (agentStatus === 'running') {
-    statusLabel = `Running (Step ${currentStep}/${maxSteps})`
-    statusColor = '#3b82f6' // nice blue
-  } else if (agentStatus === 'completed') {
-    statusLabel = 'Completed'
-    statusColor = '#10b981' // nice green
-  } else if (agentStatus === 'cancelled') {
-    statusLabel = 'Cancelled'
-    statusColor = '#f59e0b' // nice yellow/orange
-  } else if (agentStatus === 'failed') {
-    statusLabel = 'Failed'
-    statusColor = '#ef4444' // nice red
-  } else if (agentStatus === 'max_steps') {
-    statusLabel = 'Step Limit Reached'
-    statusColor = '#f59e0b' // yellow/orange
-  }
-
-  // Derived logs expansion state
-  const effectiveLogsExpanded =
-    userExpandedOverride !== null ? userExpandedOverride : hasLogs && !cleanContent
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-      {hasLogs && (
-        <div
-          className="agent-logs-container-fullwidth"
-          style={{
-            margin: '12px 0 16px 0',
-            padding: '0 4px',
-            fontSize: '11px',
-            color: 'var(--color-text-muted)'
-          }}
-        >
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+        {hasLogs && (
           <div
-            onClick={() => setUserExpandedOverride(!effectiveLogsExpanded)}
+            className="agent-logs-container-fullwidth"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              cursor: 'pointer',
-              userSelect: 'none',
-              fontWeight: '500',
-              color: 'var(--color-text-muted)',
-              gap: '8px',
-              marginBottom: '8px'
+              margin: '12px 0 16px 0',
+              padding: '0 4px',
+              fontSize: '11px',
+              color: 'var(--color-text-muted)'
             }}
           >
-            <span style={{ fontSize: '9px', opacity: 0.7 }}>
-              {effectiveLogsExpanded ? '▼' : '▶'}
-            </span>
-            {statusLabel && (
-              <span
-                style={{
-                  color: statusColor,
-                  backgroundColor: `${statusColor}14`,
-                  border: `1px solid ${statusColor}2c`,
-                  padding: '1px 5px',
-                  borderRadius: '3px',
-                  fontSize: '9.5px',
-                  fontWeight: 'bold'
-                }}
-              >
-                {statusLabel}
+            <div
+              onClick={() => setUserExpandedOverride(!effectiveLogsExpanded)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                userSelect: 'none',
+                fontWeight: '500',
+                color: 'var(--color-text-muted)',
+                gap: '8px',
+                marginBottom: '8px'
+              }}
+            >
+              <span style={{ fontSize: '9px', opacity: 0.7 }}>
+                {effectiveLogsExpanded ? '▼' : '▶'}
               </span>
-            )}
-            <span>
-              {`Called tools (${toolCallCount} steps)`}
-            </span>
-            {agentStatus === 'running' && (
-              <span style={{ fontSize: '10px', opacity: 0.6 }}>
-                • {elapsed}s
+              {statusLabel && (
+                <span
+                  style={{
+                    color: statusColor,
+                    backgroundColor: `${statusColor}14`,
+                    border: `1px solid ${statusColor}2c`,
+                    padding: '1px 5px',
+                    borderRadius: '3px',
+                    fontSize: '9.5px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  {statusLabel}
+                </span>
+              )}
+              <span>
+                {`Called tools (${toolCallCount} steps)`}
               </span>
-            )}
-          </div>
+              {agentStatus === 'running' && (
+                <span style={{ fontSize: '10px', opacity: 0.6 }}>
+                  • {elapsed}s
+                </span>
+              )}
+            </div>
 
-          <div
-            style={{
-              display: effectiveLogsExpanded ? 'flex' : 'none',
-              flexDirection: 'column',
-              gap: '6px',
-              paddingLeft: '16px'
-            }}
-          >
-            {hasStructuredEvents
-              ? msg.agentEvents!.reduce<React.ReactNode[]>((acc, event, eventIdx) => {
-                  if (event.type === 'reasoning') {
-                    acc.push(
-                      <LogThinkRow
-                        key={`think-${eventIdx}`}
-                        log={{
-                          step: 0,
-                          maxSteps: 0,
-                          type: 'think',
-                          thought: event.content
-                        }}
-                      />
-                    )
-                  } else if (event.type === 'tool_call') {
-                    const callId = event.callId
-                    const resultEvent = msg.agentEvents!.find(
-                      (e): e is Extract<AgentEvent, { type: 'tool_result' }> =>
-                        e.type === 'tool_result' && e.callId === callId
-                    )
-                    const errorEvent = msg.agentEvents!.find(
-                      (e): e is Extract<AgentEvent, { type: 'tool_error' }> =>
-                        e.type === 'tool_error' && e.callId === callId
-                    )
-
-                    const permState = event.permissionState
-
-                    acc.push(
-                      <EventStepRow
-                        key={`step-${callId}-${eventIdx}`}
-                        callId={callId}
-                        agentRunId={msg.agentRunId}
-                        toolName={event.toolName}
-                        args={event.args}
-                        permissionState={permState}
-                        result={resultEvent?.result}
-                        error={errorEvent?.error}
-                      />
-                    )
-                  }
-                  return acc
-                }, [])
-              : legacyLogs.reduce<React.ReactNode[]>((acc, log, logIdx) => {
-                  if (log.type === 'think') {
-                    acc.push(<LogThinkRow key={`think-${log.step}-${logIdx}`} log={log} />)
-                  } else if (log.type === 'tool') {
-                    const resultLog = legacyLogs.find(
-                      (l) => l.step === log.step && l.type === 'result' && l.url === log.url
-                    )
-                    const errorLog = legacyLogs.find(
-                      (l) => l.step === log.step && l.type === 'error'
-                    )
-
-                    acc.push(
-                      <LogStepRow
-                        key={`step-${log.step}-${logIdx}`}
-                        log={log}
-                        resultLog={resultLog}
-                        errorLog={errorLog}
-                      />
-                    )
-                  }
-                  return acc
-                }, [])}
-          </div>
-
-          {/* Bottom Divider Line */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              color: 'var(--color-text-muted)',
-              fontSize: '10px',
-              marginTop: '12px',
-              opacity: 0.5
-            }}
-          >
-            <div style={{ flex: 1, borderBottom: '1px solid var(--color-border)' }}></div>
-            <span style={{ padding: '0 10px', whiteSpace: 'nowrap' }}>
-              {agentStatus === 'running'
-                ? 'Tool execution in progress'
-                : agentStatus === 'completed'
-                  ? 'Tool execution completed'
-                  : agentStatus === 'cancelled'
-                    ? 'Tool execution cancelled'
-                    : agentStatus === 'failed'
-                      ? 'Tool execution failed'
-                      : agentStatus === 'max_steps'
-                        ? 'Tool execution limit reached'
-                        : 'Tool execution finished'}
-            </span>
-            <div style={{ flex: 1, borderBottom: '1px solid var(--color-border)' }}></div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Standard message bubble wrapper */}
-      {(cleanContent ||
-        (displayReasoning && !hasStructuredEvents) ||
-        msg.role === 'user' ||
-        (isGenerating && !displayReasoning && !hasLogs)) && (
-        <div className={`message-bubble ${msg.role}`}>
-          {msg.role === 'user' && <div className={`avatar ${msg.role}`}>U</div>}
-          <div className="message-content-wrapper" style={{ maxWidth: '100%' }}>
-            {isEditing ? (
-              <div className="message-edit-container">
-                <textarea
-                  className="message-edit-textarea"
-                  value={editingText}
-                  onChange={(e) => onChangeEditingText(e.target.value)}
-                />
-                <div className="message-edit-actions">
-                  <button className="edit-btn cancel" onClick={onCancelEdit}>
-                    取消
-                  </button>
-                  <button className="edit-btn save" onClick={() => onSaveEdit(msg.id, editingText)}>
-                    保存并重发
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="message-text">
-                  {msg.files && msg.files.length > 0 && (
-                    <div
-                      style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}
-                    >
-                      {msg.files.map((f, fileIdx) => (
-                        <div
-                          key={fileIdx}
-                          style={{
-                            fontSize: '11px',
-                            background: 'rgba(255, 255, 255, 0.08)',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
+            <div
+              style={{
+                display: effectiveLogsExpanded ? 'flex' : 'none',
+                flexDirection: 'column',
+                gap: '6px',
+                paddingLeft: '16px'
+              }}
+            >
+              {hasStructuredEvents
+                ? msg.agentEvents!.reduce<React.ReactNode[]>((acc, event, eventIdx) => {
+                    if (event.type === 'reasoning') {
+                      acc.push(
+                        <LogThinkRow
+                          key={`think-${eventIdx}`}
+                          log={{
+                            step: 0,
+                            maxSteps: 0,
+                            type: 'think',
+                            thought: event.content
                           }}
-                        >
-                          <Paperclip size={10} />
-                          <span>{f.name}</span>
-                        </div>
-                      ))}
+                        />
+                      )
+                    } else if (event.type === 'tool_call') {
+                      const callId = event.callId
+                      const resultEvent = msg.agentEvents!.find(
+                        (e): e is Extract<AgentEvent, { type: 'tool_result' }> =>
+                          e.type === 'tool_result' && e.callId === callId
+                      )
+                      const errorEvent = msg.agentEvents!.find(
+                        (e): e is Extract<AgentEvent, { type: 'tool_error' }> =>
+                          e.type === 'tool_error' && e.callId === callId
+                      )
+
+                      const permState = event.permissionState
+
+                      acc.push(
+                        <EventStepRow
+                          key={`step-${callId}-${eventIdx}`}
+                          callId={callId}
+                          agentRunId={msg.agentRunId}
+                          toolName={event.toolName}
+                          args={event.args}
+                          permissionState={permState}
+                          result={resultEvent?.result}
+                          error={errorEvent?.error}
+                        />
+                      )
+                    }
+                    return acc
+                  }, [])
+                : legacyLogs.reduce<React.ReactNode[]>((acc, log, logIdx) => {
+                    if (log.type === 'think') {
+                      acc.push(<LogThinkRow key={`think-${log.step}-${logIdx}`} log={log} />)
+                    } else if (log.type === 'tool') {
+                      const resultLog = legacyLogs.find(
+                        (l) => l.step === log.step && l.type === 'result' && l.url === log.url
+                      )
+                      const errorLog = legacyLogs.find(
+                        (l) => l.step === log.step && l.type === 'error'
+                      )
+
+                      acc.push(
+                        <LogStepRow
+                          key={`step-${log.step}-${logIdx}`}
+                          log={log}
+                          resultLog={resultLog}
+                          errorLog={errorLog}
+                        />
+                      )
+                    }
+                    return acc
+                  }, [])}
+            </div>
+
+            {/* Bottom Divider Line */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                color: 'var(--color-text-muted)',
+                fontSize: '10px',
+                marginTop: '12px',
+                opacity: 0.5
+              }}
+            >
+              <div style={{ flex: 1, borderBottom: '1px solid var(--color-border)' }}></div>
+              <span style={{ padding: '0 10px', whiteSpace: 'nowrap' }}>
+                {agentStatus === 'running'
+                  ? 'Tool execution in progress'
+                  : agentStatus === 'completed'
+                    ? 'Tool execution completed'
+                    : agentStatus === 'cancelled'
+                      ? 'Tool execution cancelled'
+                      : agentStatus === 'failed'
+                        ? 'Tool execution failed'
+                        : agentStatus === 'max_steps'
+                          ? 'Tool execution limit reached'
+                          : 'Tool execution finished'}
+              </span>
+              <div style={{ flex: 1, borderBottom: '1px solid var(--color-border)' }}></div>
+            </div>
+          </div>
+        )}
+
+        {/* 2. Standard message bubble wrapper */}
+        {(cleanContent ||
+          (displayReasoning && !hasStructuredEvents) ||
+          msg.role === 'user' ||
+          (isGenerating && !displayReasoning && !hasLogs)) && (
+          <div className={`message-bubble ${msg.role}`}>
+            {msg.role === 'user' && <div className={`avatar ${msg.role}`}>U</div>}
+            <div className="message-content-wrapper" style={{ maxWidth: '100%' }}>
+              {isEditing ? (
+                <div className="message-edit-container">
+                  <textarea
+                    className="message-edit-textarea"
+                    value={editingText}
+                    onChange={(e) => onChangeEditingText(e.target.value)}
+                  />
+                  <div className="message-edit-actions">
+                    <button className="edit-btn cancel" onClick={onCancelEdit}>
+                      取消
+                    </button>
+                    <button className="edit-btn save" onClick={() => onSaveEdit(msg.id, editingText)}>
+                      保存并重发
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="message-text">
+                    {msg.files && msg.files.length > 0 && (
+                      <div
+                        style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}
+                      >
+                        {msg.files.map((f, fileIdx) => (
+                          <div
+                            key={fileIdx}
+                            style={{
+                              fontSize: '11px',
+                              background: 'rgba(255, 255, 255, 0.08)',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <Paperclip size={10} />
+                            <span>{f.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Thinking/Reasoning block rendering (DeepSeek R1 style) */}
+                    <div
+                      className="reasoning-block"
+                      style={{
+                        display: displayReasoning && !hasStructuredEvents ? 'block' : 'none',
+                        marginBottom: '10px'
+                      }}
+                    >
+                      <div
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        style={{
+                          fontSize: '12px',
+                          color: '#60a5fa',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          userSelect: 'none',
+                          marginBottom: '6px',
+                          fontWeight: '600'
+                        }}
+                      >
+                        <Sparkles
+                          size={11}
+                          style={{
+                            animation:
+                              isGenerating && !cleanContent ? 'spin 3s linear infinite' : 'none'
+                          }}
+                        />
+                        <span>
+                          {isGenerating && !cleanContent
+                            ? '正在思考中..'
+                            : isExpanded
+                              ? '思考过程 (收起)'
+                              : '思考过程 (展开)'}
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          display: isExpanded ? 'block' : 'none',
+                          fontSize: '12px',
+                          color: 'var(--color-text-muted)',
+                          borderLeft: '2px solid rgba(96, 165, 250, 0.35)',
+                          paddingLeft: '10px',
+                          marginLeft: '4px',
+                          fontStyle: 'italic',
+                          whiteSpace: 'pre-wrap',
+                          lineHeight: '1.6',
+                          background: 'var(--color-card-bg)',
+                          padding: '6px 10px',
+                          borderRadius: '0 6px 6px 0'
+                        }}
+                      >
+                        {displayReasoning}
+                      </div>
+                    </div>
+
+                    {/* Render main text content — plain text for user, markdown for assistant */}
+                    {cleanContent
+                      ? msg.role === 'user'
+                        ? cleanContent
+                        : renderMessageContent(cleanContent)
+                      : /* Show small thinking pulsing dot if thinking and content is empty */
+                        isGenerating &&
+                        displayReasoning && (
+                          <span style={{ opacity: 0.5, fontSize: '13px', fontStyle: 'italic' }}>
+                            思考完毕，正在生成回答..
+                          </span>
+                        )}
+                  </div>
+
+                  {!isGenerating && (
+                    <div
+                      className="message-actions"
+                      style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}
+                    >
+                      {msg.role === 'user' ? (
+                        <button className="msg-action-btn" onClick={() => onStartEdit(msg)}>
+                          <Edit size={10} />
+                          <span>编辑</span>
+                        </button>
+                      ) : (
+                        <button className="msg-action-btn" onClick={() => onRegenerate(idx)}>
+                          <RefreshCw size={10} />
+                          <span>重新生成</span>
+                        </button>
+                      )}
                     </div>
                   )}
-
-                  {/* Thinking/Reasoning block rendering (DeepSeek R1 style) */}
-                  <div
-                    className="reasoning-block"
-                    style={{
-                      display: displayReasoning && !hasStructuredEvents ? 'block' : 'none',
-                      marginBottom: '10px'
-                    }}
-                  >
-                    <div
-                      onClick={() => setIsExpanded(!isExpanded)}
-                      style={{
-                        fontSize: '12px',
-                        color: '#60a5fa',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        userSelect: 'none',
-                        marginBottom: '6px',
-                        fontWeight: '600'
-                      }}
-                    >
-                      <Sparkles
-                        size={11}
-                        style={{
-                          animation:
-                            isGenerating && !cleanContent ? 'spin 3s linear infinite' : 'none'
-                        }}
-                      />
-                      <span>
-                        {isGenerating && !cleanContent
-                          ? '正在思考中..'
-                          : isExpanded
-                            ? '思考过程 (收起)'
-                            : '思考过程 (展开)'}
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        display: isExpanded ? 'block' : 'none',
-                        fontSize: '12px',
-                        color: 'var(--color-text-muted)',
-                        borderLeft: '2px solid rgba(96, 165, 250, 0.35)',
-                        paddingLeft: '10px',
-                        marginLeft: '4px',
-                        fontStyle: 'italic',
-                        whiteSpace: 'pre-wrap',
-                        lineHeight: '1.6',
-                        background: 'var(--color-card-bg)',
-                        padding: '6px 10px',
-                        borderRadius: '0 6px 6px 0'
-                      }}
-                    >
-                      {displayReasoning}
-                    </div>
-                  </div>
-
-                  {/* Render main text content — plain text for user, markdown for assistant */}
-                  {cleanContent
-                    ? msg.role === 'user'
-                      ? cleanContent
-                    : renderMessageContent(cleanContent)
-                    : /* Show small thinking pulsing dot if thinking and content is empty */
-                      isGenerating &&
-                      displayReasoning && (
-                        <span style={{ opacity: 0.5, fontSize: '13px', fontStyle: 'italic' }}>
-                          思考完毕，正在生成回答..
-                        </span>
-                      )}
-                </div>
-
-                {!isGenerating && (
-                  <div
-                    className="message-actions"
-                    style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}
-                  >
-                    {msg.role === 'user' ? (
-                      <button className="msg-action-btn" onClick={() => onStartEdit(msg)}>
-                        <Edit size={10} />
-                        <span>编辑</span>
-                      </button>
-                    ) : (
-                      <button className="msg-action-btn" onClick={() => onRegenerate(idx)}>
-                        <RefreshCw size={10} />
-                        <span>重新生成</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
-  )
-}
+        )}
+      </div>
+    )
+  },
+  (prevProps, nextProps) => {
+    const prevIsEditing = prevProps.editingMessageId === prevProps.msg.id
+    const nextIsEditing = nextProps.editingMessageId === nextProps.msg.id
+
+    if (prevIsEditing !== nextIsEditing) return false
+    if (nextIsEditing && prevProps.editingText !== nextProps.editingText) return false
+    if (prevProps.msg !== nextProps.msg) return false
+    if (prevProps.isGenerating !== nextProps.isGenerating) return false
+    if (prevProps.idx !== nextProps.idx) return false
+
+    return true
+  }
+)

@@ -26,8 +26,11 @@ const api = {
     ipcRenderer.send('start-chat-completion', reqId, options),
   startAgentSkill: (reqId: string, options: AgentSkillRunOptions): void =>
     ipcRenderer.send('start-agent-skill', reqId, options),
-  respondToolPermission: (reqId: string, callId: string, approved: boolean): void =>
-    ipcRenderer.send('respond-tool-permission', reqId, callId, approved),
+  respondToolPermission: (
+    reqId: string,
+    callId: string,
+    approved: boolean | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+  ): void => ipcRenderer.send('respond-tool-permission', reqId, callId, approved),
   abortGeneration: (reqId: string): void => ipcRenderer.send('abort-generation', reqId),
   clearSessionCaches: (payload: ClearSessionCachesPayload): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('clear-session-caches', payload),

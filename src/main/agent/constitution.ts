@@ -77,7 +77,7 @@ export function evaluateToolGuard(
     const value = args[key]
     if (typeof value !== 'string' || value === '') continue
     if (pathEscapesWorkspace(value)) {
-      tighten('deny', `Blocked by guardrail: "${key}" ("${value}") escapes the workspace.`)
+      tighten('ask', `Guardrail: "${key}" ("${value}") escapes the workspace / is outside the workspace; confirmation required.`)
     } else if (isSensitiveFileName(value)) {
       tighten(
         'ask',

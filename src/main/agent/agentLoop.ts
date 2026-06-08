@@ -289,6 +289,18 @@ export const runAgentLoop = async (
             }
           }
 
+          if (effectivePermission === 'ask') {
+            if (runCtx.isToolApproved(toolName)) {
+              effectivePermission = 'allow'
+            } else if (
+              toolName === 'shell' &&
+              typeof args.command === 'string' &&
+              runCtx.isCommandPrefixApproved(args.command)
+            ) {
+              effectivePermission = 'allow'
+            }
+          }
+
           // Detect duplicate fetch_url windows (same url+offset+maxChars) seen earlier in this
           // run or earlier in this same turn. Deadlocks bypass permissions and are answered with
           // a warning inside executeTool.
@@ -535,38 +547,50 @@ export const runAgentLoop = async (
           if (signal.aborted) break
           const { index, toolName, callId, args: toolArgs } = prep
 
-          // Emit tool_call event with pending permission state
-          sendEvent(mainWindow, reqId, {
-            type: 'tool_call',
-            callId,
-            toolName,
-            args: toolArgs,
-            permissionState: 'pending'
-          })
-
+          // Check if this tool call has been approved in the meantime
+          // (e.g. from a previous confirmation in this parallel batch)
           let isApproved = false
-          try {
-            isApproved = await globalPermissionManager.requestPermission(reqId, callId)
-          } catch (err) {
-            const error = err as Error
+          const isToolApproved = runCtx.isToolApproved(toolName)
+          const isCmdApproved =
+            toolName === 'shell' &&
+            typeof toolArgs.command === 'string' &&
+            runCtx.isCommandPrefixApproved(toolArgs.command)
+
+          if (isToolApproved || isCmdApproved) {
+            isApproved = true
+          } else {
+            // Emit tool_call event with pending permission state
             sendEvent(mainWindow, reqId, {
               type: 'tool_call',
               callId,
               toolName,
               args: toolArgs,
-              permissionState: 'denied'
+              permissionState: 'pending'
             })
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: error.message })
-            toolResponses[index] = {
-              role: 'tool',
-              tool_call_id: callId,
-              name: toolName,
-              content: `ERROR: ${error.message}`
+
+            try {
+              isApproved = await globalPermissionManager.requestPermission(reqId, callId)
+            } catch (err) {
+              const error = err as Error
+              sendEvent(mainWindow, reqId, {
+                type: 'tool_call',
+                callId,
+                toolName,
+                args: toolArgs,
+                permissionState: 'denied'
+              })
+              sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: error.message })
+              toolResponses[index] = {
+                role: 'tool',
+                tool_call_id: callId,
+                name: toolName,
+                content: `ERROR: ${error.message}`
+              }
+              if (signal.aborted) {
+                break
+              }
+              continue
             }
-            if (signal.aborted) {
-              break
-            }
-            continue
           }
 
           sendEvent(mainWindow, reqId, {

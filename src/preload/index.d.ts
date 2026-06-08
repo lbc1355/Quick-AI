@@ -21,7 +21,11 @@ declare global {
       reSummonWindow: () => void
       startChatCompletion: (reqId: string, options: ChatRunOptions) => void
       startAgentSkill: (reqId: string, options: AgentSkillRunOptions) => void
-      respondToolPermission: (reqId: string, callId: string, approved: boolean) => void
+      respondToolPermission: (
+        reqId: string,
+        callId: string,
+        approved: boolean | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+      ) => void
       abortGeneration: (reqId: string) => void
       clearSessionCaches: (payload: ClearSessionCachesPayload) => Promise<{ ok: boolean }>
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void

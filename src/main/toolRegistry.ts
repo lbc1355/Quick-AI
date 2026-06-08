@@ -1,9 +1,11 @@
 import { fetchUrl, webSearch, formatSearchResultsForModel, renderWithLineNumbers } from './webTools'
 import { ToolArgs, ChatToolDeclaration, ToolResultUi, SessionResource } from '../shared/types'
 import { getRun } from './agent/AgentRunContext'
+import { pathEscapesWorkspace } from './agent/commandSafety'
 import { resolve, normalize, relative, isAbsolute, basename, join, dirname } from 'path'
 import { promises as fs, realpathSync, existsSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
+import { exec } from 'child_process'
 
 export function getWorkspaceRoot(): string {
   const userHome = homedir()
@@ -1023,7 +1025,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         // Fallback to resolvedPath to allow containment checks on non-existent paths
       }
 
-      if (!isPathInWorkspace(realPath)) {
+      const inputEscapes = pathEscapesWorkspace(filePath)
+      const hasRunCtx = !!(ctx.reqId && getRun(ctx.reqId))
+      if (!isPathInWorkspace(realPath) && (!inputEscapes || !hasRunCtx)) {
         throw new Error(`Security Violation: Path is outside the workspace directory.`)
       }
 
@@ -1591,7 +1595,9 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         }
       }
 
-      if (!isPathInWorkspace(realPath)) {
+      const inputEscapes = pathEscapesWorkspace(filePath)
+      const hasRunCtx = !!(ctx.reqId && getRun(ctx.reqId))
+      if (!isPathInWorkspace(realPath) && (!inputEscapes || !hasRunCtx)) {
         throw new Error(`Security Violation: Path is outside the workspace directory.`)
       }
 
@@ -1653,12 +1659,12 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
   shell: {
     name: 'shell',
     title: 'Execute Shell Command',
-    description: 'Executes a command line instruction (stub).',
+    description: 'Executes a command line instruction in the workspace root directory.',
     tags: ['shell', 'exec', 'command', 'terminal'],
     category: 'shell',
     risk: 'high',
-    implemented: false,
-    discoverable: false,
+    implemented: true,
+    discoverable: true,
     parameters: {
       type: 'object',
       properties: {
@@ -1666,9 +1672,77 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       },
       required: ['command']
     },
-    execute: async () => {
-      // Not yet implemented. Fail loudly instead of reporting a fake command result.
-      throw new Error('Tool "shell" is not implemented yet.')
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const command = args.command
+      if (typeof command !== 'string' || !command) {
+        throw new Error('Missing or invalid command parameter')
+      }
+
+      if (ctx.signal?.aborted) {
+        return {
+          resultForModel: `Command: ${command}\nExecution Error: Command execution cancelled.`,
+          resultForUi: {
+            title: `Execute Command: ${command}`,
+            summary: `Command execution cancelled`
+          }
+        }
+      }
+
+      const root = getWorkspaceRoot()
+
+      return new Promise((resolvePromise) => {
+        const startTime = Date.now()
+        exec(
+          command,
+          {
+            cwd: root,
+            signal: ctx.signal,
+            timeout: 60000,
+            maxBuffer: 10 * 1024 * 1024
+          },
+          (error, stdout, stderr) => {
+            const durationMs = Date.now() - startTime
+            const code = error ? (error.code ?? 1) : 0
+
+            const isCancelled =
+              ctx.signal?.aborted ||
+              (error &&
+                (error.name === 'AbortError' ||
+                  String(error.code) === 'ABORT_ERR' ||
+                  error.signal === 'SIGTERM' ||
+                  error.signal === 'SIGKILL'))
+
+            let resultText = `Command: ${command}\nCwd: ${root}\nExit Code: ${code}\nDuration: ${durationMs}ms\n\n`
+            if (isCancelled) {
+              resultText += `Status: Command execution was cancelled.\n`
+            }
+            if (stdout) {
+              resultText += `Stdout:\n${stdout}\n`
+            }
+            if (stderr) {
+              resultText += `Stderr:\n${stderr}\n`
+            }
+            if (error && error.message && !error.message.includes('Command failed')) {
+              resultText += `Execution Error:\n${error.message}\n`
+            }
+
+            const title = `Execute Command: ${
+              command.length > 50 ? command.slice(0, 47) + '...' : command
+            }`
+            const summary = isCancelled
+              ? `Command execution cancelled after ${durationMs}ms`
+              : `Command exited with code ${code} after ${durationMs}ms`
+
+            resolvePromise({
+              resultForModel: resultText,
+              resultForUi: {
+                title,
+                summary
+              }
+            })
+          }
+        )
+      })
     }
   },
   search_tools: {

@@ -14,6 +14,8 @@ export class AgentRunContext {
   readonly executedCalls: Set<string>
   readonly toolScope: Set<string> | 'all'
   readonly permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
+  readonly approvedCommandPrefixes: string[] = []
+  readonly approvedTools: string[] = []
   private readonly permissions: PermissionManager
 
   // Run-scoped store of full tool outputs, keyed by tool call id. Large outputs are kept here
@@ -59,6 +61,32 @@ export class AgentRunContext {
 
   activateTool(toolName: string): void {
     this.activeTools.add(toolName)
+  }
+
+  approveTool(toolName: string): void {
+    if (toolName && !this.approvedTools.includes(toolName)) {
+      this.approvedTools.push(toolName)
+      console.log(`[AgentRunContext] Approved tool for run ${this.reqId}: "${toolName}"`)
+    }
+  }
+
+  isToolApproved(toolName: string): boolean {
+    return this.approvedTools.includes(toolName)
+  }
+
+  approveCommandPrefix(prefix: string): void {
+    const p = prefix.trim()
+    if (p && !this.approvedCommandPrefixes.includes(p)) {
+      this.approvedCommandPrefixes.push(p)
+      console.log(`[AgentRunContext] Approved command prefix for run ${this.reqId}: "${p}"`)
+    }
+  }
+
+  isCommandPrefixApproved(command: string): boolean {
+    const trimmed = command.trim()
+    return this.approvedCommandPrefixes.some((prefix) => {
+      return trimmed === prefix || trimmed.startsWith(prefix + ' ') || trimmed.startsWith(prefix + '\t')
+    })
   }
 
   hasExecuted(callKey: string): boolean {

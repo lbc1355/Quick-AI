@@ -670,6 +670,10 @@ describe('runAgentLoop', () => {
 
   it('guardrail blocks a workspace-escaping file_write before it executes', async () => {
     const writeSpy = vi.spyOn(ToolRegistry.file_write, 'execute')
+    const permissionSpy = vi
+      .spyOn(globalPermissionManager, 'requestPermission')
+      .mockResolvedValue(false)
+
     let callCount = 0
     vi.mocked(callModel).mockImplementation(async (options, messages) => {
       void options
@@ -692,7 +696,7 @@ describe('runAgentLoop', () => {
       }
       const lastMsg = messages[messages.length - 1]
       expect(lastMsg.role).toBe('tool')
-      expect(lastMsg.content).toContain('escapes the workspace')
+      expect(lastMsg.content).toContain('denied by user')
       return { role: 'assistant', content: 'I will not write outside the workspace.' }
     })
 
@@ -717,6 +721,7 @@ describe('runAgentLoop', () => {
       { file_write: 'allow' }
     )
 
+    expect(permissionSpy).toHaveBeenCalled()
     expect(writeSpy).not.toHaveBeenCalled()
     expect(callCount).toBe(2)
   })
@@ -865,5 +870,255 @@ describe('runAgentLoop', () => {
     })
 
     permPromise.mockRestore()
+  })
+
+  it('shell=ask bypasses permission prompt if prefix is approved in runCtx', async () => {
+    vi.spyOn(ToolRegistry.shell, 'execute').mockResolvedValue({
+      resultForModel: 'command output',
+      resultForUi: { title: 'git status', summary: 'success' }
+    })
+
+    const permissionSpy = vi
+      .spyOn(globalPermissionManager, 'requestPermission')
+      .mockResolvedValue(true)
+
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
+      void options
+      void messages
+      void tools
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-shell-git-1',
+              type: 'function',
+              function: { name: 'shell', arguments: JSON.stringify({ command: 'git status' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 2) {
+        const { resolveToolPermission } = await import('./index')
+        resolveToolPermission('test-req-shell-prefix', 'tc-shell-git-1', {
+          approved: true,
+          scope: 'prefix',
+          prefix: 'git'
+        })
+        
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-shell-git-2',
+              type: 'function',
+              function: { name: 'shell', arguments: JSON.stringify({ command: 'git diff' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 3) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-shell-npm',
+              type: 'function',
+              function: { name: 'shell', arguments: JSON.stringify({ command: 'npm install' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 4) {
+        return { role: 'assistant', content: 'Done.' }
+      }
+      return { role: 'assistant', content: 'done' }
+    })
+
+    await runAgentLoop(
+      mockWindow,
+      'test-req-shell-prefix',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Run git commands' }]
+      },
+      {
+        shell: 'ask'
+      }
+    )
+
+    expect(permissionSpy).toHaveBeenCalledTimes(2)
+    const calledCallIds = permissionSpy.mock.calls.map((c) => c[1])
+    expect(calledCallIds).toContain('tc-shell-git-1')
+    expect(calledCallIds).toContain('tc-shell-npm')
+    expect(calledCallIds).not.toContain('tc-shell-git-2')
+  })
+
+  it('any_tool=ask bypasses permission prompt if tool itself is approved in runCtx', async () => {
+    vi.spyOn(ToolRegistry.file_read, 'execute').mockResolvedValue({
+      resultForModel: 'file data',
+      resultForUi: { title: 'file_read', summary: 'success' }
+    })
+
+    const permissionSpy = vi
+      .spyOn(globalPermissionManager, 'requestPermission')
+      .mockResolvedValue(true)
+
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
+      void options
+      void messages
+      void tools
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-read-file-1',
+              type: 'function',
+              function: { name: 'file_read', arguments: JSON.stringify({ path: 'a.txt' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 2) {
+        const { resolveToolPermission } = await import('./index')
+        resolveToolPermission('test-req-tool-delegation', 'tc-read-file-1', {
+          approved: true,
+          scope: 'tool',
+          tool: 'file_read'
+        })
+        
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-read-file-2',
+              type: 'function',
+              function: { name: 'file_read', arguments: JSON.stringify({ path: 'b.txt' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 3) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-search',
+              type: 'function',
+              function: { name: 'web_search', arguments: JSON.stringify({ query: 'test' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 4) {
+        return { role: 'assistant', content: 'Done.' }
+      }
+      return { role: 'assistant', content: 'done' }
+    })
+
+    await runAgentLoop(
+      mockWindow,
+      'test-req-tool-delegation',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Read files' }]
+      },
+      {
+        file_read: 'ask',
+        web_search: 'ask'
+      }
+    )
+
+    expect(permissionSpy).toHaveBeenCalledTimes(2)
+    const calledCallIds = permissionSpy.mock.calls.map((c) => c[1])
+    expect(calledCallIds).toContain('tc-read-file-1')
+    expect(calledCallIds).toContain('tc-search')
+    expect(calledCallIds).not.toContain('tc-read-file-2')
+  })
+
+  it('askCalls loop bypasses subsequent prompts in the same turn once tool/prefix is approved', async () => {
+    vi.spyOn(ToolRegistry.file_read, 'execute').mockResolvedValue({
+      resultForModel: 'file data',
+      resultForUi: { title: 'file_read', summary: 'success' }
+    })
+
+    const permissionSpy = vi
+      .spyOn(globalPermissionManager, 'requestPermission')
+      .mockImplementation(async (reqId, callId) => {
+        const { resolveToolPermission } = await import('./index')
+        resolveToolPermission(reqId, callId, {
+          approved: true,
+          scope: 'tool',
+          tool: 'file_read'
+        })
+        return true
+      })
+
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (options, messages, tools) => {
+      void options
+      void messages
+      void tools
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-p-read-1',
+              type: 'function',
+              function: { name: 'file_read', arguments: JSON.stringify({ path: 'a.txt' }) }
+            },
+            {
+              id: 'tc-p-read-2',
+              type: 'function',
+              function: { name: 'file_read', arguments: JSON.stringify({ path: 'b.txt' }) }
+            },
+            {
+              id: 'tc-p-read-3',
+              type: 'function',
+              function: { name: 'file_read', arguments: JSON.stringify({ path: 'c.txt' }) }
+            }
+          ]
+        }
+      }
+      if (callCount === 2) {
+        return { role: 'assistant', content: 'Done.' }
+      }
+      return { role: 'assistant', content: 'done' }
+    })
+
+    await runAgentLoop(
+      mockWindow,
+      'test-req-parallel-delegation',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Read files in parallel' }]
+      },
+      {
+        file_read: 'ask'
+      }
+    )
+
+    expect(permissionSpy).toHaveBeenCalledTimes(1)
+    expect(permissionSpy.mock.calls[0][1]).toBe('tc-p-read-1')
   })
 })
