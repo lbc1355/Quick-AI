@@ -5,6 +5,23 @@ import { getFirstMissingOffset } from '../resourceCache'
 export const TOOL_DIRECTORY_BUDGET = 2000 // max chars injected into system prompt
 
 /**
+ * A single line stating the current date, injected at the top of the system prompt so the model
+ * has a temporal anchor (for relative reasoning like "recently" / "last week" and for dating any
+ * memories it stores). Deliberately DATE-level, not clock-level: the prefix stays identical for
+ * the whole day, so the prompt cache is not invalidated turn-to-turn. `now` is injectable for
+ * deterministic tests.
+ */
+export function buildDateLine(now: Date = new Date()): string {
+  const date = now.toLocaleDateString('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }) // YYYY-MM-DD
+  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' })
+  return `Current date: ${date} (${weekday}). The clock time within the day is not provided.`
+}
+
+/**
  * Compact tool directory suitable for injection into the system prompt so the model knows
  * which tools exist without having to call search_tools first. Budget-capped.
  */
@@ -128,6 +145,8 @@ export function buildSkillMessages(options: AgentSkillRunOptions): ChatCompletio
       role: 'system',
       content: `${baseSystemPrompt}You are QuickAI Agent Runner. Execute the installed Skill by reading its SKILL.md instructions.
 
+${buildDateLine()}
+
 You have access to tools that you can call.
 Rules:
 - Read the SKILL.md as the operating manual.
@@ -169,6 +188,8 @@ export function prepareChatAgentMessages(
   const toolDirs = buildToolDirectorySummary('all', permissions)
 
   const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can call to search the web, fetch pages, read and write files in the workspace, and search the codebase.
+
+${buildDateLine()}
 
 ${toolDirs ? `${toolDirs}\n\n` : ''}Operation history & cache — your second memory track:
 This conversation is backed by two parallel tracks. (1) The dialogue: alternating user and assistant turns. (2) A persistent operation layer that survives across turns but is NOT replayed in the dialogue — it stores the documents you fetched and every tool call you made. Because the dialogue contains only user/assistant text, never assume you performed no actions just because no tool calls are visible in it; consult the operation layer instead.

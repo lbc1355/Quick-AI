@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildToolDirectorySummary, prepareChatAgentMessages } from './messageBuilder'
+import { buildToolDirectorySummary, prepareChatAgentMessages, buildDateLine } from './messageBuilder'
 
 describe('buildToolDirectorySummary', () => {
   it('produces a non-empty summary for the full tool registry', () => {
@@ -30,6 +30,32 @@ describe('buildToolDirectorySummary', () => {
   it('stays within the budget cap', () => {
     const summary = buildToolDirectorySummary('all')
     expect(summary.length).toBeLessThanOrEqual(2200) // budget + some overhead
+  })
+})
+
+describe('buildDateLine', () => {
+  it('renders a date-level (not clock-level) anchor with weekday', () => {
+    // 2026-06-08 is a Monday.
+    const line = buildDateLine(new Date('2026-06-08T15:42:00'))
+    expect(line).toContain('2026-06-08')
+    expect(line).toContain('Monday')
+    // Must not leak a clock time into the stable prefix.
+    expect(line).not.toMatch(/\d{1,2}:\d{2}/)
+  })
+
+  it('is stable across different times of the same day (cache-friendly)', () => {
+    const morning = buildDateLine(new Date('2026-06-08T08:00:00'))
+    const evening = buildDateLine(new Date('2026-06-08T23:00:00'))
+    expect(morning).toBe(evening)
+  })
+})
+
+describe('prepareChatAgentMessages date injection', () => {
+  it('injects the current date into the system prompt', () => {
+    const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }])
+    const system = msgs.find((m) => m.role === 'system')
+    expect(system).toBeDefined()
+    expect(system!.content as string).toContain('Current date:')
   })
 })
 
