@@ -1,10 +1,11 @@
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { vi, it, expect, beforeEach, afterEach } from 'vitest'
 import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
 import { ToolRegistry } from './toolRegistry'
 import { closeDb, listMemories } from './database'
 import * as runCtx from './agent/AgentRunContext'
 import type { AgentRunContext } from './agent/AgentRunContext'
+import { describeWithSqlite } from './testSupport/nativeSqlite'
 
 const testDir = join(__dirname, '../../temp-memory-tool-test')
 
@@ -22,7 +23,7 @@ function stubRun(sessionId?: string): void {
   )
 }
 
-describe('remember / recall tools', () => {
+describeWithSqlite('remember / recall tools', () => {
   beforeEach(async () => {
     closeDb()
     if (existsSync(testDir)) await fs.rm(testDir, { recursive: true, force: true })

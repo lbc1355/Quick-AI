@@ -1,131 +1,12 @@
 import React, { useState } from 'react'
-import {
-  ChatChunkData,
-  Message,
-  Session,
-  Skill,
-  RunMode,
-  AgentEvent,
-  SessionResource
-} from '../../../shared/types'
+import { Message, Session, Skill, RunMode } from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
+import { isRuntimeErrorAssistantMessage } from './chatMessageEvents'
+import { forkResourcesForRuns, getRunIdsThroughMessage } from './sessionBranching'
+import { startStreamingRun as startChatStreamingRun } from './chatStreaming'
 
-const mergeResourceRanges = (
-  ranges: Array<{ start: number; end: number }>
-): Array<{ start: number; end: number }> => {
-  if (ranges.length <= 1) return ranges
-  const sorted = [...ranges].sort((a, b) => a.start - b.start)
-  const merged: Array<{ start: number; end: number }> = [sorted[0]]
-
-  for (let i = 1; i < sorted.length; i++) {
-    const last = merged[merged.length - 1]
-    const current = sorted[i]
-    if (current.start <= last.end) {
-      last.end = Math.max(last.end, current.end)
-    } else {
-      merged.push(current)
-    }
-  }
-
-  return merged
-}
-
-/**
- * Merge an incoming resource_update into the existing session resource (or create it), stamping the
- * producing run id into `runIds`. Pure — exported for testing. The runIds set is what later lets an
- * edit/regenerate prune resources whose every producing turn was removed.
- */
-export const mergeResourceUpdate = (
-  existing: SessionResource | undefined,
-  incoming: SessionResource,
-  reqId: string
-): SessionResource => {
-  if (!existing) {
-    return { ...incoming, runIds: [reqId] }
-  }
-
-  // Merge all metadata chunks returned by the cache, not only the first one.
-  const chunkMap = new Map(existing.chunks.map((chunk) => [chunk.id, chunk]))
-  incoming.chunks.forEach((chunk) => {
-    chunkMap.set(chunk.id, chunk)
-  })
-  const newChunks = Array.from(chunkMap.values()).sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0))
-
-  const fetchedRanges = mergeResourceRanges([
-    ...(existing.fetchedRanges || []),
-    ...(incoming.fetchedRanges || [])
-  ])
-
-  const runIds = Array.from(new Set([...(existing.runIds ?? []), reqId]))
-
-  return {
-    ...existing,
-    title: incoming.title || existing.title,
-    totalChars: incoming.totalChars ?? existing.totalChars,
-    nextOffset: incoming.nextOffset,
-    status: incoming.status,
-    summary: incoming.summary ?? existing.summary,
-    fetchedRanges,
-    runIds,
-    chunks: newChunks,
-    updatedAt: incoming.updatedAt || Date.now()
-  }
-}
-
-const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Message => {
-  const currentEvents = m.agentEvents || []
-  const updatedEvents = [...currentEvents]
-
-  if (newEvent.type === 'tool_call') {
-    const existingIdx = updatedEvents.findIndex(
-      (e) => e.type === 'tool_call' && e.callId === newEvent.callId
-    )
-    if (existingIdx !== -1) {
-      const existingEvent = updatedEvents[existingIdx]
-      if (existingEvent.type === 'tool_call') {
-        updatedEvents[existingIdx] = {
-          ...existingEvent,
-          permissionState: newEvent.permissionState
-        }
-      }
-    } else {
-      updatedEvents.push(newEvent)
-    }
-  } else if (updatedEvents.length > 0) {
-    const lastEvent = updatedEvents[updatedEvents.length - 1]
-    if (lastEvent.type === 'reasoning' && newEvent.type === 'reasoning') {
-      updatedEvents[updatedEvents.length - 1] = {
-        ...lastEvent,
-        content: lastEvent.content + newEvent.content
-      }
-    } else if (lastEvent.type === 'final' && newEvent.type === 'final') {
-      updatedEvents[updatedEvents.length - 1] = {
-        ...lastEvent,
-        content: lastEvent.content + newEvent.content
-      }
-    } else {
-      updatedEvents.push(newEvent)
-    }
-  } else {
-    updatedEvents.push(newEvent)
-  }
-
-  let newContent = m.content
-  let newReasoning = m.reasoning_content
-
-  if (newEvent.type === 'reasoning') {
-    newReasoning = (newReasoning || '') + newEvent.content
-  } else if (newEvent.type === 'final') {
-    newContent = (newContent || '') + newEvent.content
-  }
-
-  return {
-    ...m,
-    agentEvents: updatedEvents,
-    content: newContent,
-    reasoning_content: newReasoning
-  }
-}
+export { isRuntimeErrorAssistantMessage, mergeResourceUpdate } from './chatMessageEvents'
+export { forkResourcesForRuns, getRunIdsThroughMessage } from './sessionBranching'
 
 interface UseChatCompletionProps {
   setSessions: React.Dispatch<React.SetStateAction<Session[]>>
@@ -175,53 +56,7 @@ interface ApiMessage {
       }>
 }
 
-const RUNTIME_ERROR_PREFIXES = [
-  '⚠️ 出错了：',
-  '⚠️ 出错了:',
-  'Agent Skill failed:',
-  'Agent resume failed:'
-]
-
-export const isRuntimeErrorAssistantMessage = (msg: Message): boolean => {
-  if (msg.role !== 'assistant') return false
-  if (msg.isRuntimeError) return true
-  const content = (msg.content || '').trim()
-  return RUNTIME_ERROR_PREFIXES.some((prefix) => content.startsWith(prefix))
-}
-
 const SESSION_SEND_TIMEOUT_MS = 5 * 60 * 1000
-
-export const getRunIdsThroughMessage = (messages: Message[], throughIdx: number): string[] => {
-  return Array.from(
-    new Set(
-      messages
-        .slice(0, throughIdx + 1)
-        .filter((m) => m.role === 'assistant' && m.agentRunId)
-        .map((m) => m.agentRunId as string)
-    )
-  )
-}
-
-export const forkResourcesForRuns = (
-  resources: SessionResource[] | undefined,
-  keptRunIds: string[]
-): SessionResource[] => {
-  if (!resources || resources.length === 0) return []
-  const kept = new Set(keptRunIds)
-
-  return resources
-    .map((resource) => {
-      const runIds = resource.runIds ?? []
-      if (runIds.length === 0) return resource
-      const retainedRunIds = runIds.filter((id) => kept.has(id))
-      if (retainedRunIds.length === 0) return undefined
-      return {
-        ...resource,
-        runIds: retainedRunIds
-      }
-    })
-    .filter((resource): resource is SessionResource => !!resource)
-}
 
 export const useChatCompletion = ({
   setSessions,
@@ -319,9 +154,6 @@ export const useChatCompletion = ({
     }, 300)
   }
 
-  // Shared streaming pipeline for both chat and agent-skill runs: subscribes to the
-  // chat-chunk channel, funnels deltas into the placeholder assistant message, and
-  // tears down on done/error. `start` kicks off the underlying IPC request.
   const startStreamingRun = (
     reqId: string,
     sessionId: string,
@@ -329,134 +161,19 @@ export const useChatCompletion = ({
     start: () => void,
     formatError: (msg: string) => string
   ): void => {
-    let accumulatedText = ''
-    let accumulatedReasoning = ''
-
-    const unsubscribe = window.api.onChatChunk((data: ChatChunkData): void => {
-      if (data.reqId !== reqId) return
-
-      if (data.error) {
-        const errorText = formatError(data.error!)
-        updateMessageById(
-          assistantMsgId,
-          (m) => {
-            const currentEvents = m.agentEvents || []
-            const hasEvents = currentEvents.length > 0
-            return {
-              ...m,
-              content: errorText,
-              isRuntimeError: true,
-              agentEvents: hasEvents
-                ? [...currentEvents, { type: 'final', content: errorText }]
-                : currentEvents
-            }
-          },
-          false,
-          sessionId
-        )
-        cleanup()
-        return
-      }
-
-      if (data.done) {
-        cleanup()
-        return
-      }
-
-      if (data.reasoningContent) {
-        accumulatedReasoning += data.reasoningContent
-        updateMessageById(
-          assistantMsgId,
-          (m) => ({
-            ...m,
-            reasoning_content: accumulatedReasoning
-          }),
-          true,
-          sessionId
-        )
-      }
-
-      if (data.content) {
-        accumulatedText += data.content
-        updateMessageById(
-          assistantMsgId,
-          (m) => ({ ...m, content: accumulatedText }),
-          true,
-          sessionId
-        )
-      }
-
-      if (data.event) {
-        if (data.event.type === 'resource_update') {
-          const updatedResource = data.event.resource
-          setSessions((prevSessions) => {
-            const next = prevSessions.map((s) => {
-              if (s.id !== sessionId) return s
-
-              const existingResources = s.resources || []
-              const resIdx = existingResources.findIndex((r) => r.id === updatedResource.id)
-              const merged = mergeResourceUpdate(
-                resIdx !== -1 ? existingResources[resIdx] : undefined,
-                updatedResource,
-                reqId
-              )
-              const newResources =
-                resIdx !== -1
-                  ? existingResources.map((r, i) => (i === resIdx ? merged : r))
-                  : [...existingResources, merged]
-
-              return {
-                ...s,
-                resources: newResources,
-                lastActiveTime: Date.now()
-              }
-            })
-            sessionsRef.current = next
-            return next
-          })
-        } else {
-          updateMessageById(
-            assistantMsgId,
-            (m) => applyAgentEventToMessage(m, data.event!),
-            true,
-            sessionId
-          )
-        }
-      }
+    startChatStreamingRun({
+      reqId,
+      sessionId,
+      assistantMsgId,
+      start,
+      formatError,
+      setSessions,
+      sessionsRef,
+      updateMessageById,
+      setIsGenerating,
+      setActiveReqId,
+      persistActiveSession
     })
-
-    const cleanup = (): void => {
-      unsubscribe()
-      setIsGenerating(false)
-      setActiveReqId(null)
-      persistActiveSession(sessionId)
-    }
-
-    try {
-      start()
-    } catch (err) {
-      const error = err as Error
-      console.error(error)
-      const errorText = formatError(error.message)
-      updateMessageById(
-        assistantMsgId,
-        (m) => {
-          const currentEvents = m.agentEvents || []
-          const hasEvents = currentEvents.length > 0
-          return {
-            ...m,
-            content: errorText,
-            isRuntimeError: true,
-            agentEvents: hasEvents
-              ? [...currentEvents, { type: 'final', content: errorText }]
-              : currentEvents
-          }
-        },
-        false,
-        sessionId
-      )
-      cleanup()
-    }
   }
 
   const handleAbortGeneration = (): void => {

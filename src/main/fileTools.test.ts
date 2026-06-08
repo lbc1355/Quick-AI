@@ -13,6 +13,7 @@ describe('File Safety & Search Tools', () => {
 
   beforeAll(async () => {
     // Set up a temporary folder structure within the workspace for testing
+    await fs.rm(testDir, { recursive: true, force: true })
     await fs.mkdir(testDir, { recursive: true })
     await fs.mkdir(join(testDir, 'sub'), { recursive: true })
     await fs.mkdir(join(testDir, 'sub', 'deep'), { recursive: true })

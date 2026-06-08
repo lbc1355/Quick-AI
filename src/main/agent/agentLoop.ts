@@ -20,36 +20,24 @@ import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
 import { evaluateToolGuard } from './constitution'
-import { analyzeCommand } from './commandSafety'
 import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
-import {
-  AmbiguousAction,
-  loadRunCheckpoint,
-  RunCheckpoint,
-  saveRunCheckpoint
-} from './runCheckpoint'
+import { AmbiguousAction, loadRunCheckpoint, saveRunCheckpoint } from './runCheckpoint'
 import {
   appendRunAction,
   appendRunCheckpoint,
   createRunManifest,
   finishRunManifest,
-  SideEffectEntry,
-  SideEffectKind,
-  SideEffectReversibility,
   updateRunManifest
 } from './runManifest'
-
-const ACTION_HISTORY_RESUME_LIMIT = 12
-const RESUME_MODE_PROMPT_PREFIX = '[RESUME MODE]'
-const SIDE_EFFECTING_TOOLS = new Set(['shell', 'file_write', 'remember'])
-const IRREVERSIBLE_SHELL_PATTERNS = [
-  /\b(npm|pnpm|yarn)\s+(install|add|remove|uninstall)\b/i,
-  /\bgit\s+(commit|push|merge|rebase|reset|checkout|clean)\b/i,
-  /\b(prisma|typeorm|sequelize|knex)\s+.*\bmigrate\b/i,
-  /\bmigrate\b/i,
-  /\bRemove-Item\b/i,
-  /\b(del|erase|rmdir|move|mv|rm)\b/i
-]
+import {
+  ACTION_HISTORY_RESUME_LIMIT,
+  buildBranchForkPrompt,
+  buildCheckpointResumePrompt,
+  buildResumeActionHistoryPrompt,
+  cloneMessagesForCheckpoint,
+  injectPromptBeforeLatestUser
+} from './resumePrompts'
+import { buildSideEffectEntry, extractResourceIds, SIDE_EFFECTING_TOOLS } from './sideEffects'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -73,214 +61,6 @@ const getFetchUrlCallKey = (toolArgs: ToolArgs): string | undefined => {
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
-}
-
-const truncateForPrompt = (value: string, maxChars: number): string => {
-  if (value.length <= maxChars) return value
-  return `${value.slice(0, Math.max(0, maxChars - 3))}...`
-}
-
-const compactJsonForPrompt = (value: unknown, maxChars = 220): string => {
-  try {
-    return truncateForPrompt(JSON.stringify(value), maxChars)
-  } catch {
-    return '[unserializable]'
-  }
-}
-
-const buildResumeActionHistoryPrompt = (actionLog: ActionLog): string => {
-  if (actionLog.size === 0) return ''
-
-  const actions = actionLog.list({ limit: ACTION_HISTORY_RESUME_LIMIT })
-  if (actions.length === 0) return ''
-
-  const lines = [
-    '[RESUME CONTEXT]',
-    'Recent tool actions already completed in this conversation are listed below. Use this before deciding whether to call tools again.',
-    'Do not repeat successful reads, searches, fetches, or shell commands unless the user explicitly asked to regenerate, verify again, or the prior result is insufficient for the current request.',
-    'If you need exact details for an earlier action, call get_past_action with its callId instead of repeating the original tool call.',
-    '',
-    `Recent actions (${actions.length} shown, newest first):`
-  ]
-
-  actions.forEach((action, index) => {
-    const record = actionLog.get(action.callId)
-    lines.push(
-      `${index + 1}. [Turn ${action.turnIndex}] ${action.toolName} - ${action.resultStatus} (${action.durationMs}ms, ${action.resultSize} chars)`
-    )
-    lines.push(`   callId: ${action.callId}`)
-    if (record) {
-      lines.push(`   args: ${compactJsonForPrompt(record.args)}`)
-    }
-    lines.push(`   summary: ${truncateForPrompt(action.resultSummary.replace(/\s+/g, ' '), 260)}`)
-  })
-
-  return lines.join('\n')
-}
-
-const injectPromptBeforeLatestUser = (
-  messages: ChatCompletionMessage[],
-  prompt: string
-): ChatCompletionMessage[] => {
-  if (!prompt) return messages
-  const insertAt = Math.max(1, messages.length - 1)
-  messages.splice(insertAt, 0, {
-    role: 'system',
-    content: prompt
-  })
-  return messages
-}
-
-const isResumeModePrompt = (message: ChatCompletionMessage): boolean =>
-  message.role === 'system' &&
-  typeof message.content === 'string' &&
-  message.content.startsWith(RESUME_MODE_PROMPT_PREFIX)
-
-const cloneMessagesForCheckpoint = (messages: ChatCompletionMessage[]): ChatCompletionMessage[] => {
-  return JSON.parse(
-    JSON.stringify(messages.filter((message) => !isResumeModePrompt(message)))
-  ) as ChatCompletionMessage[]
-}
-
-const buildCheckpointResumePrompt = (checkpoint: RunCheckpoint, actionLog: ActionLog): string => {
-  const lines = [
-    RESUME_MODE_PROMPT_PREFIX,
-    'This is an automatic continuation of the same agent task after a previous execution failure.',
-    'No new user request was added. Continue the original task from the completed tool observations already present in the message history.',
-    'The failed or incomplete model step was discarded. Do not restart the task and do not repeat successful actions unless verification is necessary.',
-    'If a prior side-effecting action is marked ambiguous, do not run it again blindly. Inspect the current workspace/process state first, or ask the user before repeating it.',
-    '',
-    `Resuming from run: ${checkpoint.reqId}`,
-    `Checkpoint step: ${checkpoint.step}`,
-    `Last completed call: ${checkpoint.lastCompletedCallId || 'none'}`
-  ]
-
-  const ambiguousActionEntries = [
-    ...(checkpoint.ambiguousActions || []),
-    ...actionLog
-      .list({ limit: ACTION_HISTORY_RESUME_LIMIT })
-      .filter((action) => action.resultStatus === 'ambiguous')
-      .map((action): AmbiguousAction => {
-        const record = actionLog.get(action.callId)
-        return {
-          callId: action.callId,
-          toolName: action.toolName,
-          args: (record?.args || {}) as ToolArgs,
-          reason: action.resultSummary,
-          timestamp: record?.timestamp || Date.now()
-        }
-      })
-  ]
-  const ambiguousActions = Array.from(
-    new Map(ambiguousActionEntries.map((action) => [action.callId, action])).values()
-  )
-
-  if (ambiguousActions.length > 0) {
-    lines.push('', 'Ambiguous side-effecting actions:')
-    ambiguousActions.slice(0, ACTION_HISTORY_RESUME_LIMIT).forEach((action, index) => {
-      lines.push(`${index + 1}. ${action.toolName} (${action.callId})`)
-      lines.push(`   args: ${compactJsonForPrompt(action.args)}`)
-      lines.push(`   reason: ${truncateForPrompt(action.reason.replace(/\s+/g, ' '), 260)}`)
-    })
-  }
-
-  return lines.join('\n')
-}
-
-const buildBranchForkPrompt = (branchOf: {
-  sessionId: string
-  messageId: string
-  runId?: string
-}): string => {
-  return [
-    '[BRANCH MODE]',
-    'This run was forked from an older point in the conversation history.',
-    'The visible conversation branch starts from that older checkpoint, but the real workspace may still include side effects from later discarded or sibling runs.',
-    'Do not assume files, dependencies, git state, memories, or external systems were rolled back. Inspect current state before relying on it.',
-    '',
-    `Fork source session: ${branchOf.sessionId}`,
-    `Fork source message: ${branchOf.messageId}`,
-    `Fork source run: ${branchOf.runId || 'none'}`
-  ].join('\n')
-}
-
-const extractResourceIds = (resultContent: string): string[] => {
-  const ids = new Set<string>()
-  for (const match of resultContent.matchAll(
-    /\bResource ID:\s*([a-fA-F0-9]{16,}|[A-Za-z0-9_-]{12,})/g
-  )) {
-    ids.add(match[1])
-  }
-  return Array.from(ids)
-}
-
-const getShellReversibility = (
-  command: string,
-  status: ActionRecord['resultStatus']
-): SideEffectReversibility => {
-  if (status === 'ambiguous') return 'ambiguous'
-  if (IRREVERSIBLE_SHELL_PATTERNS.some((pattern) => pattern.test(command))) return 'irreversible'
-  const verdict = analyzeCommand(command)
-  if (verdict.level === 'safe') return 'metadata_only'
-  if (status === 'success') return 'ambiguous'
-  return 'metadata_only'
-}
-
-const buildSideEffectEntry = (
-  runId: string,
-  callId: string,
-  toolName: string,
-  args: ToolArgs,
-  status: ActionRecord['resultStatus'],
-  resultContent: string
-): SideEffectEntry => {
-  let kind: SideEffectKind = 'system'
-  let reversibility: SideEffectReversibility = 'metadata_only'
-  const filesTouched: string[] = []
-  const command = typeof args.command === 'string' ? args.command : undefined
-
-  if (toolName === 'shell') {
-    kind = 'shell'
-    reversibility = getShellReversibility(command || '', status)
-  } else if (toolName === 'file_write') {
-    kind = 'file_write'
-    reversibility = status === 'success' ? 'ambiguous' : 'metadata_only'
-    if (typeof args.path === 'string') filesTouched.push(args.path)
-  } else if (toolName === 'remember') {
-    kind = 'memory'
-    reversibility = status === 'success' ? 'reversible' : 'metadata_only'
-  } else if (toolName === 'fetch_url' || toolName === 'click_link') {
-    kind = 'cache'
-    reversibility = 'metadata_only'
-  } else if (toolName === 'web_search') {
-    kind = 'external'
-    reversibility = 'metadata_only'
-  } else if (
-    toolName.includes('read') ||
-    toolName.includes('search') ||
-    toolName.includes('list')
-  ) {
-    kind = 'read'
-    reversibility = 'metadata_only'
-  }
-
-  if (status === 'denied' || status === 'blocked' || status === 'error') {
-    reversibility = reversibility === 'irreversible' ? 'irreversible' : 'metadata_only'
-  }
-
-  return {
-    actionId: callId,
-    runId,
-    toolName,
-    kind,
-    reversibility,
-    status: status === 'timeout' ? 'error' : status,
-    summary: resultContent.slice(0, 300),
-    args,
-    command,
-    filesTouched,
-    createdAt: Date.now()
-  }
 }
 
 export const runAgentLoop = async (

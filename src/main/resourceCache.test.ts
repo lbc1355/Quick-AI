@@ -4,6 +4,7 @@ import { promises as fs, existsSync } from 'fs'
 import { getResourceId, saveResourceChunk, readResourceChunk, mergeRanges, getFirstMissingOffset } from './resourceCache'
 import { closeDb } from './database'
 import { SessionResourceChunk } from '../shared/types'
+import { describeWithSqlite } from './testSupport/nativeSqlite'
 
 const testDir = join(__dirname, '../../temp-resource-cache-test')
 
@@ -13,7 +14,7 @@ vi.mock('electron', () => ({
   }
 }))
 
-describe('resourceCache', () => {
+describeWithSqlite('resourceCache', () => {
   beforeEach(async () => {
     // Clean up test directory and close any leftover db connection
     closeDb()

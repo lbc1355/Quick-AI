@@ -13,9 +13,22 @@ import { promises as fs, realpathSync, existsSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { exec } from 'child_process'
 
+function getComparablePath(filePath: string): string {
+  const resolved = normalize(resolve(filePath))
+  try {
+    return normalize(realpathSync.native(resolved))
+  } catch {
+    try {
+      return normalize(join(realpathSync.native(dirname(resolved)), basename(resolved)))
+    } catch {
+      return resolved
+    }
+  }
+}
+
 export function getWorkspaceRoot(): string {
-  const userHome = homedir()
-  const rootPath = normalize(resolve(userHome, 'quickai'))
+  const configuredRoot = process.env.QUICKAI_WORKSPACE_ROOT
+  const rootPath = normalize(resolve(configuredRoot || join(homedir(), 'quickai')))
   if (!existsSync(rootPath)) {
     try {
       mkdirSync(rootPath, { recursive: true })
@@ -26,7 +39,7 @@ export function getWorkspaceRoot(): string {
 
   let root = rootPath
   try {
-    root = realpathSync(rootPath)
+    root = realpathSync.native(rootPath)
   } catch {
     // Ignore and fallback
   }
@@ -34,15 +47,12 @@ export function getWorkspaceRoot(): string {
 }
 
 export function isPathInWorkspace(filePath: string): boolean {
-  const root = getWorkspaceRoot()
-  let resolved = normalize(resolve(root, filePath))
-  try {
-    resolved = realpathSync(resolved)
-  } catch {
-    // Ignore and fallback
-  }
-  const relativePath = relative(root, resolved)
-  if (resolved === root) return true
+  const root = getComparablePath(getWorkspaceRoot())
+  const resolved = getComparablePath(resolve(root, filePath))
+  const comparisonRoot = process.platform === 'win32' ? root.toLowerCase() : root
+  const comparisonResolved = process.platform === 'win32' ? resolved.toLowerCase() : resolved
+  const relativePath = relative(comparisonRoot, comparisonResolved)
+  if (comparisonResolved === comparisonRoot) return true
   return !relativePath.startsWith('..') && !isAbsolute(relativePath)
 }
 

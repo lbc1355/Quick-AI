@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { vi, it, expect, beforeEach, afterEach } from 'vitest'
 import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
 import {
@@ -10,6 +10,7 @@ import {
   deleteSessionMemories
 } from './database'
 import { UserMemory } from '../shared/types'
+import { describeWithSqlite } from './testSupport/nativeSqlite'
 
 const testDir = join(__dirname, '../../temp-user-memories-test')
 
@@ -34,7 +35,7 @@ function mem(partial: Partial<UserMemory>): UserMemory {
   }
 }
 
-describe('user_memories DAL', () => {
+describeWithSqlite('user_memories DAL', () => {
   beforeEach(async () => {
     closeDb()
     if (existsSync(testDir)) await fs.rm(testDir, { recursive: true, force: true })
