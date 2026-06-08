@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Message, AgentEvent, ToolResultUi } from '../../../shared/types'
-import { Edit, RefreshCw, Paperclip, Sparkles } from 'lucide-react'
+import { Edit, RefreshCw, Paperclip, Sparkles, Copy, Check } from 'lucide-react'
 import {
   parseThinkTags,
   renderMessageContent,
@@ -363,6 +363,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       : parseAgentLogs(displayContent).cleanContent
 
     const [userExpandedOverride, setUserExpandedOverride] = useState<boolean | null>(null)
+    const [copied, setCopied] = useState(false)
     const isEditing = editingMessageId === msg.id
 
     const [elapsed, setElapsed] = useState<number>(0)
@@ -436,6 +437,24 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
           break
         }
       }
+    }
+
+    // The assistant's final reply text — the last 'final' event for structured runs, otherwise
+    // the cleaned content. This is what the copy button puts on the clipboard.
+    const finalReplyText =
+      hasStructuredEvents && lastFinalEventIdx !== -1
+        ? (msg.agentEvents![lastFinalEventIdx] as Extract<AgentEvent, { type: 'final' }>).content
+        : cleanContent
+
+    const handleCopy = (): void => {
+      if (!finalReplyText) return
+      navigator.clipboard
+        .writeText(finalReplyText)
+        .then(() => {
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1500)
+        })
+        .catch((err) => console.warn('Copy failed:', err))
     }
 
     // Derived logs expansion state
@@ -845,10 +864,18 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           <span>编辑</span>
                         </button>
                       ) : (
-                        <button className="msg-action-btn" onClick={() => onRegenerate(idx)}>
-                          <RefreshCw size={10} />
-                          <span>重新生成</span>
-                        </button>
+                        <>
+                          <button className="msg-action-btn" onClick={() => onRegenerate(idx)}>
+                            <RefreshCw size={10} />
+                            <span>重新生成</span>
+                          </button>
+                          {finalReplyText && (
+                            <button className="msg-action-btn" onClick={handleCopy}>
+                              {copied ? <Check size={10} /> : <Copy size={10} />}
+                              <span>{copied ? '已复制' : '复制'}</span>
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
