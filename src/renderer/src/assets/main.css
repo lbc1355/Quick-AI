@@ -1681,6 +1681,34 @@ select {
   line-height: 1.2;
 }
 
+.session-meta-with-branch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.session-meta-with-branch svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  opacity: 0.72;
+}
+
+.session-branch-source {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-meta-divider {
+  flex: 0 0 auto;
+  color: var(--color-text-faint);
+}
+
+.branch-session-item.active .session-main-btn {
+  border-left-color: rgba(52, 120, 246, 0.55);
+}
+
 .session-delete-btn {
   width: 24px;
   height: 24px;
@@ -1748,6 +1776,67 @@ select {
   display: flex;
   flex-direction: column;
   background: var(--color-panel);
+}
+
+.branch-context-banner {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 7px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.branch-context-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.branch-context-main svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  opacity: 0.8;
+}
+
+.branch-context-label {
+  flex: 0 0 auto;
+  color: var(--color-text-title);
+  font-weight: 600;
+}
+
+.branch-context-source {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-faint);
+}
+
+.branch-context-link {
+  flex: 0 0 auto;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.branch-context-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.branch-context-link:disabled {
+  cursor: default;
+  color: var(--color-text-faint);
 }
 
 .messages-container {
@@ -2197,6 +2286,14 @@ select {
   font-weight: 700;
 }
 
+.sidebar-collapsed .branch-session-initial {
+  color: var(--color-primary);
+}
+
+.sidebar-collapsed .branch-session-initial svg {
+  flex: 0 0 auto;
+}
+
 .sidebar-collapsed .session-item.active .session-main-btn {
   border-color: transparent;
   background: rgba(52, 120, 246, 0.1);
@@ -2253,6 +2350,28 @@ select {
   background: transparent;
   font-size: 14px;
   line-height: 1.78;
+}
+
+.message-branch-note {
+  margin: 0 0 8px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-faint);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.message-branch-note svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  opacity: 0.76;
+}
+
+.message-branch-run {
+  color: var(--color-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
 }
 
 .message-text p {

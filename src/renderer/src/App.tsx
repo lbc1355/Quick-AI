@@ -13,7 +13,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pin,
-  PinOff
+  PinOff,
+  GitBranch
 } from 'lucide-react'
 
 import { AutocompleteItem, AppSettings } from '../../shared/types'
@@ -28,6 +29,7 @@ import { useAttachments } from './hooks/useAttachments'
 import { useAutocomplete } from './hooks/useAutocomplete'
 import { useChatCompletion } from './hooks/useChatCompletion'
 import { useSkills } from './hooks/useSkills'
+import { getBranchDisplayInfo } from './utils/branchDisplay'
 
 interface PopupOption {
   label: string
@@ -686,6 +688,7 @@ function App(): React.JSX.Element {
     }
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
   }
+  const activeBranchInfo = getBranchDisplayInfo(activeSession?.branchOf, sessions, '源会话')
 
   return (
     <div
@@ -848,8 +851,13 @@ function App(): React.JSX.Element {
               {orderedSessions.map((session) => {
                 const isActive = session.id === activeSessionId
                 const messageCount = session.messages.length
+                const branchInfo = getBranchDisplayInfo(session.branchOf, sessions, '源会话')
+                const sessionTitle = session.title || 'New chat'
                 return (
-                  <div key={session.id} className={`session-item ${isActive ? 'active' : ''}`}>
+                  <div
+                    key={session.id}
+                    className={`session-item ${isActive ? 'active' : ''} ${branchInfo ? 'branch-session-item' : ''}`}
+                  >
                     <button
                       type="button"
                       className="session-main-btn"
@@ -857,15 +865,37 @@ function App(): React.JSX.Element {
                         setActiveSessionId(session.id)
                         setAutocompleteItems([])
                       }}
-                      title={session.title || 'New chat'}
+                      title={
+                        branchInfo
+                          ? `${sessionTitle} · 分支源自 ${branchInfo.sourceLabel}`
+                          : sessionTitle
+                      }
                     >
-                      <span className="session-initial" aria-hidden="true">
-                        {(session.title || 'N').trim().charAt(0).toUpperCase()}
+                      <span
+                        className={`session-initial ${branchInfo ? 'branch-session-initial' : ''}`}
+                        aria-hidden="true"
+                      >
+                        {branchInfo ? (
+                          <GitBranch size={13} />
+                        ) : (
+                          (session.title || 'N').trim().charAt(0).toUpperCase()
+                        )}
                       </span>
-                      <span className="session-title">{session.title || 'New chat'}</span>
-                      <span className="session-meta">
-                        {messageCount} msg{messageCount === 1 ? '' : 's'} -{' '}
-                        {formatSessionStamp(session.lastActiveTime, session.id)}
+                      <span className="session-title">{sessionTitle}</span>
+                      <span
+                        className={`session-meta ${branchInfo ? 'session-meta-with-branch' : ''}`}
+                      >
+                        {branchInfo && (
+                          <>
+                            <GitBranch size={10} />
+                            <span className="session-branch-source">{branchInfo.sourceTitle}</span>
+                            <span className="session-meta-divider">·</span>
+                          </>
+                        )}
+                        <span>
+                          {messageCount} msg{messageCount === 1 ? '' : 's'} -{' '}
+                          {formatSessionStamp(session.lastActiveTime, session.id)}
+                        </span>
                       </span>
                     </button>
                     <button
@@ -892,6 +922,27 @@ function App(): React.JSX.Element {
           </aside>
 
           <section className="conversation-panel">
+            {activeBranchInfo && (
+              <div className="branch-context-banner">
+                <div className="branch-context-main">
+                  <GitBranch size={14} />
+                  <span className="branch-context-label">分支会话</span>
+                  <span className="branch-context-source">源自 {activeBranchInfo.sourceLabel}</span>
+                </div>
+                <button
+                  type="button"
+                  className="branch-context-link"
+                  onClick={() => {
+                    setActiveSessionId(activeBranchInfo.sourceSessionId)
+                    setAutocompleteItems([])
+                  }}
+                  disabled={!activeBranchInfo.sourceExists}
+                  title={activeBranchInfo.sourceExists ? '打开源会话' : '源会话已不存在'}
+                >
+                  打开源会话
+                </button>
+              </div>
+            )}
             {isNewSessionEmpty ? (
               /* Claude Code Style clean watermark interface */
               <div className="empty-state">

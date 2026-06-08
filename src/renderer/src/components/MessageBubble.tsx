@@ -13,7 +13,8 @@ import {
   ChevronRight,
   SquareTerminal,
   Brain,
-  AlertCircle
+  AlertCircle,
+  GitBranch
 } from 'lucide-react'
 import {
   parseThinkTags,
@@ -21,6 +22,7 @@ import {
   parseAgentLogs,
   AgentLogStep
 } from '../utils/messageFormat'
+import { shortBranchRunId } from '../utils/branchDisplay'
 
 interface LogStepRowProps {
   log: AgentLogStep
@@ -408,6 +410,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     const [userExpandedOverride, setUserExpandedOverride] = useState<boolean | null>(null)
     const [copied, setCopied] = useState(false)
     const isEditing = editingMessageId === msg.id
+    const isBranchForkMessage = Boolean(msg.isBranchFork || msg.forkedFrom)
+    const branchRunId = shortBranchRunId(msg.forkedFrom?.runId)
 
     const [elapsed, setElapsed] = useState<number>(0)
 
@@ -834,6 +838,13 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
           <div className={`message-bubble ${msg.role}`}>
             {msg.role === 'user' && <div className={`avatar ${msg.role}`}>U</div>}
             <div className="message-content-wrapper" style={{ maxWidth: '100%' }}>
+              {!isEditing && isBranchForkMessage && (
+                <div className="message-branch-note">
+                  <GitBranch size={12} />
+                  <span>从历史节点续跑</span>
+                  {branchRunId && <span className="message-branch-run">run {branchRunId}</span>}
+                </div>
+              )}
               {isEditing ? (
                 <div className="message-edit-container">
                   <textarea
