@@ -42,7 +42,7 @@ export async function callModel(
     body.tool_choice = 'auto'
   }
 
-  const shouldStreamFinal = !toolsToDeclare || toolsToDeclare.length === 0
+  const shouldStreamFinal = true
 
   // Tracks whether any user-visible chunk (reasoning/final) has been emitted. Once true,
   // the request must NOT be retried — retrying would duplicate streamed output to the UI.
