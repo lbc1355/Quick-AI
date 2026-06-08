@@ -1,4 +1,4 @@
-import { Skill, SkillKind, SkillMode } from '../../../shared/types'
+import { Skill, SkillKind, SkillMode, SkillPackageFile } from '../../../shared/types'
 
 type FrontmatterValue = string | string[]
 type Frontmatter = Record<string, FrontmatterValue>
@@ -146,7 +146,18 @@ const readTitleFromMarkdown = (body: string): string => {
   return titleMatch ? titleMatch[1].trim() : ''
 }
 
-export const parseSkillMarkdown = (markdown: string, fallbackFileName: string): Skill => {
+export interface ParseSkillMarkdownOptions {
+  source?: Skill['source']
+  entryPath?: string
+  packageRoot?: string
+  packageFiles?: SkillPackageFile[]
+}
+
+export const parseSkillMarkdown = (
+  markdown: string,
+  fallbackFileName: string,
+  options: ParseSkillMarkdownOptions = {}
+): Skill => {
   const { frontmatter, body } = splitMarkdown(markdown)
   if (!body.trim()) {
     throw new Error('Skill Markdown 需要在正文里写入 prompt')
@@ -182,6 +193,9 @@ export const parseSkillMarkdown = (markdown: string, fallbackFileName: string): 
     tools,
     maxSteps: readMaxSteps(asString(frontmatter.max_steps) || asString(frontmatter.maxsteps)),
     rawMarkdown: markdown,
-    source: 'markdown'
+    source: options.source || 'markdown',
+    entryPath: options.entryPath,
+    packageRoot: options.packageRoot,
+    packageFiles: options.packageFiles
   }
 }

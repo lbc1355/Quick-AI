@@ -136,6 +136,7 @@ export function buildResourceSummaryPrompt(resources: SessionResource[] | undefi
 
 export function buildSkillMessages(options: AgentSkillRunOptions): ChatCompletionMessage[] {
   const skillMarkdown = options.skill.rawMarkdown || options.skill.prompt
+  const packageFilesPrompt = buildSkillPackageFilesPrompt(options.skill)
   const baseSystemPrompt = options.systemPrompt
     ? `User global system prompt:\n${options.systemPrompt}\n\n`
     : ''
@@ -160,7 +161,7 @@ Rules:
     },
     {
       role: 'user',
-      content: `Installed SKILL.md:\n\n${skillMarkdown}\n\nUser request:\n${options.userInput}`
+      content: `Installed SKILL.md:\n\n${skillMarkdown}${packageFilesPrompt}\n\nUser request:\n${options.userInput}`
     }
   ]
 
@@ -177,6 +178,42 @@ Rules:
   }
 
   return msgs
+}
+
+const MAX_SKILL_PACKAGE_FILE_CHARS = 6000
+const MAX_SKILL_PACKAGE_TOTAL_CHARS = 20000
+
+function buildSkillPackageFilesPrompt(skill: AgentSkillRunOptions['skill']): string {
+  const entryPath = (skill.entryPath || 'SKILL.md').toLowerCase()
+  const files = (skill.packageFiles || [])
+    .filter((file) => file.content.trim())
+    .filter((file) => file.path.toLowerCase() !== entryPath)
+    .sort((a, b) => a.path.localeCompare(b.path))
+
+  if (files.length === 0) return ''
+
+  const blocks: string[] = []
+  let totalChars = 0
+
+  for (const file of files) {
+    if (totalChars >= MAX_SKILL_PACKAGE_TOTAL_CHARS) break
+
+    const remaining = MAX_SKILL_PACKAGE_TOTAL_CHARS - totalChars
+    const limit = Math.min(MAX_SKILL_PACKAGE_FILE_CHARS, remaining)
+    const content =
+      file.content.length > limit
+        ? `${file.content.slice(0, Math.max(0, limit - 34))}\n[File truncated for context size]`
+        : file.content
+
+    blocks.push(`Path: ${file.path}\n\n${content}`)
+    totalChars += content.length
+  }
+
+  if (blocks.length === 0) return ''
+
+  return `\n\nInstalled skill package files:\n\n${blocks
+    .map((block) => `---\n${block}`)
+    .join('\n\n')}`
 }
 
 export function prepareChatAgentMessages(

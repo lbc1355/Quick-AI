@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Message, Session, Skill, RunMode } from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
 import { isRuntimeErrorAssistantMessage } from './chatMessageEvents'
@@ -101,6 +101,16 @@ export const useChatCompletion = ({
   const [activeReqId, setActiveReqId] = useState<string | null>(null)
   const [activeGenerationSessionId, setActiveGenerationSessionId] = useState<string | null>(null)
   const [runMode, setRunMode] = useState<RunMode>('chat')
+
+  // Mirror runMode in a ref so dispatch always reads the live value. handleSendMessage can be
+  // captured in a stale closure — MessageBubble is memoized and its comparator ignores callback
+  // props, so the onRegenerate/onSaveEdit it holds may close over an older runMode than the toggle
+  // currently shows. Reading the ref (stable across renders) instead of the closed-over `runMode`
+  // ensures regenerate/edit after toggling honours the current mode.
+  const runModeRef = useRef(runMode)
+  useEffect(() => {
+    runModeRef.current = runMode
+  }, [runMode])
 
   const resolveSessionForSend = (
     currentSessions: Session[],
@@ -381,7 +391,7 @@ export const useChatCompletion = ({
       role: 'assistant',
       content: '',
       reasoning_content: '',
-      ...(runMode === 'agent' ? { agentRunId: reqId, agentEvents: [] } : {}),
+      ...(runModeRef.current === 'agent' ? { agentRunId: reqId, agentEvents: [] } : {}),
       ...(branchOf ? { isBranchFork: true, forkedFrom: branchOf } : {})
     }
     targetSession.messages.push(assistantMsg)
@@ -451,7 +461,7 @@ export const useChatCompletion = ({
           apiKey,
           model: selectedModel,
           messages: apiMessages,
-          runMode,
+          runMode: runModeRef.current,
           resources: targetSession.resources,
           sessionId: targetSession.id,
           sourceMessageId,

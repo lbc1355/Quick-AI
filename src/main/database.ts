@@ -62,7 +62,8 @@ function createSchema(database: Database.Database): void {
     CREATE TABLE IF NOT EXISTS sessions (
       id             TEXT PRIMARY KEY,
       title          TEXT NOT NULL DEFAULT '',
-      lastActiveTime INTEGER NOT NULL DEFAULT 0
+      lastActiveTime INTEGER NOT NULL DEFAULT 0,
+      branchOf       TEXT
     );
 
     CREATE TABLE IF NOT EXISTS messages (
@@ -73,6 +74,8 @@ function createSchema(database: Database.Database): void {
       reasoning_content TEXT,
       agentRunId        TEXT,
       agentEvents       TEXT,
+      forkedFrom        TEXT,
+      isBranchFork      INTEGER NOT NULL DEFAULT 0,
       createdAt         INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(sessionId);
@@ -99,6 +102,9 @@ function createSchema(database: Database.Database): void {
       maxSteps      INTEGER DEFAULT 30,
       rawMarkdown   TEXT,
       source        TEXT DEFAULT 'manual',
+      entryPath     TEXT,
+      packageRoot   TEXT,
+      packageFiles  TEXT DEFAULT '[]',
       installedAt   INTEGER,
       updatedAt     INTEGER,
       toolDiscovery TEXT DEFAULT 'static'
@@ -158,6 +164,29 @@ function createSchema(database: Database.Database): void {
       PRIMARY KEY (resourceId, linkId)
     );
   `)
+
+  // Additive column migrations for databases created before a column existed. CREATE TABLE
+  // IF NOT EXISTS never alters an existing table, so older DBs are missing these and would
+  // silently drop the data on save (e.g. branch/fork metadata vanishing after a restart).
+  ensureColumn(database, 'sessions', 'branchOf', 'TEXT')
+  ensureColumn(database, 'messages', 'forkedFrom', 'TEXT')
+  ensureColumn(database, 'messages', 'isBranchFork', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn(database, 'skills', 'entryPath', 'TEXT')
+  ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
+  ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")
+}
+
+/** Add a column to an existing table if it is missing. Idempotent; safe to call on every boot. */
+function ensureColumn(
+  database: Database.Database,
+  table: string,
+  column: string,
+  definition: string
+): void {
+  const columns = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+  if (!columns.some((c) => c.name === column)) {
+    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  }
 }
 
 // ── Migration from old JSON files ────────────────────────────────────────
@@ -268,8 +297,8 @@ function migrateStore(database: Database.Database, storePath: string): void {
     if (data.skills && data.skills.length > 0) {
       const insertSkill = database.prepare(
         `INSERT OR REPLACE INTO skills
-         (id, name, trigger, prompt, description, triggers, mode, kind, tools, maxSteps, rawMarkdown, source, installedAt, updatedAt, toolDiscovery)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, name, trigger, prompt, description, triggers, mode, kind, tools, maxSteps, rawMarkdown, source, entryPath, packageRoot, packageFiles, installedAt, updatedAt, toolDiscovery)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       for (const s of data.skills) {
         insertSkill.run(
@@ -285,6 +314,9 @@ function migrateStore(database: Database.Database, storePath: string): void {
           s.maxSteps ?? 30,
           s.rawMarkdown || null,
           s.source || 'manual',
+          s.entryPath || null,
+          s.packageRoot || null,
+          JSON.stringify(s.packageFiles || []),
           s.installedAt || null,
           s.updatedAt || null,
           s.toolDiscovery || 'static'
@@ -457,11 +489,16 @@ export function loadSessions(): Session[] {
   const database = getDb()
 
   const sessionRows = database
-    .prepare('SELECT id, title, lastActiveTime FROM sessions ORDER BY lastActiveTime DESC')
-    .all() as Array<{ id: string; title: string; lastActiveTime: number }>
+    .prepare('SELECT id, title, lastActiveTime, branchOf FROM sessions ORDER BY lastActiveTime DESC')
+    .all() as Array<{
+    id: string
+    title: string
+    lastActiveTime: number
+    branchOf: string | null
+  }>
 
   const msgStmt = database.prepare(
-    'SELECT id, role, content, reasoning_content, agentRunId, agentEvents, createdAt FROM messages WHERE sessionId = ? ORDER BY createdAt ASC'
+    'SELECT id, role, content, reasoning_content, agentRunId, agentEvents, forkedFrom, isBranchFork, createdAt FROM messages WHERE sessionId = ? ORDER BY createdAt ASC'
   )
   const fileStmt = database.prepare(
     'SELECT name, content, type FROM message_files WHERE messageId = ?'
@@ -475,6 +512,8 @@ export function loadSessions(): Session[] {
       reasoning_content: string | null
       agentRunId: string | null
       agentEvents: string | null
+      forkedFrom: string | null
+      isBranchFork: number | null
       createdAt: number
     }>
 
@@ -494,6 +533,8 @@ export function loadSessions(): Session[] {
         }
       }
 
+      const forkedFrom = parseBranchRef(m.forkedFrom)
+
       return {
         id: m.id,
         role: m.role as Message['role'],
@@ -501,6 +542,8 @@ export function loadSessions(): Session[] {
         reasoning_content: m.reasoning_content || undefined,
         agentRunId: m.agentRunId || undefined,
         agentEvents,
+        forkedFrom,
+        isBranchFork: m.isBranchFork === 1 || (m.isBranchFork == null && !!forkedFrom) || undefined,
         files:
           fileRows.length > 0
             ? fileRows.map((f) => ({ name: f.name, content: f.content, type: f.type }))
@@ -512,9 +555,28 @@ export function loadSessions(): Session[] {
       id: s.id,
       title: s.title,
       lastActiveTime: s.lastActiveTime || undefined,
+      branchOf: parseBranchRef(s.branchOf),
       messages
     }
   })
+}
+
+/** Parse a JSON-serialised branch reference column back into its typed shape (null/garbage → undefined). */
+function parseBranchRef(value: string | null): Session['branchOf'] {
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value) as { sessionId?: unknown; messageId?: unknown; runId?: unknown }
+    if (typeof parsed?.sessionId === 'string' && typeof parsed?.messageId === 'string') {
+      return {
+        sessionId: parsed.sessionId,
+        messageId: parsed.messageId,
+        ...(typeof parsed.runId === 'string' ? { runId: parsed.runId } : {})
+      }
+    }
+  } catch {
+    // ignore malformed JSON
+  }
+  return undefined
 }
 
 export function saveSessions(sessions: Session[]): void {
@@ -524,18 +586,23 @@ export function saveSessions(sessions: Session[]): void {
   database.prepare('DELETE FROM sessions').run()
 
   const insertSession = database.prepare(
-    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime) VALUES (?, ?, ?)'
+    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, branchOf) VALUES (?, ?, ?, ?)'
   )
   const insertMessage = database.prepare(
-    `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentEvents, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentEvents, forkedFrom, isBranchFork, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const insertFile = database.prepare(
     'INSERT INTO message_files (messageId, name, content, type) VALUES (?, ?, ?, ?)'
   )
 
   for (const session of sessions) {
-    insertSession.run(session.id, session.title, session.lastActiveTime || 0)
+    insertSession.run(
+      session.id,
+      session.title,
+      session.lastActiveTime || 0,
+      session.branchOf ? JSON.stringify(session.branchOf) : null
+    )
 
     if (session.messages) {
       for (const msg of session.messages) {
@@ -547,6 +614,8 @@ export function saveSessions(sessions: Session[]): void {
           msg.reasoning_content || null,
           msg.agentRunId || null,
           msg.agentEvents ? JSON.stringify(msg.agentEvents) : null,
+          msg.forkedFrom ? JSON.stringify(msg.forkedFrom) : null,
+          msg.isBranchFork ? 1 : 0,
           parseInt(msg.id) || Date.now()
         )
         if (msg.files && msg.files.length > 0) {
@@ -576,6 +645,9 @@ export function loadSkills(): Skill[] {
     maxSteps: number
     rawMarkdown: string | null
     source: string
+    entryPath: string | null
+    packageRoot: string | null
+    packageFiles: string | null
     installedAt: number | null
     updatedAt: number | null
     toolDiscovery: string
@@ -594,10 +666,40 @@ export function loadSkills(): Skill[] {
     maxSteps: r.maxSteps ?? undefined,
     rawMarkdown: r.rawMarkdown || undefined,
     source: r.source as Skill['source'],
+    entryPath: r.entryPath || undefined,
+    packageRoot: r.packageRoot || undefined,
+    packageFiles: parseSkillPackageFiles(r.packageFiles),
     installedAt: r.installedAt ?? undefined,
     updatedAt: r.updatedAt ?? undefined,
     toolDiscovery: r.toolDiscovery as Skill['toolDiscovery']
   }))
+}
+
+function parseSkillPackageFiles(value: string | null): Skill['packageFiles'] {
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!Array.isArray(parsed)) return undefined
+
+    const files = parsed
+      .map((file) => {
+        if (!file || typeof file !== 'object') return undefined
+        const candidate = file as { path?: unknown; content?: unknown; size?: unknown }
+        if (typeof candidate.path !== 'string' || typeof candidate.content !== 'string') {
+          return undefined
+        }
+        return {
+          path: candidate.path,
+          content: candidate.content,
+          size: typeof candidate.size === 'number' ? candidate.size : candidate.content.length
+        }
+      })
+      .filter((file): file is NonNullable<Skill['packageFiles']>[number] => !!file)
+
+    return files.length > 0 ? files : undefined
+  } catch {
+    return undefined
+  }
 }
 
 export function saveSkills(skills: Skill[]): void {
@@ -605,8 +707,8 @@ export function saveSkills(skills: Skill[]): void {
   database.prepare('DELETE FROM skills').run()
   const insert = database.prepare(
     `INSERT OR REPLACE INTO skills
-     (id, name, trigger, prompt, description, triggers, mode, kind, tools, maxSteps, rawMarkdown, source, installedAt, updatedAt, toolDiscovery)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     (id, name, trigger, prompt, description, triggers, mode, kind, tools, maxSteps, rawMarkdown, source, entryPath, packageRoot, packageFiles, installedAt, updatedAt, toolDiscovery)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   for (const s of skills) {
     insert.run(
@@ -622,6 +724,9 @@ export function saveSkills(skills: Skill[]): void {
       s.maxSteps ?? 30,
       s.rawMarkdown || null,
       s.source || 'manual',
+      s.entryPath || null,
+      s.packageRoot || null,
+      JSON.stringify(s.packageFiles || []),
       s.installedAt || null,
       s.updatedAt || null,
       s.toolDiscovery || 'static'

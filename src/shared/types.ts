@@ -148,6 +148,12 @@ export interface AppSettings {
 export type SkillMode = 'insert' | 'send' | 'run'
 export type SkillKind = 'prompt' | 'agent'
 
+export interface SkillPackageFile {
+  path: string
+  content: string
+  size: number
+}
+
 export interface Skill {
   id: string
   name: string
@@ -160,10 +166,22 @@ export interface Skill {
   tools?: string[]
   maxSteps?: number
   rawMarkdown?: string
-  source?: 'manual' | 'markdown'
+  source?: 'manual' | 'markdown' | 'folder'
+  entryPath?: string
+  packageRoot?: string
+  packageFiles?: SkillPackageFile[]
   installedAt?: number
   updatedAt?: number
   toolDiscovery?: 'static' | 'dynamic'
+}
+
+export interface SkillInstallPayload {
+  fileName: string
+  markdown: string
+  source?: Skill['source']
+  entryPath?: string
+  packageRoot?: string
+  packageFiles?: SkillPackageFile[]
 }
 
 export interface Memory {

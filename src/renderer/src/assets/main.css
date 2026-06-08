@@ -869,6 +869,13 @@ select {
   gap: 5px;
 }
 
+.skill-install-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .skill-empty {
   padding: 12px;
   border: 1px dashed var(--color-border);

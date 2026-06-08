@@ -1,11 +1,31 @@
 import { useEffect, useState } from 'react'
-import { Skill } from '../../../shared/types'
+import { Skill, SkillInstallPayload, SkillPackageFile } from '../../../shared/types'
 import { parseSkillMarkdown } from '../utils/skillMarkdown'
 
 export interface UseSkillsReturn {
   skills: Skill[]
-  installSkillFromMarkdown: (fileName: string, markdown: string) => Promise<Skill>
+  installSkill: (payload: SkillInstallPayload) => Promise<Skill>
   removeSkill: (id: string) => Promise<void>
+}
+
+const normalizePackageFiles = (
+  files: SkillPackageFile[] | undefined
+): SkillPackageFile[] | undefined => {
+  if (!files || files.length === 0) return undefined
+
+  const unique = new Map<string, SkillPackageFile>()
+  files.forEach((file) => {
+    const normalizedPath = file.path.replace(/\\/g, '/').replace(/^\/+/, '').trim()
+    if (!normalizedPath || typeof file.content !== 'string') return
+    unique.set(normalizedPath, {
+      path: normalizedPath,
+      content: file.content,
+      size: file.size || file.content.length
+    })
+  })
+
+  const normalized = Array.from(unique.values()).sort((a, b) => a.path.localeCompare(b.path))
+  return normalized.length > 0 ? normalized : undefined
 }
 
 const normalizeLoadedSkill = (skill: Skill): Skill => {
@@ -22,7 +42,8 @@ const normalizeLoadedSkill = (skill: Skill): Skill => {
     kind,
     tools,
     mode: skill.mode || (kind === 'agent' ? 'run' : 'insert'),
-    rawMarkdown: skill.rawMarkdown || skill.prompt
+    rawMarkdown: skill.rawMarkdown || skill.prompt,
+    packageFiles: normalizePackageFiles(skill.packageFiles)
   }
 }
 
@@ -48,8 +69,14 @@ export const useSkills = (): UseSkillsReturn => {
     await window.api.storeSet('skills', sorted)
   }
 
-  const installSkillFromMarkdown = async (fileName: string, markdown: string): Promise<Skill> => {
-    const parsedSkill = parseSkillMarkdown(markdown, fileName)
+  const installSkill = async (payload: SkillInstallPayload): Promise<Skill> => {
+    const packageFiles = normalizePackageFiles(payload.packageFiles)
+    const parsedSkill = parseSkillMarkdown(payload.markdown, payload.fileName, {
+      source: payload.source,
+      entryPath: payload.entryPath,
+      packageRoot: payload.packageRoot,
+      packageFiles
+    })
     const now = Date.now()
     const existingSkill = skills.find((skill) => skill.id === parsedSkill.id)
     const installedSkill: Skill = {
@@ -69,7 +96,7 @@ export const useSkills = (): UseSkillsReturn => {
 
   return {
     skills,
-    installSkillFromMarkdown,
+    installSkill,
     removeSkill
   }
 }

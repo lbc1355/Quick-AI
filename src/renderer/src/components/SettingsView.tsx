@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { ApiProvider, Skill } from '../../../shared/types'
+import { ApiProvider, Skill, SkillInstallPayload } from '../../../shared/types'
 import { ProviderList } from './ProviderList'
 import { ProviderEditor } from './ProviderEditor'
 import { SkillManager } from './SkillManager'
@@ -45,7 +45,7 @@ interface SettingsViewProps {
   onAddManualModel: () => void
   onFetchModels: () => void
   onRemoveModel: (modelId: string) => void
-  onInstallSkill: (fileName: string, markdown: string) => Promise<Skill>
+  onInstallSkill: (payload: SkillInstallPayload) => Promise<Skill>
   onRemoveSkill: (id: string) => Promise<void>
   onChangeEditingProviderName: (name: string) => void
   onChangeEditingProviderApiUrl: (url: string) => void
@@ -59,7 +59,7 @@ const settingsSections: Array<{ id: SettingsSection; label: string; detail: stri
   { id: 'providers', label: '服务商', detail: 'API 与模型' },
   { id: 'general', label: '通用', detail: '提示词与窗口' },
   { id: 'agent', label: 'Agent', detail: '工具权限' },
-  { id: 'skills', label: 'Skills', detail: 'Markdown 技能' }
+  { id: 'skills', label: 'Skills', detail: 'Markdown / 文件夹' }
 ]
 
 const agentTools: Array<{

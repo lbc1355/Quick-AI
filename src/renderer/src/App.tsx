@@ -331,7 +331,7 @@ function App(): React.JSX.Element {
   } = useAutocomplete()
 
   // 6. Markdown Skills hook
-  const { skills, installSkillFromMarkdown, removeSkill } = useSkills()
+  const { skills, installSkill, removeSkill } = useSkills()
 
   // Listen to window summon (focus/show) event from Main Process
   useEffect(() => {
@@ -840,7 +840,7 @@ function App(): React.JSX.Element {
           onAddManualModel={handleAddManualModel}
           onFetchModels={handleFetchModels}
           onRemoveModel={handleRemoveModelDirectly}
-          onInstallSkill={installSkillFromMarkdown}
+          onInstallSkill={installSkill}
           onRemoveSkill={removeSkill}
           onChangeEditingProviderName={(name) => {
             setProviders((prev) =>

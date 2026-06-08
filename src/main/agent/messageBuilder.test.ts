@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { buildToolDirectorySummary, prepareChatAgentMessages, buildDateLine } from './messageBuilder'
+import {
+  buildToolDirectorySummary,
+  prepareChatAgentMessages,
+  buildDateLine,
+  buildSkillMessages
+} from './messageBuilder'
 
 describe('buildToolDirectorySummary', () => {
   it('produces a non-empty summary for the full tool registry', () => {
@@ -56,6 +61,37 @@ describe('prepareChatAgentMessages date injection', () => {
     const system = msgs.find((m) => m.role === 'system')
     expect(system).toBeDefined()
     expect(system!.content as string).toContain('Current date:')
+  })
+})
+
+describe('buildSkillMessages package files', () => {
+  it('includes installed folder files alongside SKILL.md', () => {
+    const msgs = buildSkillMessages({
+      apiUrl: 'https://api.example.com',
+      apiKey: 'key',
+      model: 'test-model',
+      skill: {
+        id: 'skill-folder',
+        name: 'Folder Skill',
+        trigger: 'folder',
+        prompt: 'Use the helper script.',
+        rawMarkdown: '# Folder Skill\n\nUse the helper script.',
+        source: 'folder',
+        entryPath: 'SKILL.md',
+        packageFiles: [
+          { path: 'SKILL.md', content: '# Folder Skill\n\nUse the helper script.', size: 39 },
+          { path: 'scripts/helper.py', content: 'print("helper")', size: 15 }
+        ]
+      },
+      userInput: 'run it'
+    })
+
+    const userContent = msgs.find((m) => m.role === 'user')!.content as string
+    expect(userContent).toContain('Installed SKILL.md')
+    expect(userContent).toContain('Installed skill package files')
+    expect(userContent).toContain('Path: scripts/helper.py')
+    expect(userContent).toContain('print("helper")')
+    expect(userContent.match(/Path: SKILL\.md/g)).toBeNull()
   })
 })
 
