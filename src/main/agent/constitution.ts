@@ -59,7 +59,9 @@ export function evaluateToolGuard(
   args: Record<string, unknown>,
   basePermission: GuardAction,
   risk: 'low' | 'medium' | 'high',
-  constitution: Constitution = DEFAULT_CONSTITUTION
+  constitution: Constitution = DEFAULT_CONSTITUTION,
+  /** When true the tool has been explicitly approved for this run — skip high-risk escalation. */
+  isRunApproved = false
 ): GuardVerdict {
   let action: GuardAction = basePermission
   let reason: string | undefined
@@ -101,8 +103,9 @@ export function evaluateToolGuard(
     }
   }
 
-  // High-risk tools always require at least confirmation.
-  if (constitution.escalateHighRiskToAsk && risk === 'high') {
+  // High-risk tools always require at least confirmation — unless the user has explicitly
+  // approved the tool for this run (e.g. "allow all shell commands in this task").
+  if (constitution.escalateHighRiskToAsk && risk === 'high' && !isRunApproved) {
     tighten('ask', `Guardrail: "${toolName}" is a high-risk tool; confirmation required.`)
   }
 

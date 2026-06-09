@@ -1,6 +1,6 @@
 import { ChatCompletionMessage, ToolArgs } from '../../shared/types'
 import { ToolRegistry } from '../toolRegistry'
-import { evaluateToolGuard } from './constitution'
+import { evaluateToolGuard, DEFAULT_CONSTITUTION } from './constitution'
 import { LoopGuard } from './loopGuard'
 
 export type ToolPermission = 'allow' | 'ask' | 'deny'
@@ -74,7 +74,8 @@ export function prepareToolCalls(input: {
     let effectivePermission = permission
     let blockReason: string | undefined
     if (isValid && permission !== 'deny' && toolDef) {
-      const verdict = evaluateToolGuard(toolName, args, permission, toolDef.risk)
+      const runApproved = input.isToolApproved(toolName)
+      const verdict = evaluateToolGuard(toolName, args, permission, toolDef.risk, DEFAULT_CONSTITUTION, runApproved)
       effectivePermission = verdict.action
       if (verdict.action !== permission && verdict.reason) {
         blockReason = verdict.reason

@@ -45,6 +45,12 @@ describe('evaluateToolGuard', () => {
     expect(v.reason).toContain('high-risk')
   })
 
+  it('skips the high-risk escalation when the tool is run-approved', () => {
+    const v = evaluateToolGuard('shell', {}, 'allow', 'high', DEFAULT_CONSTITUTION, true)
+    expect(v.action).toBe('allow')
+    expect(v.reason).toBeUndefined()
+  })
+
   it('exposes a default constitution with the expected arg keys', () => {
     expect(DEFAULT_CONSTITUTION.pathArgKeys).toContain('path')
     expect(DEFAULT_CONSTITUTION.commandArgKeys).toContain('command')
