@@ -16,6 +16,7 @@ import { copyRunManifestsForRuns, deleteRunManifest, deleteRunManifests } from '
 import { deleteResourceFile } from './resourceCache'
 import { deleteSessionMemories } from './database'
 import { showDesktopNotification } from './tools/helpers'
+import { clearSessionApprovals } from './agent/AgentRunContext'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -275,6 +276,8 @@ app.whenReady().then(() => {
       } catch (err) {
         console.warn('clear-session-caches: session memory delete failed:', (err as Error).message)
       }
+      // Drop any "allow for this task" approvals so a reused session id never inherits stale grants.
+      clearSessionApprovals(id)
     }
 
     const results = await Promise.allSettled([

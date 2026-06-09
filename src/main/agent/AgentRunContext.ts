@@ -2,6 +2,25 @@ import { PermissionManager, globalPermissionManager } from './permissionManager'
 import { ActionLog } from './actionLog'
 import { TaskItem } from '../../shared/types'
 
+/** Session-scoped tool/command approvals. A "task" spans many agent runs (one per user
+ *  message), each with its own reqId-keyed run context. Persisting approvals here — keyed by
+ *  sessionId — lets "allow for this task" survive across those runs instead of resetting every
+ *  message. In-memory only; cleared on app restart or explicitly via clearSessionApprovals. */
+const sessionApprovals = new Map<string, { tools: Set<string>; prefixes: Set<string> }>()
+
+function getSessionApprovals(sessionId: string): { tools: Set<string>; prefixes: Set<string> } {
+  let entry = sessionApprovals.get(sessionId)
+  if (!entry) {
+    entry = { tools: new Set(), prefixes: new Set() }
+    sessionApprovals.set(sessionId, entry)
+  }
+  return entry
+}
+
+export function clearSessionApprovals(sessionId: string): void {
+  sessionApprovals.delete(sessionId)
+}
+
 export class AgentRunContext {
   status: 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' = 'running'
   readonly startedAt: number = Date.now()
@@ -51,6 +70,16 @@ export class AgentRunContext {
     this.permissionPolicy = permissionPolicy
     this.permissions = permissionManager
     this.actionLog = actionLog
+
+    // Inherit approvals granted in earlier runs of the same conversation so "allow for this
+    // task" persists across messages instead of re-prompting on every new run.
+    if (sessionId) {
+      const prior = sessionApprovals.get(sessionId)
+      if (prior) {
+        this.approvedTools.push(...prior.tools)
+        this.approvedCommandPrefixes.push(...prior.prefixes)
+      }
+    }
   }
 
   get signal(): AbortSignal {
@@ -97,6 +126,9 @@ export class AgentRunContext {
       this.approvedTools.push(toolName)
       console.log(`[AgentRunContext] Approved tool for run ${this.reqId}: "${toolName}"`)
     }
+    if (toolName && this.sessionId) {
+      getSessionApprovals(this.sessionId).tools.add(toolName)
+    }
   }
 
   isToolApproved(toolName: string): boolean {
@@ -108,6 +140,9 @@ export class AgentRunContext {
     if (p && !this.approvedCommandPrefixes.includes(p)) {
       this.approvedCommandPrefixes.push(p)
       console.log(`[AgentRunContext] Approved command prefix for run ${this.reqId}: "${p}"`)
+    }
+    if (p && this.sessionId) {
+      getSessionApprovals(this.sessionId).prefixes.add(p)
     }
   }
 
