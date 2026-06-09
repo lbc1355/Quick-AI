@@ -74,8 +74,6 @@ interface SendMessageOptions {
   forceBranch?: boolean
 }
 
-const SESSION_SEND_TIMEOUT_MS = 5 * 60 * 1000
-
 export const touchSessionInSnapshot = (
   sessions: Session[],
   sessionId: string,
@@ -145,33 +143,11 @@ export const useChatCompletion = ({
     runModeRef.current = runMode
   }, [runMode])
 
-  const resolveSessionForSend = (
-    currentSessions: Session[],
-    allowTimeoutSplit: boolean
-  ): Session => {
+  const resolveSessionForSend = (currentSessions: Session[]): Session => {
     const now = Date.now()
-    let currentSession = currentSessions.find((s) => s.id === activeSessionId)
+    const currentSession = currentSessions.find((s) => s.id === activeSessionId)
 
-    if (!currentSession) {
-      currentSession = {
-        id: now.toString(),
-        title: 'New chat',
-        messages: [],
-        lastActiveTime: now
-      }
-      currentSessions.unshift(currentSession)
-      setActiveSessionId(currentSession.id)
-      return currentSession
-    }
-
-    const lastActive = currentSession.lastActiveTime || Number(currentSession.id)
-    const shouldSplitForTimeout =
-      allowTimeoutSplit &&
-      currentSession.messages.length > 0 &&
-      Number.isFinite(lastActive) &&
-      now - lastActive > SESSION_SEND_TIMEOUT_MS
-
-    if (!shouldSplitForTimeout) return currentSession
+    if (currentSession) return currentSession
 
     const newSession: Session = {
       id: now.toString(),
@@ -320,7 +296,7 @@ export const useChatCompletion = ({
       ...s,
       messages: s.messages.map((m) => ({ ...m }))
     }))
-    const currentSession = resolveSessionForSend(currentSessions, !customMsgId)
+    const currentSession = resolveSessionForSend(currentSessions)
     let targetSession = currentSession
     let sourceMessageId = customMsgId
     let branchOf: { sessionId: string; messageId: string; runId?: string } | undefined
@@ -525,7 +501,7 @@ export const useChatCompletion = ({
       ...s,
       messages: s.messages.map((m) => ({ ...m }))
     }))
-    const currentSession = resolveSessionForSend(currentSessions, true)
+    const currentSession = resolveSessionForSend(currentSessions)
 
     const displayPrompt = `/${skill.trigger}${userInput.trim() ? ` ${userInput.trim()}` : ''}`
     const userMsg: Message = {
