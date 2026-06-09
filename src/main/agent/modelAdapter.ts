@@ -50,6 +50,32 @@ function normalizeEmptyContent(msgs: ChatCompletionMessage[]): ChatCompletionMes
   })
 }
 
+/** Delete empty `tool_calls: []` arrays — some providers reject them as unknown payload. */
+function stripEmptyToolCalls(msgs: ChatCompletionMessage[]): ChatCompletionMessage[] {
+  return msgs.map((m) => {
+    if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length === 0) {
+      const copy = cloneMessage(m)
+      delete copy.tool_calls
+      if (copy.content === undefined) copy.content = ''
+      return copy
+    }
+    return m
+  })
+}
+
+/** Delete the optional `name` field from tool-role messages. It is redundant with
+ *  `tool_call_id` and some providers (GLM) reject unknown fields strictly. */
+function stripToolMessageName(msgs: ChatCompletionMessage[]): ChatCompletionMessage[] {
+  return msgs.map((m) => {
+    if (m.role === 'tool' && 'name' in m) {
+      const copy = { ...m }
+      delete (copy as Record<string, unknown>).name
+      return copy
+    }
+    return m
+  })
+}
+
 // ---- Open-AI-compatible adapter (baseline, no changes needed) ----
 
 const openaiAdapter: ModelAdapter = {
@@ -79,9 +105,11 @@ const kimiAdapter: ModelAdapter = {
 const glmAdapter: ModelAdapter = {
   name: 'glm',
   sanitizeMessages: (msgs) => {
-    // GLM rejects non-standard fields strictly.
+    // GLM rejects non-standard fields strictly. Strip everything it doesn't recognise.
     let cleaned = stripReasoningContent(msgs)
+    cleaned = stripToolMessageName(cleaned)
     cleaned = normalizeEmptyContent(cleaned)
+    cleaned = stripEmptyToolCalls(cleaned)
     return cleaned
   },
   sanitizeBody: (body) => {

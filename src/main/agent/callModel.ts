@@ -210,6 +210,9 @@ export async function callModel(
       assistantMessage.tool_calls = assistantMessage.tool_calls.filter(
         (tc) => tc && tc.function?.name
       )
+      if (assistantMessage.tool_calls.length === 0) {
+        delete assistantMessage.tool_calls
+      }
     }
 
     if (!shouldStreamFinal) {
