@@ -104,6 +104,8 @@ describe('prepareChatAgentMessages memory capability hint', () => {
     expect(content).toContain('recall')
     expect(content).toContain('read_memory_doc')
     expect(content).toContain('replace_memory_doc')
+    expect(content).toContain('Do not wait for the user to explicitly say "remember this"')
+    expect(content).toContain('Never replace a memory/soul document with only the new fact')
   })
 })
 

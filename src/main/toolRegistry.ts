@@ -1019,7 +1019,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     name: 'remember',
     title: 'Remember',
     description:
-      'Append a concise fact, preference, or piece of context to the current versioned memory document. This creates a new current document version and archives the previous one, so existing memory content is preserved. For corrections or rewrites, first call read_memory_doc, then replace_memory_doc with the complete updated document.',
+      'Append a concise fact, preference, or piece of context to the current versioned memory document. This creates a new current document version and archives the previous one, so existing memory content is preserved. Before writing to a target document that may already exist, read it with read_memory_doc so you know the full current content. For corrections, conflicts, or rewrites, use replace_memory_doc with the complete merged document, never only the new fact.',
     tags: [
       'memory',
       'remember',
@@ -1116,7 +1116,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     name: 'read_memory_doc',
     title: 'Read Memory Document',
     description:
-      'Read the complete current memory or soul document before modifying it. The returned version id must be passed as baseVersionId to replace_memory_doc. Use kind="soul" for assistant profile/persona and kind="memory" for facts/preferences.',
+      'Read the complete current memory or soul document before modifying or writing related memory. The returned version id must be passed as baseVersionId to replace_memory_doc. Use this first so old memory lines are preserved when adding or changing facts. Use kind="soul" for assistant profile/persona and kind="memory" for facts/preferences.',
     tags: ['memory', 'soul', 'read', 'profile', 'persona', '璁板繂', '鐏甸瓊'],
     category: 'memory',
     risk: 'low',
@@ -1176,7 +1176,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     name: 'replace_memory_doc',
     title: 'Replace Memory Document',
     description:
-      'Replace a memory or soul document by writing the complete new document content. If a current version exists, baseVersionId is required and must match the id returned by read_memory_doc. This archives the old version and creates a new current version.',
+      'Replace a memory or soul document by writing the complete new document content. If a current version exists, baseVersionId is required and must match the id returned by read_memory_doc. This archives the old version and creates a new current version. Always include all existing memory that should remain plus the new/changed facts; never send only the new lines unless you are intentionally deleting the old content.',
     tags: ['memory', 'soul', 'replace', 'update', 'profile', 'persona', '璁板繂', '鐏甸瓊'],
     category: 'memory',
     risk: 'medium',
