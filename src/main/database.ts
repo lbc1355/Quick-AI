@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import Database from 'better-sqlite3'
+import { randomUUID } from 'crypto'
 import { join } from 'path'
 import { readFileSync, existsSync, renameSync, readdirSync, unlinkSync } from 'fs'
 import {
@@ -9,6 +10,9 @@ import {
   Skill,
   Memory,
   UserMemory,
+  MemoryDoc,
+  MemoryDocKind,
+  MemoryDocScope,
   AppSettings,
   ApiProvider,
   SessionResourceChunk
@@ -128,6 +132,27 @@ function createSchema(database: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_user_memories_scope ON user_memories(scope);
     CREATE INDEX IF NOT EXISTS idx_user_memories_session ON user_memories(sessionId);
+
+    CREATE TABLE IF NOT EXISTS memory_docs (
+      id        TEXT PRIMARY KEY,
+      kind      TEXT NOT NULL DEFAULT 'memory',
+      scope     TEXT NOT NULL DEFAULT 'global',
+      sessionId TEXT,
+      docKey    TEXT NOT NULL DEFAULT 'default',
+      title     TEXT NOT NULL DEFAULT '',
+      content   TEXT NOT NULL DEFAULT '',
+      version   INTEGER NOT NULL DEFAULT 1,
+      parentId  TEXT,
+      status    TEXT NOT NULL DEFAULT 'current',
+      reason    TEXT,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_memory_docs_lookup
+      ON memory_docs(kind, scope, sessionId, docKey, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_docs_current_unique
+      ON memory_docs(kind, scope, IFNULL(sessionId, ''), docKey)
+      WHERE status = 'current';
 
     CREATE TABLE IF NOT EXISTS resource_cache (
       id            TEXT PRIMARY KEY,
@@ -882,7 +907,240 @@ export function deleteSessionMemories(sessionId: string): number {
   const info = getDb()
     .prepare(`DELETE FROM user_memories WHERE scope = 'session' AND sessionId = ?`)
     .run(sessionId)
-  return info.changes
+  const docInfo = getDb()
+    .prepare(`DELETE FROM memory_docs WHERE scope = 'session' AND sessionId = ?`)
+    .run(sessionId)
+  return info.changes + docInfo.changes
+}
+
+// Versioned memory/soul documents
+
+export interface MemoryDocQuery {
+  kind?: MemoryDocKind
+  scope?: MemoryDocScope
+  sessionId?: string
+  key?: string
+  status?: 'current' | 'archived' | 'all'
+  includeSession?: boolean
+  limit?: number
+}
+
+export interface ReplaceMemoryDocInput {
+  kind: MemoryDocKind
+  scope: MemoryDocScope
+  sessionId?: string
+  key: string
+  title?: string
+  content: string
+  baseVersionId?: string
+  reason?: string
+}
+
+const DEFAULT_MEMORY_DOC_KEY = 'default'
+
+const normalizeMemoryDocKind = (kind?: string): MemoryDocKind =>
+  kind === 'soul' ? 'soul' : 'memory'
+
+const normalizeMemoryDocScope = (scope?: string): MemoryDocScope =>
+  scope === 'session' ? 'session' : 'global'
+
+const normalizeMemoryDocKey = (key?: string): string => {
+  const trimmed = (key || DEFAULT_MEMORY_DOC_KEY).trim()
+  return trimmed ? trimmed.slice(0, 120) : DEFAULT_MEMORY_DOC_KEY
+}
+
+const rowToMemoryDoc = (r: {
+  id: string
+  kind: string
+  scope: string
+  sessionId: string | null
+  docKey: string
+  title: string
+  content: string
+  version: number
+  parentId: string | null
+  status: string
+  reason: string | null
+  createdAt: number
+  updatedAt: number
+}): MemoryDoc => ({
+  id: r.id,
+  kind: normalizeMemoryDocKind(r.kind),
+  scope: normalizeMemoryDocScope(r.scope),
+  sessionId: r.sessionId ?? undefined,
+  key: r.docKey,
+  title: r.title,
+  content: r.content,
+  version: r.version,
+  parentId: r.parentId ?? undefined,
+  status: r.status === 'archived' ? 'archived' : 'current',
+  reason: r.reason ?? undefined,
+  createdAt: r.createdAt,
+  updatedAt: r.updatedAt
+})
+
+function memoryDocIdentity(input: {
+  kind?: MemoryDocKind
+  scope?: MemoryDocScope
+  sessionId?: string
+  key?: string
+}): { kind: MemoryDocKind; scope: MemoryDocScope; sessionId: string | null; key: string } {
+  const scope = normalizeMemoryDocScope(input.scope)
+  return {
+    kind: normalizeMemoryDocKind(input.kind),
+    scope,
+    sessionId: scope === 'session' ? (input.sessionId ?? null) : null,
+    key: normalizeMemoryDocKey(input.key)
+  }
+}
+
+export function getCurrentMemoryDoc(input: {
+  kind?: MemoryDocKind
+  scope?: MemoryDocScope
+  sessionId?: string
+  key?: string
+}): MemoryDoc | undefined {
+  const database = getDb()
+  const ident = memoryDocIdentity(input)
+  const row = database
+    .prepare(
+      `SELECT * FROM memory_docs
+       WHERE kind = ? AND scope = ? AND IFNULL(sessionId, '') = IFNULL(?, '') AND docKey = ? AND status = 'current'
+       LIMIT 1`
+    )
+    .get(ident.kind, ident.scope, ident.sessionId, ident.key) as
+    | Parameters<typeof rowToMemoryDoc>[0]
+    | undefined
+  return row ? rowToMemoryDoc(row) : undefined
+}
+
+export function listMemoryDocs(opts: MemoryDocQuery = {}): MemoryDoc[] {
+  const database = getDb()
+  const clauses: string[] = []
+  const params: unknown[] = []
+
+  if (opts.kind) {
+    clauses.push('kind = ?')
+    params.push(normalizeMemoryDocKind(opts.kind))
+  }
+
+  if (opts.scope === 'global') {
+    clauses.push(`scope = 'global'`)
+  } else if (opts.scope === 'session') {
+    clauses.push(`scope = 'session' AND sessionId = ?`)
+    params.push(opts.sessionId ?? '')
+  } else if (opts.includeSession && opts.sessionId) {
+    clauses.push(`(scope = 'global' OR (scope = 'session' AND sessionId = ?))`)
+    params.push(opts.sessionId)
+  } else {
+    clauses.push(`scope = 'global'`)
+  }
+
+  if (opts.key) {
+    clauses.push('docKey = ?')
+    params.push(normalizeMemoryDocKey(opts.key))
+  }
+
+  if (opts.status && opts.status !== 'all') {
+    clauses.push('status = ?')
+    params.push(opts.status)
+  } else if (!opts.status) {
+    clauses.push(`status = 'current'`)
+  }
+
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+  const limit = Math.min(100, Math.max(1, opts.limit ?? 50))
+  const rows = database
+    .prepare(
+      `SELECT * FROM memory_docs ${where}
+       ORDER BY CASE kind WHEN 'soul' THEN 0 ELSE 1 END, updatedAt DESC, version DESC
+       LIMIT ?`
+    )
+    .all(...params, limit) as Parameters<typeof rowToMemoryDoc>[0][]
+
+  return rows.map(rowToMemoryDoc)
+}
+
+export function replaceMemoryDoc(input: ReplaceMemoryDocInput): MemoryDoc {
+  const database = getDb()
+  const ident = memoryDocIdentity(input)
+  if (ident.scope === 'session' && !ident.sessionId) {
+    throw new Error('Session-scoped memory documents require a session id.')
+  }
+  const content = input.content.trim()
+  if (!content) {
+    throw new Error('Memory document content cannot be empty.')
+  }
+
+  const write = database.transaction(() => {
+    const current = getCurrentMemoryDoc({
+      ...ident,
+      sessionId: ident.sessionId ?? undefined
+    })
+    if (current) {
+      if (!input.baseVersionId) {
+        throw new Error(
+          `baseVersionId is required. Read the current ${ident.kind} document before replacing it.`
+        )
+      }
+      if (input.baseVersionId !== current.id) {
+        throw new Error(
+          `baseVersionId mismatch. Current version is ${current.id}; read the latest document and retry.`
+        )
+      }
+    } else if (input.baseVersionId) {
+      throw new Error('No current memory document exists for the supplied baseVersionId.')
+    }
+
+    const now = Date.now()
+    const next: MemoryDoc = {
+      id: `memdoc_${randomUUID()}`,
+      kind: ident.kind,
+      scope: ident.scope,
+      sessionId: ident.sessionId ?? undefined,
+      key: ident.key,
+      title: (input.title || current?.title || ident.key).trim().slice(0, 160),
+      content,
+      version: (current?.version || 0) + 1,
+      parentId: current?.id,
+      status: 'current',
+      reason: input.reason?.trim().slice(0, 240) || undefined,
+      createdAt: now,
+      updatedAt: now
+    }
+
+    if (current) {
+      database
+        .prepare(`UPDATE memory_docs SET status = 'archived', updatedAt = ? WHERE id = ?`)
+        .run(now, current.id)
+    }
+
+    database
+      .prepare(
+        `INSERT INTO memory_docs
+         (id, kind, scope, sessionId, docKey, title, content, version, parentId, status, reason, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        next.id,
+        next.kind,
+        next.scope,
+        next.sessionId ?? null,
+        next.key,
+        next.title,
+        next.content,
+        next.version,
+        next.parentId ?? null,
+        next.status,
+        next.reason ?? null,
+        next.createdAt,
+        next.updatedAt
+      )
+
+    return next
+  })
+
+  return write()
 }
 
 // ── Resource Cache CRUD helpers ──────────────────────────────────────────

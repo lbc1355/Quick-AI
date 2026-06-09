@@ -102,7 +102,8 @@ describe('prepareChatAgentMessages memory capability hint', () => {
     expect(content).toContain('Persistent memory')
     expect(content).toContain('remember')
     expect(content).toContain('recall')
-    expect(content).toContain('compact recent memory context')
+    expect(content).toContain('read_memory_doc')
+    expect(content).toContain('replace_memory_doc')
   })
 })
 

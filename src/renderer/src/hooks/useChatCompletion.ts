@@ -106,6 +106,35 @@ export const useChatCompletion = ({
   const [activeGenerationSessionId, setActiveGenerationSessionId] = useState<string | null>(null)
   const [runMode, setRunMode] = useState<RunMode>('chat')
 
+  const latestRequestConfigRef = useRef({
+    apiKey,
+    apiUrl,
+    selectedModel,
+    systemPrompt
+  })
+  useEffect(() => {
+    latestRequestConfigRef.current = {
+      apiKey,
+      apiUrl,
+      selectedModel,
+      systemPrompt
+    }
+  }, [apiKey, apiUrl, selectedModel, systemPrompt])
+
+  const isGeneratingRef = useRef(isGenerating)
+  useEffect(() => {
+    isGeneratingRef.current = isGenerating
+  }, [isGenerating])
+
+  const setIsGeneratingLive: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
+    setIsGenerating((prev) => {
+      const next =
+        typeof value === 'function' ? (value as (current: boolean) => boolean)(prev) : value
+      isGeneratingRef.current = next
+      return next
+    })
+  }
+
   // Mirror runMode in a ref so dispatch always reads the live value. handleSendMessage can be
   // captured in a stale closure — MessageBubble is memoized and its comparator ignores callback
   // props, so the onRegenerate/onSaveEdit it holds may close over an older runMode than the toggle
@@ -214,7 +243,7 @@ export const useChatCompletion = ({
       setSessions,
       sessionsRef,
       updateMessageById,
-      setIsGenerating,
+      setIsGenerating: setIsGeneratingLive,
       setActiveReqId,
       onCleanup: () => setActiveGenerationSessionId(null),
       persistActiveSession
@@ -272,18 +301,19 @@ export const useChatCompletion = ({
     customMsgId?: string,
     options: SendMessageOptions = {}
   ): Promise<void> => {
+    const requestConfig = latestRequestConfigRef.current
     const promptToSend = customPrompt !== undefined ? customPrompt : inputVal
     if (!promptToSend.trim() && attachedFiles.length === 0 && !customPrompt) return
-    if (isGenerating) return
+    if (isGeneratingRef.current) return
 
     // Verify key
-    if (!apiKey && apiUrl.includes('deepseek.com')) {
+    if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
       alert('请先在设置中填写 DeepSeek API Key！')
       setShowSettings(true)
       return
     }
 
-    setIsGenerating(true)
+    setIsGeneratingLive(true)
     setInputVal('')
 
     const currentSessions: Session[] = sessionsRef.current.map((s) => ({
@@ -302,7 +332,7 @@ export const useChatCompletion = ({
     if (customMsgId) {
       const idx = currentSession.messages.findIndex((m) => m.id === customMsgId)
       if (idx === -1) {
-        setIsGenerating(false)
+        setIsGeneratingLive(false)
         return
       }
 
@@ -408,8 +438,8 @@ export const useChatCompletion = ({
 
     // Load full messages block
     const apiMessages: ApiMessage[] = []
-    if (systemPrompt) {
-      apiMessages.push({ role: 'system', content: systemPrompt })
+    if (requestConfig.systemPrompt) {
+      apiMessages.push({ role: 'system', content: requestConfig.systemPrompt })
     }
 
     targetSession.messages.slice(0, -1).forEach((msg) => {
@@ -463,9 +493,9 @@ export const useChatCompletion = ({
       assistantMsgId,
       () =>
         window.api.startChatCompletion(reqId, {
-          apiUrl,
-          apiKey,
-          model: selectedModel,
+          apiUrl: requestConfig.apiUrl,
+          apiKey: requestConfig.apiKey,
+          model: requestConfig.selectedModel,
           messages: apiMessages,
           runMode: runModeRef.current,
           resources: targetSession.resources,
@@ -479,15 +509,16 @@ export const useChatCompletion = ({
   }
 
   const handleRunAgentSkill = async (skill: Skill, userInput: string): Promise<void> => {
-    if (isGenerating) return
+    const requestConfig = latestRequestConfigRef.current
+    if (isGeneratingRef.current) return
 
-    if (!apiKey && apiUrl.includes('deepseek.com')) {
+    if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
       alert('Please set the DeepSeek API Key in Settings first.')
       setShowSettings(true)
       return
     }
 
-    setIsGenerating(true)
+    setIsGeneratingLive(true)
     setInputVal('')
 
     const currentSessions: Session[] = sessionsRef.current.map((s) => ({
@@ -536,10 +567,10 @@ export const useChatCompletion = ({
       assistantMsgId,
       () =>
         window.api.startAgentSkill(reqId, {
-          apiUrl,
-          apiKey,
-          model: selectedModel,
-          systemPrompt,
+          apiUrl: requestConfig.apiUrl,
+          apiKey: requestConfig.apiKey,
+          model: requestConfig.selectedModel,
+          systemPrompt: requestConfig.systemPrompt,
           skill,
           userInput,
           resources: currentSession.resources,
@@ -591,8 +622,9 @@ export const useChatCompletion = ({
   }
 
   const handleResumeAgentRun = (msgIdx: number): void => {
-    if (isGenerating) return
-    if (!apiKey && apiUrl.includes('deepseek.com')) {
+    const requestConfig = latestRequestConfigRef.current
+    if (isGeneratingRef.current) return
+    if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
       alert('Please set the DeepSeek API Key in Settings first.')
       setShowSettings(true)
       return
@@ -607,7 +639,7 @@ export const useChatCompletion = ({
     const resumeFromRunId = failedMsg?.agentRunId
     if (!currentSession || !resumeFromRunId) return
 
-    setIsGenerating(true)
+    setIsGeneratingLive(true)
     setInputVal('')
 
     const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
@@ -645,7 +677,7 @@ export const useChatCompletion = ({
     if (!isHistoricalResume) {
       const targetMsgIdx = targetSession.messages.findIndex((msg) => msg.id === failedMsg.id)
       if (targetMsgIdx === -1) {
-        setIsGenerating(false)
+        setIsGeneratingLive(false)
         setActiveReqId(null)
         return
       }
@@ -679,9 +711,9 @@ export const useChatCompletion = ({
       assistantMsgId,
       () =>
         window.api.startChatCompletion(reqId, {
-          apiUrl,
-          apiKey,
-          model: selectedModel,
+          apiUrl: requestConfig.apiUrl,
+          apiKey: requestConfig.apiKey,
+          model: requestConfig.selectedModel,
           messages: [],
           runMode: 'agent',
           resources: targetSession.resources,
@@ -700,7 +732,7 @@ export const useChatCompletion = ({
     inputVal,
     setInputVal,
     isGenerating,
-    setIsGenerating,
+    setIsGenerating: setIsGeneratingLive,
     activeGenerationSessionId,
     editingMessageId,
     setEditingMessageId,

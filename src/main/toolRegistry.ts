@@ -4,7 +4,9 @@ import {
   ChatToolDeclaration,
   ToolResultUi,
   SessionResource,
-  UserMemory
+  MemoryDoc,
+  MemoryDocKind,
+  MemoryDocScope
 } from '../shared/types'
 import { getRun } from './agent/AgentRunContext'
 import { pathEscapesWorkspace } from './agent/commandSafety'
@@ -127,12 +129,11 @@ import {
 } from './resourceCache'
 import {
   loadResourceCache,
-  addMemory,
   listMemories,
-  searchMemories,
-  MemoryQuery
+  listMemoryDocs,
+  getCurrentMemoryDoc,
+  replaceMemoryDoc
 } from './database'
-import { randomUUID } from 'crypto'
 
 export interface ToolExecutionContext {
   reqId: string
@@ -378,6 +379,50 @@ async function fetchCacheAndFormat(
         : `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}.`
     }
   }
+}
+
+const DEFAULT_MEMORY_DOC_KEY = 'default'
+const DEFAULT_MEMORY_DOC_TITLE = 'QuickAI Memory'
+
+function normalizeDocKind(value: unknown): MemoryDocKind {
+  return value === 'soul' ? 'soul' : 'memory'
+}
+
+function normalizeDocScope(value: unknown): MemoryDocScope {
+  return value === 'global' ? 'global' : 'session'
+}
+
+function normalizeDocKey(value: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : ''
+  return text ? text.slice(0, 120) : DEFAULT_MEMORY_DOC_KEY
+}
+
+function getMemoryDocIdentity(
+  args: ToolArgs,
+  sessionId?: string
+): { kind: MemoryDocKind; scope: MemoryDocScope; sessionId?: string; key: string } {
+  let scope = normalizeDocScope(args.scope)
+  if (scope === 'session' && !sessionId) scope = 'global'
+  return {
+    kind: normalizeDocKind(args.kind),
+    scope,
+    sessionId: scope === 'session' ? sessionId : undefined,
+    key: normalizeDocKey(args.key)
+  }
+}
+
+function formatMemoryDocHeader(doc: MemoryDoc): string {
+  const scope = doc.scope === 'session' ? `session:${doc.sessionId || 'unknown'}` : 'global'
+  return `[${doc.kind}/${scope}/${doc.key} v${doc.version}] ${doc.title}`
+}
+
+function appendMemoryDocContent(current: MemoryDoc | undefined, content: string): string {
+  const normalized = content.replace(/\s+/g, ' ').trim()
+  const base = current?.content.trim()
+  const nextLine = `- ${normalized}`
+  if (!base) return nextLine
+  if (base.split(/\r?\n/).some((line) => line.trim() === nextLine)) return base
+  return `${base}\n${nextLine}`
 }
 
 export const ToolRegistry: Record<string, ToolDefinition> = {
@@ -974,7 +1019,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     name: 'remember',
     title: 'Remember',
     description:
-      'Persist a fact, preference, or piece of context as a durable memory so you can recall it in later turns or future conversations. Use scope="global" for things true across all conversations (user preferences, identity, long-lived facts) and scope="session" for context specific to the current conversation. A compact recent memory context may be shown automatically; call recall for older, exact, or missing memories.',
+      'Append a concise fact, preference, or piece of context to the current versioned memory document. This creates a new current document version and archives the previous one, so existing memory content is preserved. For corrections or rewrites, first call read_memory_doc, then replace_memory_doc with the complete updated document.',
     tags: [
       'memory',
       'remember',
@@ -1003,6 +1048,17 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
             'global = remember across all conversations; session = only this conversation. Default: session.',
           enum: ['global', 'session']
         },
+        kind: {
+          type: 'string',
+          description:
+            'memory = user/project facts; soul = assistant profile/persona. Default: memory.',
+          enum: ['memory', 'soul']
+        },
+        key: {
+          type: 'string',
+          description:
+            'Document key to append to. Default: "default". Use a stable key for related facts.'
+        },
         category: {
           type: 'string',
           description:
@@ -1026,35 +1082,171 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         typeof args.category === 'string' && args.category.trim()
           ? args.category.trim().slice(0, 60)
           : 'general'
-      let scope: 'global' | 'session' = args.scope === 'global' ? 'global' : 'session'
-
       const run = getRun(ctx.reqId)
       const sessionId = run?.sessionId
+      const identity = getMemoryDocIdentity(args, sessionId)
       let note = ''
-      if (scope === 'session' && !sessionId) {
-        scope = 'global'
+      if (args.scope === 'session' && identity.scope === 'global') {
         note = ' (no active conversation id, stored as global)'
       }
 
-      const now = Date.now()
-      const memory: UserMemory = {
-        id: `mem_${randomUUID()}`,
-        scope,
-        sessionId: scope === 'session' ? sessionId : undefined,
-        category,
-        content,
-        createdAt: now,
-        updatedAt: now
-      }
-      addMemory(memory)
+      const current = getCurrentMemoryDoc(identity)
+      const line = `[${category}] ${content}`
+      const nextContent = appendMemoryDocContent(current, line)
+      const next = replaceMemoryDoc({
+        ...identity,
+        title: current?.title || DEFAULT_MEMORY_DOC_TITLE,
+        content: nextContent,
+        baseVersionId: current?.id,
+        reason: `remember:${category}`
+      })
 
       return {
-        resultForModel: `Stored ${scope} memory [${category}]${note}: "${content.slice(0, 120)}${
+        resultForModel: `Stored ${identity.kind} ${identity.scope} memory document${note}: ${formatMemoryDocHeader(next)}\nNew version id: ${next.id}\nThe previous version was archived automatically.\nAdded: "${content.slice(0, 120)}${
           content.length > 120 ? '…' : ''
         }"`,
         resultForUi: {
           title: 'Remember',
-          summary: `Saved ${scope} memory (${category})`
+          summary: `Saved ${identity.kind}/${identity.scope} memory v${next.version}`
+        }
+      }
+    }
+  },
+  read_memory_doc: {
+    name: 'read_memory_doc',
+    title: 'Read Memory Document',
+    description:
+      'Read the complete current memory or soul document before modifying it. The returned version id must be passed as baseVersionId to replace_memory_doc. Use kind="soul" for assistant profile/persona and kind="memory" for facts/preferences.',
+    tags: ['memory', 'soul', 'read', 'profile', 'persona', '璁板繂', '鐏甸瓊'],
+    category: 'memory',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['memory', 'soul'],
+          description: 'Document kind. Default: memory.'
+        },
+        scope: {
+          type: 'string',
+          enum: ['global', 'session'],
+          description: 'Document scope. Default: session.'
+        },
+        key: {
+          type: 'string',
+          description: 'Document key. Default: "default".'
+        }
+      }
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const run = getRun(ctx.reqId)
+      const identity = getMemoryDocIdentity(args, run?.sessionId)
+      const doc = getCurrentMemoryDoc(identity)
+
+      if (!doc) {
+        return {
+          resultForModel: `No current ${identity.kind} document found for ${identity.scope}/${identity.key}. You may create the first version with replace_memory_doc without baseVersionId.`,
+          resultForUi: {
+            title: 'Read Memory Document',
+            summary: 'No current document'
+          }
+        }
+      }
+
+      return {
+        resultForModel: [
+          formatMemoryDocHeader(doc),
+          `Version id: ${doc.id}`,
+          `Status: ${doc.status}`,
+          `Reason: ${doc.reason || 'none'}`,
+          '',
+          doc.content
+        ].join('\n'),
+        resultForUi: {
+          title: 'Read Memory Document',
+          summary: `${doc.kind}/${doc.scope}/${doc.key} v${doc.version}`
+        }
+      }
+    }
+  },
+  replace_memory_doc: {
+    name: 'replace_memory_doc',
+    title: 'Replace Memory Document',
+    description:
+      'Replace a memory or soul document by writing the complete new document content. If a current version exists, baseVersionId is required and must match the id returned by read_memory_doc. This archives the old version and creates a new current version.',
+    tags: ['memory', 'soul', 'replace', 'update', 'profile', 'persona', '璁板繂', '鐏甸瓊'],
+    category: 'memory',
+    risk: 'medium',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['memory', 'soul'],
+          description: 'Document kind. Default: memory.'
+        },
+        scope: {
+          type: 'string',
+          enum: ['global', 'session'],
+          description: 'Document scope. Default: session.'
+        },
+        key: {
+          type: 'string',
+          description: 'Document key. Default: "default".'
+        },
+        title: {
+          type: 'string',
+          description: 'Short document title.'
+        },
+        content: {
+          type: 'string',
+          description:
+            'The complete updated document content. Do not pass only a patch or a single changed line.'
+        },
+        baseVersionId: {
+          type: 'string',
+          description:
+            'The current version id returned by read_memory_doc. Required when replacing an existing document.'
+        },
+        reason: {
+          type: 'string',
+          description: 'Short reason for the change.'
+        }
+      },
+      required: ['content']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const content = typeof args.content === 'string' ? args.content.trim() : ''
+      if (!content) {
+        throw new Error('Missing or invalid content parameter')
+      }
+      const MAX_DOC_CHARS = 30000
+      if (content.length > MAX_DOC_CHARS) {
+        throw new Error(
+          `Memory document is too long (${content.length} chars). Keep it under ${MAX_DOC_CHARS} characters.`
+        )
+      }
+
+      const run = getRun(ctx.reqId)
+      const identity = getMemoryDocIdentity(args, run?.sessionId)
+      const doc = replaceMemoryDoc({
+        ...identity,
+        title: typeof args.title === 'string' ? args.title : undefined,
+        content,
+        baseVersionId: typeof args.baseVersionId === 'string' ? args.baseVersionId : undefined,
+        reason: typeof args.reason === 'string' ? args.reason : undefined
+      })
+
+      return {
+        resultForModel: `Replaced ${identity.kind} ${identity.scope} document: ${formatMemoryDocHeader(doc)}\nNew version id: ${doc.id}\nPrevious version: ${doc.parentId || 'none'}.`,
+        resultForUi: {
+          title: 'Replace Memory Document',
+          summary: `${doc.kind}/${doc.scope}/${doc.key} v${doc.version}`
         }
       }
     }
@@ -1063,7 +1255,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     name: 'recall',
     title: 'Recall Memories',
     description:
-      "Retrieve durable memories you stored earlier with remember. By default returns both global memories and the current conversation's session memories. Use this when the automatic memory context is missing details, when the user refers to older facts, or when exact recall matters.",
+      "Retrieve current durable memory/soul documents. By default returns global documents plus this conversation's session documents. Archived versions are not returned; use read_memory_doc for the complete current document before modifying it.",
     tags: [
       'memory',
       'recall',
@@ -1092,9 +1284,18 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
             'Restrict to a layer: global or session. Omit to search both global and this conversation.',
           enum: ['global', 'session']
         },
+        kind: {
+          type: 'string',
+          enum: ['memory', 'soul'],
+          description: 'Restrict to memory or soul documents.'
+        },
+        key: {
+          type: 'string',
+          description: 'Restrict to a document key.'
+        },
         category: {
           type: 'string',
-          description: 'Optional filter by category tag.'
+          description: 'Legacy option kept for compatibility; current document recall ignores it.'
         },
         limit: {
           type: 'number',
@@ -1106,24 +1307,52 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       const run = getRun(ctx.reqId)
       const sessionId = run?.sessionId
 
-      const query: MemoryQuery = {
-        scope:
-          args.scope === 'global' ? 'global' : args.scope === 'session' ? 'session' : undefined,
+      const limit =
+        typeof args.limit === 'number' && Number.isFinite(args.limit)
+          ? Math.min(30, Math.max(1, Math.floor(args.limit)))
+          : 10
+      const docs = listMemoryDocs({
+        kind: args.kind === 'memory' || args.kind === 'soul' ? args.kind : undefined,
+        scope: args.scope === 'global' || args.scope === 'session' ? args.scope : undefined,
         sessionId,
-        category:
-          typeof args.category === 'string' && args.category.trim()
-            ? args.category.trim()
-            : undefined,
-        limit:
-          typeof args.limit === 'number' && Number.isFinite(args.limit)
-            ? Math.min(30, Math.max(1, Math.floor(args.limit)))
-            : 10
-      }
-
+        key: typeof args.key === 'string' ? args.key : undefined,
+        includeSession: true,
+        limit
+      })
       const queryText = typeof args.query === 'string' ? args.query.trim() : ''
-      const results = queryText ? searchMemories(queryText, query) : listMemories(query)
+      const loweredQuery = queryText.toLowerCase()
+      const results = loweredQuery
+        ? docs.filter(
+            (doc) =>
+              doc.content.toLowerCase().includes(loweredQuery) ||
+              doc.title.toLowerCase().includes(loweredQuery) ||
+              doc.key.toLowerCase().includes(loweredQuery)
+          )
+        : docs
 
       if (results.length === 0) {
+        const legacy = queryText
+          ? listMemories({ sessionId, limit }).filter((memory) =>
+              memory.content.toLowerCase().includes(loweredQuery)
+            )
+          : listMemories({ sessionId, limit })
+        if (legacy.length > 0) {
+          const legacyLines = [
+            `No current memory documents found. Found ${legacy.length} legacy memory item(s):`,
+            ''
+          ]
+          legacy.forEach((m, i) => {
+            const date = new Date(m.createdAt).toLocaleDateString('en-CA')
+            legacyLines.push(`${i + 1}. [legacy/${m.scope}/${m.category}/${date}] ${m.content}`)
+          })
+          return {
+            resultForModel: legacyLines.join('\n'),
+            resultForUi: {
+              title: 'Recall',
+              summary: `Recalled ${legacy.length} legacy memory item(s)`
+            }
+          }
+        }
         return {
           resultForModel: queryText
             ? `No memories found matching "${queryText}".`
@@ -1135,9 +1364,14 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         }
       }
 
-      const lines = [`Found ${results.length} memory item(s) (newest first):`, '']
-      results.forEach((m, i) => {
-        const date = new Date(m.createdAt).toLocaleDateString('en-CA')
+      const lines = [`Found ${results.length} current memory document(s):`, '']
+      results.forEach((doc, i) => {
+        const m = {
+          scope: doc.scope,
+          category: `${doc.kind}/${doc.key}/v${doc.version}`,
+          content: `${formatMemoryDocHeader(doc)}\n${doc.content}`
+        }
+        const date = ''
         lines.push(`${i + 1}. [${m.scope} · ${m.category} · ${date}] ${m.content}`)
       })
 
@@ -1145,7 +1379,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
         resultForModel: lines.join('\n'),
         resultForUi: {
           title: 'Recall',
-          summary: `Recalled ${results.length} memory item(s)`
+          summary: `Recalled ${results.length} memory document(s)`
         }
       }
     }

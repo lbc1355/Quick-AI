@@ -2,7 +2,7 @@ import { vi, it, expect, beforeEach, afterEach } from 'vitest'
 import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
 import { ToolRegistry } from './toolRegistry'
-import { closeDb, listMemories } from './database'
+import { closeDb, getCurrentMemoryDoc, listMemoryDocs } from './database'
 import * as runCtx from './agent/AgentRunContext'
 import type { AgentRunContext } from './agent/AgentRunContext'
 import { describeWithSqlite } from './testSupport/nativeSqlite'
@@ -43,10 +43,9 @@ describeWithSqlite('remember / recall tools', () => {
       ctx
     )
     expect(res.resultForModel).toContain('session memory')
-    const stored = listMemories({ scope: 'session', sessionId: 'sess-A' })
-    expect(stored).toHaveLength(1)
-    expect(stored[0].content).toBe('prefers dark mode')
-    expect(stored[0].category).toBe('preference')
+    const stored = getCurrentMemoryDoc({ scope: 'session', sessionId: 'sess-A' })
+    expect(stored?.content).toContain('[preference] prefers dark mode')
+    expect(stored?.version).toBe(1)
   })
 
   it('remember(scope=session) falls back to global when the run has no session', async () => {
@@ -56,7 +55,7 @@ describeWithSqlite('remember / recall tools', () => {
       ctx
     )
     expect(res.resultForModel).toContain('global')
-    expect(listMemories({ scope: 'global' })).toHaveLength(1)
+    expect(listMemoryDocs({ scope: 'global' })).toHaveLength(1)
   })
 
   it('remember rejects empty and oversized content', async () => {
@@ -87,12 +86,59 @@ describeWithSqlite('remember / recall tools', () => {
     await ToolRegistry.remember.execute({ content: 'dislikes tea', scope: 'global' }, ctx)
     const res = await ToolRegistry.recall.execute({ query: 'coffee' }, ctx)
     expect(res.resultForModel).toContain('likes coffee')
-    expect(res.resultForModel).not.toContain('dislikes tea')
+    expect(res.resultForModel).toContain('dislikes tea')
   })
 
   it('recall reports when nothing is found', async () => {
     stubRun('sess-A')
     const res = await ToolRegistry.recall.execute({ query: 'nothing' }, ctx)
     expect(res.resultForModel).toContain('No memories found')
+  })
+
+  it('replace_memory_doc requires reading the current version first', async () => {
+    stubRun('sess-A')
+    const created = await ToolRegistry.replace_memory_doc.execute(
+      {
+        kind: 'soul',
+        scope: 'global',
+        key: 'assistant_profile',
+        title: 'Assistant Profile',
+        content: 'Name: 小白'
+      },
+      ctx
+    )
+    expect(created.resultForModel).toContain('v1')
+
+    await expect(
+      ToolRegistry.replace_memory_doc.execute(
+        {
+          kind: 'soul',
+          scope: 'global',
+          key: 'assistant_profile',
+          content: 'Name: 小黑'
+        },
+        ctx
+      )
+    ).rejects.toThrow(/baseVersionId/)
+
+    const read = await ToolRegistry.read_memory_doc.execute(
+      { kind: 'soul', scope: 'global', key: 'assistant_profile' },
+      ctx
+    )
+    const baseVersionId = read.resultForModel.match(/Version id: (memdoc_[^\n]+)/)?.[1]
+    expect(baseVersionId).toBeTruthy()
+
+    const updated = await ToolRegistry.replace_memory_doc.execute(
+      {
+        kind: 'soul',
+        scope: 'global',
+        key: 'assistant_profile',
+        content: 'Name: 小黑',
+        baseVersionId
+      },
+      ctx
+    )
+    expect(updated.resultForModel).toContain('v2')
+    expect(listMemoryDocs({ kind: 'soul', scope: 'global', status: 'archived' })).toHaveLength(1)
   })
 })

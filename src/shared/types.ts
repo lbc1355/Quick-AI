@@ -203,6 +203,28 @@ export interface UserMemory {
   updatedAt: number
 }
 
+export type MemoryDocKind = 'memory' | 'soul'
+export type MemoryDocScope = 'global' | 'session'
+export type MemoryDocStatus = 'current' | 'archived'
+
+/** Versioned durable memory document. Current rows are injected/recalled by default; archived rows
+ * are retained for audit/rollback but are not included unless explicitly requested. */
+export interface MemoryDoc {
+  id: string
+  kind: MemoryDocKind
+  scope: MemoryDocScope
+  sessionId?: string
+  key: string
+  title: string
+  content: string
+  version: number
+  parentId?: string
+  status: MemoryDocStatus
+  reason?: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface StorageSchema {
   sessions: Session[]
   settings: AppSettings

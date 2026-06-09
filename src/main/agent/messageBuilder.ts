@@ -41,7 +41,7 @@ export function buildToolDirectorySummary(
     if (chars + line.length + 1 > TOOL_DIRECTORY_BUDGET) {
       const omitted = summaries.length - lines.length
       if (omitted > 0)
-        lines.push(`(${omitted} additional tools — use search_tools to discover them)`)
+        lines.push(`(${omitted} additional tools available via the discovery tool)`)
       break
     }
     lines.push(line)
@@ -232,7 +232,7 @@ ${toolDirs ? `${toolDirs}\n\n` : ''}Operation history & cache — your second me
 This conversation is backed by two parallel tracks. (1) The dialogue: alternating user and assistant turns. (2) A persistent operation layer that survives across turns but is NOT replayed in the dialogue — it stores the documents you fetched and every tool call you made. Because the dialogue contains only user/assistant text, never assume you performed no actions just because no tool calls are visible in it; consult the operation layer instead.
 - Cached resources: pages, files and documents you fetched are stored there (chunked, with line numbers). Reuse them with read_cached_resource and search_cached_resource — and for web pages, click_link and find_in_page — rather than re-fetching the same source.
 - Action history: every tool call in this conversation is journaled. Call list_past_actions to recall what you already did (for example when the user asks what you have done, or before repeating work) and get_past_action to inspect one call's full result.
-- Persistent memory: you can store durable memories with remember (scope "global" for facts true across all conversations like user preferences, scope "session" for context specific to this conversation) and retrieve them with recall. A compact recent memory context may be shown automatically when available; call recall when the user refers to older, exact, or missing memories, and use remember when the user tells you something worth keeping.
+- Persistent memory/soul: remember appends concise facts to the current versioned memory document and archives the previous version automatically. Use kind "soul" for assistant profile/persona and kind "memory" for user/project facts. To modify or correct existing memory/soul, first call read_memory_doc to get the complete current document and version id, then call replace_memory_doc with the complete updated document and baseVersionId. recall returns current versions only.
 
 Rules:
 - The tool list above shows the tools you can use right now. You may call them directly without first calling search_tools.
