@@ -31,6 +31,13 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModel: 'deepseek-r1:8b'
   },
   {
+    type: 'glm',
+    name: '智谱 GLM',
+    apiUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    modelsList: ['glm-4-flash', 'glm-4-plus', 'glm-4-long'],
+    defaultModel: 'glm-4-flash'
+  },
+  {
     type: 'custom',
     name: '自定义服务商',
     apiUrl: '',

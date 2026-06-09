@@ -7,11 +7,11 @@ interface ProviderListProps {
   activeProviderId: string
   showAddForm: boolean
   newProviderName: string
-  newProviderType: 'deepseek' | 'kimi' | 'ollama' | 'custom'
+  newProviderType: ApiProvider['type']
   setShowAddForm: (show: boolean) => void
   setNewProviderName: (name: string) => void
-  setNewProviderType: (type: 'deepseek' | 'kimi' | 'ollama' | 'custom') => void
-  onAddProvider: (name: string, type: 'deepseek' | 'kimi' | 'ollama' | 'custom') => void
+  setNewProviderType: (type: ApiProvider['type']) => void
+  onAddProvider: (name: string, type: ApiProvider['type']) => void
   onSetActiveProvider: (id: string) => void
   onStartEditingProvider: (id: string) => void
   onDeleteProvider: (id: string) => void
@@ -62,6 +62,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({
             >
               <option value="deepseek">DeepSeek</option>
               <option value="kimi">Kimi</option>
+              <option value="glm">智谱 GLM</option>
               <option value="ollama">Ollama</option>
               <option value="custom">Custom</option>
             </select>

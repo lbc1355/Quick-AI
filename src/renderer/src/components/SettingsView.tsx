@@ -18,7 +18,7 @@ interface SettingsViewProps {
   isFetchingModels: boolean
   showAddForm: boolean
   newProviderName: string
-  newProviderType: 'deepseek' | 'kimi' | 'ollama' | 'custom'
+  newProviderType: ApiProvider['type']
   systemPrompt: string
   autoHideOnBlur: boolean
   appStorePath: string
@@ -32,13 +32,13 @@ interface SettingsViewProps {
   setFetchModelsUrl: (val: string) => void
   setShowAddForm: (val: boolean) => void
   setNewProviderName: (val: string) => void
-  setNewProviderType: (val: 'deepseek' | 'kimi' | 'ollama' | 'custom') => void
+  setNewProviderType: (val: ApiProvider['type']) => void
   setSystemPrompt: (val: string) => void
   setAutoHideOnBlur: (val: boolean) => void
 
   onSaveGlobalSettings: () => void
   onSaveProviderDetails: () => void
-  onAddProvider: (name: string, type: 'deepseek' | 'kimi' | 'ollama' | 'custom') => void
+  onAddProvider: (name: string, type: ApiProvider['type']) => void
   onSetActiveProvider: (id: string) => void
   onStartEditingProvider: (id: string) => void
   onDeleteProvider: (id: string) => void

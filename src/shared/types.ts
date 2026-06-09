@@ -128,7 +128,7 @@ export interface Session {
 export interface ApiProvider {
   id: string
   name: string
-  type: 'deepseek' | 'kimi' | 'ollama' | 'custom'
+  type: 'deepseek' | 'kimi' | 'ollama' | 'glm' | 'custom'
   apiKey: string
   apiUrl: string
   model: string
