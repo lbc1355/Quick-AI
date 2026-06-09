@@ -1,5 +1,6 @@
 import { ChatCompletionMessage, ChatToolDeclaration } from '../../shared/types'
 import { DEFAULT_RETRY_POLICY, isRetryableError } from './retryPolicy'
+import { detectProvider } from './modelAdapter'
 
 export interface CallModelOptions {
   apiUrl: string
@@ -34,10 +35,13 @@ export async function callModel(
   callbacks?: CallModelCallbacks
 ): Promise<ChatCompletionMessage> {
   const completionsUrl = `${options.apiUrl.replace(/\/$/, '')}/chat/completions`
+  const adapter = detectProvider(options.apiUrl)
 
-  const body: Record<string, unknown> = {
+  const sanitizedMessages = adapter.sanitizeMessages(prepareMessagesForModel(messages))
+
+  let body: Record<string, unknown> = {
     model: options.model,
-    messages: prepareMessagesForModel(messages),
+    messages: sanitizedMessages,
     stream: true
   }
 
@@ -45,6 +49,8 @@ export async function callModel(
     body.tools = toolsToDeclare
     body.tool_choice = 'auto'
   }
+
+  body = adapter.sanitizeBody(body)
 
   const shouldStreamFinal = true
 
