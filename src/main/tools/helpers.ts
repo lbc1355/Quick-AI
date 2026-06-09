@@ -1,4 +1,5 @@
 import { resolve, normalize, relative, isAbsolute, basename, join, dirname } from 'path'
+import { Notification } from 'electron'
 import { realpathSync, existsSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 
@@ -73,3 +74,20 @@ export const SEARCH_IGNORE_EXTENSIONS = [
   '.class', '.pyc', '.o', '.a',
   '-lock.json', '.lock', '-lock.yaml', '.lockb'
 ]
+
+/** Send a desktop notification. Returns false when unsupported on this platform. */
+export function showDesktopNotification(
+  title: string,
+  body: string,
+  onClick?: () => void
+): boolean {
+  try {
+    if (!Notification.isSupported()) return false
+    const n = new Notification({ title, body })
+    if (onClick) n.on('click', onClick)
+    n.show()
+    return true
+  } catch {
+    return false
+  }
+}

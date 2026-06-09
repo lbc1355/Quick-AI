@@ -68,7 +68,7 @@ export interface UseSessionsReturn {
   handleNewSession: (onCreated?: () => void) => Promise<void>
   handleClearCurrentSession: () => Promise<void>
   handleDeleteSession: (targetSessionId: string) => Promise<void>
-  checkSessionTimeout: (currentActiveId: string, currentSessions: Session[]) => Promise<void>
+  syncSessionsRef: (currentSessions: Session[]) => void
 }
 
 export const useSessions = (): UseSessionsReturn => {
@@ -81,17 +81,7 @@ export const useSessions = (): UseSessionsReturn => {
     sessionsRef.current = sessions
   }, [sessions])
 
-  const checkSessionTimeout = async (
-    currentActiveId: string,
-    currentSessions: Session[]
-  ): Promise<void> => {
-    if (currentSessions.length === 0 || !currentActiveId) return
-
-    const activeSess = currentSessions.find((s) => s.id === currentActiveId)
-    if (!activeSess) return
-
-    // Summoning the panel should never create or touch a conversation. Timeout splitting happens
-    // only when the user actually sends a message.
+  const syncSessionsRef = (currentSessions: Session[]): void => {
     sessionsRef.current = currentSessions
   }
 
@@ -108,7 +98,7 @@ export const useSessions = (): UseSessionsReturn => {
           return tB - tA
         })
         setActiveSessionId(sorted[0].id)
-        checkSessionTimeout(sorted[0].id, savedSessions)
+        syncSessionsRef(savedSessions)
       } else {
         const defaultSession: Session = {
           id: Date.now().toString(),
@@ -199,6 +189,6 @@ export const useSessions = (): UseSessionsReturn => {
     handleNewSession,
     handleClearCurrentSession,
     handleDeleteSession,
-    checkSessionTimeout
+    syncSessionsRef
   }
 }

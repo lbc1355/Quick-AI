@@ -259,7 +259,7 @@ function App(): React.JSX.Element {
     handleNewSession,
     handleClearCurrentSession,
     handleDeleteSession,
-    checkSessionTimeout
+    syncSessionsRef
   } = useSessions()
   const [sessionFamilyRootId, setSessionFamilyRootId] = useState<string | null>(null)
   const [dismissedSessionFamilyViewForId, setDismissedSessionFamilyViewForId] = useState<
@@ -392,7 +392,7 @@ function App(): React.JSX.Element {
   // Listen to window summon (focus/show) event from Main Process
   useEffect(() => {
     const handleWindowShown = (): void => {
-      checkSessionTimeout(activeSessionId, sessions)
+      syncSessionsRef(sessions)
     }
 
     // Register event listener
@@ -401,7 +401,7 @@ function App(): React.JSX.Element {
     return () => {
       window.electron.ipcRenderer.removeAllListeners('window-shown')
     }
-  }, [activeSessionId, sessions, checkSessionTimeout])
+  }, [sessions, syncSessionsRef])
 
   useEffect(() => {
     window.api.setWindowPinned(isPanelPinned)

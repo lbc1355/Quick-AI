@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, screen, Notification } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, screen } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -15,6 +15,7 @@ import {
 import { copyRunManifestsForRuns, deleteRunManifest, deleteRunManifests } from './agent/runManifest'
 import { deleteResourceFile } from './resourceCache'
 import { deleteSessionMemories } from './database'
+import { showDesktopNotification } from './tools/helpers'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -350,16 +351,9 @@ app.whenReady().then(() => {
   })
 
   ipcMain.on('show-notification', (_event, title: string, body: string) => {
-    try {
-      if (!Notification.isSupported()) return
-      const n = new Notification({ title: String(title || 'QuickAI'), body: String(body || '') })
-      n.on('click', () => {
-        if (mainWindow && !mainWindow.isDestroyed()) showWindow()
-      })
-      n.show()
-    } catch {
-      // Notification failed silently — non-critical feature.
-    }
+    showDesktopNotification(String(title || 'QuickAI'), String(body || ''), () => {
+      if (mainWindow && !mainWindow.isDestroyed()) showWindow()
+    })
   })
 
   ipcMain.on('start-chat-completion', (event, reqId, options) => {

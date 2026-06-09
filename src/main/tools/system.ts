@@ -1,6 +1,6 @@
-import { Notification } from 'electron'
 import { ToolArgs } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
+import { showDesktopNotification } from './helpers'
 import { readResourceChunk } from '../resourceCache'
 import { loadResourceCache } from '../database'
 import { getRun } from '../agent/AgentRunContext'
@@ -281,16 +281,7 @@ export const systemTools: Record<string, ToolDefinition> = {
         : 'QuickAI'
       const body = typeof args.body === 'string' ? args.body.trim() : ''
 
-      const sent = ((): boolean => {
-        try {
-          if (!Notification.isSupported()) return false
-          const n = new Notification({ title, body })
-          n.show()
-          return true
-        } catch {
-          return false
-        }
-      })()
+      const sent = showDesktopNotification(title, body)
 
       return {
         resultForModel: sent
