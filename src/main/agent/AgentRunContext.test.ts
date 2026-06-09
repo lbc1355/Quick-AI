@@ -28,16 +28,35 @@ describe('AgentRunContext command-prefix approval', () => {
     expect(run.isCommandPrefixApproved('gitfoo')).toBe(false) // not a word boundary
   })
 
-  it('refuses to cover chained or substituted commands even when the prefix matches', () => {
+  it('refuses to cover chained commands when any segment prefix is unapproved', () => {
     const run = makeRun()
     run.approveCommandPrefix('git')
-    // The dangerous tail must trigger a fresh confirmation, not ride the approved prefix.
+    // The unapproved tail must trigger a fresh confirmation, not ride the approved `git` prefix.
     expect(run.isCommandPrefixApproved('git log && rm -rf ~')).toBe(false)
     expect(run.isCommandPrefixApproved('git log; rm -rf /')).toBe(false)
     expect(run.isCommandPrefixApproved('git log | sh')).toBe(false)
     expect(run.isCommandPrefixApproved('git log & sleep 1')).toBe(false)
+  })
+
+  it('always refuses command substitution regardless of approved prefixes', () => {
+    const run = makeRun()
+    run.approveCommandPrefix('git')
+    run.approveCommandPrefix('rm')
     expect(run.isCommandPrefixApproved('git $(rm -rf ~)')).toBe(false)
     expect(run.isCommandPrefixApproved('git `rm -rf ~`')).toBe(false)
+  })
+
+  it('approves a chained command when EVERY segment prefix was approved (Windows cd idiom)', () => {
+    const run = makeRun()
+    run.approveCommandPrefix('cd')
+    // Only `cd` approved → the `type` segment still forces a prompt.
+    expect(run.isCommandPrefixApproved('cd "C:\\proj" && type "a.md"')).toBe(false)
+    run.approveCommandPrefix('type')
+    // Now both segments are covered.
+    expect(run.isCommandPrefixApproved('cd "C:\\proj" && type "a.md"')).toBe(true)
+    expect(run.isCommandPrefixApproved('cd "C:\\proj\\sub" && type "b.md"')).toBe(true)
+    // A different unapproved command in the chain still prompts.
+    expect(run.isCommandPrefixApproved('cd "C:\\proj" && del "a.md"')).toBe(false)
   })
 
   it('does not approve a command whose prefix was never approved', () => {

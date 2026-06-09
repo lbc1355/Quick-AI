@@ -48,16 +48,24 @@ interface PopupOption {
 
 function getCommandPrefixes(command: string): string[] {
   if (!command) return []
-  const tokens = command
-    .trim()
-    .split(/\s+/)
-    .filter((t) => !t.startsWith('-'))
+  // Split chained commands (`cd "x" && type "y"`) so each independently-executed part can be
+  // approved on its own. The main process enforces the authoritative segment-aware check; this
+  // just surfaces a button per segment so the user can grant `cd`, `type`, `findstr`, etc.
+  const segments = command
+    .split(/(?:&&|\|\||[;|&\n])/)
+    .map((s) => s.trim())
+    .filter(Boolean)
   const prefixes: string[] = []
-  if (tokens.length > 0) {
-    prefixes.push(tokens[0])
-    // Only allow second token if it matches a valid alphanumeric subcommand pattern (no paths, dots, slashes)
+  const push = (p: string): void => {
+    if (p && !prefixes.includes(p) && prefixes.length < 6) prefixes.push(p)
+  }
+  for (const segment of segments) {
+    const tokens = segment.split(/\s+/).filter((t) => !t.startsWith('-'))
+    if (tokens.length === 0) continue
+    push(tokens[0])
+    // Only offer a two-word prefix when the subcommand is a clean alphanumeric word (no paths).
     if (tokens.length > 1 && /^[a-zA-Z0-9_-]+$/.test(tokens[1])) {
-      prefixes.push(`${tokens[0]} ${tokens[1]}`)
+      push(`${tokens[0]} ${tokens[1]}`)
     }
   }
   return prefixes

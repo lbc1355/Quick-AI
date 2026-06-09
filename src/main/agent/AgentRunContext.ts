@@ -1,5 +1,6 @@
 import { PermissionManager, globalPermissionManager } from './permissionManager'
 import { ActionLog } from './actionLog'
+import { splitCommandSegments } from './commandSafety'
 import { TaskItem } from '../../shared/types'
 
 /** Session-scoped tool/command approvals. A "task" spans many agent runs (one per user
@@ -147,16 +148,29 @@ export class AgentRunContext {
   }
 
   isCommandPrefixApproved(command: string): boolean {
-    const trimmed = command.trim().toLowerCase()
-    // A previously-approved prefix only covers a SINGLE simple command. If the command chains or
-    // embeds another command (`;` `&&` `||` `|` `&`, newline, or `$(...)`/backtick substitution),
-    // the approved prefix must not silently cover the tail — force a fresh confirmation.
-    if (/[;&|\n]|\$\(|`/.test(trimmed)) return false
-    return this.approvedCommandPrefixes.some((prefix) => {
-      return (
-        trimmed === prefix || trimmed.startsWith(prefix + ' ') || trimmed.startsWith(prefix + '\t')
-      )
-    })
+    const trimmed = command.trim()
+    if (!trimmed) return false
+    // Command substitution (`$(...)` / backticks) is opaque to prefix matching — its body can
+    // run anything — so always force a fresh confirmation when present.
+    if (/\$\(|`/.test(trimmed)) return false
+    if (this.approvedCommandPrefixes.length === 0) return false
+
+    // A chained command (`a && b`, `a | b`, `a; b`, ...) is approved only when EVERY independently
+    // executed segment's leading prefix was itself approved. This lets the Windows-idiomatic
+    // `cd "x" && type "y"` ride approvals for both `cd` and `type`, while any unapproved segment
+    // still forces a prompt. Destructive segments are denied separately by analyzeCommand (a deny
+    // is never rescued by prefix approval), so segment-level allow cannot smuggle danger through.
+    const segments = splitCommandSegments(trimmed)
+    if (segments.length === 0) return false
+    return segments.every((segment) => this.isSegmentPrefixApproved(segment))
+  }
+
+  private isSegmentPrefixApproved(segment: string): boolean {
+    const seg = segment.trim().toLowerCase()
+    if (!seg) return false
+    return this.approvedCommandPrefixes.some(
+      (prefix) => seg === prefix || seg.startsWith(prefix + ' ') || seg.startsWith(prefix + '\t')
+    )
   }
 
   hasExecuted(callKey: string): boolean {
