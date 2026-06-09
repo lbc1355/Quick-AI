@@ -19,7 +19,7 @@ export interface ToolDefinition {
   discoverable: boolean
   parameters: {
     type: 'object'
-    properties: Record<string, { type: string; description?: string; enum?: string[] }>
+    properties: Record<string, { type: string; description?: string; enum?: string[]; items?: Record<string, unknown> }>
     required?: string[]
   }
   execute: (

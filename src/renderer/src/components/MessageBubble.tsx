@@ -580,6 +580,35 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
               )}
             </div>
 
+            {/* Task progress card */}
+            {(() => {
+              const taskEvent = msg.agentEvents?.find((e) => e.type === 'task_update')
+              if (!taskEvent || taskEvent.type !== 'task_update') return null
+              const tasks = taskEvent.tasks
+              const done = tasks.filter((t) => t.status === 'completed' || t.status === 'cancelled').length
+              const total = tasks.length
+              const pct = total > 0 ? Math.round((done / total) * 100) : 0
+              const statusIcon: Record<string, string> = { pending: '○', in_progress: '◐', completed: '●', cancelled: '✕' }
+              const statusColor: Record<string, string> = { pending: '#6b7280', in_progress: '#3b82f6', completed: '#22c55e', cancelled: '#9ca3af' }
+              return (
+                <div style={{ margin: '8px 0 4px 0', padding: '8px 12px', borderRadius: '6px', background: 'var(--color-bg-elevated, #1e1e2e)', border: '1px solid var(--color-border, #333)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)' }}>Task Progress</span>
+                    <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{done}/{total} done ({pct}%)</span>
+                  </div>
+                  <div style={{ height: 3, borderRadius: 2, background: 'var(--color-border, #333)', marginBottom: 6, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: done === total ? '#22c55e' : '#3b82f6', borderRadius: 2, transition: 'width 0.3s' }} />
+                  </div>
+                  {tasks.map((t) => (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '2px 0', color: t.status === 'in_progress' ? 'var(--color-text)' : 'var(--color-text-muted)', opacity: t.status === 'cancelled' ? 0.5 : 1 }}>
+                      <span style={{ color: statusColor[t.status], width: 14, textAlign: 'center', flexShrink: 0 }}>{statusIcon[t.status]}</span>
+                      <span style={{ textDecoration: t.status === 'cancelled' ? 'line-through' : undefined }}>{t.title}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+
             {/* Intermediate event stream inside the collapsible container */}
             {effectiveLogsExpanded && (
               <div

@@ -75,6 +75,11 @@ export const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Mess
     } else {
       updatedEvents.push(newEvent)
     }
+  } else if (newEvent.type === 'task_update') {
+    // Replace any previous task_update so the list reflects the latest state.
+    const withoutTasks: AgentEvent[] = updatedEvents.filter((e) => e.type !== 'task_update')
+    withoutTasks.push(newEvent)
+    return { ...m, agentEvents: withoutTasks }
   } else if (updatedEvents.length > 0) {
     const lastEvent = updatedEvents[updatedEvents.length - 1]
     if (lastEvent.type === 'reasoning' && newEvent.type === 'reasoning') {

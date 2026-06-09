@@ -1,4 +1,4 @@
-import { ToolArgs } from '../../shared/types'
+import { ToolArgs, TaskItem } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { showDesktopNotification } from './helpers'
 import { readResourceChunk } from '../resourceCache'
@@ -247,6 +247,104 @@ export const systemTools: Record<string, ToolDefinition> = {
         resultForUi: {
           title: `Read Tool Output: ${outputId}`,
           summary: `Returned chars ${offset}-${endOffset} of ${full.length}`
+        }
+      }
+    }
+  },
+  task: {
+    name: 'task',
+    title: 'Task Tracker',
+    description:
+      'Track progress on complex multi-step tasks. Create a structured task list at the start of non-trivial work and update individual step statuses as you go. The task list appears in the UI so the user can follow your progress. Tasks with duplicate IDs update the existing entry; new IDs are appended.',
+    tags: ['task', 'todo', 'plan', 'track', 'progress', '任务', '计划', '追踪'],
+    category: 'system',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Short stable id (e.g. "1", "search", "fix").' },
+              title: { type: 'string', description: 'Brief description of this step.' },
+              status: {
+                type: 'string',
+                enum: ['pending', 'in_progress', 'completed', 'cancelled'],
+                description: 'Current status.'
+              }
+            },
+            required: ['id', 'title', 'status']
+          },
+          description: 'The task list. Provide the COMPLETE list on first call; on subsequent calls only include items whose status changed.'
+        }
+      },
+      required: ['tasks']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const raw = args.tasks
+      if (!Array.isArray(raw) || raw.length === 0) {
+        throw new Error('Missing or invalid tasks parameter — expected a non-empty array.')
+      }
+
+      const incoming: TaskItem[] = []
+      for (const item of raw) {
+        if (
+          typeof item !== 'object' ||
+          !item ||
+          typeof item.id !== 'string' ||
+          !item.id.trim() ||
+          typeof item.title !== 'string' ||
+          typeof item.status !== 'string'
+        ) {
+          continue
+        }
+        const status = item.status as TaskItem['status']
+        if (!['pending', 'in_progress', 'completed', 'cancelled'].includes(status)) continue
+        incoming.push({ id: item.id.trim(), title: item.title.trim(), status })
+      }
+
+      if (incoming.length === 0) {
+        throw new Error('No valid task items found. Each item needs id, title, and status.')
+      }
+
+      const run = getRun(ctx.reqId)
+      if (!run) {
+        throw new Error('No active agent run — tasks are only available during an agent session.')
+      }
+
+      const merged = run.mergeTasks(incoming)
+
+      // Push to the renderer so the task list renders in the conversation UI.
+      if (ctx.mainWindow) {
+        ctx.mainWindow.webContents.send('chat-chunk', {
+          reqId: ctx.reqId,
+          event: { type: 'task_update', tasks: merged }
+        })
+      }
+
+      const lines = ['Tasks:']
+      const statusIcon: Record<string, string> = {
+        pending: '○',
+        in_progress: '◐',
+        completed: '●',
+        cancelled: '✕'
+      }
+      for (const t of merged) {
+        lines.push(`  ${statusIcon[t.status] || '○'} ${t.id}: ${t.title} [${t.status}]`)
+      }
+
+      const doneCount = merged.filter((t) => t.status === 'completed' || t.status === 'cancelled').length
+      const total = merged.length
+
+      return {
+        resultForModel: `${lines.join('\n')}\n\nProgress: ${doneCount}/${total} done. Update task statuses with this tool as you complete each step.`,
+        resultForUi: {
+          title: 'Tasks',
+          summary: `${doneCount}/${total} done`
         }
       }
     }

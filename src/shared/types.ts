@@ -43,6 +43,16 @@ export type AgentEvent =
       type: 'resource_update'
       resource: SessionResource
     }
+  | {
+      type: 'task_update'
+      tasks: TaskItem[]
+    }
+
+export interface TaskItem {
+  id: string
+  title: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+}
 
 export interface Message {
   id: string

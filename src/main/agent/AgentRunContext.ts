@@ -1,5 +1,6 @@
 import { PermissionManager, globalPermissionManager } from './permissionManager'
 import { ActionLog } from './actionLog'
+import { TaskItem } from '../../shared/types'
 
 export class AgentRunContext {
   status: 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' = 'running'
@@ -19,6 +20,7 @@ export class AgentRunContext {
   readonly permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
   readonly approvedCommandPrefixes: string[] = []
   readonly approvedTools: string[] = []
+  readonly tasks: TaskItem[] = []
   private readonly permissions: PermissionManager
 
   // Run-scoped store of full tool outputs, keyed by tool call id. Large outputs are kept here
@@ -53,6 +55,28 @@ export class AgentRunContext {
 
   get signal(): AbortSignal {
     return this.controller.signal
+  }
+
+  /** Merge incoming tasks into the run's task list: new IDs are added, existing IDs get
+   *  their status updated. Returns the full merged list. */
+  mergeTasks(incoming: TaskItem[]): TaskItem[] {
+    const byId = new Map<string, TaskItem>()
+    for (const t of this.tasks) byId.set(t.id, t)
+    for (const t of incoming) {
+      if (byId.has(t.id)) {
+        const existing = byId.get(t.id)!
+        // Only update if the status actually changed to avoid churn.
+        if (existing.status !== t.status) {
+          byId.set(t.id, { ...existing, status: t.status, title: t.title || existing.title })
+        }
+      } else {
+        byId.set(t.id, { ...t })
+      }
+    }
+    const merged = Array.from(byId.values())
+    this.tasks.length = 0
+    this.tasks.push(...merged)
+    return merged
   }
 
   abort(): void {
