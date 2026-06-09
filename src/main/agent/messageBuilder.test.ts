@@ -102,8 +102,7 @@ describe('prepareChatAgentMessages memory capability hint', () => {
     expect(content).toContain('Persistent memory')
     expect(content).toContain('remember')
     expect(content).toContain('recall')
-    // The model must be told memories are not auto-injected.
-    expect(content).toContain('NOT shown to you automatically')
+    expect(content).toContain('compact recent memory context')
   })
 })
 

@@ -5,6 +5,7 @@ import {
   getRunIdsThroughMessage,
   isRuntimeErrorAssistantMessage,
   mergeResourceUpdate,
+  prepareMessageForInlineResume,
   touchSessionInSnapshot
 } from './useChatCompletion'
 import { Message, Session, SessionResource } from '../../../shared/types'
@@ -96,6 +97,38 @@ describe('isRuntimeErrorAssistantMessage', () => {
   })
 })
 
+describe('prepareMessageForInlineResume', () => {
+  it('reuses the failed assistant message while preserving the run chain', () => {
+    const msg: Message = {
+      id: 'a1',
+      role: 'assistant',
+      content: 'Agent resume failed: API unavailable',
+      reasoning_content: 'old reasoning',
+      agentRunId: 'run-1',
+      agentEvents: [
+        { type: 'agent_start', skillName: 'General Agent' },
+        { type: 'tool_call', callId: 'call-1', toolName: 'file_read', args: {} },
+        { type: 'agent_end', status: 'failed', error: 'API unavailable' },
+        { type: 'final', content: 'Agent resume failed: API unavailable' }
+      ],
+      isRuntimeError: true
+    }
+
+    const prepared = prepareMessageForInlineResume(msg, 'run-2')
+
+    expect(prepared.id).toBe('a1')
+    expect(prepared.agentRunId).toBe('run-2')
+    expect(prepared.agentRunIds).toEqual(['run-1', 'run-2'])
+    expect(prepared.content).toBe('')
+    expect(prepared.reasoning_content).toBe('')
+    expect(prepared.isRuntimeError).toBeUndefined()
+    expect(prepared.agentEvents).toEqual([
+      { type: 'agent_start', skillName: 'General Agent' },
+      { type: 'tool_call', callId: 'call-1', toolName: 'file_read', args: {} }
+    ])
+  })
+})
+
 describe('branch fork helpers', () => {
   it('collects assistant run ids through a historical message index', () => {
     const messages: Message[] = [
@@ -106,6 +139,21 @@ describe('branch fork helpers', () => {
     ]
 
     expect(getRunIdsThroughMessage(messages, 2)).toEqual(['run-1'])
+  })
+
+  it('collects all run ids from an inline-resumed assistant message', () => {
+    const messages: Message[] = [
+      { id: 'u1', role: 'user', content: 'one' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'one',
+        agentRunId: 'run-2',
+        agentRunIds: ['run-1', 'run-2']
+      }
+    ]
+
+    expect(getRunIdsThroughMessage(messages, 1)).toEqual(['run-1', 'run-2'])
   })
 
   it('keeps only resource run ids that belong to the forked history', () => {

@@ -73,6 +73,7 @@ function createSchema(database: Database.Database): void {
       content           TEXT NOT NULL DEFAULT '',
       reasoning_content TEXT,
       agentRunId        TEXT,
+      agentRunIds       TEXT DEFAULT '[]',
       agentEvents       TEXT,
       forkedFrom        TEXT,
       isBranchFork      INTEGER NOT NULL DEFAULT 0,
@@ -171,6 +172,7 @@ function createSchema(database: Database.Database): void {
   ensureColumn(database, 'sessions', 'branchOf', 'TEXT')
   ensureColumn(database, 'messages', 'forkedFrom', 'TEXT')
   ensureColumn(database, 'messages', 'isBranchFork', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn(database, 'messages', 'agentRunIds', "TEXT DEFAULT '[]'")
   ensureColumn(database, 'skills', 'entryPath', 'TEXT')
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")
@@ -261,8 +263,8 @@ function migrateStore(database: Database.Database, storePath: string): void {
         'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime) VALUES (?, ?, ?)'
       )
       const insertMessage = database.prepare(
-        `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentEvents, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       const insertFile = database.prepare(
         'INSERT INTO message_files (messageId, name, content, type) VALUES (?, ?, ?, ?)'
@@ -280,6 +282,7 @@ function migrateStore(database: Database.Database, storePath: string): void {
               msg.content || '',
               msg.reasoning_content || null,
               msg.agentRunId || null,
+              JSON.stringify(msg.agentRunIds || (msg.agentRunId ? [msg.agentRunId] : [])),
               msg.agentEvents ? JSON.stringify(msg.agentEvents) : null,
               parseInt(msg.id) || Date.now()
             )
@@ -498,7 +501,7 @@ export function loadSessions(): Session[] {
   }>
 
   const msgStmt = database.prepare(
-    'SELECT id, role, content, reasoning_content, agentRunId, agentEvents, forkedFrom, isBranchFork, createdAt FROM messages WHERE sessionId = ? ORDER BY createdAt ASC'
+    'SELECT id, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, createdAt FROM messages WHERE sessionId = ? ORDER BY createdAt ASC'
   )
   const fileStmt = database.prepare(
     'SELECT name, content, type FROM message_files WHERE messageId = ?'
@@ -511,6 +514,7 @@ export function loadSessions(): Session[] {
       content: string
       reasoning_content: string | null
       agentRunId: string | null
+      agentRunIds: string | null
       agentEvents: string | null
       forkedFrom: string | null
       isBranchFork: number | null
@@ -541,6 +545,7 @@ export function loadSessions(): Session[] {
         content: m.content,
         reasoning_content: m.reasoning_content || undefined,
         agentRunId: m.agentRunId || undefined,
+        agentRunIds: parseRunIds(m.agentRunIds, m.agentRunId),
         agentEvents,
         forkedFrom,
         isBranchFork: m.isBranchFork === 1 || (m.isBranchFork == null && !!forkedFrom) || undefined,
@@ -579,6 +584,20 @@ function parseBranchRef(value: string | null): Session['branchOf'] {
   return undefined
 }
 
+function parseRunIds(value: string | null, fallbackRunId: string | null): string[] | undefined {
+  const fallback = fallbackRunId ? [fallbackRunId] : []
+  if (!value) return fallback.length > 0 ? fallback : undefined
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!Array.isArray(parsed)) return fallback.length > 0 ? fallback : undefined
+    const ids = Array.from(new Set(parsed.filter((id): id is string => typeof id === 'string')))
+    return ids.length > 0 ? ids : fallback.length > 0 ? fallback : undefined
+  } catch {
+    return fallback.length > 0 ? fallback : undefined
+  }
+}
+
 export function saveSessions(sessions: Session[]): void {
   const database = getDb()
 
@@ -589,8 +608,8 @@ export function saveSessions(sessions: Session[]): void {
     'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, branchOf) VALUES (?, ?, ?, ?)'
   )
   const insertMessage = database.prepare(
-    `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentEvents, forkedFrom, isBranchFork, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const insertFile = database.prepare(
     'INSERT INTO message_files (messageId, name, content, type) VALUES (?, ?, ?, ?)'
@@ -613,6 +632,7 @@ export function saveSessions(sessions: Session[]): void {
           msg.content || '',
           msg.reasoning_content || null,
           msg.agentRunId || null,
+          JSON.stringify(msg.agentRunIds || (msg.agentRunId ? [msg.agentRunId] : [])),
           msg.agentEvents ? JSON.stringify(msg.agentEvents) : null,
           msg.forkedFrom ? JSON.stringify(msg.forkedFrom) : null,
           msg.isBranchFork ? 1 : 0,

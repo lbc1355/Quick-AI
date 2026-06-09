@@ -11,8 +11,8 @@ export const getRunIdsThroughMessage = (messages: Message[], throughIdx: number)
     new Set(
       messages
         .slice(0, throughIdx + 1)
-        .filter((m) => m.role === 'assistant' && m.agentRunId)
-        .map((m) => m.agentRunId as string)
+        .filter((m) => m.role === 'assistant')
+        .flatMap((m) => m.agentRunIds || (m.agentRunId ? [m.agentRunId] : []))
     )
   )
 }

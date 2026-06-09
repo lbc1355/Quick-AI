@@ -1,5 +1,6 @@
 import { ChatCompletionMessage, ToolArgs } from '../../shared/types'
 import { ActionLog } from './actionLog'
+import { MEMORY_CONTEXT_PROMPT_PREFIX } from './memoryPrompts'
 import { AmbiguousAction, RunCheckpoint } from './runCheckpoint'
 
 export const ACTION_HISTORY_RESUME_LIMIT = 12
@@ -66,11 +67,17 @@ const isResumeModePrompt = (message: ChatCompletionMessage): boolean =>
   typeof message.content === 'string' &&
   message.content.startsWith(RESUME_MODE_PROMPT_PREFIX)
 
+const isTransientContextPrompt = (message: ChatCompletionMessage): boolean =>
+  isResumeModePrompt(message) ||
+  (message.role === 'system' &&
+    typeof message.content === 'string' &&
+    message.content.startsWith(MEMORY_CONTEXT_PROMPT_PREFIX))
+
 export const cloneMessagesForCheckpoint = (
   messages: ChatCompletionMessage[]
 ): ChatCompletionMessage[] => {
   return JSON.parse(
-    JSON.stringify(messages.filter((message) => !isResumeModePrompt(message)))
+    JSON.stringify(messages.filter((message) => !isTransientContextPrompt(message)))
   ) as ChatCompletionMessage[]
 }
 

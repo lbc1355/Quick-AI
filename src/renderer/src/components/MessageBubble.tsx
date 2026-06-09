@@ -440,9 +440,10 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     }, [isGenerating, cleanContent, hasLogs, msg.id])
 
     // Find agent_end event in the events list
-    const agentEndEvent = msg.agentEvents?.find(
-      (e): e is Extract<AgentEvent, { type: 'agent_end' }> => e.type === 'agent_end'
-    )
+    const agentEndEvent = msg.agentEvents?.reduce<Extract<
+      AgentEvent,
+      { type: 'agent_end' }
+    > | null>((last, e) => (e.type === 'agent_end' ? e : last), null)
     // Find the last agent_progress event in the events list
     const lastProgressEvent = msg.agentEvents?.reduce<Extract<
       AgentEvent,

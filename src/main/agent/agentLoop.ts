@@ -20,6 +20,8 @@ import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy
 import { LoopGuard } from './loopGuard'
 import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
 import { AmbiguousAction, loadRunCheckpoint, saveRunCheckpoint } from './runCheckpoint'
+import { loadMemoryContextPrompt } from './memoryContext'
+import { injectMemoryContext } from './memoryPrompts'
 import {
   appendRunAction,
   appendRunCheckpoint,
@@ -31,7 +33,6 @@ import {
   ACTION_HISTORY_RESUME_LIMIT,
   buildBranchForkPrompt,
   buildCheckpointResumePrompt,
-  buildResumeActionHistoryPrompt,
   cloneMessagesForCheckpoint,
   injectPromptBeforeLatestUser
 } from './resumePrompts'
@@ -94,6 +95,7 @@ export const runAgentLoop = async (
     options.resumeFromRunId && !resumeCheckpoint
       ? `No resumable checkpoint found for run ${options.resumeFromRunId}. Regenerate the message if you want to start over.`
       : undefined
+  const memoryPrompt = loadMemoryContextPrompt(conversationId)
 
   // Prepare messages history
   let messages: ChatCompletionMessage[] = []
@@ -105,6 +107,7 @@ export const runAgentLoop = async (
       role: 'system',
       content: buildCheckpointResumePrompt(resumeCheckpoint, actionLog)
     })
+    messages = injectMemoryContext(messages, memoryPrompt)
   } else if (isSkill) {
     messages = buildSkillMessages({
       apiUrl: options.apiUrl,
@@ -115,6 +118,7 @@ export const runAgentLoop = async (
       userInput: options.userInput || '',
       resources: options.resources
     })
+    messages = injectMemoryContext(messages, memoryPrompt)
   } else {
     messages = prepareChatAgentMessages(
       options.messages || [],
@@ -122,7 +126,7 @@ export const runAgentLoop = async (
       options.resources,
       permissions
     )
-    messages = injectPromptBeforeLatestUser(messages, buildResumeActionHistoryPrompt(actionLog))
+    messages = injectMemoryContext(messages, memoryPrompt)
   }
   if (options.branchOf) {
     messages = injectPromptBeforeLatestUser(messages, buildBranchForkPrompt(options.branchOf))

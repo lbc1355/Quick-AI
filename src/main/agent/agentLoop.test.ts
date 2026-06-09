@@ -22,6 +22,10 @@ vi.mock('./callModel', () => ({
   callModel: vi.fn()
 }))
 
+vi.mock('./memoryContext', () => ({
+  loadMemoryContextPrompt: vi.fn(() => '')
+}))
+
 describe('runAgentLoop', () => {
   let mockWindow: BrowserWindow
   let sendMock: Mock
@@ -415,7 +419,7 @@ describe('runAgentLoop', () => {
     expect(callCount).toBe(4)
   })
 
-  it('injects prior action history when continuing after a failed run', async () => {
+  it('does not inject prior action history into ordinary follow-up turns', async () => {
     vi.spyOn(ToolRegistry.file_read, 'execute').mockResolvedValue({
       resultForModel: 'File content already read before the API failure.',
       resultForUi: {
@@ -454,21 +458,21 @@ describe('runAgentLoop', () => {
       sessionId: 'resume-session'
     })
 
-    let sawResumeContext = false
+    let sawCleanFollowUpContext = false
     vi.mocked(callModel).mockImplementation(async (_options, messages) => {
       const joined = messages
         .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
         .join('\n')
 
-      expect(joined).toContain('[RESUME CONTEXT]')
-      expect(joined).toContain('file_read')
-      expect(joined).toContain('src/main/index.ts')
-      expect(joined).toContain('File content already read before the API failure.')
-      sawResumeContext = true
+      expect(joined).not.toContain('[RESUME CONTEXT]')
+      expect(joined).not.toContain('tc-read-before-failure')
+      expect(joined).not.toContain('File content already read before the API failure.')
+      expect(joined).toContain('list_past_actions')
+      sawCleanFollowUpContext = true
 
       return {
         role: 'assistant',
-        content: 'Continued without repeating the file read.'
+        content: 'Followed up without inline action history.'
       }
     })
 
@@ -480,7 +484,7 @@ describe('runAgentLoop', () => {
       sessionId: 'resume-session'
     })
 
-    expect(sawResumeContext).toBe(true)
+    expect(sawCleanFollowUpContext).toBe(true)
   })
 
   it('resumes from the last persisted checkpoint without adding a continue user message', async () => {

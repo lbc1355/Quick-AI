@@ -974,7 +974,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     name: 'remember',
     title: 'Remember',
     description:
-      'Persist a fact, preference, or piece of context as a durable memory so you can recall it in later turns or future conversations. Use scope="global" for things true across all conversations (user preferences, identity, long-lived facts) and scope="session" for context specific to the current conversation. Memories are NOT shown to you automatically — you must call recall to retrieve them.',
+      'Persist a fact, preference, or piece of context as a durable memory so you can recall it in later turns or future conversations. Use scope="global" for things true across all conversations (user preferences, identity, long-lived facts) and scope="session" for context specific to the current conversation. A compact recent memory context may be shown automatically; call recall for older, exact, or missing memories.',
     tags: [
       'memory',
       'remember',
@@ -1063,7 +1063,7 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
     name: 'recall',
     title: 'Recall Memories',
     description:
-      'Retrieve durable memories you stored earlier with remember. By default returns both global memories and the current conversation\'s session memories. Call this before answering when the user refers to past preferences, facts, or prior context — memories do not appear automatically.',
+      "Retrieve durable memories you stored earlier with remember. By default returns both global memories and the current conversation's session memories. Use this when the automatic memory context is missing details, when the user refers to older facts, or when exact recall matters.",
     tags: [
       'memory',
       'recall',
@@ -1107,7 +1107,8 @@ export const ToolRegistry: Record<string, ToolDefinition> = {
       const sessionId = run?.sessionId
 
       const query: MemoryQuery = {
-        scope: args.scope === 'global' ? 'global' : args.scope === 'session' ? 'session' : undefined,
+        scope:
+          args.scope === 'global' ? 'global' : args.scope === 'session' ? 'session' : undefined,
         sessionId,
         category:
           typeof args.category === 'string' && args.category.trim()

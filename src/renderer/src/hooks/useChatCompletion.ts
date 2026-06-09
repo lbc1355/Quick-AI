@@ -1,11 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Message, Session, Skill, RunMode } from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
-import { isRuntimeErrorAssistantMessage } from './chatMessageEvents'
+import { isRuntimeErrorAssistantMessage, prepareMessageForInlineResume } from './chatMessageEvents'
 import { createForkedSession, getRunIdsThroughMessage } from './sessionBranching'
 import { startStreamingRun as startChatStreamingRun } from './chatStreaming'
 
-export { isRuntimeErrorAssistantMessage, mergeResourceUpdate } from './chatMessageEvents'
+export {
+  isRuntimeErrorAssistantMessage,
+  mergeResourceUpdate,
+  prepareMessageForInlineResume
+} from './chatMessageEvents'
 export {
   createForkedSession,
   forkResourcesForRuns,
@@ -391,7 +395,9 @@ export const useChatCompletion = ({
       role: 'assistant',
       content: '',
       reasoning_content: '',
-      ...(runModeRef.current === 'agent' ? { agentRunId: reqId, agentEvents: [] } : {}),
+      ...(runModeRef.current === 'agent'
+        ? { agentRunId: reqId, agentRunIds: [reqId], agentEvents: [] }
+        : {}),
       ...(branchOf ? { isBranchFork: true, forkedFrom: branchOf } : {})
     }
     targetSession.messages.push(assistantMsg)
@@ -512,6 +518,7 @@ export const useChatCompletion = ({
       content: '',
       reasoning_content: '',
       agentRunId: assistantMsgId,
+      agentRunIds: [assistantMsgId],
       agentEvents: []
     }
     currentSession.messages.push(assistantMsg)
@@ -617,7 +624,15 @@ export const useChatCompletion = ({
             throughIdx: msgIdx,
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             now: Date.now(),
-            branchOf: branchOf!
+            branchOf: branchOf!,
+            transformMessage: (message, index) =>
+              index === msgIdx
+                ? {
+                    ...prepareMessageForInlineResume(message, reqId),
+                    isBranchFork: true,
+                    forkedFrom: branchOf
+                  }
+                : message
           })
           currentSessions.unshift(forkedSession)
           setActiveSessionId(forkedSession.id)
@@ -625,18 +640,21 @@ export const useChatCompletion = ({
         })()
       : currentSession
 
-    const assistantMsgId = (Date.now() + 1).toString()
-    const assistantMsg: Message = {
-      id: assistantMsgId,
-      role: 'assistant',
-      content: '',
-      reasoning_content: '',
-      agentRunId: reqId,
-      agentEvents: [],
-      ...(branchOf ? { isBranchFork: true, forkedFrom: branchOf } : {})
+    const assistantMsgId = failedMsg.id
+
+    if (!isHistoricalResume) {
+      const targetMsgIdx = targetSession.messages.findIndex((msg) => msg.id === failedMsg.id)
+      if (targetMsgIdx === -1) {
+        setIsGenerating(false)
+        setActiveReqId(null)
+        return
+      }
+      targetSession.messages[targetMsgIdx] = prepareMessageForInlineResume(
+        targetSession.messages[targetMsgIdx],
+        reqId
+      )
     }
 
-    targetSession.messages.push(assistantMsg)
     targetSession.lastActiveTime = Date.now()
     setActiveGenerationSessionId(targetSession.id)
     if (branchOf) {

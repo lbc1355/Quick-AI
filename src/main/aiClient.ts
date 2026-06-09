@@ -1,6 +1,8 @@
 import { BrowserWindow } from 'electron'
 import { ChatCompletionMessage } from '../shared/types'
 import { callModel } from './agent/callModel'
+import { loadMemoryContextPrompt } from './agent/memoryContext'
+import { injectMemoryContext } from './agent/memoryPrompts'
 
 interface ModelItem {
   id?: string
@@ -26,17 +28,26 @@ export function abortChatCompletion(reqId: string): void {
 export async function handleChatCompletion(
   mainWindow: BrowserWindow,
   reqId: string,
-  options: { apiUrl: string; apiKey: string; model: string; messages: ChatCompletionMessage[] }
+  options: {
+    apiUrl: string
+    apiKey: string
+    model: string
+    messages: ChatCompletionMessage[]
+    sessionId?: string
+  }
 ): Promise<void> {
   const { apiUrl, apiKey, model, messages } = options
   const controller = new AbortController()
   activeChatSessions.set(reqId, controller)
 
   try {
+    const memoryPrompt = loadMemoryContextPrompt(options.sessionId)
+    const messagesWithMemory = injectMemoryContext(messages, memoryPrompt)
+
     // Plain chat is a single model call with no tools. Reuse the agent's SSE parser
     // (callModel) as the single source of truth — it also splits local <think> tags
     // into reasoning, which the previous inline parser ignored.
-    await callModel({ apiUrl, apiKey, model }, messages, undefined, controller.signal, {
+    await callModel({ apiUrl, apiKey, model }, messagesWithMemory, undefined, controller.signal, {
       onReasoning: (reasoningContent) => {
         mainWindow.webContents.send('chat-chunk', { reqId, reasoningContent })
       },

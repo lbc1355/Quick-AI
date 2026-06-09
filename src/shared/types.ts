@@ -51,6 +51,7 @@ export interface Message {
   reasoning_content?: string
   files?: Array<{ name: string; content: string; type: string }>
   agentRunId?: string
+  agentRunIds?: string[]
   agentEvents?: AgentEvent[]
   /** UI-visible runtime/API failure. Kept in history but omitted from future model context. */
   isRuntimeError?: boolean
