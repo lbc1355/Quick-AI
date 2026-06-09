@@ -658,5 +658,159 @@ export const fileTools: Record<string, ToolDefinition> = {
         }
       }
     }
+  },
+  file_edit: {
+    name: 'file_edit',
+    title: 'Edit File',
+    description:
+      'Performs exact string replacement in a file within the workspace. Provide the exact text to replace (old_string) and the new text (new_string). By default, old_string must match exactly one location — if it matches multiple locations the edit is rejected with a list of matching lines so you can add more surrounding context to make it unique. Use replace_all=true to replace every occurrence.',
+    tags: [
+      'file', 'edit', 'replace', 'patch', 'modify', 'update',
+      '文件', '编辑', '替换', '修改', '更新'
+    ],
+    category: 'file',
+    risk: 'medium',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'The relative or absolute path to the file to edit.'
+        },
+        old_string: {
+          type: 'string',
+          description:
+            'The exact text to replace. Must match exactly (whitespace, indentation, newlines all count). If multiple matches exist, the edit is rejected unless replace_all is true.'
+        },
+        new_string: {
+          type: 'string',
+          description: 'The replacement text (must be different from old_string).'
+        },
+        replace_all: {
+          type: 'boolean',
+          description:
+            'Replace all occurrences of old_string (default false). When false, old_string must match exactly one location.'
+        }
+      },
+      required: ['path', 'old_string', 'new_string']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      void ctx
+      const filePath = args.path
+      const oldString = args.old_string
+      const newString = args.new_string
+      const replaceAll = args.replace_all === true
+
+      if (typeof filePath !== 'string' || !filePath) {
+        throw new Error('Missing or invalid path parameter')
+      }
+      if (typeof oldString !== 'string') {
+        throw new Error('Missing or invalid old_string parameter')
+      }
+      if (typeof newString !== 'string') {
+        throw new Error('Missing or invalid new_string parameter')
+      }
+      if (oldString === newString) {
+        throw new Error('old_string and new_string must be different')
+      }
+      if (!oldString) {
+        throw new Error('old_string must not be empty')
+      }
+
+      const root = getWorkspaceRoot()
+      const resolvedPath = resolve(root, filePath)
+
+      let realPath = resolvedPath
+      try {
+        realPath = await fs.realpath(resolvedPath)
+      } catch {
+        throw new Error('File does not exist. Use file_write to create a new file.')
+      }
+
+      if (!isPathInWorkspace(realPath)) {
+        throw new Error('Security Violation: Path is outside the workspace directory.')
+      }
+      if (isSensitiveFile(realPath)) {
+        throw new Error('Security Violation: Editing sensitive file is blocked.')
+      }
+
+      let content: string
+      try {
+        content = await fs.readFile(realPath, 'utf-8')
+      } catch (err) {
+        throw new Error(`Failed to read file: ${(err as Error).message}`)
+      }
+
+      // Count occurrences
+      const occurrences: number[] = []
+      let searchFrom = 0
+      while (searchFrom < content.length) {
+        const idx = content.indexOf(oldString, searchFrom)
+        if (idx === -1) break
+        occurrences.push(idx)
+        searchFrom = idx + 1
+      }
+
+      if (occurrences.length === 0) {
+        // Collect the closest lines to help AI debug mismatches
+        const contentLines = content.split(/\r?\n/)
+        const needleLines = oldString.split(/\r?\n/)
+        const firstNeedleLine = needleLines[0].trim()
+        const closeMatches: string[] = []
+        for (let i = 0; i < contentLines.length && closeMatches.length < 5; i++) {
+          if (contentLines[i].trim().includes(firstNeedleLine.slice(0, 20))) {
+            closeMatches.push(`  Line ${i + 1}: ${contentLines[i].trim().slice(0, 120)}`)
+          }
+        }
+        const hint =
+          closeMatches.length > 0
+            ? `\nClosest matching lines:\n${closeMatches.join('\n')}\nTip: check indentation, trailing whitespace, and line endings. Use file_read to verify the exact content.`
+            : '\nTip: use file_read to verify the exact file content including whitespace.'
+        throw new Error(`old_string not found in file.${hint}`)
+      }
+
+      if (!replaceAll && occurrences.length > 1) {
+        const lines = content.split(/\r?\n/)
+        const matchLines: string[] = []
+        for (const pos of occurrences) {
+          const lineNum = content.slice(0, pos).split(/\r?\n/).length
+          matchLines.push(`  Line ${lineNum}: ${lines[lineNum - 1]?.trim().slice(0, 120) || ''}`)
+        }
+        throw new Error(
+          `old_string matched ${occurrences.length} locations. Add more surrounding context to make it unique, or set replace_all=true.\nMatch locations:\n${matchLines.join('\n')}`
+        )
+      }
+
+      const newContent = replaceAll
+        ? content.split(oldString).join(newString)
+        : content.slice(0, occurrences[0]) + newString + content.slice(occurrences[0] + oldString.length)
+
+      const newBuffer = Buffer.from(newContent, 'utf-8')
+      const MAX_BYTES = 2 * 1024 * 1024
+      if (newBuffer.length > MAX_BYTES) {
+        throw new Error(
+          `Resulting file is too large (${(newBuffer.length / 1024 / 1024).toFixed(2)} MB). Max supported size is 2 MB.`
+        )
+      }
+
+      try {
+        await fs.writeFile(realPath, newContent, 'utf-8')
+      } catch (err) {
+        throw new Error(`Failed to write file: ${(err as Error).message}`)
+      }
+
+      const relPath = relative(root, realPath).replace(/\\/g, '/')
+      const count = replaceAll ? occurrences.length : 1
+
+      return {
+        resultForModel: `Successfully edited ${relPath}: replaced ${count} occurrence(s).`,
+        resultForUi: {
+          title: `Edit File: ${relPath}`,
+          summary: `Replaced ${count} occurrence(s) in ${relPath}`
+        }
+      }
+    }
   }
 }
