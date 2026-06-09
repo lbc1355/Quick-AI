@@ -80,7 +80,7 @@ export class AgentRunContext {
   }
 
   approveCommandPrefix(prefix: string): void {
-    const p = prefix.trim()
+    const p = prefix.trim().toLowerCase()
     if (p && !this.approvedCommandPrefixes.includes(p)) {
       this.approvedCommandPrefixes.push(p)
       console.log(`[AgentRunContext] Approved command prefix for run ${this.reqId}: "${p}"`)
@@ -88,7 +88,7 @@ export class AgentRunContext {
   }
 
   isCommandPrefixApproved(command: string): boolean {
-    const trimmed = command.trim()
+    const trimmed = command.trim().toLowerCase()
     // A previously-approved prefix only covers a SINGLE simple command. If the command chains or
     // embeds another command (`;` `&&` `||` `|` `&`, newline, or `$(...)`/backtick substitution),
     // the approved prefix must not silently cover the tail — force a fresh confirmation.
