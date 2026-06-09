@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildBranchFamilyInfo,
   buildBranchChildIndex,
   getBranchDisplayInfo,
+  getBranchFamilyRootId,
   getBranchSourceKey,
   shortBranchRunId
 } from './branchDisplay'
@@ -104,5 +106,93 @@ describe('getBranchDisplayInfo', () => {
       sourceLabel: '源会话',
       sourceExists: false
     })
+  })
+})
+
+describe('getBranchFamilyRootId', () => {
+  it('walks nested branch sessions back to the root conversation', () => {
+    const sessions = [
+      { id: 'root' },
+      { id: 'branch-a', branchOf: { sessionId: 'root', messageId: 'm1' } },
+      { id: 'branch-b', branchOf: { sessionId: 'branch-a', messageId: 'm2' } }
+    ]
+
+    expect(getBranchFamilyRootId('branch-b', sessions)).toBe('root')
+  })
+
+  it('keeps the current session as root when the source session is missing', () => {
+    expect(
+      getBranchFamilyRootId('orphan', [
+        { id: 'orphan', branchOf: { sessionId: 'missing', messageId: 'm1' } }
+      ])
+    ).toBe('orphan')
+  })
+})
+
+describe('buildBranchFamilyInfo', () => {
+  it('returns the root first and labels branch members newest first', () => {
+    const info = buildBranchFamilyInfo('root', [
+      {
+        id: 'root',
+        title: 'Conversation A',
+        messages: [{ id: 'm1', role: 'user', content: 'hi' }],
+        lastActiveTime: 1
+      },
+      {
+        id: 'branch-old',
+        title: 'Conversation A',
+        messages: [],
+        lastActiveTime: 2,
+        branchOf: { sessionId: 'root', messageId: 'm1', runId: 'run-old' }
+      },
+      {
+        id: 'branch-new',
+        title: 'Conversation A',
+        messages: [],
+        lastActiveTime: 10,
+        branchOf: { sessionId: 'root', messageId: 'm1', runId: 'run-new-123456' }
+      }
+    ])
+
+    expect(info?.rootTitle).toBe('Conversation A')
+    expect(info?.branchCount).toBe(2)
+    expect(info?.members.map((member) => member.sessionId)).toEqual([
+      'root',
+      'branch-new',
+      'branch-old'
+    ])
+    expect(info?.members.map((member) => member.branchIndex)).toEqual([undefined, 1, 2])
+    expect(info?.members[1]).toMatchObject({
+      isRoot: false,
+      sourceSessionId: 'root',
+      sourceTitle: 'Conversation A',
+      shortRunId: 'run-new-'
+    })
+  })
+
+  it('includes nested descendants in the same family', () => {
+    const info = buildBranchFamilyInfo('root', [
+      { id: 'root', title: 'Root', messages: [], lastActiveTime: 1 },
+      {
+        id: 'branch-a',
+        title: 'Branch A',
+        messages: [],
+        lastActiveTime: 2,
+        branchOf: { sessionId: 'root', messageId: 'm1' }
+      },
+      {
+        id: 'branch-b',
+        title: 'Branch B',
+        messages: [],
+        lastActiveTime: 3,
+        branchOf: { sessionId: 'branch-a', messageId: 'm2' }
+      }
+    ])
+
+    expect(info?.members.map((member) => [member.sessionId, member.depth])).toEqual([
+      ['root', 0],
+      ['branch-b', 2],
+      ['branch-a', 1]
+    ])
   })
 })

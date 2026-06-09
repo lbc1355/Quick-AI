@@ -25,6 +25,34 @@ export interface BranchChildInfo {
   shortRunId?: string
 }
 
+type BranchFamilySession = Pick<
+  Session,
+  'id' | 'title' | 'messages' | 'lastActiveTime' | 'branchOf'
+>
+
+export interface BranchFamilyMemberInfo<T extends BranchFamilySession = BranchFamilySession> {
+  session: T
+  sessionId: string
+  title: string
+  messageCount: number
+  lastActiveTime?: number
+  isRoot: boolean
+  depth: number
+  branchIndex?: number
+  sourceSessionId?: string
+  sourceTitle?: string
+  sourceRunId?: string
+  shortRunId?: string
+}
+
+export interface BranchFamilyInfo<T extends BranchFamilySession = BranchFamilySession> {
+  rootSession: T
+  rootSessionId: string
+  rootTitle: string
+  members: BranchFamilyMemberInfo<T>[]
+  branchCount: number
+}
+
 export function getBranchSourceKey(sessionId: string, messageId: string): string {
   return `${sessionId}::${messageId}`
 }
@@ -87,4 +115,103 @@ export function buildBranchChildIndex(
   }
 
   return index
+}
+
+export function getBranchFamilyRootId(
+  sessionId: string,
+  sessions: Pick<Session, 'id' | 'branchOf'>[]
+): string {
+  const byId = new Map(sessions.map((session) => [session.id, session]))
+  let currentId = sessionId
+  const visited = new Set<string>()
+
+  while (true) {
+    if (visited.has(currentId)) return sessionId
+    visited.add(currentId)
+
+    const current = byId.get(currentId)
+    const parentId = current?.branchOf?.sessionId
+    if (!parentId || !byId.has(parentId) || parentId === currentId) return currentId
+
+    currentId = parentId
+  }
+}
+
+function getBranchDepth(
+  sessionId: string,
+  rootSessionId: string,
+  sessions: BranchFamilySession[]
+): number {
+  const byId = new Map(sessions.map((session) => [session.id, session]))
+  let currentId = sessionId
+  let depth = 0
+  const visited = new Set<string>()
+
+  while (currentId !== rootSessionId) {
+    if (visited.has(currentId)) return depth
+    visited.add(currentId)
+
+    const parentId = byId.get(currentId)?.branchOf?.sessionId
+    if (!parentId || !byId.has(parentId)) return depth
+
+    depth += 1
+    currentId = parentId
+  }
+
+  return depth
+}
+
+export function buildBranchFamilyInfo<T extends BranchFamilySession>(
+  rootSessionId: string,
+  sessions: T[]
+): BranchFamilyInfo<T> | null {
+  const rootSession = sessions.find((session) => session.id === rootSessionId)
+  if (!rootSession) return null
+
+  const familySessions = sessions
+    .filter((session) => getBranchFamilyRootId(session.id, sessions) === rootSessionId)
+    .sort((a, b) => {
+      if (a.id === rootSessionId) return -1
+      if (b.id === rootSessionId) return 1
+
+      const aTime = a.lastActiveTime || Number(a.id) || 0
+      const bTime = b.lastActiveTime || Number(b.id) || 0
+      return bTime - aTime
+    })
+
+  let branchIndex = 0
+  const members = familySessions.map((session) => {
+    const sourceSession = session.branchOf
+      ? sessions.find((candidate) => candidate.id === session.branchOf?.sessionId)
+      : undefined
+    const isRoot = session.id === rootSessionId
+    const member: BranchFamilyMemberInfo<T> = {
+      session,
+      sessionId: session.id,
+      title: session.title?.trim() || (isRoot ? 'Root chat' : 'Branch chat'),
+      messageCount: session.messages.length,
+      lastActiveTime: session.lastActiveTime,
+      isRoot,
+      depth: isRoot ? 0 : getBranchDepth(session.id, rootSessionId, sessions),
+      sourceSessionId: session.branchOf?.sessionId,
+      sourceTitle: sourceSession?.title?.trim(),
+      sourceRunId: session.branchOf?.runId,
+      shortRunId: shortBranchRunId(session.branchOf?.runId)
+    }
+
+    if (!isRoot) {
+      branchIndex += 1
+      member.branchIndex = branchIndex
+    }
+
+    return member
+  })
+
+  return {
+    rootSession,
+    rootSessionId,
+    rootTitle: rootSession.title?.trim() || 'Root chat',
+    members,
+    branchCount: Math.max(0, members.length - 1)
+  }
 }

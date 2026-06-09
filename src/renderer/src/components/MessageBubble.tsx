@@ -586,9 +586,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                 className="agent-log-stream"
                 style={{
                   flexDirection: 'column',
-                  gap: '6px',
+                  gap: '2px',
                   paddingLeft: '16px',
-                  marginTop: '8px'
+                  marginTop: '4px'
                 }}
               >
                 {msg.agentEvents!.reduce<React.ReactNode[]>((acc, event, eventIdx) => {
@@ -612,7 +612,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       <div
                         key={`think-${eventIdx}`}
                         style={{
-                          margin: '6px 0'
+                          margin: '2px 0'
                         }}
                       >
                         <LogThinkRow
@@ -680,7 +680,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       <div
                         key={`step-${callId}-${eventIdx}`}
                         style={{
-                          margin: '6px 0'
+                          margin: '2px 0'
                         }}
                       >
                         {groupedCalls.length > 1 ? (
@@ -733,7 +733,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                 fontWeight: '500',
                 color: 'var(--color-text-muted)',
                 gap: '8px',
-                marginBottom: '8px'
+                marginBottom: '4px'
               }}
             >
               <span style={{ fontSize: '9px', opacity: 0.7 }}>
@@ -768,7 +768,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                 className="agent-log-stream"
                 style={{
                   flexDirection: 'column',
-                  gap: '6px',
+                  gap: '2px',
                   paddingLeft: '16px'
                 }}
               >

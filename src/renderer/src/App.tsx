@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   Settings,
   Send,
@@ -14,7 +14,8 @@ import {
   PanelLeftOpen,
   Pin,
   PinOff,
-  GitBranch
+  GitBranch,
+  ArrowLeft
 } from 'lucide-react'
 
 import { AutocompleteItem, AppSettings } from '../../shared/types'
@@ -30,8 +31,10 @@ import { useAutocomplete } from './hooks/useAutocomplete'
 import { useChatCompletion } from './hooks/useChatCompletion'
 import { useSkills } from './hooks/useSkills'
 import {
+  buildBranchFamilyInfo,
   buildBranchChildIndex,
   getBranchDisplayInfo,
+  getBranchFamilyRootId,
   getBranchSourceKey
 } from './utils/branchDisplay'
 import { getSessionGenerationState } from './utils/generationState'
@@ -258,6 +261,10 @@ function App(): React.JSX.Element {
     handleDeleteSession,
     checkSessionTimeout
   } = useSessions()
+  const [sessionFamilyRootId, setSessionFamilyRootId] = useState<string | null>(null)
+  const [dismissedSessionFamilyViewForId, setDismissedSessionFamilyViewForId] = useState<
+    string | null
+  >(null)
 
   // Refs for scrolling and textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -332,6 +339,55 @@ function App(): React.JSX.Element {
 
   // 6. Markdown Skills hook
   const { skills, installSkill, removeSkill } = useSkills()
+
+  const activeSessionFamilyInfo = useMemo(() => {
+    if (!activeSessionId) return null
+    const rootId = getBranchFamilyRootId(activeSessionId, sessions)
+    const info = buildBranchFamilyInfo(rootId, sessions)
+    return info && info.members.length > 1 ? info : null
+  }, [activeSessionId, sessions])
+  const isSessionFamilyViewDismissed = dismissedSessionFamilyViewForId === activeSessionId
+
+  const visibleSessionFamilyInfo = useMemo(() => {
+    const effectiveRootId = isSessionFamilyViewDismissed
+      ? sessionFamilyRootId
+      : sessionFamilyRootId || activeSessionFamilyInfo?.rootSessionId
+    if (!effectiveRootId) return null
+    const info = buildBranchFamilyInfo(effectiveRootId, sessions)
+    return info && info.members.length > 1 ? info : null
+  }, [
+    activeSessionFamilyInfo?.rootSessionId,
+    isSessionFamilyViewDismissed,
+    sessionFamilyRootId,
+    sessions
+  ])
+
+  const enterSessionFamilyView = useCallback(
+    (sessionId: string): void => {
+      const rootId = getBranchFamilyRootId(sessionId, sessions)
+      const info = buildBranchFamilyInfo(rootId, sessions)
+      setSessionFamilyRootId(info && info.members.length > 1 ? rootId : null)
+      setDismissedSessionFamilyViewForId(null)
+    },
+    [sessions]
+  )
+
+  const exitSessionFamilyView = useCallback((): void => {
+    setSessionFamilyRootId(null)
+    setDismissedSessionFamilyViewForId(activeSessionId ?? null)
+  }, [activeSessionId])
+
+  const openSession = useCallback(
+    (sessionId: string, messageId?: string): void => {
+      if (messageId) {
+        setPendingScrollMessageId(messageId)
+      }
+      enterSessionFamilyView(sessionId)
+      setActiveSessionId(sessionId)
+      setAutocompleteItems([])
+    },
+    [enterSessionFamilyView, setActiveSessionId, setAutocompleteItems]
+  )
 
   // Listen to window summon (focus/show) event from Main Process
   useEffect(() => {
@@ -508,6 +564,8 @@ function App(): React.JSX.Element {
     if (!item) return
     if (item.type === 'command') {
       if (item.cmd === 'new') {
+        setSessionFamilyRootId(null)
+        setDismissedSessionFamilyViewForId(null)
         await handleNewSession()
       } else if (item.cmd === 'clear') {
         await handleClearCurrentSession()
@@ -526,6 +584,7 @@ function App(): React.JSX.Element {
       setInputVal('')
     } else if (item.type === 'session') {
       // Switch conversation session
+      enterSessionFamilyView(item.id)
       setActiveSessionId(item.id)
       handleCloseSettings()
       setAutocompleteItems([])
@@ -710,6 +769,12 @@ function App(): React.JSX.Element {
     const bTime = b.lastActiveTime || Number(b.id)
     return bTime - aTime
   })
+  const visibleSessionEntries = visibleSessionFamilyInfo
+    ? visibleSessionFamilyInfo.members.map((familyMember) => ({
+        session: familyMember.session,
+        familyMember
+      }))
+    : orderedSessions.map((session) => ({ session, familyMember: null }))
   const autocompleteGroups = groupAutocompleteItems(autocompleteItems)
   const formatSessionStamp = (timestamp: number | undefined, id: string): string => {
     const value = timestamp || Number(id)
@@ -723,13 +788,6 @@ function App(): React.JSX.Element {
   }
   const activeBranchInfo = getBranchDisplayInfo(activeSession?.branchOf, sessions, '源会话')
   const branchChildIndex = buildBranchChildIndex(sessions)
-  const openSession = (sessionId: string, messageId?: string): void => {
-    if (messageId) {
-      setPendingScrollMessageId(messageId)
-    }
-    setActiveSessionId(sessionId)
-    setAutocompleteItems([])
-  }
 
   return (
     <div
@@ -853,13 +911,31 @@ function App(): React.JSX.Element {
         />
       ) : (
         <div className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-          <aside className="session-sidebar">
+          <aside
+            className={`session-sidebar ${visibleSessionFamilyInfo ? 'session-family-view' : ''}`}
+          >
             <div className="session-sidebar-header">
               <div className="sidebar-heading">
-                <div className="sidebar-title">Recent</div>
-                <div className="sidebar-subtitle">{sessions.length} conversations</div>
+                <div className="sidebar-title">
+                  {visibleSessionFamilyInfo ? 'Family' : 'Recent'}
+                </div>
+                <div className="sidebar-subtitle">
+                  {visibleSessionFamilyInfo
+                    ? `${visibleSessionFamilyInfo.rootTitle} - ${visibleSessionFamilyInfo.members.length} conversations`
+                    : `${sessions.length} conversations`}
+                </div>
               </div>
               <div className="sidebar-actions">
+                {visibleSessionFamilyInfo && !isSidebarCollapsed && (
+                  <button
+                    type="button"
+                    className="sidebar-icon-btn"
+                    onClick={exitSessionFamilyView}
+                    title="Back to all chats"
+                  >
+                    <ArrowLeft size={14} />
+                  </button>
+                )}
                 <button
                   type="button"
                   className="sidebar-icon-btn"
@@ -872,32 +948,49 @@ function App(): React.JSX.Element {
             </div>
 
             <div className="session-list">
-              <div className="session-item new-session-item">
-                <button
-                  type="button"
-                  className="session-main-btn"
-                  onClick={() => {
-                    void handleNewSession()
-                    setAutocompleteItems([])
-                  }}
-                  title="New chat"
-                >
-                  <span className="session-initial" aria-hidden="true">
-                    +
-                  </span>
-                  <span className="session-title">New chat</span>
-                  <span className="session-meta">Start a blank conversation</span>
-                </button>
-              </div>
-              {orderedSessions.map((session) => {
+              {!visibleSessionFamilyInfo && (
+                <div className="session-item new-session-item">
+                  <button
+                    type="button"
+                    className="session-main-btn"
+                    onClick={() => {
+                      setSessionFamilyRootId(null)
+                      setDismissedSessionFamilyViewForId(null)
+                      void handleNewSession()
+                      setAutocompleteItems([])
+                    }}
+                    title="New chat"
+                  >
+                    <span className="session-initial" aria-hidden="true">
+                      +
+                    </span>
+                    <span className="session-title">New chat</span>
+                    <span className="session-meta">Start a blank conversation</span>
+                  </button>
+                </div>
+              )}
+              {visibleSessionEntries.map(({ session, familyMember }) => {
                 const isActive = session.id === activeSessionId
                 const messageCount = session.messages.length
                 const branchInfo = getBranchDisplayInfo(session.branchOf, sessions, '源会话')
-                const sessionTitle = session.title || 'New chat'
+                const baseSessionTitle = session.title || 'New chat'
+                const sessionTitle = familyMember
+                  ? `${familyMember.isRoot ? 'Root' : `Branch ${familyMember.branchIndex}`} - ${baseSessionTitle}`
+                  : baseSessionTitle
+                const isBranchSession = Boolean(
+                  (familyMember && !familyMember.isRoot) || (!familyMember && branchInfo)
+                )
+                const familySourceTitle =
+                  familyMember?.sourceTitle || visibleSessionFamilyInfo?.rootTitle || 'Source chat'
+                const familyMeta = familyMember
+                  ? familyMember.isRoot
+                    ? `${visibleSessionFamilyInfo?.branchCount ?? 0} branches`
+                    : `from ${familySourceTitle}${familyMember.shortRunId ? ` / run ${familyMember.shortRunId}` : ''}`
+                  : null
                 return (
                   <div
                     key={session.id}
-                    className={`session-item ${isActive ? 'active' : ''} ${branchInfo ? 'branch-session-item' : ''}`}
+                    className={`session-item ${isActive ? 'active' : ''} ${isBranchSession ? 'branch-session-item' : ''} ${familyMember?.isRoot ? 'family-root-session' : ''}`}
                   >
                     <button
                       type="button"
@@ -906,16 +999,18 @@ function App(): React.JSX.Element {
                         openSession(session.id)
                       }}
                       title={
-                        branchInfo
-                          ? `${sessionTitle} · 分支源自 ${branchInfo.sourceLabel}`
-                          : sessionTitle
+                        familyMember
+                          ? sessionTitle
+                          : branchInfo
+                            ? `${sessionTitle} · 分支源自 ${branchInfo.sourceLabel}`
+                            : sessionTitle
                       }
                     >
                       <span
-                        className={`session-initial ${branchInfo ? 'branch-session-initial' : ''}`}
+                        className={`session-initial ${isBranchSession ? 'branch-session-initial' : ''}`}
                         aria-hidden="true"
                       >
-                        {branchInfo ? (
+                        {isBranchSession ? (
                           <GitBranch size={13} />
                         ) : (
                           (session.title || 'N').trim().charAt(0).toUpperCase()
@@ -923,14 +1018,24 @@ function App(): React.JSX.Element {
                       </span>
                       <span className="session-title">{sessionTitle}</span>
                       <span
-                        className={`session-meta ${branchInfo ? 'session-meta-with-branch' : ''}`}
+                        className={`session-meta ${branchInfo || familyMember ? 'session-meta-with-branch' : ''}`}
                       >
-                        {branchInfo && (
+                        {familyMember ? (
                           <>
                             <GitBranch size={10} />
-                            <span className="session-branch-source">{branchInfo.sourceTitle}</span>
-                            <span className="session-meta-divider">·</span>
+                            <span className="session-branch-source">{familyMeta}</span>
+                            <span className="session-meta-divider">-</span>
                           </>
+                        ) : (
+                          branchInfo && (
+                            <>
+                              <GitBranch size={10} />
+                              <span className="session-branch-source">
+                                {branchInfo.sourceTitle}
+                              </span>
+                              <span className="session-meta-divider">·</span>
+                            </>
+                          )
                         )}
                         <span>
                           {messageCount} msg{messageCount === 1 ? '' : 's'} -{' '}
