@@ -148,6 +148,8 @@ export function buildSkillMessages(options: AgentSkillRunOptions): ChatCompletio
 
 ${buildDateLine()}
 
+**Platform:** ${process.platform === 'win32' ? 'Windows (cmd.exe shell). Use Windows-native commands: findstr (not grep), dir (not ls), type (not cat), where (not which), del (not rm), copy / move (not cp / mv), mkdir / md (not mkdir). Paths use backslashes.' : process.platform === 'darwin' ? 'macOS (zsh shell). Use standard Unix commands.' : 'Linux (bash shell). Use standard Unix commands.'}
+
 You have access to tools that you can call.
 Rules:
 - Read the SKILL.md as the operating manual.
@@ -227,6 +229,8 @@ export function prepareChatAgentMessages(
   const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can call to search the web, fetch pages, read and write files in the workspace, and search the codebase.
 
 ${buildDateLine()}
+
+**Platform:** ${process.platform === 'win32' ? 'Windows (cmd.exe shell). Use Windows-native commands: findstr (not grep), dir (not ls), type (not cat), where (not which), del (not rm), copy / move (not cp / mv), mkdir / md (not mkdir). Paths use backslashes.' : process.platform === 'darwin' ? 'macOS (zsh shell). Use standard Unix commands.' : 'Linux (bash shell). Use standard Unix commands.'}
 
 ${toolDirs ? `${toolDirs}\n\n` : ''}Operation history & cache — your second memory track:
 This conversation is backed by two parallel tracks. (1) The dialogue: alternating user and assistant turns. (2) A persistent operation layer that survives across turns but is NOT replayed in the dialogue — it stores the documents you fetched and every tool call you made. Because the dialogue contains only user/assistant text, never assume you performed no actions just because no tool calls are visible in it; consult the operation layer instead.

@@ -62,6 +62,13 @@ describe('prepareChatAgentMessages date injection', () => {
     expect(system).toBeDefined()
     expect(system!.content as string).toContain('Current date:')
   })
+
+  it('injects the platform hint into the system prompt', () => {
+    const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }])
+    const system = msgs.find((m) => m.role === 'system')
+    expect(system).toBeDefined()
+    expect(system!.content as string).toContain('Platform:')
+  })
 })
 
 describe('buildSkillMessages package files', () => {
