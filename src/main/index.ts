@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, screen } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, screen, Notification } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -346,6 +346,19 @@ app.whenReady().then(() => {
       } else {
         mainWindow.webContents.openDevTools({ mode: 'detach' })
       }
+    }
+  })
+
+  ipcMain.on('show-notification', (_event, title: string, body: string) => {
+    try {
+      if (!Notification.isSupported()) return
+      const n = new Notification({ title: String(title || 'QuickAI'), body: String(body || '') })
+      n.on('click', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) showWindow()
+      })
+      n.show()
+    } catch {
+      // Notification failed silently — non-critical feature.
     }
   })
 

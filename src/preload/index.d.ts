@@ -35,6 +35,7 @@ declare global {
       forkSessionCaches: (
         payload: ForkSessionCachesPayload
       ) => Promise<{ ok: boolean; actions: number; checkpoints: number; manifests: number }>
+      showNotification: (title: string, body: string) => void
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
     }

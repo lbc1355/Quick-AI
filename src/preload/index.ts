@@ -49,6 +49,8 @@ const api = {
       ipcRenderer.removeListener('chat-chunk', listener)
     }
   },
+  showNotification: (title: string, body: string): void =>
+    ipcRenderer.send('show-notification', title, body),
   fetchModels: (fetchUrl: string, apiKey: string): Promise<string[]> =>
     ipcRenderer.invoke('fetch-models', fetchUrl, apiKey)
 }
