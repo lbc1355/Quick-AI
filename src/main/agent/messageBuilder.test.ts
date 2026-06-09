@@ -116,6 +116,19 @@ describe('prepareChatAgentMessages memory capability hint', () => {
   })
 })
 
+describe('prepareChatAgentMessages environment awareness hint', () => {
+  it('tells the agent to probe the machine and persist durable findings', () => {
+    const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }])
+    const content = msgs.find((m) => m.role === 'system')!.content as string
+    expect(content).toContain('Environment & machine awareness')
+    expect(content).toContain('inspect_environment')
+    expect(content).toContain('key="environment"')
+    // The concrete Windows encoding lesson that motivated this feature.
+    expect(content).toContain('GBK')
+    expect(content).toContain('Never persist secrets')
+  })
+})
+
 describe('prepareChatAgentMessages tool directory injection', () => {
   it('injects the tool directory and drops mandatory search_tools', () => {
     const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }], undefined, undefined, {
