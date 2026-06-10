@@ -23,11 +23,8 @@ vi.mock('./callModel', () => ({
 }))
 
 vi.mock('./memoryContext', () => ({
-  loadMemoryContextPrompt: vi.fn(() => '')
-}))
-
-vi.mock('../database', () => ({
-  listMemoryDocs: vi.fn(() => [])
+  loadMemoryContextPrompt: vi.fn(() => ''),
+  buildMemoryInjection: vi.fn(() => '')
 }))
 
 describe('runAgentLoop', () => {

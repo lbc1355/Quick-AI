@@ -53,14 +53,11 @@ const api = {
     ipcRenderer.send('show-notification', title, body),
   fetchModels: (fetchUrl: string, apiKey: string): Promise<string[]> =>
     ipcRenderer.invoke('fetch-models', fetchUrl, apiKey),
-  listMemoryDocs: (opts?: any): Promise<any[]> =>
-    ipcRenderer.invoke('memory-list', opts),
-  getCurrentMemoryDoc: (input: any): Promise<any> =>
-    ipcRenderer.invoke('memory-read', input),
-  replaceMemoryDoc: (input: any): Promise<any> =>
-    ipcRenderer.invoke('memory-replace', input),
-  archiveMemoryDoc: (input: any): Promise<boolean> =>
-    ipcRenderer.invoke('memory-archive', input)
+  listMemoryEntries: (): Promise<Array<{ id: string; label: string; kind: string }>> =>
+    ipcRenderer.invoke('memory-entries'),
+  readMemoryEntry: (id: string): Promise<string> => ipcRenderer.invoke('memory-entry-read', id),
+  writeMemoryEntry: (id: string, content: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('memory-entry-write', id, content)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

@@ -1,6 +1,7 @@
-import { ChatCompletionMessage, AgentSkillRunOptions, SessionResource, MemoryDoc } from '../../shared/types'
+import { ChatCompletionMessage, AgentSkillRunOptions, SessionResource } from '../../shared/types'
 import { searchToolDefinitions } from '../toolRegistry'
 import { getFirstMissingOffset } from '../resourceCache'
+import { buildMemoryInjection } from './memoryContext'
 
 export const TOOL_DIRECTORY_BUDGET = 2000 // max chars injected into system prompt
 
@@ -133,17 +134,14 @@ export function buildResourceSummaryPrompt(resources: SessionResource[] | undefi
   return finalPrompt
 }
 
-export function buildSkillMessages(
-  options: AgentSkillRunOptions,
-  memoryDocs?: MemoryDoc[]
-): ChatCompletionMessage[] {
+export function buildSkillMessages(options: AgentSkillRunOptions): ChatCompletionMessage[] {
   const skillMarkdown = options.skill.rawMarkdown || options.skill.prompt
   const packageFilesPrompt = buildSkillPackageFilesPrompt(options.skill)
   const baseSystemPrompt = options.systemPrompt
     ? `User global system prompt:\n${options.systemPrompt}\n\n`
     : ''
 
-  const memorySegment = buildMemoryPromptSegment(memoryDocs)
+  const memorySegment = buildMemoryInjection()
 
   const msgs: ChatCompletionMessage[] = [
     {
@@ -156,35 +154,10 @@ ${buildDateLine()}
 
 You have access to tools that you can call.
 
-Memory Lifecycle & Workflows:
-You are backed by a versioned local memory store. You MUST strictly follow this two-phase workflow in your execution cycle:
-
-1. **PHASE 1: MEMORY ASSESSMENT (At the very start)**
-   Analyze the user query against the "Available On-Demand Memories" list.
-   - If the task or query relates to any key in the list, you MUST call "read_memory_doc" with that key as your first action to fetch details. Do not guess.
-   - If no relevant keys exist, proceed with your task directly.
-
-2. **PHASE 2: MEMORY CONSOLIDATION (Before outputting final answer)**
-   Before outputting your final text response to the user, evaluate if you learned any durable facts, developer preferences, machine configurations, or successful workarounds/fixes (lessons learned) during this run.
-   - If yes, call "remember", "replace_memory_doc", or "archive_memory_doc" to save, update, or retire them.
-   - Predefined Classifications:
-     - **Soul** (kind="constant", key="assistant_profile"): AI persona, character settings, tone, and core communication style.
-     - **Memory** (kind="ondemand", key="default"): General user preferences, personal details, and user-specific facts.
-     - **Experience** (kind="ondemand", key="experience"): Successful resolutions, lessons learned, and system workarounds.
-      - **Environment** (kind="ondemand", key="environment"): Machine configuration facts, tool versions, and local environment settings.
-      - **Project** (kind="ondemand", key="project"): Workspace architecture overview, project guidelines, and session-specific scope.
-   - Custom Classifications & Key Flexibility:
-     - You have the authority to define and create custom classifications/categories of memory by using custom keys (e.g. key="react_native_quirks", key="sqlite_pooling") to store specialized, durable findings or configs, allowing you to load them only when relevant.
-   - Physical Abstraction Choices:
-     - Use **constant** (always injected in full) ONLY for assistant profile/rules or high-priority, globally relevant guidelines that must influence every single turn. Keep these extremely concise to avoid context bloat.
-     - Use **ondemand** (only key and summary injected as an index, loaded on-demand) for environments, task experiences, codebase patterns, database schemas, or project-specific quirks.
-   - How to Read, Write, Modify, and Delete:
-     - **Read**: Call read_memory_doc to retrieve the full text and version ID. Use recall to list or search memories.
-     - **Write (New Classification/Key)**: Call replace_memory_doc with a custom key and title, leaving baseVersionId empty.
-     - **Modify**: Always call read_memory_doc to retrieve the current content first. In your thoughts, merge the new facts cleanly, preserving unrelated lines. Then call replace_memory_doc with the complete merged text and the baseVersionId. Never overwrite a doc with only the new line.
-     - **Delete/Archive**: Call archive_memory_doc to retire or delete an obsolete classification or configuration document that is no longer needed or has been fully obsoleted.
-   - If no updates are needed, proceed directly to final output.
-
+Memory Lifecycle:
+A durable memory library lives on disk: always-injected constant memory plus an on-demand index of Task Groups (shown below).
+1. START: If a Task Group in the index relates to this task, call read_memory("<group name>") before proceeding (use list_memory to browse). Do not guess what is stored.
+2. FINISH: If this task produced stable, reusable knowledge or a durable user preference, call write_memory to persist it. Use target="task_group" with a clear group_name for on-demand knowledge; use target="always" only for short, always-relevant rules. Never store one-off context or unverified guesses.
 ${memorySegment}
 
 Rules:
@@ -257,11 +230,10 @@ export function prepareChatAgentMessages(
   messages: ChatCompletionMessage[],
   globalSystemPrompt?: string,
   resources?: SessionResource[],
-  permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' },
-  memoryDocs?: MemoryDoc[]
+  permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): ChatCompletionMessage[] {
   const toolDirs = buildToolDirectorySummary('all', permissions)
-  const memorySegment = buildMemoryPromptSegment(memoryDocs)
+  const memorySegment = buildMemoryInjection()
 
   const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can call to search the web, fetch pages, read, write, edit, and diff files (both inside the workspace, and outside the workspace via absolute paths which will trigger a user permission prompt), and search the codebase.
 
@@ -274,37 +246,13 @@ This conversation is backed by two parallel tracks:
 1. The dialogue: alternating user and assistant turns.
 2. A persistent operation layer that survives across turns but is NOT replayed in the dialogue. Consult list_past_actions and get_past_action to see completed actions, and read_cached_resource or search_cached_resource for cached files and fetched web content.
 
-Memory Lifecycle & Workflows:
-You are backed by a versioned local memory store. You MUST strictly follow this two-phase workflow in your execution cycle:
-
-1. **PHASE 1: MEMORY ASSESSMENT (At the very start)**
-   Analyze the user query against the "Available On-Demand Memories" list.
-   - If the task or query relates to any key in the list, you MUST call "read_memory_doc" with that key as your first action to fetch details. Do not guess.
-   - If no relevant keys exist, proceed with your task directly.
-
-2. **PHASE 2: MEMORY CONSOLIDATION (Before outputting final answer)**
-   Before outputting your final text response to the user, evaluate if you learned any durable facts, developer preferences, machine configurations, or successful workarounds/fixes (lessons learned) during this run.
-   - If yes, call "remember", "replace_memory_doc", or "archive_memory_doc" to save, update, or retire them.
-   - Predefined Classifications:
-     - **Soul** (kind="constant", key="assistant_profile"): AI persona, character settings, tone, and core communication style.
-     - **Memory** (kind="ondemand", key="default"): General user preferences, personal details, and user-specific facts.
-     - **Experience** (kind="ondemand", key="experience"): Successful resolutions, lessons learned, and system workarounds.
-      - **Environment** (kind="ondemand", key="environment"): Machine configuration facts, tool versions, and local environment settings.
-      - **Project** (kind="ondemand", key="project"): Workspace architecture overview, project guidelines, and session-specific scope.
-   - Custom Classifications & Key Flexibility:
-     - You have the authority to define and create custom classifications/categories of memory by using custom keys (e.g. key="react_native_quirks", key="sqlite_pooling") to store specialized, durable findings or configs, allowing you to load them only when relevant.
-   - Physical Abstraction Choices:
-     - Use **constant** (always injected in full) ONLY for assistant profile/rules or high-priority, globally relevant guidelines that must influence every single turn. Keep these extremely concise to avoid context bloat.
-     - Use **ondemand** (only key and summary injected as an index, loaded on-demand) for environments, task experiences, codebase patterns, database schemas, or project-specific quirks.
-   - How to Read, Write, Modify, and Delete:
-     - **Read**: Call read_memory_doc to retrieve the full text and version ID. Use recall to list or search memories.
-     - **Write (New Classification/Key)**: Call replace_memory_doc with a custom key and title, leaving baseVersionId empty.
-     - **Modify**: Always call read_memory_doc to retrieve the current content first. In your thoughts, merge the new facts cleanly, preserving unrelated lines. Then call replace_memory_doc with the complete merged text and the baseVersionId. Never overwrite a doc with only the new line.
-     - **Delete/Archive**: Call archive_memory_doc to retire or delete an obsolete classification or configuration document that is no longer needed or has been fully obsoleted.
-   - If no updates are needed, proceed directly to final output.
+Memory Lifecycle:
+A durable memory library lives on disk: always-injected constant memory plus an on-demand index of Task Groups (shown below).
+1. START: If a Task Group in the index relates to this task, call read_memory("<group name>") before proceeding (use list_memory to browse). Do not guess what is stored.
+2. FINISH: If this task produced stable, reusable knowledge or a durable user preference, call write_memory to persist it. Use target="task_group" with a clear group_name for on-demand knowledge; use target="always" only for short, always-relevant rules. Never store one-off context or unverified guesses.
 
 Environment & machine awareness — you run on the user's real computer:
-- Do not blind-guess what is installed or where files live. First consult the "environment" memory if available, or call inspect_environment ONCE to discover tools, versions, and folders.
+- Do not blind-guess what is installed or where files live. First check for a relevant Task Group in the memory index, or call inspect_environment ONCE to discover tools, versions, and folders.
 - Windows encoding tip: on Windows, cmd.exe's GBK code page garbles non-ASCII (e.g. Chinese) filenames, so read such files using python (with encoding="utf-8") or PowerShell rather than type/findstr.
 - Never persist secrets, one-off paths, or temporary directory listings.
 
@@ -371,53 +319,4 @@ export function prependToMessageContent(msg: ChatCompletionMessage, textToPrepen
       msg.content.unshift({ type: 'text', text: textToPrepend })
     }
   }
-}
-
-/**
- * Format MemoryDoc[] into Constant and On-Demand sections for prompt injection.
- */
-export function buildMemoryPromptSegment(docs: MemoryDoc[] | undefined): string {
-  if (!docs || docs.length === 0) return ''
-
-  const constantDocs: MemoryDoc[] = []
-  const onDemandDocs: MemoryDoc[] = []
-
-  for (const doc of docs) {
-    const kind = doc.kind === 'soul' || doc.kind === 'constant' ? 'constant' : 'ondemand'
-    if (kind === 'constant') {
-      constantDocs.push(doc)
-    } else {
-      onDemandDocs.push(doc)
-    }
-  }
-
-  const sections: string[] = []
-
-  // 1. Format Constant Memories (Always Injected)
-  if (constantDocs.length > 0) {
-    sections.push('\n### Permanent Identity & Rules (Constant Memories)')
-    sections.push('You MUST obey the following permanent instructions, styles, or user settings:')
-    for (const doc of constantDocs) {
-      sections.push(`#### ${doc.title} (Key: "${doc.key}")`)
-      sections.push(doc.content)
-      sections.push('')
-    }
-  }
-
-  // 2. Format On-Demand Memories (Index / Summaries)
-  if (onDemandDocs.length > 0) {
-    sections.push('\n### Available On-Demand Memories (Lookup Required)')
-    sections.push(
-      'The following memory/context documents are stored locally. You do NOT see their full contents right now.',
-      'At the start of your execution, check if your task or the user query relates to any of these keys. If it does, you MUST first call the read_memory_doc tool to fetch the details.',
-      ''
-    )
-    for (const doc of onDemandDocs) {
-      const preview = doc.content.replace(/\s+/g, ' ').trim().slice(0, 160)
-      sections.push(`- **Key**: "${doc.key}" | **Title**: "${doc.title}" | **Preview**: "${preview}..."`)
-    }
-    sections.push('')
-  }
-
-  return sections.join('\n')
 }

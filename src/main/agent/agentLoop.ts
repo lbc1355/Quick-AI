@@ -20,7 +20,6 @@ import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy
 import { LoopGuard } from './loopGuard'
 import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
 import { AmbiguousAction, loadRunCheckpoint, saveRunCheckpoint } from './runCheckpoint'
-import { listMemoryDocs } from '../database'
 import {
   appendRunAction,
   appendRunCheckpoint,
@@ -105,12 +104,6 @@ export const runAgentLoop = async (
       content: buildCheckpointResumePrompt(resumeCheckpoint, actionLog)
     })
   } else if (isSkill) {
-    const memoryDocs = listMemoryDocs({
-      sessionId: conversationId,
-      includeSession: true,
-      status: 'current',
-      limit: 100
-    })
     messages = buildSkillMessages({
       apiUrl: options.apiUrl,
       apiKey: options.apiKey,
@@ -119,20 +112,13 @@ export const runAgentLoop = async (
       skill: options.skill!,
       userInput: options.userInput || '',
       resources: options.resources
-    }, memoryDocs)
-  } else {
-    const memoryDocs = listMemoryDocs({
-      sessionId: conversationId,
-      includeSession: true,
-      status: 'current',
-      limit: 100
     })
+  } else {
     messages = prepareChatAgentMessages(
       options.messages || [],
       options.systemPrompt,
       options.resources,
-      permissions,
-      memoryDocs
+      permissions
     )
   }
   if (options.branchOf) {

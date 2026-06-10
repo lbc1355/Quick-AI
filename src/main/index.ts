@@ -14,15 +14,14 @@ import {
 } from './agent/runCheckpoint'
 import { copyRunManifestsForRuns, deleteRunManifest, deleteRunManifests } from './agent/runManifest'
 import { deleteResourceFile } from './resourceCache'
-import {
-  deleteSessionMemories,
-  listMemoryDocs,
-  getCurrentMemoryDoc,
-  replaceMemoryDoc,
-  archiveMemoryDoc
-} from './database'
 import { showDesktopNotification } from './tools/helpers'
 import { clearSessionApprovals } from './agent/AgentRunContext'
+import {
+  ensureMemoryLibrary,
+  listMemoryEntries,
+  readMemoryEntry,
+  writeMemoryEntry
+} from './memory/memoryStore'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -204,6 +203,11 @@ app.whenReady().then(() => {
   // Initialize storage
   store = new FileStore()
 
+  // Seed the on-disk Markdown memory library (~/.quickai/memories) and its git repo.
+  ensureMemoryLibrary().catch((err) =>
+    console.warn('Failed to initialize memory library:', (err as Error).message)
+  )
+
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.quickai')
 
@@ -213,7 +217,7 @@ app.whenReady().then(() => {
   })
 
   // IPC handlers for FileStore with security whitelist
-  const ALLOWED_STORE_KEYS = ['sessions', 'settings', 'skills', 'memories']
+  const ALLOWED_STORE_KEYS = ['sessions', 'settings', 'skills']
 
   ipcMain.handle('store-get', (_event, key) => {
     if (typeof key !== 'string' || !ALLOWED_STORE_KEYS.includes(key)) {
@@ -274,14 +278,7 @@ app.whenReady().then(() => {
       }
     }
 
-    // Cascade-delete session-scoped memories for fully-removed conversations. Global memories
-    // are never touched (deleteSessionMemories filters on scope='session').
     for (const id of sessionIds) {
-      try {
-        deleteSessionMemories(id)
-      } catch (err) {
-        console.warn('clear-session-caches: session memory delete failed:', (err as Error).message)
-      }
       // Drop any "allow for this task" approvals so a reused session id never inherits stale grants.
       clearSessionApprovals(id)
     }
@@ -330,20 +327,20 @@ app.whenReady().then(() => {
     return fetchModels(fetchUrl, apiKey)
   })
 
-  ipcMain.handle('memory-list', (_event, opts) => {
-    return listMemoryDocs(opts)
+  ipcMain.handle('memory-entries', () => {
+    return listMemoryEntries()
   })
 
-  ipcMain.handle('memory-read', (_event, input) => {
-    return getCurrentMemoryDoc(input)
+  ipcMain.handle('memory-entry-read', (_event, id) => {
+    return typeof id === 'string' ? readMemoryEntry(id) : ''
   })
 
-  ipcMain.handle('memory-replace', (_event, input) => {
-    return replaceMemoryDoc(input)
-  })
-
-  ipcMain.handle('memory-archive', (_event, input) => {
-    return archiveMemoryDoc(input)
+  ipcMain.handle('memory-entry-write', async (_event, id, content) => {
+    if (typeof id !== 'string' || typeof content !== 'string') {
+      throw new Error('memory-entry-write requires string id and content')
+    }
+    await writeMemoryEntry(id, content)
+    return { ok: true }
   })
 
   // IPC handlers for window control

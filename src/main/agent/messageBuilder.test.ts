@@ -103,24 +103,23 @@ describe('buildSkillMessages package files', () => {
 })
 
 describe('prepareChatAgentMessages memory capability hint', () => {
-  it('describes remember/recall as a persistent memory capability', () => {
+  it('describes the on-disk memory library and its read/write tools', () => {
     const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }])
     const content = msgs.find((m) => m.role === 'system')!.content as string
-    expect(content).toContain('local memory store')
-    expect(content).toContain('remember')
-    expect(content).toContain('read_memory_doc')
-    expect(content).toContain('replace_memory_doc')
-    expect(content).toContain('merge the new facts cleanly, preserving unrelated lines')
+    expect(content).toContain('Memory Lifecycle')
+    expect(content).toContain('read_memory')
+    expect(content).toContain('write_memory')
+    expect(content).toContain('list_memory')
+    expect(content).toContain('On-Demand Memory')
   })
 })
 
 describe('prepareChatAgentMessages environment awareness hint', () => {
-  it('tells the agent to probe the machine and persist durable findings', () => {
+  it('tells the agent to probe the machine and consult memory', () => {
     const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }])
     const content = msgs.find((m) => m.role === 'system')!.content as string
     expect(content).toContain('Environment & machine awareness')
     expect(content).toContain('inspect_environment')
-    expect(content).toContain('key="environment"')
     // The concrete Windows encoding lesson that motivated this feature.
     expect(content).toContain('GBK')
     expect(content).toContain('Never persist secrets')

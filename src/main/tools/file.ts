@@ -16,7 +16,8 @@ export const fileTools: Record<string, ToolDefinition> = {
   file_read: {
     name: 'file_read',
     title: 'Read File',
-    description: 'Reads the content of a local file. Files inside the workspace are read directly, while files outside the workspace require user approval.',
+    description:
+      'Reads the content of a local file. Files inside the workspace are read directly, while files outside the workspace require user approval.',
     tags: ['file', 'read', 'local', '文件', '读取', '内容', '读文件'],
     category: 'file',
     risk: 'low',
@@ -546,7 +547,8 @@ export const fileTools: Record<string, ToolDefinition> = {
   file_write: {
     name: 'file_write',
     title: 'Write File',
-    description: 'Writes content to a local file. Files inside the workspace are written directly, while files outside the workspace require user approval.',
+    description:
+      'Writes content to a local file. Files inside the workspace are written directly, while files outside the workspace require user approval.',
     tags: [
       'file',
       'write',
@@ -850,7 +852,8 @@ export const fileTools: Record<string, ToolDefinition> = {
   file_diff: {
     name: 'file_diff',
     title: 'Compare Files',
-    description: 'Compares two files and returns a unified line-by-line diff. Files within the workspace are read directly, while files outside the workspace require user approval.',
+    description:
+      'Compares two files and returns a unified line-by-line diff. Files within the workspace are read directly, while files outside the workspace require user approval.',
     tags: ['file', 'diff', 'compare', 'difference', '文件', '对比', '差异'],
     category: 'file',
     risk: 'low',
@@ -938,7 +941,10 @@ export const fileTools: Record<string, ToolDefinition> = {
         resultForModel: `Workspace Root: ${root}\nFile A: ${relPathA}\nFile B: ${relPathB}\n\nDiff:\n${diffResult}`,
         resultForUi: {
           title: `Compare Files: ${relPathA} vs ${relPathB}`,
-          summary: diffResult === 'Files are identical.' ? 'Files are identical' : 'Generated file differences diff'
+          summary:
+            diffResult === 'Files are identical.'
+              ? 'Files are identical'
+              : 'Generated file differences diff'
         }
       }
     }
@@ -994,13 +1000,13 @@ function generateUnifiedDiff(a: string[], b: string[], contextSize = 3): string 
   let contextAfterCount = 0
   let inHunk = false
 
-  const flushHunk = () => {
+  const flushHunk = (): void => {
     if (hunk.length === 0) return
-    const firstChange = hunk.find(c => c.type !== 'unchanged') || hunk[0]
+    const firstChange = hunk.find((c) => c.type !== 'unchanged') || hunk[0]
     const startA = firstChange.lineA ?? hunk[0].lineA ?? 1
     const startB = firstChange.lineB ?? hunk[0].lineB ?? 1
-    const countA = hunk.filter(c => c.type !== 'added').length
-    const countB = hunk.filter(c => c.type !== 'removed').length
+    const countA = hunk.filter((c) => c.type !== 'added').length
+    const countB = hunk.filter((c) => c.type !== 'removed').length
 
     outputLines.push(`@@ -${startA},${countA} +${startB},${countB} @@`)
     for (const c of hunk) {

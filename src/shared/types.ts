@@ -195,51 +195,10 @@ export interface SkillInstallPayload {
   packageFiles?: SkillPackageFile[]
 }
 
-export interface Memory {
-  id: string
-  content: string
-  createdAt: number
-}
-
-/** A persistent user memory. `global` survives across all conversations; `session` is bound to
- * one conversation and is cascade-deleted with it. Stored in the user_memories table. */
-export interface UserMemory {
-  id: string
-  scope: 'global' | 'session'
-  sessionId?: string
-  category: string
-  content: string
-  createdAt: number
-  updatedAt: number
-}
-
-export type MemoryDocKind = 'constant' | 'ondemand' | 'memory' | 'soul'
-export type MemoryDocScope = 'global' | 'session'
-export type MemoryDocStatus = 'current' | 'archived'
-
-/** Versioned durable memory document. Current rows are injected/recalled by default; archived rows
- * are retained for audit/rollback but are not included unless explicitly requested. */
-export interface MemoryDoc {
-  id: string
-  kind: MemoryDocKind
-  scope: MemoryDocScope
-  sessionId?: string
-  key: string
-  title: string
-  content: string
-  version: number
-  parentId?: string
-  status: MemoryDocStatus
-  reason?: string
-  createdAt: number
-  updatedAt: number
-}
-
 export interface StorageSchema {
   sessions: Session[]
   settings: AppSettings
   skills: Skill[]
-  memories: Memory[]
 }
 
 export type StoreKey = keyof StorageSchema

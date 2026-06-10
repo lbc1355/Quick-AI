@@ -1,7 +1,7 @@
 import { resolve, normalize, relative, isAbsolute, basename, join, dirname } from 'path'
 import { Notification } from 'electron'
-import { realpathSync, existsSync, mkdirSync } from 'fs'
-import { homedir } from 'os'
+import { realpathSync } from 'fs'
+import { getWorkspaceRoot as resolveWorkspaceRoot } from '../paths'
 
 function getComparablePath(filePath: string): string {
   const resolved = normalize(resolve(filePath))
@@ -17,23 +17,7 @@ function getComparablePath(filePath: string): string {
 }
 
 export function getWorkspaceRoot(): string {
-  const configuredRoot = process.env.QUICKAI_WORKSPACE_ROOT
-  const rootPath = normalize(resolve(configuredRoot || join(homedir(), 'quickai')))
-  if (!existsSync(rootPath)) {
-    try {
-      mkdirSync(rootPath, { recursive: true })
-    } catch (err) {
-      console.error('Failed to create workspace directory ~/quickai:', err)
-    }
-  }
-
-  let root = rootPath
-  try {
-    root = realpathSync.native(rootPath)
-  } catch {
-    // Ignore and fallback
-  }
-  return root
+  return resolveWorkspaceRoot()
 }
 
 export function isPathInWorkspace(filePath: string): boolean {

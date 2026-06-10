@@ -38,10 +38,9 @@ declare global {
       showNotification: (title: string, body: string) => void
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
-      listMemoryDocs: (opts?: any) => Promise<any[]>
-      getCurrentMemoryDoc: (input: any) => Promise<any>
-      replaceMemoryDoc: (input: any) => Promise<any>
-      archiveMemoryDoc: (input: any) => Promise<boolean>
+      listMemoryEntries: () => Promise<Array<{ id: string; label: string; kind: string }>>
+      readMemoryEntry: (id: string) => Promise<string>
+      writeMemoryEntry: (id: string, content: string) => Promise<{ ok: boolean }>
     }
   }
 }

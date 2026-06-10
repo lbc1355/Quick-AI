@@ -3,13 +3,7 @@ import { ActionRecord } from './actionLog'
 import { analyzeCommand } from './commandSafety'
 import { SideEffectEntry, SideEffectKind, SideEffectReversibility } from './runManifest'
 
-export const SIDE_EFFECTING_TOOLS = new Set([
-  'shell',
-  'file_write',
-  'remember',
-  'replace_memory_doc',
-  'archive_memory_doc'
-])
+export const SIDE_EFFECTING_TOOLS = new Set(['shell', 'file_write', 'write_memory'])
 
 const IRREVERSIBLE_SHELL_PATTERNS = [
   /\b(npm|pnpm|yarn)\s+(install|add|remove|uninstall)\b/i,
@@ -62,8 +56,9 @@ export const buildSideEffectEntry = (
     kind = 'file_write'
     reversibility = status === 'success' ? 'ambiguous' : 'metadata_only'
     if (typeof args.path === 'string') filesTouched.push(args.path)
-  } else if (toolName === 'remember' || toolName === 'replace_memory_doc' || toolName === 'archive_memory_doc') {
+  } else if (toolName === 'write_memory') {
     kind = 'memory'
+    // Memory writes are git-committed, so they are recoverable.
     reversibility = status === 'success' ? 'reversible' : 'metadata_only'
   } else if (toolName === 'fetch_url' || toolName === 'click_link') {
     kind = 'cache'

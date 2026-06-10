@@ -1,13 +1,19 @@
 import { ToolArgs } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { getRun } from '../agent/AgentRunContext'
-import { getCurrentMemoryDoc, replaceMemoryDoc, listMemories, listMemoryDocs, archiveMemoryDoc } from '../database'
 import {
-  DEFAULT_MEMORY_DOC_TITLE,
-  getMemoryDocIdentity,
-  formatMemoryDocHeader,
-  appendMemoryDocContent
-} from './shared'
+  readAlways,
+  readSummaryIndex,
+  readRaw,
+  listTaskGroups,
+  getTaskGroup,
+  listRolloutSummaries,
+  readRolloutSummary,
+  setAlways,
+  writeTaskGroup,
+  appendRaw,
+  writeRolloutSummary
+} from '../memory/memoryStore'
 
 export const memoryTools: Record<string, ToolDefinition> = {
   list_past_actions: {
@@ -158,12 +164,12 @@ export const memoryTools: Record<string, ToolDefinition> = {
       }
     }
   },
-  remember: {
-    name: 'remember',
-    title: 'Remember',
+  read_memory: {
+    name: 'read_memory',
+    title: 'Read Memory',
     description:
-      'Append a concise fact, preference, or piece of context to the current versioned memory document. This creates a new current document version and archives the previous one, so existing memory content is preserved. Before writing to a target document that may already exist, read it with read_memory_doc so you know the full current content. For corrections, conflicts, or rewrites, use replace_memory_doc with the complete merged document, never only the new fact.',
-    tags: ['memory', 'remember', 'save', 'persist', 'preference', 'fact', '记忆', '记住', '偏好'],
+      'Read durable memory from the on-disk Markdown library. Pass target="<Task Group name>" to read one on-demand knowledge group (names come from the on-demand index injected into your system prompt or from list_memory). Pass target="always" for the constant memory, target="summary" for the index, target="raw" for raw sediment, or target="rollout:<filename>" for a specific rollout summary.',
+    tags: ['memory', 'read', 'recall', 'task group', '记忆', '读取', '回忆'],
     category: 'memory',
     risk: 'low',
     implemented: true,
@@ -171,402 +177,189 @@ export const memoryTools: Record<string, ToolDefinition> = {
     parameters: {
       type: 'object',
       properties: {
-        content: {
-          type: 'string',
-          description: 'The memory text to store. Be concise and self-contained.'
-        },
-        scope: {
+        target: {
           type: 'string',
           description:
-            'global = remember across all conversations; session = only this conversation. Default: session.',
-          enum: ['global', 'session']
-        },
-        kind: {
-          type: 'string',
-          description:
-            'constant = permanent identity, coding rules, tone; ondemand = facts, directories, experience. Default: ondemand.',
-          enum: ['constant', 'ondemand', 'memory', 'soul']
-        },
-        key: {
-          type: 'string',
-          description:
-            'Document key to append to. Default: "default". Use a stable key for related facts.'
-        },
-        category: {
-          type: 'string',
-          description:
-            'A short tag to organize the memory, e.g. "preference", "fact", "project", "task". Default: general.'
+            'What to read: a Task Group name, or one of "always", "summary", "raw", "rollout:<filename>".'
         }
       },
-      required: ['content']
+      required: ['target']
     },
-    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      const content = typeof args.content === 'string' ? args.content.trim() : ''
-      if (!content) {
-        throw new Error('Missing or invalid content parameter')
-      }
-      const MAX_MEMORY_CHARS = 4000
-      if (content.length > MAX_MEMORY_CHARS) {
-        throw new Error(
-          `Memory content is too long (${content.length} chars). Keep a single memory under ${MAX_MEMORY_CHARS} characters; store concise facts, not whole documents.`
-        )
-      }
-      const category =
-        typeof args.category === 'string' && args.category.trim()
-          ? args.category.trim().slice(0, 60)
-          : 'general'
-      const run = getRun(ctx.reqId)
-      const sessionId = run?.sessionId
-      const identity = getMemoryDocIdentity(args, sessionId)
-      let note = ''
-      if (args.scope === 'session' && identity.scope === 'global') {
-        note = ' (no active conversation id, stored as global)'
-      }
+    execute: async (args: ToolArgs) => {
+      const target = typeof args.target === 'string' ? args.target.trim() : ''
+      if (!target) throw new Error('Missing or invalid target parameter')
 
-      const current = getCurrentMemoryDoc(identity)
-      const line = `[${category}] ${content}`
-      const nextContent = appendMemoryDocContent(current, line)
-      const next = replaceMemoryDoc({
-        ...identity,
-        title: current?.title || DEFAULT_MEMORY_DOC_TITLE,
-        content: nextContent,
-        baseVersionId: current?.id,
-        reason: `remember:${category}`
-      })
-
-      return {
-        resultForModel: `Stored ${identity.kind} ${identity.scope} memory document${note}: ${formatMemoryDocHeader(next)}\nNew version id: ${next.id}\nThe previous version was archived automatically.\nAdded: "${content.slice(0, 120)}${
-          content.length > 120 ? '…' : ''
-        }"`,
-        resultForUi: {
-          title: 'Remember',
-          summary: `Saved ${identity.kind}/${identity.scope} memory v${next.version}`
+      if (target.toLowerCase() === 'always') {
+        return {
+          resultForModel: readAlways() || '(always.md is empty)',
+          resultForUi: { title: 'Read Memory', summary: 'always.md' }
         }
+      }
+      if (target.toLowerCase() === 'summary') {
+        return {
+          resultForModel: readSummaryIndex() || '(memory_summary.md is empty)',
+          resultForUi: { title: 'Read Memory', summary: 'memory_summary.md' }
+        }
+      }
+      if (target.toLowerCase() === 'raw') {
+        return {
+          resultForModel: readRaw() || '(raw_memories.md is empty)',
+          resultForUi: { title: 'Read Memory', summary: 'raw_memories.md' }
+        }
+      }
+      if (target.toLowerCase().startsWith('rollout:')) {
+        const file = target.slice('rollout:'.length).trim()
+        const content = readRolloutSummary(file)
+        return {
+          resultForModel: content || `No rollout summary named "${file}".`,
+          resultForUi: { title: 'Read Memory', summary: `rollout: ${file}` }
+        }
+      }
+
+      const group = getTaskGroup(target)
+      if (!group) {
+        const names = listTaskGroups().map((g) => g.name)
+        return {
+          resultForModel:
+            `No Task Group named "${target}".` +
+            (names.length
+              ? ` Available: ${names.join(', ')}.`
+              : ' The memory library has no task groups yet.'),
+          resultForUi: { title: 'Read Memory', summary: `Not found: ${target}` }
+        }
+      }
+      return {
+        resultForModel: group.raw,
+        resultForUi: { title: 'Read Memory', summary: `Task Group: ${group.name}` }
       }
     }
   },
-  read_memory_doc: {
-    name: 'read_memory_doc',
-    title: 'Read Memory Document',
+  list_memory: {
+    name: 'list_memory',
+    title: 'List Memory',
     description:
-      'Read the complete current memory or soul document before modifying or writing related memory. The returned version id must be passed as baseVersionId to replace_memory_doc. Use this first so old memory lines are preserved when adding or changing facts. Use kind="soul" for assistant profile/persona and kind="memory" for facts/preferences.',
-    tags: ['memory', 'soul', 'read', 'profile', 'persona', '璁板繂', '鐏甸瓊'],
+      'List the on-demand memory index: every Task Group name with its scope, plus the available rollout summaries. Use this to decide what to read_memory.',
+    tags: ['memory', 'list', 'index', 'task group', '记忆', '列表', '索引'],
     category: 'memory',
     risk: 'low',
     implemented: true,
     discoverable: true,
     parameters: {
       type: 'object',
-      properties: {
-        kind: {
-          type: 'string',
-          enum: ['constant', 'ondemand', 'memory', 'soul'],
-          description: 'Document kind. Default: ondemand.'
-        },
-        scope: {
-          type: 'string',
-          enum: ['global', 'session'],
-          description: 'Document scope. Default: session.'
-        },
-        key: {
-          type: 'string',
-          description: 'Document key. Default: "default".'
-        }
-      }
+      properties: {}
     },
-    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      const run = getRun(ctx.reqId)
-      const identity = getMemoryDocIdentity(args, run?.sessionId)
-      const doc = getCurrentMemoryDoc(identity)
-
-      if (!doc) {
-        return {
-          resultForModel: `No current ${identity.kind} document found for ${identity.scope}/${identity.key}. You may create the first version with replace_memory_doc without baseVersionId.`,
-          resultForUi: {
-            title: 'Read Memory Document',
-            summary: 'No current document'
-          }
+    execute: async () => {
+      const groups = listTaskGroups()
+      const rollouts = listRolloutSummaries()
+      const lines: string[] = []
+      if (groups.length === 0) {
+        lines.push('No Task Groups stored yet.')
+      } else {
+        lines.push(`Task Groups (${groups.length}):`)
+        for (const g of groups) {
+          lines.push(`- ${g.name}${g.scope ? ` — ${g.scope}` : ''}`)
         }
       }
-
-      return {
-        resultForModel: [
-          formatMemoryDocHeader(doc),
-          `Version id: ${doc.id}`,
-          `Status: ${doc.status}`,
-          `Reason: ${doc.reason || 'none'}`,
-          '',
-          doc.content
-        ].join('\n'),
-        resultForUi: {
-          title: 'Read Memory Document',
-          summary: `${doc.kind}/${doc.scope}/${doc.key} v${doc.version}`
-        }
+      if (rollouts.length > 0) {
+        lines.push('', `Rollout summaries (${rollouts.length}, newest first):`)
+        for (const r of rollouts.slice(0, 20)) lines.push(`- ${r}`)
       }
-    }
-  },
-  replace_memory_doc: {
-    name: 'replace_memory_doc',
-    title: 'Replace Memory Document',
-    description:
-      'Replace a memory or soul document by writing the complete new document content. If a current version exists, baseVersionId is required and must match the id returned by read_memory_doc. This archives the old version and creates a new current version. Always include all existing memory that should remain plus the new/changed facts; never send only the new lines unless you are intentionally deleting the old content.',
-    tags: ['memory', 'soul', 'replace', 'update', 'profile', 'persona', '璁板繂', '鐏甸瓊'],
-    category: 'memory',
-    risk: 'medium',
-    implemented: true,
-    discoverable: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        kind: {
-          type: 'string',
-          enum: ['constant', 'ondemand', 'memory', 'soul'],
-          description: 'Document kind. Default: ondemand.'
-        },
-        scope: {
-          type: 'string',
-          enum: ['global', 'session'],
-          description: 'Document scope. Default: session.'
-        },
-        key: {
-          type: 'string',
-          description: 'Document key. Default: "default".'
-        },
-        title: {
-          type: 'string',
-          description: 'Short document title.'
-        },
-        content: {
-          type: 'string',
-          description:
-            'The complete updated document content. Do not pass only a patch or a single changed line.'
-        },
-        baseVersionId: {
-          type: 'string',
-          description:
-            'The current version id returned by read_memory_doc. Required when replacing an existing document.'
-        },
-        reason: {
-          type: 'string',
-          description: 'Short reason for the change.'
-        }
-      },
-      required: ['content']
-    },
-    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      const content = typeof args.content === 'string' ? args.content.trim() : ''
-      if (!content) {
-        throw new Error('Missing or invalid content parameter')
-      }
-      const MAX_DOC_CHARS = 30000
-      if (content.length > MAX_DOC_CHARS) {
-        throw new Error(
-          `Memory document is too long (${content.length} chars). Keep it under ${MAX_DOC_CHARS} characters.`
-        )
-      }
-
-      const run = getRun(ctx.reqId)
-      const identity = getMemoryDocIdentity(args, run?.sessionId)
-      const doc = replaceMemoryDoc({
-        ...identity,
-        title: typeof args.title === 'string' ? args.title : undefined,
-        content,
-        baseVersionId: typeof args.baseVersionId === 'string' ? args.baseVersionId : undefined,
-        reason: typeof args.reason === 'string' ? args.reason : undefined
-      })
-
-      return {
-        resultForModel: `Replaced ${identity.kind} ${identity.scope} document: ${formatMemoryDocHeader(doc)}\nNew version id: ${doc.id}\nPrevious version: ${doc.parentId || 'none'}.`,
-        resultForUi: {
-          title: 'Replace Memory Document',
-          summary: `${doc.kind}/${doc.scope}/${doc.key} v${doc.version}`
-        }
-      }
-    }
-  },
-  archive_memory_doc: {
-    name: 'archive_memory_doc',
-    title: 'Archive Memory Document',
-    description:
-      'Archive (delete) an active memory document so that it is no longer current and will not be loaded or retrieved. Use this when a custom memory category/key, environment configuration, or lesson learned is no longer relevant or has been fully obsoleted.',
-    tags: ['memory', 'archive', 'delete', 'remove', '记忆', '删除', '归档'],
-    category: 'memory',
-    risk: 'medium',
-    implemented: true,
-    discoverable: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        kind: {
-          type: 'string',
-          enum: ['constant', 'ondemand', 'memory', 'soul'],
-          description: 'Document kind. Default: ondemand.'
-        },
-        scope: {
-          type: 'string',
-          enum: ['global', 'session'],
-          description: 'Document scope. Default: session.'
-        },
-        key: {
-          type: 'string',
-          description: 'Document key. Default: "default".'
-        }
-      }
-    },
-    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      const run = getRun(ctx.reqId)
-      const identity = getMemoryDocIdentity(args, run?.sessionId)
-      const success = archiveMemoryDoc(identity)
-      if (!success) {
-        return {
-          resultForModel: `No active ${identity.kind} document found for ${identity.scope}/${identity.key} to archive.`,
-          resultForUi: {
-            title: 'Archive Memory Document',
-            summary: 'No active document found'
-          }
-        }
-      }
-      return {
-        resultForModel: `Successfully archived the current ${identity.kind} document for ${identity.scope}/${identity.key}. It will no longer be retrieved by default.`,
-        resultForUi: {
-          title: 'Archive Memory Document',
-          summary: `Archived ${identity.kind}/${identity.scope}/${identity.key}`
-        }
-      }
-    }
-  },
-  recall: {
-    name: 'recall',
-    title: 'Recall Memories',
-    description:
-      "Retrieve current durable memory/soul documents. By default returns global documents plus this conversation's session documents. Archived versions are not returned; use read_memory_doc for the complete current document before modifying it.",
-    tags: [
-      'memory',
-      'recall',
-      'retrieve',
-      'remember',
-      'preference',
-      'fact',
-      '记忆',
-      '回忆',
-      '偏好'
-    ],
-    category: 'memory',
-    risk: 'low',
-    implemented: true,
-    discoverable: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Optional text filter (substring match on memory content). Omit to list all.'
-        },
-        scope: {
-          type: 'string',
-          description:
-            'Restrict to a layer: global or session. Omit to search both global and this conversation.',
-          enum: ['global', 'session']
-        },
-        kind: {
-          type: 'string',
-          enum: ['constant', 'ondemand', 'memory', 'soul'],
-          description: 'Restrict to constant, ondemand, memory or soul documents.'
-        },
-        key: {
-          type: 'string',
-          description: 'Restrict to a document key.'
-        },
-        category: {
-          type: 'string',
-          description: 'Legacy option kept for compatibility; current document recall ignores it.'
-        },
-        limit: {
-          type: 'number',
-          description: 'Maximum memories to return (1-30, default 10).'
-        }
-      }
-    },
-    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      const run = getRun(ctx.reqId)
-      const sessionId = run?.sessionId
-
-      const limit =
-        typeof args.limit === 'number' && Number.isFinite(args.limit)
-          ? Math.min(30, Math.max(1, Math.floor(args.limit)))
-          : 10
-      const docs = listMemoryDocs({
-        kind: (args.kind === 'constant' || args.kind === 'ondemand' || args.kind === 'memory' || args.kind === 'soul')
-          ? args.kind
-          : undefined,
-        scope: args.scope === 'global' || args.scope === 'session' ? args.scope : undefined,
-        sessionId,
-        key: typeof args.key === 'string' ? args.key : undefined,
-        includeSession: true,
-        limit
-      })
-      const queryText = typeof args.query === 'string' ? args.query.trim() : ''
-      const loweredQuery = queryText.toLowerCase()
-      const results = loweredQuery
-        ? docs.filter(
-            (doc) =>
-              doc.content.toLowerCase().includes(loweredQuery) ||
-              doc.title.toLowerCase().includes(loweredQuery) ||
-              doc.key.toLowerCase().includes(loweredQuery)
-          )
-        : docs
-
-      if (results.length === 0) {
-        const legacy = queryText
-          ? listMemories({ sessionId, limit }).filter((memory) =>
-              memory.content.toLowerCase().includes(loweredQuery)
-            )
-          : listMemories({ sessionId, limit })
-        if (legacy.length > 0) {
-          const legacyLines = [
-            `No current memory documents found. Found ${legacy.length} legacy memory item(s):`,
-            ''
-          ]
-          legacy.forEach((m, i) => {
-            const date = new Date(m.createdAt).toLocaleDateString('en-CA')
-            legacyLines.push(`${i + 1}. [legacy/${m.scope}/${m.category}/${date}] ${m.content}`)
-          })
-          return {
-            resultForModel: legacyLines.join('\n'),
-            resultForUi: {
-              title: 'Recall',
-              summary: `Recalled ${legacy.length} legacy memory item(s)`
-            }
-          }
-        }
-        return {
-          resultForModel: queryText
-            ? `No memories found matching "${queryText}".`
-            : 'No memories stored yet.',
-          resultForUi: {
-            title: 'Recall',
-            summary: 'No memories found'
-          }
-        }
-      }
-
-      const lines = [`Found ${results.length} current memory document(s):`, '']
-      results.forEach((doc, i) => {
-        const m = {
-          scope: doc.scope,
-          category: `${doc.kind}/${doc.key}/v${doc.version}`,
-          content: `${formatMemoryDocHeader(doc)}\n${doc.content}`
-        }
-        const date = ''
-        lines.push(`${i + 1}. [${m.scope} · ${m.category} · ${date}] ${m.content}`)
-      })
-
       return {
         resultForModel: lines.join('\n'),
         resultForUi: {
-          title: 'Recall',
-          summary: `Recalled ${results.length} memory document(s)`
+          title: 'List Memory',
+          summary: `${groups.length} group(s), ${rollouts.length} rollout(s)`
         }
+      }
+    }
+  },
+  write_memory: {
+    name: 'write_memory',
+    title: 'Write Memory',
+    description:
+      'Persist durable memory to the on-disk Markdown library (git-versioned). Only write stable, reusable knowledge or long-term user preferences — never one-off task context or unverified guesses. target="task_group" (default) writes/replaces a Task Group block in MEMORY.md and refreshes the index; provide group_name and the full block content. target="always" overwrites the constant memory (use sparingly, keep it short). target="rollout" creates a provenance summary for a finished task (provide group_name as a slug). target="raw" appends to raw sediment.',
+    tags: ['memory', 'write', 'remember', 'persist', 'task group', '记忆', '写入', '记住'],
+    category: 'memory',
+    risk: 'medium',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        target: {
+          type: 'string',
+          enum: ['task_group', 'always', 'rollout', 'raw'],
+          description: 'Where to write. Default: task_group.'
+        },
+        group_name: {
+          type: 'string',
+          description:
+            'For target="task_group": the Task Group name (created or replaced). For target="rollout": a short slug for the filename.'
+        },
+        content: {
+          type: 'string',
+          description:
+            'The Markdown content to write. For task_group, the full group body (a "# Task Group:" header is added if absent).'
+        },
+        reason: {
+          type: 'string',
+          description: 'Short reason for the write (used in the rollout header / commit context).'
+        }
+      },
+      required: ['content']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const content = typeof args.content === 'string' ? args.content.trim() : ''
+      if (!content) throw new Error('Missing or invalid content parameter')
+      const MAX_CHARS = 30000
+      if (content.length > MAX_CHARS) {
+        throw new Error(
+          `Memory content is too long (${content.length} chars). Keep it under ${MAX_CHARS} characters.`
+        )
+      }
+      const target = typeof args.target === 'string' ? args.target : 'task_group'
+      const groupName = typeof args.group_name === 'string' ? args.group_name.trim() : ''
+
+      if (target === 'always') {
+        await setAlways(content)
+        return {
+          resultForModel: 'Updated always.md (constant memory). Committed to git.',
+          resultForUi: { title: 'Write Memory', summary: 'Updated always.md' }
+        }
+      }
+      if (target === 'raw') {
+        await appendRaw(content)
+        return {
+          resultForModel: 'Appended to raw_memories.md. Committed to git.',
+          resultForUi: { title: 'Write Memory', summary: 'Appended raw memory' }
+        }
+      }
+      if (target === 'rollout') {
+        const run = getRun(ctx.reqId)
+        const slug = groupName || 'task'
+        const file = await writeRolloutSummary(
+          {
+            threadId: run?.sessionId,
+            updatedAt: new Date().toISOString(),
+            outcome: typeof args.reason === 'string' ? args.reason : undefined,
+            slug
+          },
+          content
+        )
+        return {
+          resultForModel: `Wrote rollout summary ${file}. Committed to git.`,
+          resultForUi: { title: 'Write Memory', summary: `Rollout: ${file}` }
+        }
+      }
+
+      // task_group (default)
+      if (!groupName) {
+        throw new Error('group_name is required when writing a Task Group.')
+      }
+      await writeTaskGroup(groupName, content)
+      return {
+        resultForModel: `Wrote Task Group "${groupName}" to MEMORY.md and refreshed the index. Committed to git.`,
+        resultForUi: { title: 'Write Memory', summary: `Task Group: ${groupName}` }
       }
     }
   }

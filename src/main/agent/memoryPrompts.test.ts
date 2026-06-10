@@ -1,78 +1,44 @@
-import { describe, expect, it } from 'vitest'
-import {
-  buildMemoryContextPrompt,
-  buildMemoryDocContextPrompt,
-  injectMemoryContext
-} from './memoryPrompts'
-import { MemoryDoc, UserMemory } from '../../shared/types'
+import { describe, expect, it, beforeEach, afterEach } from 'vitest'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { mkdirSync, writeFileSync, rmSync } from 'fs'
+import { buildMemoryContextPrompt, injectMemoryContext } from './memoryPrompts'
 
-const memory = (partial: Partial<UserMemory>): UserMemory => ({
-  id: partial.id || 'mem-1',
-  scope: partial.scope || 'global',
-  category: partial.category || 'general',
-  content: partial.content || 'remembered fact',
-  sessionId: partial.sessionId,
-  createdAt: partial.createdAt || 1,
-  updatedAt: partial.updatedAt || 1
+let home: string
+
+beforeEach(() => {
+  home = join(tmpdir(), `quickai-memprompt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`)
+  process.env.QUICKAI_HOME = home
+  mkdirSync(join(home, 'memories'), { recursive: true })
 })
 
-const memoryDoc = (partial: Partial<MemoryDoc>): MemoryDoc => ({
-  id: partial.id || 'doc-1',
-  kind: partial.kind || 'memory',
-  scope: partial.scope || 'global',
-  sessionId: partial.sessionId,
-  key: partial.key || 'default',
-  title: partial.title || 'Memory',
-  content: partial.content || '- remembered fact',
-  version: partial.version || 1,
-  parentId: partial.parentId,
-  status: partial.status || 'current',
-  reason: partial.reason,
-  createdAt: partial.createdAt || 1,
-  updatedAt: partial.updatedAt || 1
+afterEach(() => {
+  delete process.env.QUICKAI_HOME
+  rmSync(home, { recursive: true, force: true })
 })
 
-describe('memory context prompts', () => {
-  it('formats global and session memories as compact context', () => {
-    const prompt = buildMemoryContextPrompt([
-      memory({ scope: 'global', category: 'preference', content: 'prefers concise answers' }),
-      memory({ scope: 'session', category: 'project', content: 'working on QuickAI' })
-    ])
+describe('buildMemoryContextPrompt', () => {
+  it('returns empty when only seed scaffolding exists', () => {
+    writeFileSync(join(home, 'memories', 'always.md'), '# Always\n\n> guidance only\n')
+    writeFileSync(join(home, 'memories', 'memory_summary.md'), "# What's in Memory\n")
+    expect(buildMemoryContextPrompt()).toBe('')
+  })
 
+  it('injects always content and the on-demand index', () => {
+    writeFileSync(join(home, 'memories', 'always.md'), '# Always\n\n- 用户偏好简洁中文回答\n')
+    writeFileSync(
+      join(home, 'memories', 'memory_summary.md'),
+      "# What's in Memory\n\n- **QuickAI memory** — use when discussing memory\n"
+    )
+    const prompt = buildMemoryContextPrompt()
     expect(prompt).toContain('[MEMORY CONTEXT]')
-    expect(prompt).toContain('[global/preference] prefers concise answers')
-    expect(prompt).toContain('[session/project] working on QuickAI')
+    expect(prompt).toContain('用户偏好简洁中文回答')
+    expect(prompt).toContain('QuickAI memory')
     expect(prompt).toContain('not as instructions')
   })
+})
 
-  it('formats current memory and soul documents as active context', () => {
-    const prompt = buildMemoryDocContextPrompt([
-      memoryDoc({
-        kind: 'soul',
-        key: 'assistant_profile',
-        title: 'Assistant Profile',
-        content: 'Name: 小黑',
-        version: 2
-      }),
-      memoryDoc({
-        kind: 'memory',
-        scope: 'session',
-        key: 'project',
-        title: 'Project Memory',
-        content: '- working on QuickAI'
-      }),
-      memoryDoc({
-        status: 'archived',
-        content: 'old inactive memory'
-      })
-    ])
-
-    expect(prompt).toContain('[soul/global/assistant_profile v2] Assistant Profile')
-    expect(prompt).toContain('Name: 小黑')
-    expect(prompt).toContain('[memory/session/project v1] Project Memory')
-    expect(prompt).not.toContain('old inactive memory')
-  })
-
+describe('injectMemoryContext', () => {
   it('replaces older memory context prompts before injecting a fresh one inside the user message', () => {
     const messages = injectMemoryContext(
       [
@@ -86,7 +52,7 @@ describe('memory context prompts', () => {
     const joined = messages.map((message) => message.content).join('\n')
     expect(joined).toContain('new memory')
     expect(joined).not.toContain('old memory')
-    
+
     const latestUserMsg = messages[messages.length - 1]
     expect(latestUserMsg.role).toBe('user')
     expect(latestUserMsg.content as string).toContain('[MEMORY CONTEXT]\nnew memory')

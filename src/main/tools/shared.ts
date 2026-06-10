@@ -1,11 +1,5 @@
 import { fetchUrl, renderWithLineNumbers } from '../webTools'
-import {
-  ToolArgs,
-  MemoryDoc,
-  MemoryDocKind,
-  MemoryDocScope,
-  SessionResource
-} from '../../shared/types'
+import { SessionResource } from '../../shared/types'
 import { ToolExecutionContext } from './types'
 import { saveResourceChunk, getResourceId } from '../resourceCache'
 
@@ -117,51 +111,4 @@ export async function fetchCacheAndFormat(
         : `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}.`
     }
   }
-}
-
-// ---- memory doc helpers shared by memory tools ----
-
-export const DEFAULT_MEMORY_DOC_KEY = 'default'
-export const DEFAULT_MEMORY_DOC_TITLE = 'QuickAI Memory'
-
-export function normalizeDocKind(value: unknown): MemoryDocKind {
-  if (value === 'constant' || value === 'soul') return 'constant'
-  return 'ondemand'
-}
-
-export function normalizeDocScope(value: unknown): MemoryDocScope {
-  return value === 'global' ? 'global' : 'session'
-}
-
-export function normalizeDocKey(value: unknown): string {
-  const text = typeof value === 'string' ? value.trim() : ''
-  return text ? text.slice(0, 120) : DEFAULT_MEMORY_DOC_KEY
-}
-
-export function getMemoryDocIdentity(
-  args: ToolArgs,
-  sessionId?: string
-): { kind: MemoryDocKind; scope: MemoryDocScope; sessionId?: string; key: string } {
-  let scope = normalizeDocScope(args.scope)
-  if (scope === 'session' && !sessionId) scope = 'global'
-  return {
-    kind: normalizeDocKind(args.kind),
-    scope,
-    sessionId: scope === 'session' ? sessionId : undefined,
-    key: normalizeDocKey(args.key)
-  }
-}
-
-export function formatMemoryDocHeader(doc: MemoryDoc): string {
-  const scope = doc.scope === 'session' ? `session:${doc.sessionId || 'unknown'}` : 'global'
-  return `[${doc.kind}/${scope}/${doc.key}] ${doc.title}`
-}
-
-export function appendMemoryDocContent(current: MemoryDoc | undefined, content: string): string {
-  const normalized = content.replace(/\s+/g, ' ').trim()
-  const base = current?.content.trim()
-  const nextLine = `- ${normalized}`
-  if (!base) return nextLine
-  if (base.split(/\r?\n/).some((line) => line.trim() === nextLine)) return base
-  return `${base}\n${nextLine}`
 }

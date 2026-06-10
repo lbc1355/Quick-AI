@@ -41,7 +41,7 @@ export async function handleChatCompletion(
   activeChatSessions.set(reqId, controller)
 
   try {
-    const memoryPrompt = loadMemoryContextPrompt(options.sessionId)
+    const memoryPrompt = loadMemoryContextPrompt()
     const messagesWithMemory = injectMemoryContext(messages, memoryPrompt)
 
     // Plain chat is a single model call with no tools. Reuse the agent's SSE parser

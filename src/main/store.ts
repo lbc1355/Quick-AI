@@ -5,8 +5,6 @@ import {
   saveSessions,
   loadSkills,
   saveSkills,
-  loadMemories,
-  saveMemories,
   getDb
 } from './database'
 import { StorageSchema } from '../shared/types'
@@ -30,8 +28,6 @@ export class FileStore {
         return loadSessions() as StorageSchema[K]
       case 'skills':
         return loadSkills() as StorageSchema[K]
-      case 'memories':
-        return loadMemories() as StorageSchema[K]
       default:
         throw new Error(`Unknown store key: ${key}`)
     }
@@ -49,9 +45,6 @@ export class FileStore {
         break
       case 'skills':
         saveSkills(val as StorageSchema['skills'])
-        break
-      case 'memories':
-        saveMemories(val as StorageSchema['memories'])
         break
       default:
         throw new Error(`Unknown store key: ${key}`)
