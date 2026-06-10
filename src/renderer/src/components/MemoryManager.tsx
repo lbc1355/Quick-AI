@@ -200,7 +200,7 @@ export const MemoryManager: React.FC<MemoryManagerProps> = ({ sessionId }) => {
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'var(--color-bg-primary)',
+          backgroundColor: 'var(--color-bg-main)',
           zIndex: 10,
           display: 'flex',
           flexDirection: 'column',
