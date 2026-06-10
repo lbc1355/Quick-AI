@@ -125,6 +125,7 @@ function App(): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const messagesInnerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
   const isProgrammaticScrollRef = useRef(false)
   const [pendingScrollMessageId, setPendingScrollMessageId] = useState<string | null>(null)
@@ -376,6 +377,22 @@ function App(): React.JSX.Element {
     }, 500)
     return () => clearTimeout(timeoutId)
   }, [activeSessionId, activeSession?.messages.length, pendingScrollMessageId])
+
+  // Keep scrolling to the bottom when size of the message list inner content changes during generation (e.g. streaming tokens or expanding tool details)
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    const inner = messagesInnerRef.current
+    if (!container || !inner) return undefined
+
+    const observer = new ResizeObserver(() => {
+      if (shouldAutoScrollRef.current && isCurrentSessionGenerating) {
+        container.scrollTop = container.scrollHeight
+      }
+    })
+
+    observer.observe(inner)
+    return () => observer.disconnect()
+  }, [activeSessionId, isCurrentSessionGenerating])
 
   // Handle manual scroll detection
   const handleScroll = (): void => {
@@ -837,30 +854,36 @@ function App(): React.JSX.Element {
                 className="messages-container"
                 onScroll={handleScroll}
               >
-                {activeSession?.messages.map((msg, idx) => (
-                  <MessageBubble
-                    key={msg.id}
-                    msg={msg}
-                    idx={idx}
-                    branchChildren={
-                      branchChildIndex[getBranchSourceKey(activeSessionId, msg.id)] || []
-                    }
-                    isGenerating={isCurrentSessionGenerating}
-                    editingMessageId={editingMessageId}
-                    editingText={editingText}
-                    onStartEdit={handleStartEdit}
-                    onCancelEdit={() => setEditingMessageId(null)}
-                    onSaveEdit={handleSaveEdit}
-                    onRegenerate={handleRegenerate}
-                    onResumeAgentRun={handleResumeAgentRun}
-                    onOpenBranch={(sessionId) => openSession(sessionId)}
-                    onChangeEditingText={setEditingText}
-                    activeTaskMessageId={activeTaskMessageId}
-                    isTaskPanelOpen={isTaskPanelOpen}
-                    onToggleTasks={handleToggleTasks}
-                  />
-                ))}
-                <div ref={messagesEndRef} />
+                <div
+                  ref={messagesInnerRef}
+                  className="messages-inner-wrapper"
+                  style={{ display: 'flex', flexDirection: 'column', gap: 'inherit', width: '100%', minHeight: '100%' }}
+                >
+                  {activeSession?.messages.map((msg, idx) => (
+                    <MessageBubble
+                      key={msg.id}
+                      msg={msg}
+                      idx={idx}
+                      branchChildren={
+                        branchChildIndex[getBranchSourceKey(activeSessionId, msg.id)] || []
+                      }
+                      isGenerating={isCurrentSessionGenerating}
+                      editingMessageId={editingMessageId}
+                      editingText={editingText}
+                      onStartEdit={handleStartEdit}
+                      onCancelEdit={() => setEditingMessageId(null)}
+                      onSaveEdit={handleSaveEdit}
+                      onRegenerate={handleRegenerate}
+                      onResumeAgentRun={handleResumeAgentRun}
+                      onOpenBranch={(sessionId) => openSession(sessionId)}
+                      onChangeEditingText={setEditingText}
+                      activeTaskMessageId={activeTaskMessageId}
+                      isTaskPanelOpen={isTaskPanelOpen}
+                      onToggleTasks={handleToggleTasks}
+                    />
+                  ))}
+                  <div ref={messagesEndRef} />
+                </div>
               </div>
             )}
 
