@@ -70,7 +70,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
       const argsObj = args && typeof args === 'object' ? args : null
       const name = toolName.toLowerCase()
 
-      const truncate = (text: string, maxLen: number = 30): string => {
+      const truncate = (text: string, maxLen: number = 32): string => {
         if (typeof text !== 'string') return ''
         if (text.length <= maxLen) return text
         return text.substring(0, maxLen) + '...'
@@ -143,7 +143,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
           nodes.push({
             id: `thought-${idx}`,
             type: 'thought',
-            title: '分析与思考',
+            title: '思考分析',
             status: 'completed',
             thought: event.content
           })
@@ -229,11 +229,11 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
       ...prev,
       [id]: !prev[id]
     }))
-  };
+  }
 
-  const getToolTheme = (toolName?: string): { icon: React.ReactNode; color: string; bg: string } => {
-    const defaultTheme = { icon: <HelpCircle size={12} />, color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.12)' }
-    if (!toolName) return defaultTheme
+  const getToolIcon = (type: 'thought' | 'tool', toolName?: string): React.ReactNode => {
+    if (type === 'thought') return <Brain size={12} />
+    if (!toolName) return <HelpCircle size={12} />
 
     const name = toolName.toLowerCase()
     if (
@@ -242,49 +242,57 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
       name.includes('read_file') ||
       name.includes('write_file')
     ) {
-      return { icon: <FileText size={12} />, color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.12)' }
+      return <FileText size={12} />
     }
     if (name.includes('command') || name.includes('shell') || name.includes('run')) {
-      return { icon: <Terminal size={12} />, color: '#c084fc', bg: 'rgba(192, 132, 252, 0.12)' }
+      return <Terminal size={12} />
     }
     if (name.includes('search') || name.includes('query') || name.includes('web') || name.includes('google')) {
-      return { icon: <Search size={12} />, color: '#34d399', bg: 'rgba(52, 211, 153, 0.12)' }
+      return <Search size={12} />
     }
     if (name.includes('url') || name.includes('fetch') || name.includes('browser') || name.includes('http')) {
-      return { icon: <Globe size={12} />, color: '#2dd4bf', bg: 'rgba(45, 212, 191, 0.12)' }
+      return <Globe size={12} />
     }
     if (name.includes('memory')) {
-      return { icon: <Brain size={12} />, color: '#fb923c', bg: 'rgba(251, 146, 60, 0.12)' }
+      return <Brain size={12} />
     }
-    return defaultTheme
+    return <HelpCircle size={12} />
   }
 
-  const renderStatusBadge = (status: TimelineNode['status']) => {
-    let badgeText = '未知'
-    let badgeStyle = { color: 'var(--color-text-muted)', background: 'rgba(255, 255, 255, 0.05)' }
-
-    if (status === 'completed') {
-      badgeText = '完成'
-      badgeStyle = { color: '#10b981', background: 'rgba(16, 185, 129, 0.12)' }
-    } else if (status === 'running') {
-      badgeText = '执行中'
-      badgeStyle = { color: '#3b82f6', background: 'rgba(59, 130, 246, 0.12)' }
-    } else if (status === 'pending') {
-      badgeText = '等待授权'
-      badgeStyle = { color: '#fb923c', background: 'rgba(251, 146, 60, 0.12)' }
-    } else if (status === 'denied') {
-      badgeText = '拒绝'
-      badgeStyle = { color: '#ef4444', background: 'rgba(239, 68, 68, 0.12)' }
-    } else if (status === 'failed') {
-      badgeText = '失败'
-      badgeStyle = { color: '#ef4444', background: 'rgba(239, 68, 68, 0.12)' }
+  const getStatusStyles = (status: TimelineNode['status']) => {
+    switch (status) {
+      case 'completed':
+        return {
+          color: 'var(--color-text-muted)',
+          border: '1px solid var(--color-border)',
+          background: 'transparent'
+        }
+      case 'running':
+        return {
+          color: 'var(--color-primary)',
+          border: '1px solid var(--color-primary)',
+          background: 'transparent'
+        }
+      case 'pending':
+        return {
+          color: 'var(--color-warning)',
+          border: '1px solid var(--color-warning)',
+          background: 'transparent'
+        }
+      case 'denied':
+      case 'failed':
+        return {
+          color: 'var(--color-danger)',
+          border: '1px solid var(--color-danger)',
+          background: 'transparent'
+        }
+      default:
+        return {
+          color: 'var(--color-text-faint)',
+          border: '1px solid var(--color-border)',
+          background: 'transparent'
+        }
     }
-
-    return (
-      <span className="timeline-step-badge" style={badgeStyle}>
-        {badgeText}
-      </span>
-    )
   }
 
   const renderArgs = (args: any) => {
@@ -293,7 +301,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
       <div className="timeline-args-section">
         <span className="timeline-section-title">
           <Code size={10} style={{ marginRight: '4px' }} />
-          调用参数 (Args)
+          调用参数
         </span>
         <pre className="timeline-pre-code">
           <code>{JSON.stringify(args, null, 2)}</code>
@@ -306,9 +314,9 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
     if (node.error) {
       return (
         <div className="timeline-error-section">
-          <span className="timeline-section-title" style={{ color: '#f87171' }}>
+          <span className="timeline-section-title" style={{ color: 'var(--color-danger)' }}>
             <AlertCircle size={10} style={{ marginRight: '4px' }} />
-            执行报错 (Error)
+            执行报错
           </span>
           <div className="timeline-error-box">{node.error}</div>
         </div>
@@ -356,7 +364,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
       {/* 1. Header Area */}
       <div className="task-panel-header">
         <div className="task-panel-title">
-          <Clock size={14} style={{ color: 'var(--color-primary)' }} />
+          <Clock size={14} style={{ color: 'var(--color-text-title)' }} />
           <span>运行分析</span>
         </div>
         <button type="button" className="sidebar-icon-btn" onClick={onClose} title="收起面板">
@@ -372,14 +380,14 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
             className={`timeline-tab-btn ${activeTab === 'timeline' ? 'active' : ''}`}
             onClick={() => setActiveTab('timeline')}
           >
-            执行步骤 ({timelineNodes.length})
+            执行步骤
           </button>
           <button
             type="button"
             className={`timeline-tab-btn ${activeTab === 'tasks' ? 'active' : ''}`}
             onClick={() => setActiveTab('tasks')}
           >
-            任务进度 ({tasks.length})
+            任务进度
           </button>
         </div>
       )}
@@ -391,42 +399,45 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
           <div className="timeline-container">
             {timelineNodes.length === 0 ? (
               <div className="timeline-empty">
-                <Loader2 size={16} className="animate-spin" />
-                <span>等待 Agent 执行命令...</span>
+                <Loader2 size={14} className="animate-spin" />
+                <span>等待执行步骤...</span>
               </div>
             ) : (
               <>
                 <div className="timeline-thread" />
                 {timelineNodes.map((node) => {
                   const isExpanded = !!expandedNodes[node.id]
-                  const { icon, color, bg } =
-                    node.type === 'thought'
-                      ? { icon: <Brain size={12} />, color: '#a855f7', bg: 'rgba(168, 85, 247, 0.12)' }
-                      : getToolTheme(node.toolName)
+                  const statusStyle = getStatusStyles(node.status)
+                  const icon = getToolIcon(node.type, node.toolName)
 
                   return (
                     <div key={node.id} className={`timeline-step-item ${node.status}`}>
-                      {/* Left circular node with category icon */}
-                      <div
-                        className="timeline-node-circle"
-                        style={{ borderColor: color, background: bg, color }}
-                      >
+                      {/* Left circular node with clean border & status color */}
+                      <div className="timeline-node-circle" style={statusStyle}>
                         {node.status === 'running' && node.type === 'tool' ? (
-                          <Loader2 size={12} className="animate-spin" style={{ color }} />
+                          <Loader2 size={12} className="animate-spin" />
                         ) : (
                           icon
                         )}
                       </div>
 
-                      {/* Right content card */}
+                      {/* Right content card (transparent & flat in minimalist theme) */}
                       <div className="timeline-content-card">
                         <div className="timeline-header-row" onClick={() => toggleNode(node.id)}>
-                          <div className="timeline-header-left">
-                            <span className="timeline-step-title" style={node.type === 'thought' ? { fontStyle: 'italic', opacity: 0.85 } : {}}>
-                              {node.title}
-                            </span>
-                            {renderStatusBadge(node.status)}
-                          </div>
+                          <span
+                            className="timeline-step-title"
+                            style={
+                              node.type === 'thought'
+                                ? { fontStyle: 'italic', color: 'var(--color-text-faint)' }
+                                : node.status === 'running'
+                                  ? { color: 'var(--color-primary)' }
+                                  : node.status === 'failed' || node.status === 'denied'
+                                    ? { color: 'var(--color-danger)' }
+                                    : {}
+                            }
+                          >
+                            {node.title}
+                          </span>
                           <span className="timeline-expand-btn">
                             <ChevronDown
                               size={12}
@@ -487,7 +498,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
                   <span className="task-item-status-icon">{statusIcon}</span>
                   <span className="task-item-title">{t.title}</span>
                 </div>
-              );
+              )
             })}
           </div>
         )}

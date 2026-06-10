@@ -3610,12 +3610,12 @@ select {
 }
 
 /* ==========================================
-   Agent Run Analysis Timeline & Tabs
+   Agent Run Analysis Timeline & Tabs (Minimalist Edition)
    ========================================== */
 .timeline-tab-header {
   display: flex;
   border-bottom: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.02);
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -3624,7 +3624,7 @@ select {
   height: 38px;
   border: none;
   background: transparent;
-  color: var(--color-text-muted);
+  color: var(--color-text-faint);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -3634,7 +3634,6 @@ select {
 
 .timeline-tab-btn:hover {
   color: var(--color-text-title);
-  background: rgba(255, 255, 255, 0.01);
 }
 
 .timeline-tab-btn.active {
@@ -3648,17 +3647,17 @@ select {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 8px 4px 24px 4px;
+  padding: 12px 4px 24px 4px;
 }
 
 .timeline-thread {
   position: absolute;
-  left: 21px;
-  top: 18px;
-  bottom: 18px;
-  width: 2px;
+  left: 17px;
+  top: 24px;
+  bottom: 24px;
+  width: 1px;
   background: var(--color-border);
-  opacity: 0.35;
+  opacity: 0.18;
   z-index: 1;
 }
 
@@ -3671,66 +3670,42 @@ select {
 
 .timeline-node-circle {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  border: 1.5px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 3;
+  margin-top: 2px;
 }
 
 .timeline-content-card {
   flex: 1;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  overflow: hidden;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.timeline-content-card:hover {
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.035);
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 
 .timeline-header-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 12px;
+  padding: 4px 0;
   cursor: pointer;
   user-select: none;
   gap: 8px;
 }
 
-.timeline-header-left {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
 .timeline-step-title {
   color: var(--color-text-title);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
-}
-
-.timeline-step-badge {
-  font-size: 9px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
-  white-space: nowrap;
 }
 
 .timeline-expand-btn {
@@ -3740,13 +3715,11 @@ select {
 }
 
 .timeline-detail-drawer {
-  padding: 10px 12px 12px 12px;
-  border-top: 1px dashed var(--color-border);
+  padding: 8px 0 12px 0;
   font-size: 11px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: rgba(0, 0, 0, 0.1);
 }
 
 .timeline-args-section,
@@ -3754,13 +3727,13 @@ select {
 .timeline-result-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .timeline-section-title {
-  color: var(--color-text-muted);
+  color: var(--color-text-faint);
   font-weight: 600;
-  font-size: 10.5px;
+  font-size: 10px;
   display: flex;
   align-items: center;
   text-transform: uppercase;
@@ -3768,41 +3741,40 @@ select {
 
 .timeline-pre-code {
   margin: 0;
-  padding: 8px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.03);
-  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.16);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
   overflow-x: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  color: var(--color-text);
-  line-height: 1.4;
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  line-height: 1.35;
 }
 
 .timeline-thought-box {
-  background: rgba(168, 85, 247, 0.05);
-  border-left: 2px solid rgba(168, 85, 247, 0.4);
-  padding: 8px;
-  border-radius: 0 6px 6px 0;
+  background: transparent;
+  border-left: 2px solid var(--color-border);
+  padding: 4px 0 4px 8px;
   font-style: italic;
   white-space: pre-wrap;
-  line-height: 1.45;
-  color: var(--color-text-muted);
+  line-height: 1.4;
+  color: var(--color-text-faint);
 }
 
 .timeline-error-box {
-  background: rgba(239, 68, 68, 0.05);
+  background: rgba(239, 68, 68, 0.04);
   border: 1px solid rgba(239, 68, 68, 0.15);
   color: #fca5a5;
   padding: 8px;
-  border-radius: 6px;
+  border-radius: 4px;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
 .timeline-result-title {
   color: var(--color-text-title);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .timeline-result-summary {
@@ -3830,18 +3802,21 @@ select {
 .timeline-result-items {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 2px;
 }
 
 .timeline-result-item-card {
-  background: rgba(255, 255, 255, 0.01);
-  border: 1px solid rgba(255, 255, 255, 0.03);
-  border-radius: 6px;
-  padding: 8px;
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  padding: 6px 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+}
+
+.timeline-result-item-card:last-child {
+  border-bottom: none;
 }
 
 .timeline-result-item-card-header {
@@ -3852,8 +3827,8 @@ select {
 }
 
 .timeline-result-item-idx {
-  color: var(--color-primary);
-  font-weight: 700;
+  color: var(--color-text-faint);
+  font-weight: 500;
 }
 
 .timeline-result-item-link {
@@ -3873,9 +3848,9 @@ select {
 
 .timeline-result-item-source {
   font-size: 8px;
-  background: rgba(255, 255, 255, 0.06);
-  padding: 0px 4px;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0px 3px;
+  border-radius: 2px;
   color: var(--color-text-faint);
 }
 
