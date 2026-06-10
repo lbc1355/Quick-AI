@@ -574,6 +574,88 @@ describe('File Safety & Search Tools', () => {
     })
   })
 
+  describe('file_diff tool', () => {
+    it('compares identical files', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const res = await ToolRegistry.file_diff.execute(
+        {
+          path_a: join(testDir, 'root.ts'),
+          path_b: join(testDir, 'root.ts')
+        },
+        context
+      )
+      expect(res.resultForModel).toContain('Files are identical.')
+      expect(res.resultForUi.summary).toBe('Files are identical')
+    })
+
+    it('compares different files and returns a unified diff', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const pathA = join(testDir, 'a.txt')
+      const pathB = join(testDir, 'b.log')
+      
+      const res = await ToolRegistry.file_diff.execute(
+        {
+          path_a: pathA,
+          path_b: pathB
+        },
+        context
+      )
+
+      expect(res.resultForModel).toContain('@@ -1,4 +1,3 @@')
+      expect(res.resultForModel).toContain('- line1')
+      expect(res.resultForModel).toContain('+ UNIQUEMATCH')
+      expect(res.resultForModel).toContain('- line4')
+      expect(res.resultForUi.summary).toContain('Generated file differences diff')
+    })
+
+    it('rejects comparing outside workspace if no active run context', async () => {
+      const context = { reqId: 'test-req-no-run', signal: new AbortController().signal }
+      const outsidePath = resolve(workspaceRoot, '..', 'traversal-diff.txt')
+      await fs.writeFile(outsidePath, 'some data')
+
+      try {
+        await expect(
+          ToolRegistry.file_diff.execute(
+            {
+              path_a: join(testDir, 'root.ts'),
+              path_b: outsidePath
+            },
+            context
+          )
+        ).rejects.toThrow('Security Violation: Path_B is outside the workspace directory.')
+      } finally {
+        await fs.unlink(outsidePath).catch(() => {})
+      }
+    })
+
+    it('permits comparing outside workspace if run context is active', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+      
+      const reqId = 'test-req-diff-run'
+      createRun(reqId, [], 'all', new ActionLog())
+
+      const context = { reqId, signal: new AbortController().signal }
+      const outsidePath = resolve(workspaceRoot, '..', 'temp-outside-diff.txt')
+      await fs.writeFile(outsidePath, queryStr)
+
+      try {
+        const res = await ToolRegistry.file_diff.execute(
+          {
+            path_a: join(testDir, 'root.ts'),
+            path_b: outsidePath
+          },
+          context
+        )
+
+        expect(res.resultForModel).toContain('Files are identical.')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(outsidePath).catch(() => {})
+      }
+    })
+  })
+
   describe('searchToolDefinitions', () => {
     it('finds file read and write tools using Chinese queries', () => {
       const results = searchToolDefinitions('文件读取 md 翻译')

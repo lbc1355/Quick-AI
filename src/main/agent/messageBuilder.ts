@@ -228,7 +228,7 @@ export function prepareChatAgentMessages(
 ): ChatCompletionMessage[] {
   const toolDirs = buildToolDirectorySummary('all', permissions)
 
-  const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can call to search the web, fetch pages, read, write, and edit files (both inside the workspace, and outside the workspace via absolute paths which will trigger a user permission prompt), and search the codebase.
+  const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can call to search the web, fetch pages, read, write, edit, and diff files (both inside the workspace, and outside the workspace via absolute paths which will trigger a user permission prompt), and search the codebase.
 
 ${buildDateLine()}
 
