@@ -159,6 +159,23 @@ describe('prepareChatAgentMessages tool directory injection', () => {
     expect(content).toContain('Available tools')
   })
 
+  it('prevents duplication if globalSystemPrompt is already the system message content', () => {
+    const msgs = prepareChatAgentMessages(
+      [
+        { role: 'system', content: 'custom system prompt' },
+        { role: 'user', content: 'hi' }
+      ],
+      'custom system prompt'
+    )
+    const system = msgs.find((m) => m.role === 'system')
+    const content = system!.content as string
+    
+    // Check that it contains "custom system prompt" exactly once
+    const matches = content.match(/custom system prompt/g)
+    expect(matches).toHaveLength(1)
+    expect(content).toContain('Global system prompt:\ncustom system prompt')
+  })
+
   it('describes the operation/cache layer and its tools as a base capability', () => {
     const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }])
     const content = msgs.find((m) => m.role === 'system')!.content as string

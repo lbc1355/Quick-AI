@@ -273,9 +273,35 @@ Rules:
 
   const copy = messages.map((m) => ({ ...m }))
   const systemMsg = copy.find((m) => m.role === 'system')
-
   if (systemMsg) {
-    systemMsg.content = `${globalSystemPrompt ? `Global system prompt:\n${globalSystemPrompt}\n\n` : ''}${systemMsg.content}\n\nTool instructions:\n${agentInstructions}`
+    const hasGlobal = globalSystemPrompt && globalSystemPrompt.trim().length > 0
+    if (hasGlobal && typeof systemMsg.content === 'string') {
+      const trimmedBase = systemMsg.content.trim()
+      const trimmedGlobal = globalSystemPrompt.trim()
+      if (trimmedBase === trimmedGlobal) {
+        systemMsg.content = `Global system prompt:\n${globalSystemPrompt}\n\nTool instructions:\n${agentInstructions}`
+      } else if (trimmedBase.includes(trimmedGlobal)) {
+        systemMsg.content = `${systemMsg.content}\n\nTool instructions:\n${agentInstructions}`
+      } else {
+        systemMsg.content = `Global system prompt:\n${globalSystemPrompt}\n\n${systemMsg.content}\n\nTool instructions:\n${agentInstructions}`
+      }
+    } else {
+      const globalPrefix = globalSystemPrompt ? `Global system prompt:\n${globalSystemPrompt}\n\n` : ''
+      const toolSuffix = `\n\nTool instructions:\n${agentInstructions}`
+      prependToMessageContent(systemMsg, globalPrefix)
+      if (!systemMsg.content) {
+        systemMsg.content = toolSuffix.trim()
+      } else if (typeof systemMsg.content === 'string') {
+        systemMsg.content = `${systemMsg.content}${toolSuffix}`
+      } else if (Array.isArray(systemMsg.content)) {
+        const textBlock = systemMsg.content.find((block) => block.type === 'text')
+        if (textBlock) {
+          textBlock.text = `${textBlock.text || ''}${toolSuffix}`
+        } else {
+          systemMsg.content.push({ type: 'text', text: toolSuffix.trim() })
+        }
+      }
+    }
   } else {
     copy.unshift({
       role: 'system',
