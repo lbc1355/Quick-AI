@@ -867,7 +867,7 @@ function App(): React.JSX.Element {
                       branchChildren={
                         branchChildIndex[getBranchSourceKey(activeSessionId, msg.id)] || []
                       }
-                      isGenerating={isCurrentSessionGenerating}
+                      isGenerating={isCurrentSessionGenerating && idx === activeSession.messages.length - 1}
                       editingMessageId={editingMessageId}
                       editingText={editingText}
                       onStartEdit={handleStartEdit}

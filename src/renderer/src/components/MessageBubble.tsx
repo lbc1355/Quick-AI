@@ -544,12 +544,10 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
         .catch((err) => console.warn('Copy failed:', err))
     }
 
-    // Derived logs expansion state. Long tool streams default to compact mode to avoid flooding
-    // the conversation while generation is still running.
-    const shouldCompactLogs = toolCallCount > 3
+    // Derived logs expansion state.
     const defaultLogsExpanded = hasStructuredEvents
-      ? isGenerating && !cleanContent && !shouldCompactLogs
-      : hasLogs && !cleanContent && !shouldCompactLogs
+      ? isGenerating
+      : hasLogs && isGenerating
     const effectiveLogsExpanded =
       userExpandedOverride !== null ? userExpandedOverride : defaultLogsExpanded
     const actionSummaryText =
