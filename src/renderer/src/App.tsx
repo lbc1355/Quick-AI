@@ -753,7 +753,7 @@ function App(): React.JSX.Element {
       ) : (
         <div
           className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${
-            isTaskPanelOpen && currentTasks && currentTasks.length > 0 ? 'task-panel-open' : ''
+            isTaskPanelOpen ? 'task-panel-open' : ''
           }`}
         >
           <SessionSidebar
@@ -891,8 +891,17 @@ function App(): React.JSX.Element {
             />
           </section>
 
-          {isTaskPanelOpen && currentTasks && currentTasks.length > 0 && (
-            <TaskPanel tasks={currentTasks} onClose={() => setIsTaskPanelOpen(false)} />
+          {activeTaskMessageId && activeSession && (
+            (() => {
+              const msg = activeSession.messages.find((m) => m.id === activeTaskMessageId)
+              return msg ? (
+                <TaskPanel
+                  message={msg}
+                  isOpen={isTaskPanelOpen}
+                  onClose={() => setIsTaskPanelOpen(false)}
+                />
+              ) : null
+            })()
           )}
         </div>
       )}

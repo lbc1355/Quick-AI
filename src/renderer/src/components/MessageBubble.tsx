@@ -1060,22 +1060,22 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                               <span>重新生成</span>
                             </button>
                           )}
-                          {hasStructuredEvents &&
-                            msg.agentEvents!.some((e) => e.type === 'task_update') && (
-                              <button
-                                className={`msg-action-btn ${
-                                  activeTaskMessageId === msg.id && isTaskPanelOpen ? 'active' : ''
-                                }`}
-                                onClick={() => onToggleTasks(msg.id)}
-                              >
-                                <ListTodo size={10} />
-                                <span>
-                                  {activeTaskMessageId === msg.id && isTaskPanelOpen
-                                    ? '隐藏任务'
-                                    : '查看任务'}
-                                </span>
-                              </button>
-                            )}
+                          {(hasStructuredEvents || legacyLogs.length > 0) && (
+                            <button
+                              className={`msg-action-btn ${
+                                activeTaskMessageId === msg.id && isTaskPanelOpen ? 'active' : ''
+                              }`}
+                              onClick={() => onToggleTasks(msg.id)}
+                              title="查看 Agent 执行工具的步骤与分析"
+                            >
+                              <ListTodo size={10} />
+                              <span>
+                                {activeTaskMessageId === msg.id && isTaskPanelOpen
+                                  ? '关闭分析'
+                                  : '运行分析'}
+                              </span>
+                            </button>
+                          )}
                           {!isGenerating && finalReplyText && (
                             <button className="msg-action-btn" onClick={handleCopy}>
                               {copied ? <Check size={10} /> : <Copy size={10} />}
