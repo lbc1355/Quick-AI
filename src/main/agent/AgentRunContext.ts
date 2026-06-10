@@ -1,6 +1,6 @@
 import { PermissionManager, globalPermissionManager } from './permissionManager'
 import { ActionLog } from './actionLog'
-import { splitCommandSegments } from './commandSafety'
+import { splitCommandSegments, analyzeCommand } from './commandSafety'
 import { TaskItem } from '../../shared/types'
 
 /** Session-scoped tool/command approvals. A "task" spans many agent runs (one per user
@@ -162,7 +162,11 @@ export class AgentRunContext {
     // is never rescued by prefix approval), so segment-level allow cannot smuggle danger through.
     const segments = splitCommandSegments(trimmed)
     if (segments.length === 0) return false
-    return segments.every((segment) => this.isSegmentPrefixApproved(segment))
+    return segments.every((segment) => {
+      // Safe segments (e.g. read-only commands) don't need explicit prefix approval.
+      if (analyzeCommand(segment).level === 'safe') return true
+      return this.isSegmentPrefixApproved(segment)
+    })
   }
 
   private isSegmentPrefixApproved(segment: string): boolean {

@@ -242,7 +242,17 @@ function analyzeSegment(segment: string): CommandSafetyVerdict {
     'env',
     'printenv',
     'true',
-    'false'
+    'false',
+    // Windows read-only equivalents
+    'type',
+    'findstr',
+    'where',
+    'dir',
+    'ipconfig',
+    'ping',
+    'hostname',
+    'systeminfo',
+    'tasklist'
   ])
   if (READ_ONLY.has(primary)) {
     return { level: 'safe' }

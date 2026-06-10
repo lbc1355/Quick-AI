@@ -49,12 +49,12 @@ describe('AgentRunContext command-prefix approval', () => {
   it('approves a chained command when EVERY segment prefix was approved (Windows cd idiom)', () => {
     const run = makeRun()
     run.approveCommandPrefix('cd')
-    // Only `cd` approved → the `type` segment still forces a prompt.
-    expect(run.isCommandPrefixApproved('cd "C:\\proj" && type "a.md"')).toBe(false)
-    run.approveCommandPrefix('type')
+    // Only `cd` approved → the `npm` segment still forces a prompt.
+    expect(run.isCommandPrefixApproved('cd "C:\\proj" && npm install')).toBe(false)
+    run.approveCommandPrefix('npm')
     // Now both segments are covered.
-    expect(run.isCommandPrefixApproved('cd "C:\\proj" && type "a.md"')).toBe(true)
-    expect(run.isCommandPrefixApproved('cd "C:\\proj\\sub" && type "b.md"')).toBe(true)
+    expect(run.isCommandPrefixApproved('cd "C:\\proj" && npm install')).toBe(true)
+    expect(run.isCommandPrefixApproved('cd "C:\\proj\\sub" && npm run dev')).toBe(true)
     // A different unapproved command in the chain still prompts.
     expect(run.isCommandPrefixApproved('cd "C:\\proj" && del "a.md"')).toBe(false)
   })

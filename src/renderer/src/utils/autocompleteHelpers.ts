@@ -21,12 +21,20 @@ export function getCommandPrefixes(command: string): string[] {
     if (p && !prefixes.includes(p) && prefixes.length < 6) prefixes.push(p)
   }
   for (const segment of segments) {
-    const tokens = segment.split(/\s+/).filter((t) => !t.startsWith('-'))
+    const tokens = segment.split(/\s+/)
     if (tokens.length === 0) continue
-    push(tokens[0])
-    // Only offer a two-word prefix when the subcommand is a clean alphanumeric word (no paths).
-    if (tokens.length > 1 && /^[a-zA-Z0-9_-]+$/.test(tokens[1])) {
-      push(`${tokens[0]} ${tokens[1]}`)
+    const firstToken = tokens[0]
+    push(firstToken)
+    // Only offer a two-word prefix when the subcommand is a clean alphanumeric word (no paths, no flags).
+    if (tokens.length > 1) {
+      const secondToken = tokens[1]
+      if (
+        !secondToken.startsWith('-') &&
+        !secondToken.startsWith('/') &&
+        /^[a-zA-Z0-9_-]+$/.test(secondToken)
+      ) {
+        push(`${firstToken} ${secondToken}`)
+      }
     }
   }
   return prefixes
