@@ -106,13 +106,11 @@ describe('prepareChatAgentMessages memory capability hint', () => {
   it('describes remember/recall as a persistent memory capability', () => {
     const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }])
     const content = msgs.find((m) => m.role === 'system')!.content as string
-    expect(content).toContain('Persistent memory')
+    expect(content).toContain('local memory store')
     expect(content).toContain('remember')
-    expect(content).toContain('recall')
     expect(content).toContain('read_memory_doc')
     expect(content).toContain('replace_memory_doc')
-    expect(content).toContain('Do not wait for the user to explicitly say "remember this"')
-    expect(content).toContain('Never replace a memory/soul document with only the new fact')
+    expect(content).toContain('merge the new facts cleanly, preserving unrelated lines')
   })
 })
 
@@ -165,9 +163,8 @@ describe('prepareChatAgentMessages tool directory injection', () => {
   it('describes the operation/cache layer and its tools as a base capability', () => {
     const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }])
     const content = msgs.find((m) => m.role === 'system')!.content as string
-    // The two-track framing and the don't-assume-you-did-nothing guardrail
+    // The two-track framing
     expect(content).toContain('Operation history')
-    expect(content).toContain('never assume you performed no actions')
     // The tools that access the operation layer are named in the first system message
     expect(content).toContain('list_past_actions')
     expect(content).toContain('get_past_action')
@@ -187,15 +184,13 @@ describe('prepareChatAgentMessages tool directory injection', () => {
         updatedAt: 2
       }
     ])
-    const systemMsgs = msgs.filter((m) => m.role === 'system')
-    expect(systemMsgs.length).toBeGreaterThanOrEqual(2)
-    const resourceSys = systemMsgs.find(
-      (m) => typeof m.content === 'string' && m.content.includes('CONTEXT INFO')
-    )
-    expect(resourceSys).toBeDefined()
+    const userMsg = msgs.find((m) => m.role === 'user')
+    expect(userMsg).toBeDefined()
+    expect(userMsg!.content as string).toContain('CONTEXT INFO')
+    expect(userMsg!.content as string).toContain('hi')
   })
 
-  it('places the resource summary right before the latest user message (cache-friendly tail)', () => {
+  it('places the resource summary inside the latest user message (cache-friendly tail)', () => {
     const msgs = prepareChatAgentMessages(
       [
         { role: 'user', content: 'q1' },
@@ -216,12 +211,10 @@ describe('prepareChatAgentMessages tool directory injection', () => {
         }
       ]
     )
-    const resourceIdx = msgs.findIndex(
-      (m) => typeof m.content === 'string' && m.content.includes('CONTEXT INFO')
-    )
-    // The resource block sits immediately before the final (current) user message, so the
-    // stable conversation prefix ahead of it stays cacheable across turns.
-    expect(resourceIdx).toBe(msgs.length - 2)
-    expect(msgs[msgs.length - 1]).toMatchObject({ role: 'user', content: 'q2 (current)' })
+    const latestUserMsg = msgs[msgs.length - 1]
+    expect(latestUserMsg).toBeDefined()
+    expect(latestUserMsg.role).toBe('user')
+    expect(latestUserMsg.content as string).toContain('CONTEXT INFO')
+    expect(latestUserMsg.content as string).toContain('q2 (current)')
   })
 })

@@ -1,7 +1,7 @@
 import { ToolArgs } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { getRun } from '../agent/AgentRunContext'
-import { getCurrentMemoryDoc, replaceMemoryDoc, listMemories, listMemoryDocs } from '../database'
+import { getCurrentMemoryDoc, replaceMemoryDoc, listMemories, listMemoryDocs, archiveMemoryDoc } from '../database'
 import {
   DEFAULT_MEMORY_DOC_TITLE,
   getMemoryDocIdentity,
@@ -184,8 +184,8 @@ export const memoryTools: Record<string, ToolDefinition> = {
         kind: {
           type: 'string',
           description:
-            'memory = user/project facts; soul = assistant profile/persona. Default: memory.',
-          enum: ['memory', 'soul']
+            'constant = permanent identity, coding rules, tone; ondemand = facts, directories, experience. Default: ondemand.',
+          enum: ['constant', 'ondemand', 'memory', 'soul']
         },
         key: {
           type: 'string',
@@ -260,8 +260,8 @@ export const memoryTools: Record<string, ToolDefinition> = {
       properties: {
         kind: {
           type: 'string',
-          enum: ['memory', 'soul'],
-          description: 'Document kind. Default: memory.'
+          enum: ['constant', 'ondemand', 'memory', 'soul'],
+          description: 'Document kind. Default: ondemand.'
         },
         scope: {
           type: 'string',
@@ -320,8 +320,8 @@ export const memoryTools: Record<string, ToolDefinition> = {
       properties: {
         kind: {
           type: 'string',
-          enum: ['memory', 'soul'],
-          description: 'Document kind. Default: memory.'
+          enum: ['constant', 'ondemand', 'memory', 'soul'],
+          description: 'Document kind. Default: ondemand.'
         },
         scope: {
           type: 'string',
@@ -384,6 +384,57 @@ export const memoryTools: Record<string, ToolDefinition> = {
       }
     }
   },
+  archive_memory_doc: {
+    name: 'archive_memory_doc',
+    title: 'Archive Memory Document',
+    description:
+      'Archive (delete) an active memory document so that it is no longer current and will not be loaded or retrieved. Use this when a custom memory category/key, environment configuration, or lesson learned is no longer relevant or has been fully obsoleted.',
+    tags: ['memory', 'archive', 'delete', 'remove', '记忆', '删除', '归档'],
+    category: 'memory',
+    risk: 'medium',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['constant', 'ondemand', 'memory', 'soul'],
+          description: 'Document kind. Default: ondemand.'
+        },
+        scope: {
+          type: 'string',
+          enum: ['global', 'session'],
+          description: 'Document scope. Default: session.'
+        },
+        key: {
+          type: 'string',
+          description: 'Document key. Default: "default".'
+        }
+      }
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      const run = getRun(ctx.reqId)
+      const identity = getMemoryDocIdentity(args, run?.sessionId)
+      const success = archiveMemoryDoc(identity)
+      if (!success) {
+        return {
+          resultForModel: `No active ${identity.kind} document found for ${identity.scope}/${identity.key} to archive.`,
+          resultForUi: {
+            title: 'Archive Memory Document',
+            summary: 'No active document found'
+          }
+        }
+      }
+      return {
+        resultForModel: `Successfully archived the current ${identity.kind} document for ${identity.scope}/${identity.key}. It will no longer be retrieved by default.`,
+        resultForUi: {
+          title: 'Archive Memory Document',
+          summary: `Archived ${identity.kind}/${identity.scope}/${identity.key}`
+        }
+      }
+    }
+  },
   recall: {
     name: 'recall',
     title: 'Recall Memories',
@@ -419,8 +470,8 @@ export const memoryTools: Record<string, ToolDefinition> = {
         },
         kind: {
           type: 'string',
-          enum: ['memory', 'soul'],
-          description: 'Restrict to memory or soul documents.'
+          enum: ['constant', 'ondemand', 'memory', 'soul'],
+          description: 'Restrict to constant, ondemand, memory or soul documents.'
         },
         key: {
           type: 'string',
@@ -445,7 +496,9 @@ export const memoryTools: Record<string, ToolDefinition> = {
           ? Math.min(30, Math.max(1, Math.floor(args.limit)))
           : 10
       const docs = listMemoryDocs({
-        kind: args.kind === 'memory' || args.kind === 'soul' ? args.kind : undefined,
+        kind: (args.kind === 'constant' || args.kind === 'ondemand' || args.kind === 'memory' || args.kind === 'soul')
+          ? args.kind
+          : undefined,
         scope: args.scope === 'global' || args.scope === 'session' ? args.scope : undefined,
         sessionId,
         key: typeof args.key === 'string' ? args.key : undefined,

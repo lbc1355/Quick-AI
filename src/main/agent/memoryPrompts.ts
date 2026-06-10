@@ -1,4 +1,5 @@
 import { ChatCompletionMessage, MemoryDoc, UserMemory } from '../../shared/types'
+import { prependToMessageContent } from './messageBuilder'
 
 export const MEMORY_CONTEXT_PROMPT_PREFIX = '[MEMORY CONTEXT]'
 
@@ -84,10 +85,31 @@ export function injectMemoryContext(
   const copy = messages.filter((message) => !isMemoryContextPrompt(message))
   if (!prompt) return copy
 
-  const insertAt = Math.max(1, copy.length - 1)
-  copy.splice(insertAt, 0, {
-    role: 'system',
-    content: prompt
+  // Check if any message in the copy already has the memory context prepended
+  const alreadyInjected = copy.some((msg) => {
+    if (typeof msg.content === 'string') {
+      return msg.content.includes(MEMORY_CONTEXT_PROMPT_PREFIX)
+    }
+    if (Array.isArray(msg.content)) {
+      return msg.content.some(
+        (block) => block.type === 'text' && block.text?.includes(MEMORY_CONTEXT_PROMPT_PREFIX)
+      )
+    }
+    return false
   })
+
+  if (alreadyInjected) {
+    return copy
+  }
+
+  const latestUserMsg = copy[copy.length - 1]
+  if (latestUserMsg && latestUserMsg.role === 'user') {
+    prependToMessageContent(latestUserMsg, prompt)
+  } else {
+    copy.push({
+      role: 'system',
+      content: prompt
+    })
+  }
   return copy
 }

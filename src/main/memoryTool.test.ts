@@ -141,4 +141,72 @@ describeWithSqlite('remember / recall tools', () => {
     expect(updated.resultForModel).toContain('v2')
     expect(listMemoryDocs({ kind: 'soul', scope: 'global', status: 'archived' })).toHaveLength(1)
   })
+
+  it('archive_memory_doc archives an existing document', async () => {
+    stubRun('sess-A')
+    await ToolRegistry.replace_memory_doc.execute(
+      {
+        kind: 'ondemand',
+        scope: 'session',
+        key: 'react_native_quirks',
+        title: 'React Native Quirks',
+        content: 'Fast refresh breaks sometimes.'
+      },
+      ctx
+    )
+    
+    const readBefore = getCurrentMemoryDoc({ kind: 'ondemand', scope: 'session', sessionId: 'sess-A', key: 'react_native_quirks' })
+    expect(readBefore).toBeDefined()
+    expect(readBefore?.status).toBe('current')
+
+    const res = await ToolRegistry.archive_memory_doc.execute(
+      { kind: 'ondemand', scope: 'session', key: 'react_native_quirks' },
+      ctx
+    )
+    expect(res.resultForModel).toContain('Successfully archived')
+
+    const readAfter = getCurrentMemoryDoc({ kind: 'ondemand', scope: 'session', sessionId: 'sess-A', key: 'react_native_quirks' })
+    expect(readAfter).toBeUndefined()
+  })
+
+  it('archive_memory_doc reports not found when document does not exist', async () => {
+    stubRun('sess-A')
+    const res = await ToolRegistry.archive_memory_doc.execute(
+      { kind: 'ondemand', scope: 'session', key: 'nonexistent_key' },
+      ctx
+    )
+    expect(res.resultForModel).toContain('No active ondemand document found')
+  })
+
+  it('recall filters by constant and ondemand kinds correctly', async () => {
+    stubRun('sess-A')
+    await ToolRegistry.replace_memory_doc.execute(
+      {
+        kind: 'constant',
+        scope: 'global',
+        key: 'global_rules',
+        title: 'Global Rules',
+        content: 'Always format output.'
+      },
+      ctx
+    )
+    await ToolRegistry.replace_memory_doc.execute(
+      {
+        kind: 'ondemand',
+        scope: 'session',
+        key: 'session_notes',
+        title: 'Session Notes',
+        content: 'Debugging sqlite.'
+      },
+      ctx
+    )
+
+    const resConstant = await ToolRegistry.recall.execute({ kind: 'constant' }, ctx)
+    expect(resConstant.resultForModel).toContain('global_rules')
+    expect(resConstant.resultForModel).not.toContain('session_notes')
+
+    const resOndemand = await ToolRegistry.recall.execute({ kind: 'ondemand' }, ctx)
+    expect(resOndemand.resultForModel).toContain('session_notes')
+    expect(resOndemand.resultForModel).not.toContain('global_rules')
+  })
 })

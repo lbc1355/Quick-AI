@@ -73,7 +73,7 @@ describe('memory context prompts', () => {
     expect(prompt).not.toContain('old inactive memory')
   })
 
-  it('replaces older memory context prompts before injecting a fresh one', () => {
+  it('replaces older memory context prompts before injecting a fresh one inside the user message', () => {
     const messages = injectMemoryContext(
       [
         { role: 'system', content: 'system' },
@@ -86,9 +86,23 @@ describe('memory context prompts', () => {
     const joined = messages.map((message) => message.content).join('\n')
     expect(joined).toContain('new memory')
     expect(joined).not.toContain('old memory')
-    expect(messages[messages.length - 2]).toMatchObject({
-      role: 'system',
-      content: '[MEMORY CONTEXT]\nnew memory'
-    })
+    
+    const latestUserMsg = messages[messages.length - 1]
+    expect(latestUserMsg.role).toBe('user')
+    expect(latestUserMsg.content as string).toContain('[MEMORY CONTEXT]\nnew memory')
+    expect(latestUserMsg.content as string).toContain('hi')
+  })
+
+  it('does not duplicate memory context if already injected in a user message', () => {
+    const messages = injectMemoryContext(
+      [
+        { role: 'system', content: 'system' },
+        { role: 'user', content: '[MEMORY CONTEXT]\nexisting memory\n\nhi' }
+      ],
+      '[MEMORY CONTEXT]\nfresh memory'
+    )
+
+    expect(messages).toHaveLength(2)
+    expect(messages[1].content).toBe('[MEMORY CONTEXT]\nexisting memory\n\nhi')
   })
 })

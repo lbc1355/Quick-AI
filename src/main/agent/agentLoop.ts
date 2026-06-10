@@ -20,8 +20,7 @@ import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy
 import { LoopGuard } from './loopGuard'
 import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
 import { AmbiguousAction, loadRunCheckpoint, saveRunCheckpoint } from './runCheckpoint'
-import { loadMemoryContextPrompt } from './memoryContext'
-import { injectMemoryContext } from './memoryPrompts'
+import { listMemoryDocs } from '../database'
 import {
   appendRunAction,
   appendRunCheckpoint,
@@ -95,8 +94,6 @@ export const runAgentLoop = async (
     options.resumeFromRunId && !resumeCheckpoint
       ? `No resumable checkpoint found for run ${options.resumeFromRunId}. Regenerate the message if you want to start over.`
       : undefined
-  const memoryPrompt = loadMemoryContextPrompt(conversationId)
-
   // Prepare messages history
   let messages: ChatCompletionMessage[] = []
   if (resumeLoadError) {
@@ -107,8 +104,13 @@ export const runAgentLoop = async (
       role: 'system',
       content: buildCheckpointResumePrompt(resumeCheckpoint, actionLog)
     })
-    messages = injectMemoryContext(messages, memoryPrompt)
   } else if (isSkill) {
+    const memoryDocs = listMemoryDocs({
+      sessionId: conversationId,
+      includeSession: true,
+      status: 'current',
+      limit: 100
+    })
     messages = buildSkillMessages({
       apiUrl: options.apiUrl,
       apiKey: options.apiKey,
@@ -117,16 +119,21 @@ export const runAgentLoop = async (
       skill: options.skill!,
       userInput: options.userInput || '',
       resources: options.resources
-    })
-    messages = injectMemoryContext(messages, memoryPrompt)
+    }, memoryDocs)
   } else {
+    const memoryDocs = listMemoryDocs({
+      sessionId: conversationId,
+      includeSession: true,
+      status: 'current',
+      limit: 100
+    })
     messages = prepareChatAgentMessages(
       options.messages || [],
       options.systemPrompt,
       options.resources,
-      permissions
+      permissions,
+      memoryDocs
     )
-    messages = injectMemoryContext(messages, memoryPrompt)
   }
   if (options.branchOf) {
     messages = injectPromptBeforeLatestUser(messages, buildBranchForkPrompt(options.branchOf))

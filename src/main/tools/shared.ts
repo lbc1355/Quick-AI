@@ -125,7 +125,8 @@ export const DEFAULT_MEMORY_DOC_KEY = 'default'
 export const DEFAULT_MEMORY_DOC_TITLE = 'QuickAI Memory'
 
 export function normalizeDocKind(value: unknown): MemoryDocKind {
-  return value === 'soul' ? 'soul' : 'memory'
+  if (value === 'constant' || value === 'soul') return 'constant'
+  return 'ondemand'
 }
 
 export function normalizeDocScope(value: unknown): MemoryDocScope {

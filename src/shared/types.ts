@@ -213,7 +213,7 @@ export interface UserMemory {
   updatedAt: number
 }
 
-export type MemoryDocKind = 'memory' | 'soul'
+export type MemoryDocKind = 'constant' | 'ondemand' | 'memory' | 'soul'
 export type MemoryDocScope = 'global' | 'session'
 export type MemoryDocStatus = 'current' | 'archived'
 

@@ -952,8 +952,11 @@ export interface ReplaceMemoryDocInput {
 
 const DEFAULT_MEMORY_DOC_KEY = 'default'
 
-const normalizeMemoryDocKind = (kind?: string): MemoryDocKind =>
-  kind === 'soul' ? 'soul' : 'memory'
+const normalizeMemoryDocKind = (kind?: string): MemoryDocKind => {
+  const trimmed = kind?.trim()
+  if (trimmed === 'constant' || trimmed === 'soul') return 'constant'
+  return 'ondemand'
+}
 
 const normalizeMemoryDocScope = (scope?: string): MemoryDocScope =>
   scope === 'session' ? 'session' : 'global'
@@ -1155,6 +1158,27 @@ export function replaceMemoryDoc(input: ReplaceMemoryDocInput): MemoryDoc {
   })
 
   return write()
+}
+
+export function archiveMemoryDoc(input: {
+  kind?: MemoryDocKind
+  scope?: MemoryDocScope
+  sessionId?: string
+  key?: string
+}): boolean {
+  const database = getDb()
+  const ident = memoryDocIdentity(input)
+  const current = getCurrentMemoryDoc({
+    ...ident,
+    sessionId: ident.sessionId ?? undefined
+  })
+  if (!current) {
+    return false
+  }
+  database
+    .prepare(`UPDATE memory_docs SET status = 'archived', updatedAt = ? WHERE id = ?`)
+    .run(Date.now(), current.id)
+  return true
 }
 
 // ── Resource Cache CRUD helpers ──────────────────────────────────────────

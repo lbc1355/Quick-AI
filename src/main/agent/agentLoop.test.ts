@@ -26,6 +26,10 @@ vi.mock('./memoryContext', () => ({
   loadMemoryContextPrompt: vi.fn(() => '')
 }))
 
+vi.mock('../database', () => ({
+  listMemoryDocs: vi.fn(() => [])
+}))
+
 describe('runAgentLoop', () => {
   let mockWindow: BrowserWindow
   let sendMock: Mock
