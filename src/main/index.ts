@@ -14,7 +14,13 @@ import {
 } from './agent/runCheckpoint'
 import { copyRunManifestsForRuns, deleteRunManifest, deleteRunManifests } from './agent/runManifest'
 import { deleteResourceFile } from './resourceCache'
-import { deleteSessionMemories } from './database'
+import {
+  deleteSessionMemories,
+  listMemoryDocs,
+  getCurrentMemoryDoc,
+  replaceMemoryDoc,
+  archiveMemoryDoc
+} from './database'
 import { showDesktopNotification } from './tools/helpers'
 import { clearSessionApprovals } from './agent/AgentRunContext'
 
@@ -322,6 +328,22 @@ app.whenReady().then(() => {
 
   ipcMain.handle('fetch-models', (_event, fetchUrl, apiKey) => {
     return fetchModels(fetchUrl, apiKey)
+  })
+
+  ipcMain.handle('memory-list', (_event, opts) => {
+    return listMemoryDocs(opts)
+  })
+
+  ipcMain.handle('memory-read', (_event, input) => {
+    return getCurrentMemoryDoc(input)
+  })
+
+  ipcMain.handle('memory-replace', (_event, input) => {
+    return replaceMemoryDoc(input)
+  })
+
+  ipcMain.handle('memory-archive', (_event, input) => {
+    return archiveMemoryDoc(input)
   })
 
   // IPC handlers for window control

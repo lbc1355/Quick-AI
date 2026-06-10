@@ -719,6 +719,7 @@ function App(): React.JSX.Element {
           appStorePath={appStorePath}
           saveSuccess={saveSuccess}
           skills={skills}
+          activeSessionId={activeSessionId}
           setIsEditingProviderDetail={setIsEditingProviderDetail}
           setApiKey={setApiKey}
           setSelectedModel={setSelectedModel}

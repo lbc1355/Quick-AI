@@ -3,6 +3,7 @@ import { ApiProvider, Skill, SkillInstallPayload } from '../../../shared/types'
 import { ProviderList } from './ProviderList'
 import { ProviderEditor } from './ProviderEditor'
 import { SkillManager } from './SkillManager'
+import { MemoryManager } from './MemoryManager'
 
 interface SettingsViewProps {
   isEditingProviderDetail: boolean
@@ -24,6 +25,7 @@ interface SettingsViewProps {
   appStorePath: string
   saveSuccess: boolean
   skills: Skill[]
+  activeSessionId: string | null
 
   setIsEditingProviderDetail: (val: boolean) => void
   setApiKey: (val: string) => void
@@ -53,13 +55,14 @@ interface SettingsViewProps {
   onChangeToolPermission: (toolName: string, policy: 'allow' | 'ask' | 'deny') => void
 }
 
-type SettingsSection = 'providers' | 'general' | 'agent' | 'skills'
+type SettingsSection = 'providers' | 'general' | 'agent' | 'skills' | 'memory'
 
 const settingsSections: Array<{ id: SettingsSection; label: string; detail: string }> = [
   { id: 'providers', label: '服务商', detail: 'API 与模型' },
   { id: 'general', label: '通用', detail: '提示词与窗口' },
   { id: 'agent', label: 'Agent', detail: '工具权限' },
-  { id: 'skills', label: 'Skills', detail: 'Markdown / 文件夹' }
+  { id: 'skills', label: 'Skills', detail: 'Markdown / 文件夹' },
+  { id: 'memory', label: '记忆', detail: '管理常态与按需记忆' }
 ]
 
 const agentTools: Array<{
@@ -104,6 +107,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   appStorePath,
   saveSuccess,
   skills,
+  activeSessionId,
 
   setIsEditingProviderDetail,
   setApiKey,
@@ -336,6 +340,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onInstallSkill={onInstallSkill}
                 onRemoveSkill={onRemoveSkill}
               />
+            </section>
+          )}
+
+          {activeSection === 'memory' && (
+            <section className="control-section" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <header className="control-section-header" style={{ flexShrink: 0 }}>
+                <div>
+                  <h2>记忆管理</h2>
+                  <p>管理全局及单会话的常态和按需记忆分类</p>
+                </div>
+              </header>
+              <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+                <MemoryManager sessionId={activeSessionId} />
+              </div>
             </section>
           )}
         </main>
