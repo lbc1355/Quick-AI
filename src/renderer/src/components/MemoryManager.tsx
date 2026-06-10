@@ -391,7 +391,6 @@ export const MemoryManager: React.FC<MemoryManagerProps> = ({ sessionId }) => {
                       }}>
                         {doc.scope === 'global' ? '全局' : '会话'}
                       </span>
-                      <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>v{doc.version}</span>
                     </div>
 
                     <div className="skill-description" style={{

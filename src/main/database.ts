@@ -1019,15 +1019,20 @@ export function getCurrentMemoryDoc(input: {
 }): MemoryDoc | undefined {
   const database = getDb()
   const ident = memoryDocIdentity(input)
+  const isConstant = ident.kind === 'constant'
   const row = database
     .prepare(
       `SELECT * FROM memory_docs
-       WHERE kind = ? AND scope = ? AND IFNULL(sessionId, '') = IFNULL(?, '') AND docKey = ? AND status = 'current'
+       WHERE (kind = ? OR kind = ?) AND scope = ? AND IFNULL(sessionId, '') = IFNULL(?, '') AND docKey = ? AND status = 'current'
        LIMIT 1`
     )
-    .get(ident.kind, ident.scope, ident.sessionId, ident.key) as
-    | Parameters<typeof rowToMemoryDoc>[0]
-    | undefined
+    .get(
+      isConstant ? 'constant' : 'ondemand',
+      isConstant ? 'soul' : 'memory',
+      ident.scope,
+      ident.sessionId,
+      ident.key
+    ) as Parameters<typeof rowToMemoryDoc>[0] | undefined
   return row ? rowToMemoryDoc(row) : undefined
 }
 
@@ -1037,8 +1042,12 @@ export function listMemoryDocs(opts: MemoryDocQuery = {}): MemoryDoc[] {
   const params: unknown[] = []
 
   if (opts.kind) {
-    clauses.push('kind = ?')
-    params.push(normalizeMemoryDocKind(opts.kind))
+    const norm = normalizeMemoryDocKind(opts.kind)
+    if (norm === 'constant') {
+      clauses.push(`(kind = 'constant' OR kind = 'soul')`)
+    } else {
+      clauses.push(`(kind = 'ondemand' OR kind = 'memory')`)
+    }
   }
 
   if (opts.scope === 'global') {

@@ -154,7 +154,7 @@ export function getMemoryDocIdentity(
 
 export function formatMemoryDocHeader(doc: MemoryDoc): string {
   const scope = doc.scope === 'session' ? `session:${doc.sessionId || 'unknown'}` : 'global'
-  return `[${doc.kind}/${scope}/${doc.key} v${doc.version}] ${doc.title}`
+  return `[${doc.kind}/${scope}/${doc.key}] ${doc.title}`
 }
 
 export function appendMemoryDocContent(current: MemoryDoc | undefined, content: string): string {
