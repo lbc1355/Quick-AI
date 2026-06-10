@@ -92,11 +92,21 @@ const LogStepRow: React.FC<LogStepRowProps> = ({ log, resultLog, errorLog, paren
   )
 }
 
-const LogThinkRow: React.FC<{ log: AgentLogStep; parentExpanded: boolean }> = ({
-  log,
-  parentExpanded
-}) => {
+const LogThinkRow: React.FC<{
+  log: AgentLogStep
+  parentExpanded: boolean
+  isThinking?: boolean
+}> = ({ log, parentExpanded, isThinking = false }) => {
   const [isExpanded, setIsExpanded] = useState(false)
+
+  useEffect(() => {
+    if (isThinking) {
+      setIsExpanded(true)
+    } else {
+      setIsExpanded(false)
+    }
+  }, [isThinking])
+
   const title = log.step > 0 ? `Thought (Step ${log.step}/${log.maxSteps})` : `Thought`
 
   return (
@@ -652,6 +662,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                             thought: event.content
                           }}
                           parentExpanded={effectiveLogsExpanded}
+                          isThinking={isGenerating && eventIdx === msg.agentEvents!.length - 1}
                         />
                       </div>
                     )
@@ -808,6 +819,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                         key={`think-${log.step}-${logIdx}`}
                         log={log}
                         parentExpanded={effectiveLogsExpanded}
+                        isThinking={isGenerating && logIdx === legacyLogs.length - 1}
                       />
                     )
                   } else if (log.type === 'tool') {

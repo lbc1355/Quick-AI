@@ -386,7 +386,11 @@ function App(): React.JSX.Element {
 
     const observer = new ResizeObserver(() => {
       if (shouldAutoScrollRef.current && isCurrentSessionGenerating) {
+        isProgrammaticScrollRef.current = true
         container.scrollTop = container.scrollHeight
+        setTimeout(() => {
+          isProgrammaticScrollRef.current = false
+        }, 60)
       }
     })
 
@@ -402,7 +406,7 @@ function App(): React.JSX.Element {
     // If it's a programmatic scroll (like smooth scrolling on load), ignore it
     if (isProgrammaticScrollRef.current) return
 
-    const threshold = 15 // pixels from bottom
+    const threshold = 60 // pixels from bottom (higher threshold for high-DPI/zoom tolerance)
     const isAtBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight <= threshold
 
