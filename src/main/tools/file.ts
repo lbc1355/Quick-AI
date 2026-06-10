@@ -16,7 +16,7 @@ export const fileTools: Record<string, ToolDefinition> = {
   file_read: {
     name: 'file_read',
     title: 'Read File',
-    description: 'Reads the content of a local file within the workspace root directory.',
+    description: 'Reads the content of a local file. Files inside the workspace are read directly, while files outside the workspace require user approval.',
     tags: ['file', 'read', 'local', '文件', '读取', '内容', '读文件'],
     category: 'file',
     risk: 'low',
@@ -546,7 +546,7 @@ export const fileTools: Record<string, ToolDefinition> = {
   file_write: {
     name: 'file_write',
     title: 'Write File',
-    description: 'Writes content to a local file within the workspace root directory.',
+    description: 'Writes content to a local file. Files inside the workspace are written directly, while files outside the workspace require user approval.',
     tags: [
       'file',
       'write',
@@ -684,7 +684,7 @@ export const fileTools: Record<string, ToolDefinition> = {
     name: 'file_edit',
     title: 'Edit File',
     description:
-      'Performs exact string replacement in a file within the workspace. Provide the exact text to replace (old_string) and the new text (new_string). By default, old_string must match exactly one location — if it matches multiple locations the edit is rejected with a list of matching lines so you can add more surrounding context to make it unique. Use replace_all=true to replace every occurrence.',
+      'Performs exact string replacement in a file. Files inside the workspace are edited directly, while files outside the workspace require user approval. Provide the exact text to replace (old_string) and the new text (new_string). By default, old_string must match exactly one location — if it matches multiple locations the edit is rejected with a list of matching lines so you can add more surrounding context to make it unique. Use replace_all=true to replace every occurrence.',
     tags: [
       'file',
       'edit',
@@ -759,7 +759,9 @@ export const fileTools: Record<string, ToolDefinition> = {
         throw new Error('File does not exist. Use file_write to create a new file.')
       }
 
-      if (!isPathInWorkspace(realPath)) {
+      const inputEscapes = pathEscapesWorkspace(filePath)
+      const hasRunCtx = !!(ctx.reqId && getRun(ctx.reqId))
+      if (!isPathInWorkspace(realPath) && (!inputEscapes || !hasRunCtx)) {
         throw new Error('Security Violation: Path is outside the workspace directory.')
       }
       if (isSensitiveFile(realPath)) {

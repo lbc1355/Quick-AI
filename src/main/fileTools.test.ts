@@ -94,6 +94,26 @@ describe('File Safety & Search Tools', () => {
       )
     })
 
+    it('permits reading outside workspace if run context is active', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+      
+      const reqId = 'test-req-read-run'
+      createRun(reqId, [], 'all', new ActionLog())
+
+      const context = { reqId, signal: new AbortController().signal }
+      const outsidePath = resolve(workspaceRoot, '..', 'temp-outside-read.txt')
+      await fs.writeFile(outsidePath, 'outside readable content')
+
+      try {
+        const res = await ToolRegistry.file_read.execute({ path: outsidePath }, context)
+        expect(res.resultForModel).toContain('outside readable content')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(outsidePath).catch(() => {})
+      }
+    })
+
     it('rejects reading sensitive files', async () => {
       const context = { reqId: 'test-req', signal: new AbortController().signal }
 
@@ -447,6 +467,110 @@ describe('File Safety & Search Tools', () => {
           context
         )
       ).rejects.toThrow('sensitive file is blocked')
+    })
+
+    it('permits writing outside workspace if run context is active', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+      
+      const reqId = 'test-req-write-run'
+      createRun(reqId, [], 'all', new ActionLog())
+
+      const context = { reqId, signal: new AbortController().signal }
+      const outsidePath = resolve(workspaceRoot, '..', 'temp-outside-write.txt')
+
+      try {
+        const res = await ToolRegistry.file_write.execute(
+          {
+            path: outsidePath,
+            content: 'outside writable content',
+            mode: 'create'
+          },
+          context
+        )
+        expect(res.resultForUi.summary).toContain('created')
+        const readContent = await fs.readFile(outsidePath, 'utf-8')
+        expect(readContent).toBe('outside writable content')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(outsidePath).catch(() => {})
+      }
+    })
+  })
+
+  describe('file_edit tool', () => {
+    it('edits a file within the workspace', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const filePath = join(testDir, 'root.ts')
+      const res = await ToolRegistry.file_edit.execute(
+        {
+          path: filePath,
+          old_string: queryStr,
+          new_string: 'replacedQueryStr'
+        },
+        context
+      )
+
+      expect(res.resultForUi.summary).toContain('Replaced 1 occurrence')
+      const readContent = await fs.readFile(filePath, 'utf-8')
+      expect(readContent).toBe('replacedQueryStr')
+
+      // revert change
+      await fs.writeFile(filePath, queryStr)
+    })
+
+    it('rejects editing outside workspace if no active run context', async () => {
+      const context = { reqId: 'test-req-no-run', signal: new AbortController().signal }
+      const outsidePath = resolve(workspaceRoot, '..', 'traversal-edit.txt')
+      
+      await fs.writeFile(outsidePath, 'some data')
+
+      try {
+        await expect(
+          ToolRegistry.file_edit.execute(
+            {
+              path: outsidePath,
+              old_string: 'some',
+              new_string: 'other'
+            },
+            context
+          )
+        ).rejects.toThrow('Security Violation: Path is outside the workspace directory.')
+      } finally {
+        await fs.unlink(outsidePath).catch(() => {})
+      }
+    })
+
+    it('permits editing outside workspace if run context is active', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+      
+      const reqId = 'test-req-with-run'
+      createRun(reqId, [], 'all', new ActionLog())
+
+      const context = { reqId, signal: new AbortController().signal }
+      const outsidePath = resolve(workspaceRoot, '..', 'temp-outside-edit.txt')
+      
+      // Create the outside file first since file_edit requires file to exist
+      await fs.writeFile(outsidePath, 'original outside data')
+
+      try {
+        const res = await ToolRegistry.file_edit.execute(
+          {
+            path: outsidePath,
+            old_string: 'original outside data',
+            new_string: 'edited outside data'
+          },
+          context
+        )
+
+        expect(res.resultForUi.summary).toContain('Replaced 1 occurrence')
+        const readContent = await fs.readFile(outsidePath, 'utf-8')
+        expect(readContent).toBe('edited outside data')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(outsidePath).catch(() => {})
+      }
     })
   })
 
