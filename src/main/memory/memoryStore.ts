@@ -197,6 +197,23 @@ export async function writeTaskGroup(name: string, block: string): Promise<void>
   await persist(`memory: write task group "${trimmedName}"`)
 }
 
+export async function deleteTaskGroup(name: string): Promise<boolean> {
+  await ensureMemoryLibrary()
+  const target = name.trim().toLowerCase()
+  const groups = listTaskGroups()
+  const idx = groups.findIndex((g) => g.name.toLowerCase() === target)
+  if (idx < 0) return false
+
+  groups.splice(idx, 1)
+  const body = groups.length > 0
+    ? groups.map((g) => g.raw.trimEnd()).join('\n\n') + '\n'
+    : '<!-- 按需知识库。按 Task Group 组织，使用 write_memory(target="task_group") 写入。 -->\n'
+  writeFileSync(getMemoryFilePaths().memory, body, 'utf8')
+  rebuildSummaryIndex(groups)
+  await persist(`memory: delete task group "${name.trim()}"`)
+  return true
+}
+
 export async function appendRaw(text: string): Promise<void> {
   await ensureMemoryLibrary()
   const { raw } = getMemoryFilePaths()

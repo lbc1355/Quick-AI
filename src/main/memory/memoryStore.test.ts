@@ -14,10 +14,12 @@ import {
   readRaw,
   listMemoryEntries,
   readMemoryEntry,
-  writeMemoryEntry
+  writeMemoryEntry,
+  deleteTaskGroup
 } from './memoryStore'
 
 let home: string
+
 
 beforeEach(() => {
   home = join(tmpdir(), `quickai-memstore-${Date.now()}-${Math.floor(Math.random() * 1e6)}`)
@@ -128,3 +130,30 @@ describe('file-browser API', () => {
     await expect(writeMemoryEntry('../escape', 'x')).rejects.toThrow(/Unknown memory entry/)
   })
 })
+
+describe('deleteTaskGroup', () => {
+  it('deletes an existing group and refreshes the index', async () => {
+    await writeTaskGroup('Alpha', 'scope: v1\n\n## X\nold')
+    await writeTaskGroup('Beta', 'scope: v2\n\n## Y\nstuff')
+
+    let groups = listTaskGroups()
+    expect(groups).toHaveLength(2)
+    expect(readSummaryIndex()).toContain('Alpha')
+    expect(readSummaryIndex()).toContain('Beta')
+
+    const deleted = await deleteTaskGroup('alpha')
+    expect(deleted).toBe(true)
+
+    groups = listTaskGroups()
+    expect(groups).toHaveLength(1)
+    expect(groups[0].name).toBe('Beta')
+    expect(readSummaryIndex()).not.toContain('Alpha')
+    expect(readSummaryIndex()).toContain('Beta')
+  })
+
+  it('returns false for non-existent group', async () => {
+    const deleted = await deleteTaskGroup('NonExistent')
+    expect(deleted).toBe(false)
+  })
+})
+

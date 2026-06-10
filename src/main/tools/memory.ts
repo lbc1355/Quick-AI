@@ -12,7 +12,8 @@ import {
   setAlways,
   writeTaskGroup,
   appendRaw,
-  writeRolloutSummary
+  writeRolloutSummary,
+  deleteTaskGroup
 } from '../memory/memoryStore'
 
 export const memoryTools: Record<string, ToolDefinition> = {
@@ -360,6 +361,42 @@ export const memoryTools: Record<string, ToolDefinition> = {
       return {
         resultForModel: `Wrote Task Group "${groupName}" to MEMORY.md and refreshed the index. Committed to git.`,
         resultForUi: { title: 'Write Memory', summary: `Task Group: ${groupName}` }
+      }
+    }
+  },
+  delete_memory: {
+    name: 'delete_memory',
+    title: 'Delete Memory',
+    description:
+      'Delete a specific Task Group from the on-demand Markdown memory library. Returns success message or a warning if the group was not found.',
+    tags: ['memory', 'delete', 'forget', 'task group', '记忆', '删除', '忘记'],
+    category: 'memory',
+    risk: 'medium',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        group_name: {
+          type: 'string',
+          description: 'The name of the Task Group to delete.'
+        }
+      },
+      required: ['group_name']
+    },
+    execute: async (args: ToolArgs) => {
+      const groupName = typeof args.group_name === 'string' ? args.group_name.trim() : ''
+      if (!groupName) throw new Error('Missing or invalid group_name parameter')
+      const success = await deleteTaskGroup(groupName)
+      if (success) {
+        return {
+          resultForModel: `Successfully deleted Task Group "${groupName}" from MEMORY.md and rebuilt the index. Committed to git.`,
+          resultForUi: { title: 'Delete Memory', summary: `Deleted Task Group: ${groupName}` }
+        }
+      }
+      return {
+        resultForModel: `No Task Group named "${groupName}" was found in the memory library.`,
+        resultForUi: { title: 'Delete Memory', summary: `Not found: ${groupName}` }
       }
     }
   }
