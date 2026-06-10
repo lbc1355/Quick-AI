@@ -259,6 +259,8 @@ select {
   display: grid;
   grid-template-columns: 184px minmax(0, 1fr);
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
   background: var(--color-bg-main);
   position: relative;
 }

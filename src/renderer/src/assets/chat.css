@@ -1,13 +1,3 @@
-/* Chat Area Layout */
-.chat-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-  background: transparent;
-}
-
 /* Messages Scroll Area */
 .messages-container {
   flex: 1;
