@@ -179,7 +179,12 @@ export async function saveResourceChunk(
   const chunkMeta = getResourceChunksMetadata(resourceId)
   const newRanges: Array<{ start: number; end: number }> = []
   chunkMeta.forEach((c) => {
-    if (c.offset !== null && c.offset !== undefined && c.endOffset !== null && c.endOffset !== undefined) {
+    if (
+      c.offset !== null &&
+      c.offset !== undefined &&
+      c.endOffset !== null &&
+      c.endOffset !== undefined
+    ) {
       newRanges.push({ start: c.offset, end: c.endOffset })
     }
   })
@@ -187,7 +192,7 @@ export async function saveResourceChunk(
   const coverageState = getCoverageState(fetchedRanges, totalChars)
   const status = coverageState.status
   const effectiveNextOffset =
-    coverageState.status === 'complete' ? undefined : coverageState.nextOffset ?? nextOffset
+    coverageState.status === 'complete' ? undefined : (coverageState.nextOffset ?? nextOffset)
 
   // Update the resource cache entry with final state
   upsertResourceCache(
@@ -255,11 +260,7 @@ export function getCachedLink(resourceId: string, linkId: number): CachedLink | 
 }
 
 // Grep a cached resource's full text, returning matching lines with 1-indexed line numbers.
-export function findInResource(
-  resourceId: string,
-  query: string,
-  maxMatches = 15
-): FindMatch[] {
+export function findInResource(resourceId: string, query: string, maxMatches = 15): FindMatch[] {
   if (!RESOURCE_ID_PATTERN.test(resourceId)) {
     throw new Error('Invalid resource ID')
   }

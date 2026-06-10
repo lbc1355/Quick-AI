@@ -66,13 +66,41 @@ export function escapeRegExp(str: string): string {
 }
 
 export const SEARCH_IGNORE_EXTENSIONS = [
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svg',
-  '.mp4', '.mp3', '.wav', '.ogg',
-  '.zip', '.tar', '.gz', '.rar', '.7z', '.bz2', '.xz',
-  '.exe', '.dll', '.so', '.dylib', '.bin',
-  '.pdf', '.docx', '.xlsx', '.pptx',
-  '.class', '.pyc', '.o', '.a',
-  '-lock.json', '.lock', '-lock.yaml', '.lockb'
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.ico',
+  '.svg',
+  '.mp4',
+  '.mp3',
+  '.wav',
+  '.ogg',
+  '.zip',
+  '.tar',
+  '.gz',
+  '.rar',
+  '.7z',
+  '.bz2',
+  '.xz',
+  '.exe',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.bin',
+  '.pdf',
+  '.docx',
+  '.xlsx',
+  '.pptx',
+  '.class',
+  '.pyc',
+  '.o',
+  '.a',
+  '-lock.json',
+  '.lock',
+  '-lock.yaml',
+  '.lockb'
 ]
 
 /** Send a desktop notification. Returns false when unsupported on this platform. */

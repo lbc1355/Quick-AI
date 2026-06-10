@@ -507,7 +507,15 @@ export function saveSettings(settings: AppSettings): void {
     'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList) VALUES (?, ?, ?, ?, ?, ?, ?)'
   )
   for (const p of settings.providers) {
-    insert.run(p.id, p.name, p.type, p.apiKey || '', p.apiUrl, p.model, JSON.stringify(p.modelsList || []))
+    insert.run(
+      p.id,
+      p.name,
+      p.type,
+      p.apiKey || '',
+      p.apiUrl,
+      p.model,
+      JSON.stringify(p.modelsList || [])
+    )
   }
 }
 
@@ -517,7 +525,9 @@ export function loadSessions(): Session[] {
   const database = getDb()
 
   const sessionRows = database
-    .prepare('SELECT id, title, lastActiveTime, branchOf FROM sessions ORDER BY lastActiveTime DESC')
+    .prepare(
+      'SELECT id, title, lastActiveTime, branchOf FROM sessions ORDER BY lastActiveTime DESC'
+    )
     .all() as Array<{
     id: string
     title: string
@@ -595,7 +605,11 @@ export function loadSessions(): Session[] {
 function parseBranchRef(value: string | null): Session['branchOf'] {
   if (!value) return undefined
   try {
-    const parsed = JSON.parse(value) as { sessionId?: unknown; messageId?: unknown; runId?: unknown }
+    const parsed = JSON.parse(value) as {
+      sessionId?: unknown
+      messageId?: unknown
+      runId?: unknown
+    }
     if (typeof parsed?.sessionId === 'string' && typeof parsed?.messageId === 'string') {
       return {
         sessionId: parsed.sessionId,
@@ -1145,9 +1159,7 @@ export function replaceMemoryDoc(input: ReplaceMemoryDocInput): MemoryDoc {
 
 // ── Resource Cache CRUD helpers ──────────────────────────────────────────
 
-export function loadResourceCache(
-  resourceId: string
-): {
+export function loadResourceCache(resourceId: string): {
   id: string
   kind: string
   source: string
@@ -1264,10 +1276,7 @@ export function upsertResourceCache(
   }
 }
 
-export function upsertResourceChunk(
-  resourceId: string,
-  chunk: SessionResourceChunk
-): void {
+export function upsertResourceChunk(resourceId: string, chunk: SessionResourceChunk): void {
   const database = getDb()
   database
     .prepare(
@@ -1324,7 +1333,9 @@ export function pruneResourceChunks(resourceId: string, maxTextChars: number): v
   let totalChars = chunks.reduce((sum, c) => sum + (c.text?.length || 0), 0)
   for (const chunk of chunks) {
     if (totalChars <= maxTextChars) break
-    database.prepare('DELETE FROM resource_chunks WHERE resourceId = ? AND id = ?').run(resourceId, chunk.id)
+    database
+      .prepare('DELETE FROM resource_chunks WHERE resourceId = ? AND id = ?')
+      .run(resourceId, chunk.id)
     totalChars -= chunk.text?.length || 0
   }
 }
@@ -1335,7 +1346,12 @@ export function getResourceChunksMetadata(
   const database = getDb()
   return database
     .prepare('SELECT id, offset, endOffset, createdAt FROM resource_chunks WHERE resourceId = ?')
-    .all(resourceId) as Array<{ id: string; offset: number | null; endOffset: number | null; createdAt: number }>
+    .all(resourceId) as Array<{
+    id: string
+    offset: number | null
+    endOffset: number | null
+    createdAt: number
+  }>
 }
 
 export function isDatabaseInitialized(): boolean {
@@ -1364,7 +1380,9 @@ export function loadResourceLinks(
 ): Array<{ id: number; text: string; href: string }> {
   const database = getDb()
   const rows = database
-    .prepare('SELECT linkId, text, href FROM resource_links WHERE resourceId = ? ORDER BY linkId ASC')
+    .prepare(
+      'SELECT linkId, text, href FROM resource_links WHERE resourceId = ? ORDER BY linkId ASC'
+    )
     .all(resourceId) as Array<{ linkId: number; text: string; href: string }>
   return rows.map((r) => ({ id: r.linkId, text: r.text, href: r.href }))
 }

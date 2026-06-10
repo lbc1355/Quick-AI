@@ -52,15 +52,15 @@
 
 QuickAI 是一个 **uTools 风格的桌面 AI 助手**，通过 `Alt+/` 全局快捷键瞬间召唤/隐藏一个悬浮窗口，支持多 AI 服务商（DeepSeek、Kimi/Moonshot、Ollama 本地部署等），提供普通 Chat 和 Agent 两种对话模式。
 
-| 层级 | 技术 | 用途 |
-|------|------|------|
-| **桌面容器** | Electron 39 | 窗口管理、系统托盘、全局快捷键 |
-| **构建工具** | electron-vite 5 | 统一 main/preload/renderer 三端的构建 |
-| **前端框架** | React 19 + TypeScript 5.9 | 渲染进程的 UI 层 |
-| **UI 图标** | lucide-react | 矢量图标库 |
-| **测试** | Vitest 4 | 单元测试（node 环境） |
-| **代码规范** | ESLint 9 + Prettier 3 | 代码风格与检查 |
-| **包管理** | npm | 依赖管理 |
+| 层级         | 技术                      | 用途                                  |
+| ------------ | ------------------------- | ------------------------------------- |
+| **桌面容器** | Electron 39               | 窗口管理、系统托盘、全局快捷键        |
+| **构建工具** | electron-vite 5           | 统一 main/preload/renderer 三端的构建 |
+| **前端框架** | React 19 + TypeScript 5.9 | 渲染进程的 UI 层                      |
+| **UI 图标**  | lucide-react              | 矢量图标库                            |
+| **测试**     | Vitest 4                  | 单元测试（node 环境）                 |
+| **代码规范** | ESLint 9 + Prettier 3     | 代码风格与检查                        |
+| **包管理**   | npm                       | 依赖管理                              |
 
 ---
 
@@ -134,6 +134,7 @@ QuickAI 是一个 **uTools 风格的桌面 AI 助手**，通过 `Alt+/` 全局�
 ```
 
 **关键设计原则：**
+
 - **Main 进程** 拥有所有 Node.js 能力（文件系统、网络请求、子进程），是唯一的"事实来源"
 - **Preload 层** 通过 `contextBridge` 暴露有限 API —— 渲染进程永远无法直接访问 `fs`、`electron` 等原生模块
 - **Renderer 进程** 纯 UI 逻辑，通过 `window.api` 单向调用 main，通过 `window.api.onChatChunk` 订阅 main 推送的事件流
@@ -349,12 +350,14 @@ app.whenReady()
 ```
 
 **窗口管理策略：**
+
 - 窗口初始位置在屏幕外 `(-9999, -9999)`，加载完成后通过 `showInactive()` 预绘制
 - 显示/隐藏通过 `setOpacity(0/1)` + `setPosition` 实现 —— 避免 `show()/hide()` 触发 Windows 原生动画
 - 失焦自动隐藏（可配置 `autoHideOnBlur`）
 - 文件选择器激活时不触发自动隐藏
 
 **IPC 安全：**
+
 - `store-get/store-set` 使用 `ALLOWED_STORE_KEYS` 白名单：`['sessions', 'settings', 'skills', 'memories']`
 - `clear-session-caches` 对 `payload.sessionIds` 和 `payload.resourceIds` 做类型校验（`typeof === 'string'`），使用 `Promise.allSettled` 确保一个失败不阻塞其余删除
 
@@ -363,6 +366,7 @@ app.whenReady()
 **职责：** 基于单一 JSON 文件的持久化 KV 存储，带有旧版本迁移逻辑。
 
 **核心设计：**
+
 - 存储位置：`{app.getPath('userData')}/quickai_store.json`
 - 数据结构：`StorageSchema { sessions, settings, skills, memories }`
 - 读写策略：启动时全量读入内存缓存，每次 `set()` 同步写盘
@@ -407,14 +411,15 @@ AgentRunContext
 
 **模块级函数：**
 
-| 函数 | 作用 |
-|------|------|
-| `createRun(reqId, initialTools, toolScope, actionLog, permissionPolicy)` | 创建并注册 Run |
-| `getRun(reqId)` | 通过 reqId 查找 Run |
-| `abortRun(reqId)` | 触发 AbortController |
-| `destroyRun(reqId)` | abort + 从 Map 删除 |
+| 函数                                                                     | 作用                 |
+| ------------------------------------------------------------------------ | -------------------- |
+| `createRun(reqId, initialTools, toolScope, actionLog, permissionPolicy)` | 创建并注册 Run       |
+| `getRun(reqId)`                                                          | 通过 reqId 查找 Run  |
+| `abortRun(reqId)`                                                        | 触发 AbortController |
+| `destroyRun(reqId)`                                                      | abort + 从 Map 删除  |
 
 **Tool Output Store 机制：**
+
 - 当工具返回的输出超过 `TOOL_OUTPUT_SPILLOVER_THRESHOLD`（2000 chars）时，完整内容被存入此 Store
 - 上下文管理器截断旧消息中的大输出时，会留下 `read_tool_output(output_id="xxx")` 指针
 - 上限 5MB，FIFO 淘汰最旧的条目
@@ -430,6 +435,7 @@ runAgentLoop(mainWindow, reqId, options, permissions?)
 ```
 
 **参数 `options`：**
+
 - `apiUrl, apiKey, model` — LLM 配置
 - `systemPrompt?` — 全局自定义系统提示词
 - `messages?` — 已有的聊天历史
@@ -547,27 +553,29 @@ ToolRegistry: Record<string, ToolDefinition>
 
 **工具总览（11 个已实现 + 1 个未实现）：**
 
-| 工具名 | 分类 | 风险 | 功能简述 |
-|--------|------|------|----------|
-| `fetch_url` | web | low | 抓取网页内容，支持分页（offset/nextOffset） |
-| `web_search` | web | low | 搜索引擎聚合（Bing → Sogou → DuckDuckGo 级联回退） |
-| `file_read` | file | low | 读取 workspace 内文件（≤2MB） |
-| `file_write` | file | medium | 写入文件到 workspace（create/overwrite 模式） |
-| `workspace_search` | file | low | workspace 内文本搜索（类 grep） |
-| `workspace_list_files` | file | low | Glob 模式匹配文件列表 |
-| `search_tools` | system | low | 动态工具发现（meta-tool） |
-| `read_cached_resource` | system | low | 读取已缓存网页的指定 chunk |
-| `search_cached_resource` | system | low | 在缓存资源中搜索关键词 |
-| `read_tool_output` | system | low | 检索被上下文管理器截断的大工具输出 |
-| `list_past_actions` | memory | low | 列出本次会话的历史工具调用摘要 |
-| `get_past_action` | memory | low | 获取特定历史工具调用的完整详情 |
-| `shell` | shell | high | 🚧 未实现（stub） |
+| 工具名                   | 分类   | 风险   | 功能简述                                           |
+| ------------------------ | ------ | ------ | -------------------------------------------------- |
+| `fetch_url`              | web    | low    | 抓取网页内容，支持分页（offset/nextOffset）        |
+| `web_search`             | web    | low    | 搜索引擎聚合（Bing → Sogou → DuckDuckGo 级联回退） |
+| `file_read`              | file   | low    | 读取 workspace 内文件（≤2MB）                      |
+| `file_write`             | file   | medium | 写入文件到 workspace（create/overwrite 模式）      |
+| `workspace_search`       | file   | low    | workspace 内文本搜索（类 grep）                    |
+| `workspace_list_files`   | file   | low    | Glob 模式匹配文件列表                              |
+| `search_tools`           | system | low    | 动态工具发现（meta-tool）                          |
+| `read_cached_resource`   | system | low    | 读取已缓存网页的指定 chunk                         |
+| `search_cached_resource` | system | low    | 在缓存资源中搜索关键词                             |
+| `read_tool_output`       | system | low    | 检索被上下文管理器截断的大工具输出                 |
+| `list_past_actions`      | memory | low    | 列出本次会话的历史工具调用摘要                     |
+| `get_past_action`        | memory | low    | 获取特定历史工具调用的完整详情                     |
+| `shell`                  | shell  | high   | 🚧 未实现（stub）                                  |
 
 **每个工具的 `execute()` 函数接收两个参数：**
+
 - `args: ToolArgs` — 解析后的工具参数（已从 JSON 字符串解析为对象）
 - `ctx: ToolExecutionContext { reqId, signal, mainWindow }` — 运行上下文
 
 **`search_tools` 的特殊行为：**
+
 - 调用时不仅返回匹配的工具摘要，还会自动将结果中的工具及其依赖项激活到当前 Run 的 `activeTools` 中
 - 这是动态工具发现的核心机制
 
@@ -583,6 +591,7 @@ ToolRegistry: Record<string, ToolDefinition>
    - 有 tools 时设 `tool_choice: 'auto'`，开启流式
 
 2. **SSE 流解析（状态机）：**
+
    ```
    delta.reasoning_content → accumulate + emitReasoning
    delta.tool_calls[]       → 按 index 构建 tool_call 对象（增量拼接）
@@ -628,14 +637,15 @@ fetchModels(fetchUrl, apiKey)
 
 **主要导出：**
 
-| 函数 | 用途 |
-|------|------|
-| `buildToolDirectorySummary(scope, permissionPolicy)` | 生成紧凑的工具目录（≤2000 chars）注入系统提示词 |
-| `buildResourceSummaryPrompt(resources)` | 生成会话资源摘要（≤4000 chars），包含 chunk 覆盖状态 |
-| `buildSkillMessages(options)` | 为 Skill 模式构建消息 |
-| `prepareChatAgentMessages(messages, systemPrompt, resources, permissions)` | 为 General Agent 模式构建消息 |
+| 函数                                                                       | 用途                                                 |
+| -------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `buildToolDirectorySummary(scope, permissionPolicy)`                       | 生成紧凑的工具目录（≤2000 chars）注入系统提示词      |
+| `buildResourceSummaryPrompt(resources)`                                    | 生成会话资源摘要（≤4000 chars），包含 chunk 覆盖状态 |
+| `buildSkillMessages(options)`                                              | 为 Skill 模式构建消息                                |
+| `prepareChatAgentMessages(messages, systemPrompt, resources, permissions)` | 为 General Agent 模式构建消息                        |
 
 **General Agent 的系统提示词包含：**
+
 - 全局自定义 systemPrompt（如有）
 - 工具目录摘要（预激活的工具列表）
 - 行为规则：
@@ -647,6 +657,7 @@ fetchModels(fetchUrl, apiKey)
   - 最终答案标注来源 URL
 
 **`buildResourceSummaryPrompt` 的特殊处理：**
+
 - 按 `updatedAt` 降序排列资源
 - 检测 fetchedRange 覆盖缺口，标记 `status: 'partial'` + `nextOffset`
 - 区分 `status: 'stale'`（过期）和实际的 `partial`（未读完）
@@ -659,6 +670,7 @@ fetchModels(fetchUrl, apiKey)
 **核心函数：**
 
 **`getContextWindowSize(modelName): number`**
+
 - 已知模型查表（DeepSeek, Kimi/Moonshot, GPT-4o）
 - 动态推断：从模型名后缀 `-128k`、`_32k`、`-1m` 提取
 - 默认 16000 tokens
@@ -684,6 +696,7 @@ Phase 2: 消息单元删除
 **职责：** 实现 ask 权限的异步等待机制。Agent 循环在需要用户确认时挂起，用户通过 UI 响应后继续。
 
 **设计：**
+
 - 每个待定权限请求存储为 `{resolve, reject, timeoutId}`
 - 以 `${reqId}:${callId}` 为 key
 - 10 分钟超时（`timeoutMs = 10 * 60 * 1000`）
@@ -699,13 +712,13 @@ Phase 2: 消息单元删除
 
 **守卫规则（按优先级）：**
 
-| 规则 | 触发条件 | 动作 |
-|------|----------|------|
-| 路径逃逸 | 文件路径含绝对路径/`~`/`$HOME`/`..` 越界 | `deny` |
-| 敏感文件 | 文件名匹配 `.env`/`.pem`/`.key`/SSH key 等 | `ask` |
-| 危险命令 | `analyzeCommand` 返回 `dangerous` | `deny` |
-| 需确认命令 | `analyzeCommand` 返回 `requires_approval` | `ask` |
-| 高风险工具 | `risk === 'high'` + `escalateHighRiskToAsk` | `ask` |
+| 规则       | 触发条件                                    | 动作   |
+| ---------- | ------------------------------------------- | ------ |
+| 路径逃逸   | 文件路径含绝对路径/`~`/`$HOME`/`..` 越界    | `deny` |
+| 敏感文件   | 文件名匹配 `.env`/`.pem`/`.key`/SSH key 等  | `ask`  |
+| 危险命令   | `analyzeCommand` 返回 `dangerous`           | `deny` |
+| 需确认命令 | `analyzeCommand` 返回 `requires_approval`   | `ask`  |
+| 高风险工具 | `risk === 'high'` + `escalateHighRiskToAsk` | `ask`  |
 
 **设计原则：** 权限制只能收紧，不能放宽（`stricter()` 取两者的更高安全等级）。
 
@@ -716,6 +729,7 @@ Phase 2: 消息单元删除
 **两个导出函数：**
 
 **`pathEscapesWorkspace(inputPath): boolean`**
+
 - 检测绝对路径、`~`、`$HOME`/`%USERPROFILE%`、`..` 遍历
 - 不触碰 fs，纯字符串分析
 
@@ -723,11 +737,11 @@ Phase 2: 消息单元删除
 
 分类等级：
 
-| 等级 | 条件 |
-|------|------|
-| `dangerous` | null 字节、多行命令、管道 curl→sh、fork bomb、`mkfs/dd/shutdown/reboot`、`rm -rf` 危险目标、`eval` |
-| `requires_approval` | `rm`（非危险目标）、`find -delete`/`-exec rm`、未知命令 |
-| `safe` | 只读命令：`ls/cat/echo/pwd/whoami/head/tail/grep/find/wc/stat/date/which/env` |
+| 等级                | 条件                                                                                               |
+| ------------------- | -------------------------------------------------------------------------------------------------- |
+| `dangerous`         | null 字节、多行命令、管道 curl→sh、fork bomb、`mkfs/dd/shutdown/reboot`、`rm -rf` 危险目标、`eval` |
+| `requires_approval` | `rm`（非危险目标）、`find -delete`/`-exec rm`、未知命令                                            |
+| `safe`              | 只读命令：`ls/cat/echo/pwd/whoami/head/tail/grep/find/wc/stat/date/which/env`                      |
 
 **`tokenizeCommand`** 实现了最小化的 shell 风格分词器（支持单双引号）。
 
@@ -738,10 +752,12 @@ Phase 2: 消息单元删除
 **两类保护：**
 
 **1. 相同调用阻断（Identical-call blocking）：**
+
 - 对 `(toolName, args)` 计算稳定签名（递归排序 JSON keys）
 - 同一签名调用 ≥3 次 → block，告知模型使用已有结果或改变方法
 
 **2. 连续失败熔断（Consecutive-failure escalation）：**
+
 - 同一工具连续失败 ≥3 次 → warn（提示模型换方法）
 - 同一工具连续失败 ≥8 次 → halt（强制结束工具使用，进入 final answer）
 
@@ -750,11 +766,13 @@ Phase 2: 消息单元删除
 **职责：** 网络请求的指数退避重试。
 
 **默认策略：**
+
 - 最多 2 次重试（共 3 次尝试）
 - 退避：1s → 2s → 5s (上限)
 - 仅重试瞬态错误：`ETIMEDOUT`, `ECONNRESET`, `ECONNREFUSED`, `fetch failed`, `network error`
 
 **`withRetry(fn, policy, signal)`**
+
 - 支持通过 AbortSignal 在重试等待期间响应中止
 - 等待期间监听 `signal.addEventListener('abort', ...)` 及时退出
 
@@ -763,6 +781,7 @@ Phase 2: 消息单元删除
 **职责：** 轻量级 token 数估算，用于上下文窗口管理（无需调用 API）。
 
 **算法：**
+
 - 英文/代码：~4 字符/token
 - CJK（中日韩）：~1.5 字符/token
 - 每条消息额外 +4 tokens（角色/格式开销）
@@ -784,16 +803,19 @@ ActionRecord {
 ```
 
 **存储：**
+
 - 位置：`{userData}/action_logs/{sessionId}.jsonl`
 - 格式：每行一个 JSON 对象
 - 上限：内存中最多 500 条（FIFO），超出时淘汰最旧
 
 **敏感信息保护：**
+
 - `SENSITIVE_ARG_KEYS` 集合：`apiKey`, `api_key`, `token`, `password`, `passwd`, `secret`, `credential`, `authorization`, `auth`, `key`, `cert`, `privateKey`, `private_key`
 - `redactArgs()` 递归处理嵌套对象，匹配到敏感 key 替换为 `[redacted]`
 - 注意：脱敏发生在 **append 时**，内存中的对象是脱敏后的副本
 
 **API：**
+
 - `append(record)` — 追加一条记录
 - `list({toolName?, fromTurn?, toTurn?, limit?})` — 分页列表（最新优先）
 - `get(callId)` — 获取单条完整记录
@@ -801,6 +823,7 @@ ActionRecord {
 - `save()` — 完整写盘（用于 Run 结束时的 final flush）
 
 **辅助函数：**
+
 - `getActionLogPath(conversationId)` — 解析文件路径（清洗非法字符）
 - `deleteActionLog(conversationId)` — 删除文件（ENOENT 不抛异常）
 
@@ -809,25 +832,30 @@ ActionRecord {
 **职责：** 缓存 `fetch_url` 的结果到磁盘，支持分块存储和读取。
 
 **核心设计：**
+
 - **资源 ID：** `md5(source_url)` → 32 位十六进制字符串
 - **存储位置：** `{userData}/resources/{resourceId}.json`
 - **文件结构：** `CachedResourceFile { id, kind, source, chunks[], fetchedRanges[], status, ... }`
 - **chunk 标识：** `chunk-{offset}-{endOffset}` —— 支持同一 URL 多个分页窗口
 
 **`saveResourceChunk(resourceId, kind, source, title, totalChars, nextOffset, newChunk): SessionResource`**
+
 - 读取现有文件（如存在）→ merge/upsert chunk → 重新计算 fetchedRanges 和 coverage 状态 → 写盘
 - 返回给前端的 `SessionResource` **剥离了 chunk 中的 text 字段**（仅保留元数据），防止 IPC 传输巨大对象
 - Chunk 总字符数超过 2MB 时按时间优先剪枝（优先淘汰旧 chunk）
 
 **`readResourceChunk(resourceId, offset): string`**
+
 - 先精确匹配 offset → 再范围覆盖匹配
 - 返回 chunk 的原始 text
 
 **`deleteResourceFile(resourceId)`**
+
 - 自检 `RESOURCE_ID_PATTERN` (/^[a-f0-9]{32}$/) 防止路径注入
 - ENOENT 不抛异常，其他错误仅 log —— best-effort 语义
 
 **辅助函数：**
+
 - `mergeRanges(ranges)` — 合并重叠/连续的读取范围
 - `getFirstMissingOffset(ranges, totalChars)` — 找到第一个未覆盖的位置
 
@@ -848,6 +876,7 @@ ActionRecord {
 4. **请求超时：** 10 秒（`REQUEST_TIMEOUT_MS`）
 
 **HTML 处理：**
+
 - `stripHtml()` — 移除 script/style/svg/noscript 标签，解码 HTML 实体，规范化空白
 - `extractLinks()` — 提取 `<a href>`，最多 40 个链接，过滤 `javascript:`/`#` 等
 
@@ -863,6 +892,7 @@ Web 搜索请求
 任何引擎返回 0 结果或异常 → 自动尝试下一个。全失败时抛出聚合错误。
 
 **分页获取：**
+
 - `normalizeFetchUrlOptions({offset, maxChars})` — 规范化分页参数
 - `offset`（字符起始位置）+ `maxChars`（1000-16000）→ 返回窗口 + `nextOffset`
 - 去重检测：相同 `(url, offset, maxChars)` 的窗口视为重复调用
@@ -872,10 +902,10 @@ Web 搜索请求
 **职责：** Agent 子系统的对外接口，聚集 4 个函数。
 
 ```typescript
-runAgentSkill(win, reqId, options, permissions)    // → runAgentLoop
-runGeneralAgent(win, reqId, options, permissions)   // → runAgentLoop
-resolveToolPermission(reqId, callId, approved)      // → globalPermissionManager.resolve
-abortAgentSkill(reqId)                              // → abortRun
+runAgentSkill(win, reqId, options, permissions) // → runAgentLoop
+runGeneralAgent(win, reqId, options, permissions) // → runAgentLoop
+resolveToolPermission(reqId, callId, approved) // → globalPermissionManager.resolve
+abortAgentSkill(reqId) // → abortRun
 ```
 
 ---
@@ -883,33 +913,36 @@ abortAgentSkill(reqId)                              // → abortRun
 ## 6. Preload 层详解
 
 **文件：**
+
 - `src/preload/index.ts` — 实现
 - `src/preload/index.d.ts` — 类型声明（`Window.api` 接口扩展）
 
 **设计：**
+
 - 通过 `contextBridge.exposeInMainWorld` 暴露 `window.electron`（Electron API）和 `window.api`（自定义 API）
 - 渲染进程只能访问预暴露的方法，无法访问 `ipcRenderer` 原生对象
 
 **`window.api` 完整 API 列表：**
 
-| 方法 | IPC 类型 | 用途 |
-|------|----------|------|
-| `storeGet(key)` | invoke | 读取持久化数据 |
-| `storeSet(key, value)` | invoke | 写入持久化数据 |
-| `getAppInfo()` | invoke | 获取存储路径和版本 |
-| `hideWindow()` | send | 隐藏窗口 |
-| `toggleDevTools()` | send | 开关 DevTools |
-| `setFilePickerActive(active)` | send | 标记文件选择器状态 |
-| `reSummonWindow()` | send | 重新显示窗口 |
-| `startChatCompletion(reqId, options)` | send | 启动 Chat/Agent 对话 |
-| `startAgentSkill(reqId, options)` | send | 启动 Agent Skill |
-| `respondToolPermission(reqId, callId, approved)` | send | 响应用户权限选择 |
-| `abortGeneration(reqId)` | send | 中止当前生成 |
-| `clearSessionCaches(payload)` | invoke | 删除会话的磁盘缓存 |
-| `onChatChunk(callback)` | on (subscribe) | 订阅 AI 输出流 |
-| `fetchModels(url, apiKey)` | invoke | 获取可用模型列表 |
+| 方法                                             | IPC 类型       | 用途                 |
+| ------------------------------------------------ | -------------- | -------------------- |
+| `storeGet(key)`                                  | invoke         | 读取持久化数据       |
+| `storeSet(key, value)`                           | invoke         | 写入持久化数据       |
+| `getAppInfo()`                                   | invoke         | 获取存储路径和版本   |
+| `hideWindow()`                                   | send           | 隐藏窗口             |
+| `toggleDevTools()`                               | send           | 开关 DevTools        |
+| `setFilePickerActive(active)`                    | send           | 标记文件选择器状态   |
+| `reSummonWindow()`                               | send           | 重新显示窗口         |
+| `startChatCompletion(reqId, options)`            | send           | 启动 Chat/Agent 对话 |
+| `startAgentSkill(reqId, options)`                | send           | 启动 Agent Skill     |
+| `respondToolPermission(reqId, callId, approved)` | send           | 响应用户权限选择     |
+| `abortGeneration(reqId)`                         | send           | 中止当前生成         |
+| `clearSessionCaches(payload)`                    | invoke         | 删除会话的磁盘缓存   |
+| `onChatChunk(callback)`                          | on (subscribe) | 订阅 AI 输出流       |
+| `fetchModels(url, apiKey)`                       | invoke         | 获取可用模型列表     |
 
 **`onChatChunk` 的实现：**
+
 - 返回 `unsubscribe` 函数（调用 `ipcRenderer.removeListener`）
 - 这是唯一使用 `ipcRenderer.on` 的方法 —— 所有流式数据通过此通道推送
 
@@ -922,6 +955,7 @@ abortAgentSkill(reqId)                              // → abortRun
 **职责：** 所有状态和 Hook 的编排中心，UI 布局的顶层容器。约 850 行。
 
 **Hook 编排：**
+
 ```
 App
 ├─ useProviders()       → apiKey, apiUrl, model, systemPrompt, permissions, ...
@@ -968,22 +1002,26 @@ computeOrphanResourceIds(target: Session, survivors: Session[]): string[]
 **核心逻辑：**
 
 **`checkSessionTimeout`：**
+
 - 窗口显示时调用
 - 如活跃会话的最后活跃时间 > 5 分钟前 → 自动新建会话
 - ≤ 5 分钟 → 仅更新 `lastActiveTime`
 
 **`handleClearCurrentSession`：**
+
 1. 计算 `survivors = sessions.filter(id !== activeSessionId)`（**注意：清除后的会话自身不在 survivors 中**，因为它将被重置且不再引用任何资源）
 2. `computeOrphanResourceIds(target, survivors)` 找到仅属于该会话的资源
 3. `clearCachesFor(activeSessionId, orphans)` → IPC 删除磁盘文件
 4. `storeSet` 更新 sessions（messages=[]，resources=[]，title='新对话'）
 
 **`handleDeleteSession`：**
+
 1. `survivors = sessions.filter(id !== targetSessionId)` — **在任何 placeholder 推入之前计算**
 2. 计算孤儿资源 + `clearCachesFor`
 3. 过滤出剩余会话，如目标为活跃会话则切换到第一个或新建
 
 **`computeOrphanResourceIds` 的安全性：**
+
 - 资源按 `md5(url)` 全局唯一，多会话可共享同一资源文件
 - 孤儿检测确保仅在"目标会话引用且无其他会话引用"时才删除
 - 处理 `resources` 为 `undefined` 的边界情况（兼容旧数据）
@@ -993,6 +1031,7 @@ computeOrphanResourceIds(target: Session, survivors: Session[]): string[]
 **职责：** 管理单次 AI 对话请求的生命周期，从发送到流式接收。
 
 **核心函数 `startStreamingRun`：**
+
 ```
 startStreamingRun(reqId, assistantMsgId, start, formatError)
   │
@@ -1009,11 +1048,13 @@ startStreamingRun(reqId, assistantMsgId, start, formatError)
 ```
 
 **`applyAgentEventToMessage` 的合并策略：**
+
 - `tool_call` 事件：按 `callId` 查重更新 `permissionState`
 - `reasoning` / `final` 事件：连续的同类型事件合并 content（减少事件数组膨胀）
 - 其他事件：直接 push
 
 **`handleSendMessage`：**
+
 1. 构造用户消息 → 追加到 currentSession
 2. 创建空 assistantMsg 占位
 3. 构建 `apiMessages[]`：支持多模态（图片 + 文本混合 content）
@@ -1025,6 +1066,7 @@ startStreamingRun(reqId, assistantMsgId, start, formatError)
 **职责：** 多 AI 服务商（provider）配置管理，包括 API Key、URL、模型列表、系统提示词、权限策略的完整 CRUD。
 
 **核心特性：**
+
 - 从 store 加载/持久化 settings
 - 服务商增删改 + 激活切换
 - 模型列表的手动添加 / API 拉取（`fetchModels`）
@@ -1035,11 +1077,13 @@ startStreamingRun(reqId, assistantMsgId, start, formatError)
 **职责：** Skill（技能）的安装和管理。
 
 **`installSkillFromMarkdown(fileName, markdown)`：**
+
 - 调用 `parseSkillMarkdown(markdown, fileName)` 解析 SKILL.md
 - 生成唯一 ID、标准化字段（`triggers[]`、`kind`、`tools[]`、`rawMarkdown`）
 - Agent 类型的 Skill 默认注入 `fetch_url` 工具
 
 **规范化（`normalizeLoadedSkill`）：**
+
 - 兼容旧格式：`trigger` → `triggers[]`
 - 兼容旧格式：`mode === 'run'` → `kind = 'agent'`
 - 确保 `rawMarkdown` 始终有值（回退到 `prompt`）
@@ -1049,6 +1093,7 @@ startStreamingRun(reqId, assistantMsgId, start, formatError)
 **职责：** `/` 命令的自动补全逻辑。
 
 **匹配类别：**
+
 - 内置命令：`/new`、`/clear`、`/settings`、`/help`
 - 模型切换：`/model:模型名`
 - 会话切换：`/history:会话名` 或 `#会话名`
@@ -1061,21 +1106,22 @@ startStreamingRun(reqId, assistantMsgId, start, formatError)
 **职责：** 文件上传管理（拖拽、粘贴、文件选择）。
 
 **支持的类型：**
+
 - 图片：转 base64 Data URL（用于多模态视觉模型）
 - 文本文件：读取为文本引用
 - 其他：读取为 base64 字符串引用
 
 ### 7.8 UI 组件
 
-| 组件 | 文件 | 功能 |
-|------|------|------|
-| `MessageBubble` | `components/MessageBubble.tsx` | 单条消息渲染：Markdown、代码高亮、KaTeX 数学公式、Agent 事件流（推理/工具调用/结果）、权限状态徽章、编辑/重生成按钮 |
-| `SettingsView` | `components/SettingsView.tsx` | 设置面板主容器：服务商列表、编辑器、全局设置、Skill 管理、权限配置 |
-| `ModelsModal` | `components/ModelsModal.tsx` | 模型选择弹窗：勾选/取消模型 |
-| `ProviderEditor` | `components/ProviderEditor.tsx` | 服务商编辑表单：名称、类型、API URL、Key、模型管理 |
-| `ProviderList` | `components/ProviderList.tsx` | 服务商列表：切换激活、编辑、删除 |
-| `SkillManager` | `components/SkillManager.tsx` | Skill 管理面板：安装（拖拽 SKILL.md）、查看、删除 |
-| `FilePreviewList` | `components/FilePreviewList.tsx` | 附件预览列表：文件名、类型图标、删除按钮 |
+| 组件              | 文件                             | 功能                                                                                                                |
+| ----------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `MessageBubble`   | `components/MessageBubble.tsx`   | 单条消息渲染：Markdown、代码高亮、KaTeX 数学公式、Agent 事件流（推理/工具调用/结果）、权限状态徽章、编辑/重生成按钮 |
+| `SettingsView`    | `components/SettingsView.tsx`    | 设置面板主容器：服务商列表、编辑器、全局设置、Skill 管理、权限配置                                                  |
+| `ModelsModal`     | `components/ModelsModal.tsx`     | 模型选择弹窗：勾选/取消模型                                                                                         |
+| `ProviderEditor`  | `components/ProviderEditor.tsx`  | 服务商编辑表单：名称、类型、API URL、Key、模型管理                                                                  |
+| `ProviderList`    | `components/ProviderList.tsx`    | 服务商列表：切换激活、编辑、删除                                                                                    |
+| `SkillManager`    | `components/SkillManager.tsx`    | Skill 管理面板：安装（拖拽 SKILL.md）、查看、删除                                                                   |
+| `FilePreviewList` | `components/FilePreviewList.tsx` | 附件预览列表：文件名、类型图标、删除按钮                                                                            |
 
 ---
 
@@ -1127,33 +1173,33 @@ startStreamingRun(reqId, assistantMsgId, start, formatError)
 
 ### invoke (Renderer → Main → 返回结果)
 
-| 通道名 | 方向 | 参数 | 返回值 |
-|--------|------|------|--------|
-| `store-get` | renderer→main | `key: string` | `StorageSchema[K]` |
-| `store-set` | renderer→main | `key, value` | `boolean` |
-| `get-app-info` | renderer→main | 无 | `{ storePath, version }` |
-| `clear-session-caches` | renderer→main | `{ sessionIds, resourceIds }` | `{ ok: true }` |
-| `fetch-models` | renderer→main | `url, apiKey` | `string[]` |
+| 通道名                 | 方向          | 参数                          | 返回值                   |
+| ---------------------- | ------------- | ----------------------------- | ------------------------ |
+| `store-get`            | renderer→main | `key: string`                 | `StorageSchema[K]`       |
+| `store-set`            | renderer→main | `key, value`                  | `boolean`                |
+| `get-app-info`         | renderer→main | 无                            | `{ storePath, version }` |
+| `clear-session-caches` | renderer→main | `{ sessionIds, resourceIds }` | `{ ok: true }`           |
+| `fetch-models`         | renderer→main | `url, apiKey`                 | `string[]`               |
 
 ### send (Renderer → Main，无返回值)
 
-| 通道名 | 方向 | 参数 |
-|--------|------|------|
-| `hide-window` | renderer→main | 无 |
-| `set-file-picker-active` | renderer→main | `active: boolean` |
-| `re-summon-window` | renderer→main | 无 |
-| `toggle-devtools` | renderer→main | 无 |
-| `start-chat-completion` | renderer→main | `reqId, options: ChatRunOptions` |
-| `start-agent-skill` | renderer→main | `reqId, options: AgentSkillRunOptions` |
-| `respond-tool-permission` | renderer→main | `reqId, callId, approved` |
-| `abort-generation` | renderer→main | `reqId` |
+| 通道名                    | 方向          | 参数                                   |
+| ------------------------- | ------------- | -------------------------------------- |
+| `hide-window`             | renderer→main | 无                                     |
+| `set-file-picker-active`  | renderer→main | `active: boolean`                      |
+| `re-summon-window`        | renderer→main | 无                                     |
+| `toggle-devtools`         | renderer→main | 无                                     |
+| `start-chat-completion`   | renderer→main | `reqId, options: ChatRunOptions`       |
+| `start-agent-skill`       | renderer→main | `reqId, options: AgentSkillRunOptions` |
+| `respond-tool-permission` | renderer→main | `reqId, callId, approved`              |
+| `abort-generation`        | renderer→main | `reqId`                                |
 
 ### send (Main → Renderer，事件推送)
 
-| 通道名 | 方向 | 数据结构 |
-|--------|------|----------|
-| `chat-chunk` | main→renderer | `ChatChunkData { reqId, content?, reasoningContent?, done?, error?, event? }` |
-| `window-shown` | main→renderer | 无参数 |
+| 通道名         | 方向          | 数据结构                                                                      |
+| -------------- | ------------- | ----------------------------------------------------------------------------- |
+| `chat-chunk`   | main→renderer | `ChatChunkData { reqId, content?, reasoningContent?, done?, error?, event? }` |
+| `window-shown` | main→renderer | 无参数                                                                        |
 
 ---
 
@@ -1225,10 +1271,12 @@ Main: index.ts 'clear-session-caches' handler
 QuickAI 实现了多层纵深防御：
 
 ### 第一层：进程隔离
+
 - Renderer 无法访问 Node.js API（sandbox）
 - 所有原生操作通过 Preload 的有限 API 间接调用
 
 ### 第二层：文件系统安全（Workspace 沙箱）
+
 - **根目录固定：** `~/quickai/`（不可配置变更）
 - **路径越狱检测：** `isPathInWorkspace()` 和 `pathEscapesWorkspace()` 双重保障
   - 前者用 `fs.realpath` 解析符号链接
@@ -1237,12 +1285,14 @@ QuickAI 实现了多层纵深防御：
 - **文件大小限制：** 读取 ≤2MB，写入 ≤2MB，搜索跳过 >512KB
 
 ### 第三层：网络安全（SSRF 防护）
+
 - DNS 解析后检测私有 IP（IPv4 + IPv6）
 - 拦截 localhost、内网地址
 - 重定向后重新检测目标 IP
 - 响应大小限制 800KB、超时 10s
 
 ### 第四层：工具权限策略
+
 - **三级权限：** `allow`（静默执行）、`ask`（弹窗确认）、`deny`（完全禁止）
 - **Constitution 守卫：** 参数级 escalate（路径逃逸→deny、敏感文件→ask、危险命令→deny）
 - **默认安全的权限预设：**
@@ -1251,11 +1301,13 @@ QuickAI 实现了多层纵深防御：
   - shell → deny（始终禁止）
 
 ### 第五层：行为安全（LoopGuard）
+
 - 相同调用 ≥3 次 → block
 - 连续失败 ≥3 次 → warn
 - 连续失败 ≥8 次 → halt
 
 ### 第六层：数据安全
+
 - ActionLog 中的敏感参数自动脱敏（apiKey、token、password 等）
 - Resource 缓存不存储敏感信息
 
@@ -1266,28 +1318,29 @@ QuickAI 实现了多层纵深防御：
 **测试框架：** Vitest 4（`vitest run`）
 
 **配置：**
+
 - `include: ['src/**/*.{test,spec}.ts']`
 - `environment: 'node'`
 - `vi.mock('electron', ...)` 用于 mock Electron 模块
 
 **现有测试：** 14 个测试文件，150 个测试用例
 
-| 测试文件 | 测试内容 |
-|----------|----------|
-| `actionLog.test.ts` | 11 个测试：内存 CRUD、过滤、脱敏、FIFO 淘汰、持久化重载、跨会话隔离 |
-| `agentLoop.test.ts` | Agent 循环的各种边界条件 + 回归测试 |
-| `callModel.test.ts` | API 调用和 SSE 解析 |
-| `commandSafety.test.ts` | 命令安全分析（dangerous/requires_approval/safe 分类） |
-| `constitution.test.ts` | 守卫规则（路径越界、敏感文件、危险命令） |
-| `contextManager.test.ts` | 上下文截断策略 |
-| `loopGuard.test.ts` | 循环检测和熔断逻辑 |
-| `messageBuilder.test.ts` | 提示词构建 |
-| `tokenEstimator.test.ts` | Token 估算算法 |
-| `toolOutputStore.test.ts` | 工具输出存储的 FIFO 淘汰 |
-| `fileTools.test.ts` | 文件工具（read/write/search/list） |
-| `webTools.test.ts` | Web 工具（fetchUrl/webSearch/HTML 解析） |
-| `resourceCache.test.ts` | 资源缓存（CRUD/chunk merge/范围计算） |
-| `useSessions.test.ts` | 6 个测试：`computeOrphanResourceIds` 孤儿检测纯函数 |
+| 测试文件                  | 测试内容                                                            |
+| ------------------------- | ------------------------------------------------------------------- |
+| `actionLog.test.ts`       | 11 个测试：内存 CRUD、过滤、脱敏、FIFO 淘汰、持久化重载、跨会话隔离 |
+| `agentLoop.test.ts`       | Agent 循环的各种边界条件 + 回归测试                                 |
+| `callModel.test.ts`       | API 调用和 SSE 解析                                                 |
+| `commandSafety.test.ts`   | 命令安全分析（dangerous/requires_approval/safe 分类）               |
+| `constitution.test.ts`    | 守卫规则（路径越界、敏感文件、危险命令）                            |
+| `contextManager.test.ts`  | 上下文截断策略                                                      |
+| `loopGuard.test.ts`       | 循环检测和熔断逻辑                                                  |
+| `messageBuilder.test.ts`  | 提示词构建                                                          |
+| `tokenEstimator.test.ts`  | Token 估算算法                                                      |
+| `toolOutputStore.test.ts` | 工具输出存储的 FIFO 淘汰                                            |
+| `fileTools.test.ts`       | 文件工具（read/write/search/list）                                  |
+| `webTools.test.ts`        | Web 工具（fetchUrl/webSearch/HTML 解析）                            |
+| `resourceCache.test.ts`   | 资源缓存（CRUD/chunk merge/范围计算）                               |
+| `useSessions.test.ts`     | 6 个测试：`computeOrphanResourceIds` 孤儿检测纯函数                 |
 
 ---
 

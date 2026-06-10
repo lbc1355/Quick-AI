@@ -363,9 +363,21 @@ export const fileTools: Record<string, ToolDefinition> = {
     description:
       'Lists files matching a glob wildcard pattern within the workspace root directory.',
     tags: [
-      'file', 'list', 'glob', 'find', 'local',
-      '列表', '文件', '查找', '工作区', '列出',
-      'markdown', 'md', 'batch', 'translate', 'path'
+      'file',
+      'list',
+      'glob',
+      'find',
+      'local',
+      '列表',
+      '文件',
+      '查找',
+      '工作区',
+      '列出',
+      'markdown',
+      'md',
+      'batch',
+      'translate',
+      'path'
     ],
     dependencies: ['file_read', 'file_write'],
     category: 'file',
@@ -536,8 +548,17 @@ export const fileTools: Record<string, ToolDefinition> = {
     title: 'Write File',
     description: 'Writes content to a local file within the workspace root directory.',
     tags: [
-      'file', 'write', 'local', 'save',
-      '文件', '写入', '保存', '修改', '编辑', '创建', '翻译'
+      'file',
+      'write',
+      'local',
+      'save',
+      '文件',
+      '写入',
+      '保存',
+      '修改',
+      '编辑',
+      '创建',
+      '翻译'
     ],
     category: 'file',
     risk: 'medium',
@@ -665,8 +686,17 @@ export const fileTools: Record<string, ToolDefinition> = {
     description:
       'Performs exact string replacement in a file within the workspace. Provide the exact text to replace (old_string) and the new text (new_string). By default, old_string must match exactly one location — if it matches multiple locations the edit is rejected with a list of matching lines so you can add more surrounding context to make it unique. Use replace_all=true to replace every occurrence.',
     tags: [
-      'file', 'edit', 'replace', 'patch', 'modify', 'update',
-      '文件', '编辑', '替换', '修改', '更新'
+      'file',
+      'edit',
+      'replace',
+      'patch',
+      'modify',
+      'update',
+      '文件',
+      '编辑',
+      '替换',
+      '修改',
+      '更新'
     ],
     category: 'file',
     risk: 'medium',
@@ -785,7 +815,9 @@ export const fileTools: Record<string, ToolDefinition> = {
 
       const newContent = replaceAll
         ? content.split(oldString).join(newString)
-        : content.slice(0, occurrences[0]) + newString + content.slice(occurrences[0] + oldString.length)
+        : content.slice(0, occurrences[0]) +
+          newString +
+          content.slice(occurrences[0] + oldString.length)
 
       const newBuffer = Buffer.from(newContent, 'utf-8')
       const MAX_BYTES = 2 * 1024 * 1024

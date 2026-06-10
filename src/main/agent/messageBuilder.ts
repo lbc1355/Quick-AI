@@ -40,8 +40,7 @@ export function buildToolDirectorySummary(
     const line = `- ${t.name}: ${desc}`
     if (chars + line.length + 1 > TOOL_DIRECTORY_BUDGET) {
       const omitted = summaries.length - lines.length
-      if (omitted > 0)
-        lines.push(`(${omitted} additional tools available via the discovery tool)`)
+      if (omitted > 0) lines.push(`(${omitted} additional tools available via the discovery tool)`)
       break
     }
     lines.push(line)
@@ -159,6 +158,7 @@ Rules:
 - For long pages, papers, documentation, or articles, fetch_url may return a content window plus nextOffset. When the user asks to read, summarize, compare, or analyze the whole source, keep calling fetch_url with the same URL and offset=nextOffset until you have enough relevant sections or reach the end/limit. Do not claim to have read the full source if only the beginning was fetched.
 - In final answers, mention the source URLs you used. Do not invent sources.
 - If observations are insufficient, say so in the final answer.
+- If you use the 'task' tool to track progress, ensure you update each task's status as you complete it. Before outputting your final text response, make a final call to the 'task' tool to mark the last tasks as completed.
 - Stop when you can answer the user question. Write your final answer in Markdown.`
     },
     {
@@ -256,6 +256,7 @@ Rules:
 - For long pages, papers, documentation, or articles, fetch_url may return a content window plus nextOffset. When the user asks to read, summarize, compare, or analyze the whole source, keep calling fetch_url with the same URL and offset=nextOffset until you have enough relevant sections or reach the end/limit. Do not claim to have read the full source if only the beginning was fetched.
 - In final answers, mention the source URLs you used. Do not invent sources.
 - If observations are insufficient, say so in the final answer.
+- If you use the 'task' tool to track progress, ensure you update each task's status as you complete it. Before outputting your final text response, make a final call to the 'task' tool to mark the last tasks as completed.
 - Stop when you can answer the user question directly. Write your final answer in Markdown.`
 
   const copy = messages.map((m) => ({ ...m }))

@@ -1,7 +1,13 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
-import { getResourceId, saveResourceChunk, readResourceChunk, mergeRanges, getFirstMissingOffset } from './resourceCache'
+import {
+  getResourceId,
+  saveResourceChunk,
+  readResourceChunk,
+  mergeRanges,
+  getFirstMissingOffset
+} from './resourceCache'
 import { closeDb } from './database'
 import { SessionResourceChunk } from '../shared/types'
 import { describeWithSqlite } from './testSupport/nativeSqlite'
@@ -145,7 +151,15 @@ describeWithSqlite('resourceCache', () => {
       }
 
       await saveResourceChunk(resourceId, 'web', source, 'Multi Chunk', 200, 100, chunk1)
-      const resMetadata2 = await saveResourceChunk(resourceId, 'web', source, 'Multi Chunk', 200, undefined, chunk2)
+      const resMetadata2 = await saveResourceChunk(
+        resourceId,
+        'web',
+        source,
+        'Multi Chunk',
+        200,
+        undefined,
+        chunk2
+      )
 
       expect(resMetadata2.status).toBe('complete')
       expect(resMetadata2.nextOffset).toBeUndefined()
@@ -256,7 +270,15 @@ describeWithSqlite('resourceCache', () => {
 
       await saveResourceChunk(resourceId, 'web', source, 'Prune Test', 1000, 100, chunk1)
       await saveResourceChunk(resourceId, 'web', source, 'Prune Test', 1000, 200, chunk2)
-      const resMetadata = await saveResourceChunk(resourceId, 'web', source, 'Prune Test', 1000, undefined, chunk3)
+      const resMetadata = await saveResourceChunk(
+        resourceId,
+        'web',
+        source,
+        'Prune Test',
+        1000,
+        undefined,
+        chunk3
+      )
 
       // Only chunk-2 and chunk-3 should remain, chunk-1 is pruned
       expect(resMetadata.chunks).toHaveLength(2)
@@ -296,7 +318,15 @@ describeWithSqlite('resourceCache', () => {
       }
 
       await saveResourceChunk(resourceId, 'web', source, 'Search Test Title', 200, 100, chunk1)
-      await saveResourceChunk(resourceId, 'web', source, 'Search Test Title', 200, undefined, chunk2)
+      await saveResourceChunk(
+        resourceId,
+        'web',
+        source,
+        'Search Test Title',
+        200,
+        undefined,
+        chunk2
+      )
 
       // Execute tool Registry search_cached_resource
       const { ToolRegistry } = await import('./toolRegistry')

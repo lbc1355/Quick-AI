@@ -36,7 +36,8 @@ export const normalizeFetchUrlOptions = (
   options: FetchUrlOptions = {}
 ): { offset: number; maxChars: number } => {
   const rawOffset = typeof options.offset === 'number' ? options.offset : 0
-  const rawMaxChars = typeof options.maxChars === 'number' ? options.maxChars : DEFAULT_FETCH_PAGE_CHARS
+  const rawMaxChars =
+    typeof options.maxChars === 'number' ? options.maxChars : DEFAULT_FETCH_PAGE_CHARS
 
   const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0
   const maxChars = Number.isFinite(rawMaxChars)
@@ -50,7 +51,11 @@ export const normalizeFetchUrlOptions = (
 // fetch returns lightweight text instead of a multi-MB binary PDF.
 const rewriteAcademicPaperUrl = (rawUrl: string): string => {
   const parsed = ((): URL | null => {
-    try { return new URL(rawUrl) } catch { return null }
+    try {
+      return new URL(rawUrl)
+    } catch {
+      return null
+    }
   })()
   if (!parsed) return rawUrl
 
@@ -165,10 +170,16 @@ const readLimitedText = async (
   // Reject binary (non-text) responses early so the caller gets a clear error
   // instead of garbled binary data decoded as UTF-8.
   const contentType = (response.headers.get('content-type') || '').toLowerCase()
-  if (contentType && !contentType.includes('text/') && !contentType.includes('html') && !contentType.includes('xml') && !contentType.includes('json')) {
+  if (
+    contentType &&
+    !contentType.includes('text/') &&
+    !contentType.includes('html') &&
+    !contentType.includes('xml') &&
+    !contentType.includes('json')
+  ) {
     throw new Error(
       `Cannot fetch binary content (${contentType || 'unknown content type'}). ` +
-      `Use an abstract/HTML page instead of a PDF. For arXiv, replace "/pdf/" with "/abs/" in the URL.`
+        `Use an abstract/HTML page instead of a PDF. For arXiv, replace "/pdf/" with "/abs/" in the URL.`
     )
   }
 
@@ -294,9 +305,7 @@ export const stripHtmlWithLinks = (
 // Prefix each line with a right-aligned line number, starting at startLine (1-indexed).
 export const renderWithLineNumbers = (text: string, startLine = 1): string => {
   const lines = text.split('\n')
-  return lines
-    .map((line, idx) => `${String(startLine + idx).padStart(5, ' ')}  ${line}`)
-    .join('\n')
+  return lines.map((line, idx) => `${String(startLine + idx).padStart(5, ' ')}  ${line}`).join('\n')
 }
 
 export interface WebSearchResult {

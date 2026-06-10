@@ -41,9 +41,9 @@ describeWithSqlite('memory_docs DAL', () => {
 
     expect(doc.version).toBe(1)
     expect(doc.status).toBe('current')
-    expect(getCurrentMemoryDoc({ kind: 'soul', scope: 'global', key: 'assistant_profile' })?.id).toBe(
-      doc.id
-    )
+    expect(
+      getCurrentMemoryDoc({ kind: 'soul', scope: 'global', key: 'assistant_profile' })?.id
+    ).toBe(doc.id)
   })
 
   it('archives the old version and requires the current baseVersionId', () => {

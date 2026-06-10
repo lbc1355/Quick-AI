@@ -163,10 +163,7 @@ export const memoryTools: Record<string, ToolDefinition> = {
     title: 'Remember',
     description:
       'Append a concise fact, preference, or piece of context to the current versioned memory document. This creates a new current document version and archives the previous one, so existing memory content is preserved. Before writing to a target document that may already exist, read it with read_memory_doc so you know the full current content. For corrections, conflicts, or rewrites, use replace_memory_doc with the complete merged document, never only the new fact.',
-    tags: [
-      'memory', 'remember', 'save', 'persist', 'preference', 'fact',
-      '记忆', '记住', '偏好'
-    ],
+    tags: ['memory', 'remember', 'save', 'persist', 'preference', 'fact', '记忆', '记住', '偏好'],
     category: 'memory',
     risk: 'low',
     implemented: true,
@@ -393,8 +390,15 @@ export const memoryTools: Record<string, ToolDefinition> = {
     description:
       "Retrieve current durable memory/soul documents. By default returns global documents plus this conversation's session documents. Archived versions are not returned; use read_memory_doc for the complete current document before modifying it.",
     tags: [
-      'memory', 'recall', 'retrieve', 'remember', 'preference', 'fact',
-      '记忆', '回忆', '偏好'
+      'memory',
+      'recall',
+      'retrieve',
+      'remember',
+      'preference',
+      'fact',
+      '记忆',
+      '回忆',
+      '偏好'
     ],
     category: 'memory',
     risk: 'low',

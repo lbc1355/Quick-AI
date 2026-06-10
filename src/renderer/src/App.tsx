@@ -1,26 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import {
-  Settings,
-  Send,
-  Paperclip,
-  Terminal,
-  Sparkles,
-  Trash2,
-  Undo2,
-  Sun,
-  Moon,
-  Square,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Pin,
-  PinOff,
-  GitBranch,
-  ArrowLeft
-} from 'lucide-react'
+import { Sparkles, GitBranch, Paperclip } from 'lucide-react'
 
 import { AutocompleteItem, AppSettings } from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
-import { FilePreviewList } from './components/FilePreviewList'
 import { MessageBubble } from './components/MessageBubble'
 import { SettingsView } from './components/SettingsView'
 
@@ -30,6 +12,7 @@ import { useAttachments } from './hooks/useAttachments'
 import { useAutocomplete } from './hooks/useAutocomplete'
 import { useChatCompletion } from './hooks/useChatCompletion'
 import { useSkills } from './hooks/useSkills'
+
 import {
   buildBranchFamilyInfo,
   buildBranchChildIndex,
@@ -39,156 +22,18 @@ import {
 } from './utils/branchDisplay'
 import { getSessionGenerationState } from './utils/generationState'
 
-interface PopupOption {
-  label: string
-  payload:
-    | boolean
-    | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
-}
+import { AppHeader } from './components/AppHeader'
+import { SessionSidebar } from './components/SessionSidebar'
+import { TaskPanel } from './components/TaskPanel'
+import { ChatInputArea } from './components/ChatInputArea'
+import { getPopupOptions, groupAutocompleteItems } from './utils/autocompleteHelpers'
 
-function getCommandPrefixes(command: string): string[] {
-  if (!command) return []
-  // Split chained commands (`cd "x" && type "y"`) so each independently-executed part can be
-  // approved on its own. The main process enforces the authoritative segment-aware check; this
-  // just surfaces a button per segment so the user can grant `cd`, `type`, `findstr`, etc.
-  const segments = command
-    .split(/(?:&&|\|\||[;|&\n])/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const prefixes: string[] = []
-  const push = (p: string): void => {
-    if (p && !prefixes.includes(p) && prefixes.length < 6) prefixes.push(p)
-  }
-  for (const segment of segments) {
-    const tokens = segment.split(/\s+/).filter((t) => !t.startsWith('-'))
-    if (tokens.length === 0) continue
-    push(tokens[0])
-    // Only offer a two-word prefix when the subcommand is a clean alphanumeric word (no paths).
-    if (tokens.length > 1 && /^[a-zA-Z0-9_-]+$/.test(tokens[1])) {
-      push(`${tokens[0]} ${tokens[1]}`)
-    }
-  }
-  return prefixes
-}
-
-function getPopupOptions(pending: { toolName: string; args: unknown } | null): PopupOption[] {
-  if (!pending) return []
-
-  const options: PopupOption[] = [
-    { label: '允许本次执行 (Yes, allow this time)', payload: { approved: true } },
-    {
-      label: `在此任务中允许所有 "${pending.toolName}" 工具的调用`,
-      payload: { approved: true, scope: 'tool', tool: pending.toolName }
-    }
-  ]
-
-  if (pending.toolName === 'shell' && pending.args && typeof pending.args === 'object') {
-    const argsObj = pending.args as Record<string, unknown>
-    const command = typeof argsObj.command === 'string' ? argsObj.command : ''
-    const prefixes = getCommandPrefixes(command)
-    for (const prefix of prefixes) {
-      options.push({
-        label: `在此任务中允许所有 "${prefix}" 开头的命令`,
-        payload: { approved: true, scope: 'prefix', prefix }
-      })
-    }
-  }
-
-  options.push({ label: '拒绝执行 (No)', payload: { approved: false } })
-  return options
-}
-
-const commandText: Record<string, { title: string; description: string }> = {
-  new: { title: '新对话', description: '开始一个空白对话' },
-  clear: { title: '清空当前对话', description: '移除当前对话里的消息' },
-  settings: { title: '设置', description: '打开模型、服务商和应用设置' },
-  help: { title: '帮助', description: '显示快捷命令说明' },
-  exit: { title: '隐藏面板', description: '收起 QuickAI 窗口' }
-}
-
-const autocompleteTypeOrder: AutocompleteItem['type'][] = [
-  'command',
-  'skill',
-  'model',
-  'provider',
-  'session',
-  'delete-session'
-]
-
-const autocompleteGroupLabels: Record<AutocompleteItem['type'], string> = {
-  command: '命令',
-  skill: '技能',
-  model: '模型',
-  provider: '服务商',
-  session: '历史对话',
-  'delete-session': '删除对话'
-}
-
-const emojiPattern =
-  /[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g
-
-function cleanAutocompleteText(value: string): string {
-  return value.replace(emojiPattern, '').replace(/\s+/g, ' ').trim()
-}
-
-function splitAutocompleteName(value: string): { title: string; description: string } {
-  const clean = cleanAutocompleteText(value)
-  const parts = clean.split(/\s+-\s+/)
-  return {
-    title: parts[0] || clean,
-    description: parts.slice(1).join(' - ')
-  }
-}
-
-function getAutocompleteTitle(item: AutocompleteItem): string {
-  if (item.type === 'command' && item.cmd && commandText[item.cmd]) {
-    return commandText[item.cmd].title
-  }
-  if (item.type === 'model') return item.modelId || splitAutocompleteName(item.name).title
-  if (item.type === 'provider')
-    return splitAutocompleteName(item.name).title.replace(/^切换服务商\s*/, '')
-  if (item.type === 'delete-session') {
-    return splitAutocompleteName(item.name).title.replace(/^删除会话[:：]?\s*/, '')
-  }
-  return splitAutocompleteName(item.name).title
-}
-
-function getAutocompleteDescription(item: AutocompleteItem): string {
-  if (item.type === 'command' && item.cmd && commandText[item.cmd]) {
-    return commandText[item.cmd].description
-  }
-  const split = splitAutocompleteName(item.name)
-  if (item.type === 'skill') return split.description || '插入或运行自定义技能'
-  if (item.type === 'model') return '切换当前模型'
-  if (item.type === 'provider') return '切换当前服务商'
-  if (item.type === 'session') return '打开历史对话'
-  if (item.type === 'delete-session') return '删除这个历史对话'
-  return split.description
-}
-
-function getAutocompleteMeta(item: AutocompleteItem): string {
-  if (item.type === 'skill') {
-    if (item.skillMode === 'run') return '运行'
-    if (item.skillMode === 'send') return '发送'
-    return '插入'
-  }
-  return autocompleteGroupLabels[item.type]
-}
-
-function groupAutocompleteItems(items: AutocompleteItem[]): Array<{
-  type: AutocompleteItem['type']
-  label: string
-  items: Array<{ item: AutocompleteItem; index: number }>
-}> {
-  const indexedItems = items.map((item, index) => ({ item, index }))
-
-  return autocompleteTypeOrder
-    .map((type) => ({
-      type,
-      label: autocompleteGroupLabels[type],
-      items: indexedItems.filter(({ item }) => item.type === type)
-    }))
-    .filter((group) => group.items.length > 0)
+interface PendingPermission {
+  msgId: string
+  agentRunId: string
+  callId: string
+  toolName: string
+  args: unknown
 }
 
 function App(): React.JSX.Element {
@@ -197,6 +42,8 @@ function App(): React.JSX.Element {
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number>(0)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isPanelPinned, setIsPanelPinned] = useState(false)
+  const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false)
+  const [activeTaskMessageId, setActiveTaskMessageId] = useState<string | null>(null)
 
   // 1. Providers hook
   const {
@@ -354,6 +201,69 @@ function App(): React.JSX.Element {
     const info = buildBranchFamilyInfo(rootId, sessions)
     return info && info.members.length > 1 ? info : null
   }, [activeSessionId, sessions])
+
+  // Selector to find the latest tasks from the active session
+  const currentTasks = useMemo(() => {
+    if (!activeSession) return null
+    if (activeTaskMessageId) {
+      const msg = activeSession.messages.find((m) => m.id === activeTaskMessageId)
+      const taskEvent = msg?.agentEvents?.find((e) => e.type === 'task_update')
+      if (taskEvent && taskEvent.type === 'task_update') {
+        return taskEvent.tasks
+      }
+    }
+    for (let i = activeSession.messages.length - 1; i >= 0; i--) {
+      const msg = activeSession.messages[i]
+      const taskEvent = msg.agentEvents?.find((e) => e.type === 'task_update')
+      if (taskEvent && taskEvent.type === 'task_update') {
+        return taskEvent.tasks
+      }
+    }
+    return null
+  }, [activeSession, activeTaskMessageId])
+
+  // Track the previous task count to detect when tasks first appear
+  const prevTasksLengthRef = useRef(0)
+  useEffect(() => {
+    const newLength = currentTasks ? currentTasks.length : 0
+    if (newLength > 0 && prevTasksLengthRef.current === 0) {
+      setIsTaskPanelOpen(true)
+    }
+    prevTasksLengthRef.current = newLength
+  }, [currentTasks])
+
+  // Reset active task message and task panel state when active session changes using render-phase state adjustment
+  const [prevSessionId, setPrevSessionId] = useState(activeSessionId)
+  if (activeSessionId !== prevSessionId) {
+    setPrevSessionId(activeSessionId)
+    setActiveTaskMessageId(null)
+    setIsTaskPanelOpen(false)
+  }
+
+  // Auto-select the active task message when the last message is generating and has tasks
+  useEffect(() => {
+    if (!activeSession) return
+    const lastMsg = activeSession.messages[activeSession.messages.length - 1]
+    if (lastMsg && lastMsg.role === 'assistant') {
+      const hasTasks = lastMsg.agentEvents?.some((e) => e.type === 'task_update')
+      if (hasTasks) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setActiveTaskMessageId(lastMsg.id)
+      }
+    }
+  }, [activeSession, isCurrentSessionGenerating])
+
+  const handleToggleTasks = useCallback(
+    (msgId: string) => {
+      if (activeTaskMessageId === msgId && isTaskPanelOpen) {
+        setIsTaskPanelOpen(false)
+      } else {
+        setActiveTaskMessageId(msgId)
+        setIsTaskPanelOpen(true)
+      }
+    },
+    [activeTaskMessageId, isTaskPanelOpen]
+  )
   const isSessionFamilyViewDismissed = dismissedSessionFamilyViewForId === activeSessionId
 
   const visibleSessionFamilyInfo = useMemo(() => {
@@ -658,13 +568,7 @@ function App(): React.JSX.Element {
   }
 
   // Find pending permission request in the active session
-  const getPendingPermission = (): {
-    msgId: string
-    agentRunId: string
-    callId: string
-    toolName: string
-    args: unknown
-  } | null => {
+  const getPendingPermission = (): PendingPermission | null => {
     if (!activeSession) return null
     for (let i = activeSession.messages.length - 1; i >= 0; i--) {
       const msg = activeSession.messages[i]
@@ -750,24 +654,6 @@ function App(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSession, selectedOptionIndex])
 
-  const getArgsText = (toolName: string, args: unknown): string => {
-    if (!args || typeof args !== 'object') return ''
-    const argsObj = args as Record<string, unknown>
-    if (toolName === 'fetch_url') {
-      return `URL: ${argsObj.url || ''}`
-    }
-    if (toolName === 'file_read') {
-      return `文件路径: ${argsObj.path || ''}${argsObj.offset ? ` (起始行: ${argsObj.offset})` : ''}`
-    }
-    if (toolName === 'workspace_search') {
-      return `搜索内容: "${argsObj.query || ''}"${argsObj.glob ? ` (匹配模式: ${argsObj.glob})` : ''}`
-    }
-    if (toolName === 'web_search') {
-      return `搜索关键词: "${argsObj.query || ''}"`
-    }
-    return JSON.stringify(args)
-  }
-
   // Check if current active session is a clean "new session" with no message history
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
   const activeProviderName = providers.find((p) => p.id === activeProviderId)?.name || 'No provider'
@@ -784,16 +670,6 @@ function App(): React.JSX.Element {
       }))
     : orderedSessions.map((session) => ({ session, familyMember: null }))
   const autocompleteGroups = groupAutocompleteItems(autocompleteItems)
-  const formatSessionStamp = (timestamp: number | undefined, id: string): string => {
-    const value = timestamp || Number(id)
-    if (!Number.isFinite(value)) return ''
-    const date = new Date(value)
-    const today = new Date()
-    if (date.toDateString() === today.toDateString()) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    }
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
-  }
   const activeBranchInfo = getBranchDisplayInfo(activeSession?.branchOf, sessions, '源会话')
   const branchChildIndex = buildBranchChildIndex(sessions)
 
@@ -806,64 +682,20 @@ function App(): React.JSX.Element {
       onDrop={handleDrop}
     >
       {/* Draggable Top Dragbar */}
-      <div className="drag-header">
-        <div className="drag-header-left">
-          <Sparkles className="logo-icon" size={16} />
-          <span className="logo-text">QuickAI</span>
-          <div className="chat-model-info" style={{ marginLeft: '12px' }}>
-            <div className={`status-dot ${isGenerating ? 'loading' : ''}`} />
-            <span className="model-name" style={{ fontSize: '12px', color: '#9ca3af' }}>
-              {providers.find((p) => p.id === activeProviderId)?.name || '未选服务商'}:{' '}
-              {selectedModel}
-            </span>
-          </div>
-        </div>
-        <div className="drag-header-right">
-          <button
-            className="header-action-btn"
-            onClick={toggleTheme}
-            title={theme === 'dark' ? '切换到白天模式' : '切换到黑夜模式'}
-          >
-            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-          </button>
-          <button
-            className={`header-action-btn ${isPanelPinned ? 'active' : ''}`}
-            onClick={() => setIsPanelPinned((value) => !value)}
-            title={isPanelPinned ? '取消固定' : '固定窗口'}
-          >
-            {isPanelPinned ? <PinOff size={14} /> : <Pin size={14} />}
-          </button>
-          {showSettings ? (
-            <button className="header-action-btn" onClick={handleCloseSettings} title="返回聊天">
-              <Undo2 size={14} />
-            </button>
-          ) : (
-            <>
-              <button
-                className="header-action-btn"
-                onClick={handleClearCurrentSession}
-                title="清空历史"
-              >
-                <Trash2 size={14} />
-              </button>
-              <button
-                className="header-action-btn"
-                onClick={() => window.api.toggleDevTools()}
-                title="开发者工具"
-              >
-                <Terminal size={14} />
-              </button>
-              <button
-                className="header-action-btn"
-                onClick={() => setShowSettings(true)}
-                title="应用设置"
-              >
-                <Settings size={14} />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      <AppHeader
+        theme={theme}
+        toggleTheme={toggleTheme}
+        isPanelPinned={isPanelPinned}
+        setIsPanelPinned={setIsPanelPinned}
+        showSettings={showSettings}
+        handleCloseSettings={handleCloseSettings}
+        handleClearCurrentSession={handleClearCurrentSession}
+        setShowSettings={setShowSettings}
+        isGenerating={isGenerating}
+        providers={providers}
+        activeProviderId={activeProviderId}
+        selectedModel={selectedModel}
+      />
 
       {/* Main Content Area */}
       {showSettings ? (
@@ -918,161 +750,29 @@ function App(): React.JSX.Element {
           onChangeToolPermission={onChangeToolPermission}
         />
       ) : (
-        <div className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-          <aside
-            className={`session-sidebar ${visibleSessionFamilyInfo ? 'session-family-view' : ''}`}
-          >
-            <div className="session-sidebar-header">
-              <div className="sidebar-heading">
-                <div className="sidebar-title">
-                  {visibleSessionFamilyInfo ? 'Family' : 'Recent'}
-                </div>
-                <div className="sidebar-subtitle">
-                  {visibleSessionFamilyInfo
-                    ? `${visibleSessionFamilyInfo.rootTitle} - ${visibleSessionFamilyInfo.members.length} conversations`
-                    : `${sessions.length} conversations`}
-                </div>
-              </div>
-              <div className="sidebar-actions">
-                {visibleSessionFamilyInfo && !isSidebarCollapsed && (
-                  <button
-                    type="button"
-                    className="sidebar-icon-btn"
-                    onClick={exitSessionFamilyView}
-                    title="Back to all chats"
-                  >
-                    <ArrowLeft size={14} />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="sidebar-icon-btn"
-                  onClick={() => setIsSidebarCollapsed((value) => !value)}
-                  title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                >
-                  {isSidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
-                </button>
-              </div>
-            </div>
-
-            <div className="session-list">
-              {!visibleSessionFamilyInfo && (
-                <div className="session-item new-session-item">
-                  <button
-                    type="button"
-                    className="session-main-btn"
-                    onClick={() => {
-                      setSessionFamilyRootId(null)
-                      setDismissedSessionFamilyViewForId(null)
-                      void handleNewSession()
-                      setAutocompleteItems([])
-                    }}
-                    title="New chat"
-                  >
-                    <span className="session-initial" aria-hidden="true">
-                      +
-                    </span>
-                    <span className="session-title">New chat</span>
-                    <span className="session-meta">Start a blank conversation</span>
-                  </button>
-                </div>
-              )}
-              {visibleSessionEntries.map(({ session, familyMember }) => {
-                const isActive = session.id === activeSessionId
-                const messageCount = session.messages.length
-                const branchInfo = getBranchDisplayInfo(session.branchOf, sessions, '源会话')
-                const baseSessionTitle = session.title || 'New chat'
-                const sessionTitle = familyMember
-                  ? `${familyMember.isRoot ? 'Root' : `Branch ${familyMember.branchIndex}`} - ${baseSessionTitle}`
-                  : baseSessionTitle
-                const isBranchSession = Boolean(
-                  (familyMember && !familyMember.isRoot) || (!familyMember && branchInfo)
-                )
-                const familySourceTitle =
-                  familyMember?.sourceTitle || visibleSessionFamilyInfo?.rootTitle || 'Source chat'
-                const familyMeta = familyMember
-                  ? familyMember.isRoot
-                    ? `${visibleSessionFamilyInfo?.branchCount ?? 0} branches`
-                    : `from ${familySourceTitle}${familyMember.shortRunId ? ` / run ${familyMember.shortRunId}` : ''}`
-                  : null
-                return (
-                  <div
-                    key={session.id}
-                    className={`session-item ${isActive ? 'active' : ''} ${isBranchSession ? 'branch-session-item' : ''} ${familyMember?.isRoot ? 'family-root-session' : ''}`}
-                  >
-                    <button
-                      type="button"
-                      className="session-main-btn"
-                      onClick={() => {
-                        openSession(session.id)
-                      }}
-                      title={
-                        familyMember
-                          ? sessionTitle
-                          : branchInfo
-                            ? `${sessionTitle} · 分支源自 ${branchInfo.sourceLabel}`
-                            : sessionTitle
-                      }
-                    >
-                      <span
-                        className={`session-initial ${isBranchSession ? 'branch-session-initial' : ''}`}
-                        aria-hidden="true"
-                      >
-                        {isBranchSession ? (
-                          <GitBranch size={13} />
-                        ) : (
-                          (session.title || 'N').trim().charAt(0).toUpperCase()
-                        )}
-                      </span>
-                      <span className="session-title">{sessionTitle}</span>
-                      <span
-                        className={`session-meta ${branchInfo || familyMember ? 'session-meta-with-branch' : ''}`}
-                      >
-                        {familyMember ? (
-                          <>
-                            <GitBranch size={10} />
-                            <span className="session-branch-source">{familyMeta}</span>
-                            <span className="session-meta-divider">-</span>
-                          </>
-                        ) : (
-                          branchInfo && (
-                            <>
-                              <GitBranch size={10} />
-                              <span className="session-branch-source">
-                                {branchInfo.sourceTitle}
-                              </span>
-                              <span className="session-meta-divider">·</span>
-                            </>
-                          )
-                        )}
-                        <span>
-                          {messageCount} msg{messageCount === 1 ? '' : 's'} -{' '}
-                          {formatSessionStamp(session.lastActiveTime, session.id)}
-                        </span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="session-delete-btn"
-                      onClick={() => void handleDeleteSession(session.id)}
-                      disabled={sessions.length <= 1}
-                      title="Delete chat"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="sidebar-model-card">
-              <div className={`status-dot ${isGenerating ? 'loading' : ''}`} />
-              <div className="sidebar-model-text">
-                <span>{activeProviderName}</span>
-                <strong>{activeModelName}</strong>
-              </div>
-            </div>
-          </aside>
+        <div
+          className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${
+            isTaskPanelOpen && currentTasks && currentTasks.length > 0 ? 'task-panel-open' : ''
+          }`}
+        >
+          <SessionSidebar
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            isSidebarCollapsed={isSidebarCollapsed}
+            setIsSidebarCollapsed={setIsSidebarCollapsed}
+            visibleSessionFamilyInfo={visibleSessionFamilyInfo}
+            visibleSessionEntries={visibleSessionEntries}
+            isGenerating={isGenerating}
+            activeProviderName={activeProviderName}
+            activeModelName={activeModelName}
+            exitSessionFamilyView={exitSessionFamilyView}
+            handleNewSession={handleNewSession}
+            handleDeleteSession={handleDeleteSession}
+            openSession={openSession}
+            setSessionFamilyRootId={setSessionFamilyRootId}
+            setDismissedSessionFamilyViewForId={setDismissedSessionFamilyViewForId}
+            setAutocompleteItems={setAutocompleteItems as (items: never[]) => void}
+          />
 
           <section className="conversation-panel">
             {activeBranchInfo && (
@@ -1154,178 +854,45 @@ function App(): React.JSX.Element {
                     onResumeAgentRun={handleResumeAgentRun}
                     onOpenBranch={(sessionId) => openSession(sessionId)}
                     onChangeEditingText={setEditingText}
+                    activeTaskMessageId={activeTaskMessageId}
+                    isTaskPanelOpen={isTaskPanelOpen}
+                    onToggleTasks={handleToggleTasks}
                   />
                 ))}
                 <div ref={messagesEndRef} />
               </div>
             )}
 
-            <FilePreviewList attachedFiles={attachedFiles} onRemoveFile={handleRemoveFile} />
-
-            {/* Input Area */}
-            <div className="chat-input-section">
-              {autocompleteItems.length > 0 && (
-                <div ref={skillsMenuRef} className="skills-menu">
-                  {autocompleteGroups.map((group) => (
-                    <div key={group.type} className="command-group">
-                      <div className="command-group-label">{group.label}</div>
-                      {group.items.map(({ item, index: itemIndex }) => {
-                        return (
-                          <div
-                            key={item.id}
-                            data-autocomplete-index={itemIndex}
-                            className={`skills-item ${selectedItemIdx === itemIndex ? 'selected' : ''}`}
-                            onClick={() => triggerAutocompleteItem(item)}
-                          >
-                            <span className="skills-trigger">{item.trigger}</span>
-                            <span className="skills-name">
-                              <span className="skills-title">{getAutocompleteTitle(item)}</span>
-                              <span className="skills-description">
-                                {getAutocompleteDescription(item)}
-                              </span>
-                            </span>
-                            <span className="skills-kind">{getAutocompleteMeta(item)}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {(() => {
-                const pending = getPendingPermission()
-                if (!pending) return null
-                const argsText = getArgsText(pending.toolName, pending.args)
-
-                return (
-                  <div className="permission-popup-container">
-                    <div className="permission-popup-header">
-                      <Terminal size={14} style={{ color: 'var(--color-primary)' }} />
-                      <span>是否允许执行此工具？</span>
-                    </div>
-
-                    {argsText && (
-                      <div className="permission-popup-code">
-                        {pending.toolName} {argsText}
-                      </div>
-                    )}
-
-                    <div className="permission-popup-options">
-                      {getPopupOptions(pending).map((opt, idx) => (
-                        <div
-                          key={idx}
-                          className={`permission-popup-option ${selectedOptionIndex === idx ? 'selected' : ''}`}
-                          onClick={() => handlePermissionResponse(opt.payload)}
-                        >
-                          <span className="permission-popup-badge">{idx + 1}</span>
-                          <span>{opt.label}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="permission-popup-footer">
-                      <button
-                        className="permission-popup-btn skip"
-                        onClick={() => {
-                          const options = getPopupOptions(pending)
-                          const denyOption = options.find((o) => {
-                            if (typeof o.payload === 'boolean') return !o.payload
-                            return !o.payload.approved
-                          })
-                          handlePermissionResponse(denyOption ? denyOption.payload : false)
-                        }}
-                      >
-                        Skip
-                      </button>
-                      <button
-                        className="permission-popup-btn submit"
-                        onClick={() => {
-                          const options = getPopupOptions(pending)
-                          if (options[selectedOptionIndex]) {
-                            handlePermissionResponse(options[selectedOptionIndex].payload)
-                          }
-                        }}
-                      >
-                        Submit
-                      </button>
-                    </div>
-                  </div>
-                )
-              })()}
-
-              <div className="input-container">
-                <label
-                  htmlFor="file-input"
-                  className="input-action-btn"
-                  title="上传文件 (支持拖拽/粘贴图片)"
-                  style={{ cursor: 'pointer' }}
-                >
-                  <Paperclip size={16} />
-                  <input
-                    ref={fileInputRef}
-                    id="file-input"
-                    type="file"
-                    style={{ display: 'none' }}
-                    multiple
-                    onChange={handleFileChange}
-                    onClick={() => window.api.setFilePickerActive(true)}
-                  />
-                </label>
-                <textarea
-                  ref={textareaRef}
-                  className="chat-input"
-                  placeholder={
-                    pendingPermission
-                      ? '请先响应上方的工具执行权限请求...'
-                      : '输入您的问题... (Esc 隐藏, Shift+Enter 换行, / 命令快捷词)'
-                  }
-                  value={pendingPermission ? '' : inputVal}
-                  onChange={handleInputChange}
-                  onKeyDown={handleInputKeyDown}
-                  onPaste={handlePaste}
-                  rows={1}
-                  disabled={!!pendingPermission}
-                />
-                <div className="chat-actions">
-                  <button
-                    type="button"
-                    className={`run-mode-btn ${runMode}`}
-                    onClick={() => setRunMode(runMode === 'chat' ? 'agent' : 'chat')}
-                    title={
-                      runMode === 'agent'
-                        ? '当前为 Agent 模式 (支持动态工具发现)'
-                        : '当前为普通 Chat 模式'
-                    }
-                  >
-                    <Sparkles size={13} className="sparkle-icon" />
-                    <span>{runMode === 'agent' ? 'Agent' : 'Chat'}</span>
-                  </button>
-                  {isCurrentSessionGenerating ? (
-                    <button
-                      className="input-action-btn stop"
-                      onClick={handleAbortGeneration}
-                      title="终止回答"
-                      style={{ color: '#ef4444' }}
-                    >
-                      <Square size={14} fill="#ef4444" />
-                    </button>
-                  ) : (
-                    <button
-                      className="input-action-btn send"
-                      onClick={() => handleSendMessage()}
-                      disabled={
-                        isOtherSessionGenerating || (!inputVal.trim() && attachedFiles.length === 0)
-                      }
-                      title={isOtherSessionGenerating ? '另一个会话正在生成' : '发送消息'}
-                    >
-                      <Send size={14} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+            <ChatInputArea
+              autocompleteItems={autocompleteItems}
+              autocompleteGroups={autocompleteGroups}
+              selectedItemIdx={selectedItemIdx}
+              skillsMenuRef={skillsMenuRef}
+              triggerAutocompleteItem={triggerAutocompleteItem}
+              pendingPermission={pendingPermission}
+              selectedOptionIndex={selectedOptionIndex}
+              handlePermissionResponse={handlePermissionResponse}
+              attachedFiles={attachedFiles}
+              handleRemoveFile={handleRemoveFile}
+              fileInputRef={fileInputRef}
+              handleFileChange={handleFileChange}
+              textareaRef={textareaRef}
+              inputVal={inputVal}
+              handleInputChange={handleInputChange}
+              handleInputKeyDown={handleInputKeyDown}
+              handlePaste={handlePaste}
+              runMode={runMode}
+              setRunMode={setRunMode}
+              isCurrentSessionGenerating={isCurrentSessionGenerating}
+              isOtherSessionGenerating={isOtherSessionGenerating}
+              handleAbortGeneration={handleAbortGeneration}
+              handleSendMessage={handleSendMessage}
+            />
           </section>
+
+          {isTaskPanelOpen && currentTasks && currentTasks.length > 0 && (
+            <TaskPanel tasks={currentTasks} onClose={() => setIsTaskPanelOpen(false)} />
+          )}
         </div>
       )}
 

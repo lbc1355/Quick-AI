@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { promises as fs } from 'fs'
 import { join, resolve } from 'path'
-import { isPathInWorkspace, isSensitiveFile, ToolRegistry, getWorkspaceRoot, searchToolDefinitions } from './toolRegistry'
+import {
+  isPathInWorkspace,
+  isSensitiveFile,
+  ToolRegistry,
+  getWorkspaceRoot,
+  searchToolDefinitions
+} from './toolRegistry'
 
 describe('File Safety & Search Tools', () => {
   const workspaceRoot = getWorkspaceRoot()
@@ -310,7 +316,9 @@ describe('File Safety & Search Tools', () => {
       try {
         const context = { reqId: 'test-req', signal: new AbortController().signal }
         const res = await ToolRegistry.workspace_search.execute({ query: queryStr }, context)
-        expect(res.resultForModel).toContain('[Warning: Search scan was truncated. Reason: Time limit exceeded]')
+        expect(res.resultForModel).toContain(
+          '[Warning: Search scan was truncated. Reason: Time limit exceeded]'
+        )
         expect(res.resultForUi.summary).toContain('Scan truncated: Time limit exceeded')
       } finally {
         nowSpy.mockRestore()
@@ -323,7 +331,10 @@ describe('File Safety & Search Tools', () => {
       expect(resSearch.resultForModel).toContain(`Workspace Root: ${workspaceRoot}`)
       expect(resSearch.resultForUi.summary).toContain(workspaceRoot)
 
-      const resRead = await ToolRegistry.file_read.execute({ path: join(testDir, 'a.txt') }, context)
+      const resRead = await ToolRegistry.file_read.execute(
+        { path: join(testDir, 'a.txt') },
+        context
+      )
       expect(resRead.resultForModel).toContain(`Workspace Root: ${workspaceRoot}`)
       expect(resRead.resultForUi.summary).toContain(workspaceRoot)
     })
@@ -332,7 +343,10 @@ describe('File Safety & Search Tools', () => {
   describe('workspace_list_files tool', () => {
     it('lists matching files inside workspace', async () => {
       const context = { reqId: 'test-req', signal: new AbortController().signal }
-      const res = await ToolRegistry.workspace_list_files.execute({ glob: 'temp-file-test-dir/**/*.txt' }, context)
+      const res = await ToolRegistry.workspace_list_files.execute(
+        { glob: 'temp-file-test-dir/**/*.txt' },
+        context
+      )
       expect(res.resultForUi.items).toHaveLength(1)
       expect(res.resultForUi.items![0].title).toBe('temp-file-test-dir/a.txt')
       expect(res.resultForModel).toContain('File: temp-file-test-dir/a.txt')
@@ -340,7 +354,10 @@ describe('File Safety & Search Tools', () => {
 
     it('rejects listing symbolic links or sensitive files', async () => {
       const context = { reqId: 'test-req', signal: new AbortController().signal }
-      const res = await ToolRegistry.workspace_list_files.execute({ glob: 'temp-file-test-dir/**' }, context)
+      const res = await ToolRegistry.workspace_list_files.execute(
+        { glob: 'temp-file-test-dir/**' },
+        context
+      )
       const paths = res.resultForUi.items?.map((i) => i.title) || []
       expect(paths.some((p) => p.includes('.env'))).toBe(false)
       expect(paths.some((p) => p.includes('sensitive.key'))).toBe(false)
@@ -352,12 +369,15 @@ describe('File Safety & Search Tools', () => {
       const context = { reqId: 'test-req', signal: new AbortController().signal }
       const targetPath = join(testDir, 'new-sub-dir', 'written.txt')
       try {
-        const res = await ToolRegistry.file_write.execute({
-          path: targetPath,
-          content: 'hello world from test',
-          mode: 'create',
-          createDirs: true
-        }, context)
+        const res = await ToolRegistry.file_write.execute(
+          {
+            path: targetPath,
+            content: 'hello world from test',
+            mode: 'create',
+            createDirs: true
+          },
+          context
+        )
 
         expect(res.resultForUi.summary).toContain('created')
         const readContent = await fs.readFile(targetPath, 'utf-8')
@@ -374,18 +394,26 @@ describe('File Safety & Search Tools', () => {
       await fs.writeFile(targetPath, 'original content')
       try {
         // mode create should throw an error
-        await expect(ToolRegistry.file_write.execute({
-          path: targetPath,
-          content: 'new content',
-          mode: 'create'
-        }, context)).rejects.toThrow('already exists')
+        await expect(
+          ToolRegistry.file_write.execute(
+            {
+              path: targetPath,
+              content: 'new content',
+              mode: 'create'
+            },
+            context
+          )
+        ).rejects.toThrow('already exists')
 
         // mode overwrite should succeed
-        const res = await ToolRegistry.file_write.execute({
-          path: targetPath,
-          content: 'new content',
-          mode: 'overwrite'
-        }, context)
+        const res = await ToolRegistry.file_write.execute(
+          {
+            path: targetPath,
+            content: 'new content',
+            mode: 'overwrite'
+          },
+          context
+        )
 
         expect(res.resultForUi.summary).toContain('overwrote')
         const readContent = await fs.readFile(targetPath, 'utf-8')
@@ -398,17 +426,27 @@ describe('File Safety & Search Tools', () => {
     it('rejects writing outside workspace or to sensitive files', async () => {
       const context = { reqId: 'test-req', signal: new AbortController().signal }
       const outsidePath = resolve(workspaceRoot, '..', 'should-fail-write.txt')
-      await expect(ToolRegistry.file_write.execute({
-        path: outsidePath,
-        content: 'fails'
-      }, context)).rejects.toThrow('outside the workspace directory')
+      await expect(
+        ToolRegistry.file_write.execute(
+          {
+            path: outsidePath,
+            content: 'fails'
+          },
+          context
+        )
+      ).rejects.toThrow('outside the workspace directory')
 
       const sensitivePath = join(testDir, '.env')
-      await expect(ToolRegistry.file_write.execute({
-        path: sensitivePath,
-        content: 'fails',
-        mode: 'overwrite'
-      }, context)).rejects.toThrow('sensitive file is blocked')
+      await expect(
+        ToolRegistry.file_write.execute(
+          {
+            path: sensitivePath,
+            content: 'fails',
+            mode: 'overwrite'
+          },
+          context
+        )
+      ).rejects.toThrow('sensitive file is blocked')
     })
   })
 

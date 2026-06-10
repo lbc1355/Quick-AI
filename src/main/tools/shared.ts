@@ -1,10 +1,13 @@
 import { fetchUrl, renderWithLineNumbers } from '../webTools'
-import { ToolArgs, MemoryDoc, MemoryDocKind, MemoryDocScope, SessionResource } from '../../shared/types'
-import { ToolExecutionContext } from './types'
 import {
-  saveResourceChunk,
-  getResourceId
-} from '../resourceCache'
+  ToolArgs,
+  MemoryDoc,
+  MemoryDocKind,
+  MemoryDocScope,
+  SessionResource
+} from '../../shared/types'
+import { ToolExecutionContext } from './types'
+import { saveResourceChunk, getResourceId } from '../resourceCache'
 
 // ---- fetch + cache helpers shared by web tools ----
 
@@ -12,7 +15,10 @@ export async function fetchCacheAndFormat(
   url: string,
   ctx: ToolExecutionContext,
   opts: { offset?: number; maxChars?: number }
-): Promise<{ resultForModel: string; resultForUi: { title?: string; url?: string; summary: string } }> {
+): Promise<{
+  resultForModel: string
+  resultForUi: { title?: string; url?: string; summary: string }
+}> {
   const result = await fetchUrl(url, ctx.signal, opts)
   const resourceId = getResourceId(result.finalUrl)
 

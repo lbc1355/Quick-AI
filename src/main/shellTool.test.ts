@@ -38,7 +38,9 @@ describe('Shell Tool Execution', () => {
 
     // Normalize paths for comparison (especially for Windows case/slashes differences)
     const returnedCwd = res.resultForModel.match(/Stdout:\s*([^\r\n]+)/)?.[1]?.trim() || ''
-    expect(returnedCwd.toLowerCase().replace(/\\/g, '/')).toBe(workspaceRoot.toLowerCase().replace(/\\/g, '/'))
+    expect(returnedCwd.toLowerCase().replace(/\\/g, '/')).toBe(
+      workspaceRoot.toLowerCase().replace(/\\/g, '/')
+    )
   })
 
   it('handles cancellation via AbortSignal', async () => {

@@ -1,11 +1,7 @@
 import { ToolArgs } from '../../shared/types'
 import { ActionRecord } from './actionLog'
 import { analyzeCommand } from './commandSafety'
-import {
-  SideEffectEntry,
-  SideEffectKind,
-  SideEffectReversibility
-} from './runManifest'
+import { SideEffectEntry, SideEffectKind, SideEffectReversibility } from './runManifest'
 
 export const SIDE_EFFECTING_TOOLS = new Set([
   'shell',

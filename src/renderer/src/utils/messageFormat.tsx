@@ -198,7 +198,6 @@ const renderMath = (math: string, block = false, key?: string): React.ReactNode 
   return <span key={key} dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-
 // Custom text formatter — uses react-markdown with GFM support for rich rendering,
 // while preserving custom code-block (with copy button) and KaTeX math rendering.
 export const renderMessageContent = (text: string): React.ReactNode => {

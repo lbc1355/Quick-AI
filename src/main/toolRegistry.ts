@@ -31,8 +31,7 @@ registry.loadBuiltins([webTools, systemTools, memoryTools, fileTools, shellTools
 const searchToolsDef: ToolDefinition = {
   name: 'search_tools',
   title: 'Search Tools',
-  description:
-    'Search the tool registry for available tools that can help with the user request.',
+  description: 'Search the tool registry for available tools that can help with the user request.',
   tags: ['meta', 'utility', 'find', 'discovery'],
   category: 'system',
   risk: 'low',

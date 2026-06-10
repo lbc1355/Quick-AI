@@ -14,7 +14,8 @@ import {
   SquareTerminal,
   Brain,
   AlertCircle,
-  GitBranch
+  GitBranch,
+  ListTodo
 } from 'lucide-react'
 import {
   parseThinkTags,
@@ -380,6 +381,9 @@ interface MessageBubbleProps {
   onResumeAgentRun: (idx: number) => void
   onOpenBranch: (sessionId: string) => void
   onChangeEditingText: (text: string) => void
+  activeTaskMessageId: string | null
+  isTaskPanelOpen: boolean
+  onToggleTasks: (msgId: string) => void
 }
 
 export const MessageBubble = React.memo<MessageBubbleProps>(
@@ -396,7 +400,10 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onRegenerate,
     onResumeAgentRun,
     onOpenBranch,
-    onChangeEditingText
+    onChangeEditingText,
+    activeTaskMessageId,
+    isTaskPanelOpen,
+    onToggleTasks
   }) => {
     const [isExpanded, setIsExpanded] = useState(true)
     const { content: displayContent, reasoning: displayReasoning } = parseThinkTags(
@@ -579,35 +586,6 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                 <span style={{ fontSize: '10px', opacity: 0.6 }}>• {elapsed}s</span>
               )}
             </div>
-
-            {/* Task progress card */}
-            {(() => {
-              const taskEvent = msg.agentEvents?.find((e) => e.type === 'task_update')
-              if (!taskEvent || taskEvent.type !== 'task_update') return null
-              const tasks = taskEvent.tasks
-              const done = tasks.filter((t) => t.status === 'completed' || t.status === 'cancelled').length
-              const total = tasks.length
-              const pct = total > 0 ? Math.round((done / total) * 100) : 0
-              const statusIcon: Record<string, string> = { pending: '○', in_progress: '◐', completed: '●', cancelled: '✕' }
-              const statusColor: Record<string, string> = { pending: '#6b7280', in_progress: '#3b82f6', completed: '#22c55e', cancelled: '#9ca3af' }
-              return (
-                <div style={{ margin: '8px 0 4px 0', padding: '8px 12px', borderRadius: '6px', background: 'var(--color-bg-elevated, #1e1e2e)', border: '1px solid var(--color-border, #333)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)' }}>Task Progress</span>
-                    <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{done}/{total} done ({pct}%)</span>
-                  </div>
-                  <div style={{ height: 3, borderRadius: 2, background: 'var(--color-border, #333)', marginBottom: 6, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: done === total ? '#22c55e' : '#3b82f6', borderRadius: 2, transition: 'width 0.3s' }} />
-                  </div>
-                  {tasks.map((t) => (
-                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '2px 0', color: t.status === 'in_progress' ? 'var(--color-text)' : 'var(--color-text-muted)', opacity: t.status === 'cancelled' ? 0.5 : 1 }}>
-                      <span style={{ color: statusColor[t.status], width: 14, textAlign: 'center', flexShrink: 0 }}>{statusIcon[t.status]}</span>
-                      <span style={{ textDecoration: t.status === 'cancelled' ? 'line-through' : undefined }}>{t.title}</span>
-                    </div>
-                  ))}
-                </div>
-              )
-            })()}
 
             {/* Intermediate event stream inside the collapsible container */}
             {effectiveLogsExpanded && (
@@ -1054,19 +1032,20 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                     </div>
                   )}
 
-                  {!isGenerating && (
-                    <div
-                      className="message-actions"
-                      style={{ justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}
-                    >
-                      {msg.role === 'user' ? (
-                        <button className="msg-action-btn" onClick={() => onStartEdit(msg)}>
-                          <Edit size={10} />
-                          <span>编辑</span>
-                        </button>
-                      ) : (
-                        <>
-                          {msg.agentRunId && agentStatus === 'failed' && (
+                  {msg.role === 'user'
+                    ? !isGenerating && (
+                        <div className="message-actions" style={{ justifyContent: 'flex-end' }}>
+                          <button className="msg-action-btn" onClick={() => onStartEdit(msg)}>
+                            <Edit size={10} />
+                            <span>编辑</span>
+                          </button>
+                        </div>
+                      )
+                    : (!isGenerating ||
+                        (hasStructuredEvents &&
+                          msg.agentEvents!.some((e) => e.type === 'task_update'))) && (
+                        <div className="message-actions" style={{ justifyContent: 'flex-start' }}>
+                          {msg.agentRunId && agentStatus === 'failed' && !isGenerating && (
                             <button
                               className="msg-action-btn"
                               onClick={() => onResumeAgentRun(idx)}
@@ -1075,20 +1054,36 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                               <span>继续执行</span>
                             </button>
                           )}
-                          <button className="msg-action-btn" onClick={() => onRegenerate(idx)}>
-                            <RefreshCw size={10} />
-                            <span>重新生成</span>
-                          </button>
-                          {finalReplyText && (
+                          {!isGenerating && (
+                            <button className="msg-action-btn" onClick={() => onRegenerate(idx)}>
+                              <RefreshCw size={10} />
+                              <span>重新生成</span>
+                            </button>
+                          )}
+                          {hasStructuredEvents &&
+                            msg.agentEvents!.some((e) => e.type === 'task_update') && (
+                              <button
+                                className={`msg-action-btn ${
+                                  activeTaskMessageId === msg.id && isTaskPanelOpen ? 'active' : ''
+                                }`}
+                                onClick={() => onToggleTasks(msg.id)}
+                              >
+                                <ListTodo size={10} />
+                                <span>
+                                  {activeTaskMessageId === msg.id && isTaskPanelOpen
+                                    ? '隐藏任务'
+                                    : '查看任务'}
+                                </span>
+                              </button>
+                            )}
+                          {!isGenerating && finalReplyText && (
                             <button className="msg-action-btn" onClick={handleCopy}>
                               {copied ? <Check size={10} /> : <Copy size={10} />}
                               <span>{copied ? '已复制' : '复制'}</span>
                             </button>
                           )}
-                        </>
+                        </div>
                       )}
-                    </div>
-                  )}
                 </>
               )}
             </div>
@@ -1119,6 +1114,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     }
     if (prevProps.isGenerating !== nextProps.isGenerating) return false
     if (prevProps.idx !== nextProps.idx) return false
+    if (prevProps.activeTaskMessageId !== nextProps.activeTaskMessageId) return false
+    if (prevProps.isTaskPanelOpen !== nextProps.isTaskPanelOpen) return false
 
     return true
   }

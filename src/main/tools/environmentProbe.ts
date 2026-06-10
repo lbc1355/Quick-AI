@@ -102,7 +102,9 @@ export async function probeEnvironment(signal?: AbortSignal): Promise<Environmen
     })
   )
 
-  const hasPython = toolResults.some((t) => (t.name === 'python' || t.name === 'python3') && t.found)
+  const hasPython = toolResults.some(
+    (t) => (t.name === 'python' || t.name === 'python3') && t.found
+  )
   const hasConda = toolResults.some((t) => t.name === 'conda' && t.found)
 
   let defaultPython: string | undefined

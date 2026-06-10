@@ -61,9 +61,9 @@ describeWithSqlite('remember / recall tools', () => {
   it('remember rejects empty and oversized content', async () => {
     stubRun('sess-A')
     await expect(ToolRegistry.remember.execute({ content: '   ' }, ctx)).rejects.toThrow()
-    await expect(
-      ToolRegistry.remember.execute({ content: 'x'.repeat(5000) }, ctx)
-    ).rejects.toThrow(/too long/)
+    await expect(ToolRegistry.remember.execute({ content: 'x'.repeat(5000) }, ctx)).rejects.toThrow(
+      /too long/
+    )
   })
 
   it('recall returns both global and the current session, but not other sessions', async () => {

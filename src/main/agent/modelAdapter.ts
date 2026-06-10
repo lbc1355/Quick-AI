@@ -36,12 +36,7 @@ function stripReasoningContent(msgs: ChatCompletionMessage[]): ChatCompletionMes
  *  sending `"content": ""` which some providers (GLM) reject. */
 function normalizeEmptyContent(msgs: ChatCompletionMessage[]): ChatCompletionMessage[] {
   return msgs.map((m) => {
-    if (
-      m.role === 'assistant' &&
-      m.content === '' &&
-      m.tool_calls &&
-      m.tool_calls.length > 0
-    ) {
+    if (m.role === 'assistant' && m.content === '' && m.tool_calls && m.tool_calls.length > 0) {
       const copy = cloneMessage(m)
       delete copy.content
       return copy

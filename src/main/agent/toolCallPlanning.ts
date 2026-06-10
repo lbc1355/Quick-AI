@@ -75,7 +75,14 @@ export function prepareToolCalls(input: {
     let blockReason: string | undefined
     if (isValid && permission !== 'deny' && toolDef) {
       const runApproved = input.isToolApproved(toolName)
-      const verdict = evaluateToolGuard(toolName, args, permission, toolDef.risk, DEFAULT_CONSTITUTION, runApproved)
+      const verdict = evaluateToolGuard(
+        toolName,
+        args,
+        permission,
+        toolDef.risk,
+        DEFAULT_CONSTITUTION,
+        runApproved
+      )
       effectivePermission = verdict.action
       if (verdict.action !== permission && verdict.reason) {
         blockReason = verdict.reason

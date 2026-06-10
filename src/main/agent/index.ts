@@ -25,7 +25,9 @@ export const runGeneralAgent = async (
 export const resolveToolPermission = (
   reqId: string,
   callId: string,
-  approved: boolean | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+  approved:
+    | boolean
+    | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
 ): void => {
   let isApproved = false
   if (typeof approved === 'boolean') {

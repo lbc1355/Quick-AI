@@ -51,8 +51,17 @@ export const webTools: Record<string, ToolDefinition> = {
     description:
       'Follow a numbered link ([N]) from a previously fetched page. Provide the resourceId of the page and the linkId shown inline in the text. Fetches and caches the target page.',
     tags: [
-      'web', 'link', 'click', 'follow', 'navigate', 'browse',
-      '链接', '点击', '跳转', '导航', '浏览'
+      'web',
+      'link',
+      'click',
+      'follow',
+      'navigate',
+      'browse',
+      '链接',
+      '点击',
+      '跳转',
+      '导航',
+      '浏览'
     ],
     dependencies: ['fetch_url'],
     category: 'web',
@@ -102,10 +111,7 @@ export const webTools: Record<string, ToolDefinition> = {
     title: 'Find In Page',
     description:
       'Search the full cached text of a previously fetched page for a query string, returning matching line numbers and lines. Like Ctrl+F. Use the resourceId from a fetch_url result.',
-    tags: [
-      'web', 'find', 'search', 'grep', 'page', 'locate',
-      '查找', '搜索', '页内', '定位'
-    ],
+    tags: ['web', 'find', 'search', 'grep', 'page', 'locate', '查找', '搜索', '页内', '定位'],
     dependencies: ['fetch_url'],
     category: 'web',
     risk: 'low',

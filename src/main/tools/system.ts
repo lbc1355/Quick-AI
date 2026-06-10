@@ -1,11 +1,7 @@
 import { ToolArgs, TaskItem } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { showDesktopNotification } from './helpers'
-import {
-  probeEnvironment,
-  formatEnvironmentReport,
-  ProbeSection
-} from './environmentProbe'
+import { probeEnvironment, formatEnvironmentReport, ProbeSection } from './environmentProbe'
 import { readResourceChunk } from '../resourceCache'
 import { loadResourceCache } from '../database'
 import { getRun } from '../agent/AgentRunContext'
@@ -69,8 +65,16 @@ export const systemTools: Record<string, ToolDefinition> = {
     description:
       'Searches inside a previously cached resource using a query string to find matching offsets and snippets.',
     tags: [
-      'cache', 'resource', 'search', 'find', 'local', 'history',
-      '缓存', '资源', '搜索', '查找'
+      'cache',
+      'resource',
+      'search',
+      'find',
+      'local',
+      'history',
+      '缓存',
+      '资源',
+      '搜索',
+      '查找'
     ],
     category: 'system',
     risk: 'low',
@@ -189,8 +193,16 @@ export const systemTools: Record<string, ToolDefinition> = {
     description:
       'Retrieve the full text of an earlier tool result that was truncated to fit the context window. Use the output_id shown in the truncation marker; page through long output with offset.',
     tags: [
-      'tool', 'output', 'truncated', 'retrieve', 'read', 'history',
-      '工具', '输出', '截断', '读取'
+      'tool',
+      'output',
+      'truncated',
+      'retrieve',
+      'read',
+      'history',
+      '工具',
+      '输出',
+      '截断',
+      '读取'
     ],
     category: 'system',
     risk: 'low',
@@ -284,7 +296,8 @@ export const systemTools: Record<string, ToolDefinition> = {
             },
             required: ['id', 'title', 'status']
           },
-          description: 'The task list. Provide the COMPLETE list on first call; on subsequent calls only include items whose status changed.'
+          description:
+            'The task list. Provide the COMPLETE list on first call; on subsequent calls only include items whose status changed.'
         }
       },
       required: ['tasks']
@@ -342,7 +355,9 @@ export const systemTools: Record<string, ToolDefinition> = {
         lines.push(`  ${statusIcon[t.status] || '○'} ${t.id}: ${t.title} [${t.status}]`)
       }
 
-      const doneCount = merged.filter((t) => t.status === 'completed' || t.status === 'cancelled').length
+      const doneCount = merged.filter(
+        (t) => t.status === 'completed' || t.status === 'cancelled'
+      ).length
       const total = merged.length
 
       return {
@@ -358,10 +373,21 @@ export const systemTools: Record<string, ToolDefinition> = {
     name: 'inspect_environment',
     title: 'Inspect Environment',
     description:
-      "Detect the user's machine environment in one read-only call: OS and shell, which developer tools are installed and their versions (git, node, python, conda, java, go, docker, etc.), the default python interpreter and conda environments, and which standard folders exist (Desktop/Documents/Downloads — existence only, contents are never listed). Use this instead of blindly probing through the shell, which is slower and triggers permission prompts. After learning durable facts, persist the reusable ones to global memory with remember (key=\"environment\").",
+      'Detect the user\'s machine environment in one read-only call: OS and shell, which developer tools are installed and their versions (git, node, python, conda, java, go, docker, etc.), the default python interpreter and conda environments, and which standard folders exist (Desktop/Documents/Downloads — existence only, contents are never listed). Use this instead of blindly probing through the shell, which is slower and triggers permission prompts. After learning durable facts, persist the reusable ones to global memory with remember (key="environment").',
     tags: [
-      'environment', 'machine', 'tools', 'installed', 'python', 'conda', 'git', 'detect', 'probe',
-      '环境', '工具', '检测', '电脑'
+      'environment',
+      'machine',
+      'tools',
+      'installed',
+      'python',
+      'conda',
+      'git',
+      'detect',
+      'probe',
+      '环境',
+      '工具',
+      '检测',
+      '电脑'
     ],
     category: 'system',
     risk: 'low',
@@ -381,9 +407,9 @@ export const systemTools: Record<string, ToolDefinition> = {
     execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
       const valid: ProbeSection[] = ['os', 'tools', 'envs', 'dirs']
       const include = Array.isArray(args.include)
-        ? (args.include.filter(
+        ? args.include.filter(
             (s): s is ProbeSection => typeof s === 'string' && (valid as string[]).includes(s)
-          ))
+          )
         : valid
       const sections = include.length > 0 ? include : valid
 
@@ -426,10 +452,10 @@ export const systemTools: Record<string, ToolDefinition> = {
       },
       required: ['title', 'body']
     },
-    execute: async (args: ToolArgs, _ctx: ToolExecutionContext) => {
-      const title = typeof args.title === 'string' && args.title.trim()
-        ? args.title.trim()
-        : 'QuickAI'
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      void ctx
+      const title =
+        typeof args.title === 'string' && args.title.trim() ? args.title.trim() : 'QuickAI'
       const body = typeof args.body === 'string' ? args.body.trim() : ''
 
       const sent = showDesktopNotification(title, body)
