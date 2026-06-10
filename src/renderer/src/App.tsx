@@ -899,6 +899,7 @@ function App(): React.JSX.Element {
                   message={msg}
                   isOpen={isTaskPanelOpen}
                   onClose={() => setIsTaskPanelOpen(false)}
+                  isGenerating={isCurrentSessionGenerating && msg.id === activeSession.messages[activeSession.messages.length - 1]?.id}
                 />
               ) : null
             })()

@@ -24,6 +24,7 @@ interface TaskPanelProps {
   message: Message
   isOpen: boolean
   onClose: () => void
+  isGenerating?: boolean
 }
 
 interface TimelineNode {
@@ -38,7 +39,7 @@ interface TimelineNode {
   error?: string
 }
 
-export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }) => {
+export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, isGenerating = false }) => {
   const [activeTab, setActiveTab] = useState<'timeline' | 'tasks'>('timeline')
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
 
@@ -213,16 +214,20 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose }
     return nodes
   }, [message])
 
-  // Automatically expand the last step node when the timeline updates
+  // Manage node expansion states:
+  // - During active run execution (isGenerating is true): Only expand the currently running tool, collapse all others.
+  // - Once complete (isGenerating is false): Collapse all nodes.
   useEffect(() => {
-    if (timelineNodes.length > 0) {
-      const lastNode = timelineNodes[timelineNodes.length - 1]
-      setExpandedNodes((prev) => {
-        if (prev[lastNode.id] !== undefined) return prev
-        return { ...prev, [lastNode.id]: true }
+    if (isGenerating) {
+      const newExpanded: Record<string, boolean> = {}
+      timelineNodes.forEach((node) => {
+        newExpanded[node.id] = node.status === 'running'
       })
+      setExpandedNodes(newExpanded)
+    } else {
+      setExpandedNodes({})
     }
-  }, [timelineNodes])
+  }, [timelineNodes, isGenerating])
 
   const toggleNode = (id: string): void => {
     setExpandedNodes((prev) => ({
