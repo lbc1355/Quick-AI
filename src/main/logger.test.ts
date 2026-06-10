@@ -2,7 +2,6 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { existsSync, rmSync, readFileSync } from 'fs'
-import * as fs from 'fs'
 import { Logger } from './logger'
 
 let home: string

@@ -179,7 +179,6 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
                 type="button"
                 className="session-delete-btn"
                 onClick={() => void handleDeleteSession(session.id)}
-                disabled={sessions.length <= 1}
                 title="Delete chat"
               >
                 <Trash2 size={12} />
