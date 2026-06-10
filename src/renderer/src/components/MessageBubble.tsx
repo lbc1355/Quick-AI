@@ -35,6 +35,14 @@ interface LogStepRowProps {
 const LogStepRow: React.FC<LogStepRowProps> = ({ log, resultLog, errorLog, parentExpanded }) => {
   const [isExpanded, setIsExpanded] = useState(false)
 
+  useEffect(() => {
+    if (!resultLog && !errorLog) {
+      setIsExpanded(true)
+    } else {
+      setIsExpanded(false)
+    }
+  }, [resultLog, errorLog])
+
   const displayUrl = log.url ? log.url.replace(/^https?:\/\/(www\.)?/, '') : ''
   const truncatedUrl = displayUrl.length > 55 ? displayUrl.substring(0, 55) + '...' : displayUrl
   const statusText = errorLog ? 'Failed' : resultLog ? 'Ran' : 'Running'
@@ -167,6 +175,14 @@ const EventStepRow: React.FC<EventStepRowProps> = ({
         : result
           ? 'done'
           : 'running'
+
+  useEffect(() => {
+    if (statusClass === 'running' || statusClass === 'waiting') {
+      setIsExpanded(true)
+    } else {
+      setIsExpanded(false)
+    }
+  }, [statusClass])
 
   return (
     <div className="agent-flow-step">
@@ -328,6 +344,14 @@ const EventToolGroup: React.FC<{
       : hasRunning
         ? 'Running'
         : 'Ran'
+
+  useEffect(() => {
+    if (statusClass === 'running') {
+      setIsExpanded(true)
+    } else {
+      setIsExpanded(false)
+    }
+  }, [statusClass])
 
   return (
     <div className="agent-flow-step agent-flow-group">
