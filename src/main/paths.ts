@@ -39,6 +39,10 @@ export function getMemoriesRoot(): string {
   return ensureDir(join(getQuickAiRoot(), 'memories'))
 }
 
+export function getLogsRoot(): string {
+  return ensureDir(join(getQuickAiRoot(), 'logs'))
+}
+
 export function getWorkspaceRoot(): string {
   const configured = process.env.QUICKAI_WORKSPACE_ROOT
   const root = configured ? normalize(resolve(configured)) : join(getQuickAiRoot(), 'workspace')

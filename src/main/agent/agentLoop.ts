@@ -19,6 +19,7 @@ import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
 import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
+import { SessionLogger } from './sessionLogger'
 import { AmbiguousAction, loadRunCheckpoint, saveRunCheckpoint } from './runCheckpoint'
 import {
   appendRunAction,
@@ -226,6 +227,7 @@ export const runAgentLoop = async (
       status,
       error
     })
+    SessionLogger.logRunEnd(conversationId, status, error)
   }
 
   try {
@@ -238,6 +240,13 @@ export const runAgentLoop = async (
       skillName: isSkill ? options.skill!.name : 'General Agent'
     })
     persistCheckpoint(0)
+
+    SessionLogger.logRunStart(conversationId, reqId, {
+      model: options.model,
+      apiUrl: options.apiUrl,
+      skillName: isSkill ? options.skill!.name : 'General Agent',
+      messages
+    })
 
     // Declaration cache: the set of tools to declare only changes when activeTools changes
     // (a tool is discovered), so we can avoid rebuilding and re-serialising every step.
@@ -256,6 +265,8 @@ export const runAgentLoop = async (
         maxSteps,
         activeTools: Array.from(runCtx.activeTools)
       })
+
+      SessionLogger.logStepStart(conversationId, step, maxSteps)
 
       // Build tool declarations list for this step. Rebuild only when the active tool set
       // changes (dynamic mode) or is never cached (static mode: first step only).
@@ -315,6 +326,7 @@ export const runAgentLoop = async (
       )
 
       messages.push(assistantMessage)
+      SessionLogger.logModelResponse(conversationId, assistantMessage)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         const isToolWhitelisted = (toolName: string): boolean =>
@@ -377,6 +389,16 @@ export const runAgentLoop = async (
                 resourceIds: Array.from(new Set([...manifest.resourceIds, ...resourceIds]))
               }))
             }
+            SessionLogger.logToolExecution(
+              conversationId,
+              prep.callId,
+              prep.toolName,
+              prep.args as Record<string, unknown>,
+              prep.permission,
+              status,
+              Date.now() - toolStartTime,
+              resultContent
+            )
           }
 
           if (!prep.isValid || prep.permission === 'deny') {

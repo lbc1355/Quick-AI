@@ -22,6 +22,7 @@ import {
   readMemoryEntry,
   writeMemoryEntry
 } from './memory/memoryStore'
+import { logger } from './logger'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -193,19 +194,22 @@ function registerGlobalShortcut(): void {
   })
 
   if (!registered) {
-    console.error('Failed to register global shortcut Alt+/')
+    logger.error('Shortcut', 'Failed to register global shortcut Alt+/')
+  } else {
+    logger.info('Shortcut', 'Successfully registered global shortcut Alt+/')
   }
 }
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(() => {
+  logger.info('System', 'QuickAI App initializing...')
   // Initialize storage
   store = new FileStore()
 
   // Seed the on-disk Markdown memory library (~/.quickai/memories) and its git repo.
   ensureMemoryLibrary().catch((err) =>
-    console.warn('Failed to initialize memory library:', (err as Error).message)
+    logger.warn('Memory', 'Failed to initialize memory library:', (err as Error).message)
   )
 
   // Set app user model id for windows
