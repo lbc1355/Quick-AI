@@ -17,8 +17,14 @@ import {
   ExternalLink,
   Code
 } from 'lucide-react'
-import { TaskItem, AgentEvent, ToolResultUi, Message } from '../../../shared/types'
-import { parseAgentLogs } from '../utils/messageFormat'
+import { TaskItem, AgentEvent, Message } from '../../../shared/types'
+import {
+  parseAgentSteps,
+  ParsedToolCall,
+  ParsedAgentStep,
+  ParsedAgentRun,
+  renderMessageContent
+} from '../utils/messageFormat'
 
 interface TaskPanelProps {
   message: Message
@@ -27,22 +33,8 @@ interface TaskPanelProps {
   isGenerating?: boolean
 }
 
-interface TimelineNode {
-  id: string
-  type: 'thought' | 'tool'
-  title: string
-  toolName?: string
-  purpose?: string
-  args?: any
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'denied'
-  thought?: string
-  result?: ToolResultUi
-  error?: string
-}
-
 export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, isGenerating = false }) => {
   const [activeTab, setActiveTab] = useState<'timeline' | 'tasks'>('timeline')
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({})
 
   // Parse high-level tasks checklist if present in agentEvents
   const tasks = useMemo<TaskItem[]>(() => {
@@ -57,185 +49,141 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
   const hasTasks = tasks.length > 0
 
   // Fallback to timeline if activeTab is 'tasks' but tasks are cleared
+  const parsedRun = useMemo<ParsedAgentRun>(() => {
+    return parseAgentSteps(message?.agentEvents, message?.content)
+  }, [message?.agentEvents, message?.content])
+
+  const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({})
+  const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({})
+
+  // Fallback to timeline if activeTab is 'tasks' but tasks are cleared
   useEffect(() => {
     if (!hasTasks && activeTab === 'tasks') {
       setActiveTab('timeline')
     }
   }, [hasTasks, activeTab])
 
-  // Parse low-level timeline nodes (tools + reasoning)
-  const timelineNodes = useMemo<TimelineNode[]>(() => {
-    if (!message) return []
-    const nodes: TimelineNode[] = []
-
-    const getStepDescription = (toolName: string, args: any): string => {
-      const argsObj = args && typeof args === 'object' ? args : null
-      const name = toolName.toLowerCase()
-
-      const truncate = (text: string, maxLen: number = 32): string => {
-        if (typeof text !== 'string') return ''
-        if (text.length <= maxLen) return text
-        return text.substring(0, maxLen) + '...'
-      }
-
-      const getFileLabel = (val: any): string => {
-        if (typeof val !== 'string') return ''
-        const parts = val.replace(/\\/g, '/').split('/')
-        if (parts.length > 2) {
-          return '.../' + parts.slice(-2).join('/')
-        }
-        return val
-      }
-
-      if (
-        name.includes('file') ||
-        name.includes('view') ||
-        name.includes('read_file') ||
-        name.includes('write_file')
-      ) {
-        const path =
-          argsObj?.path ||
-          argsObj?.TargetFile ||
-          argsObj?.AbsolutePath ||
-          argsObj?.Target ||
-          argsObj?.file ||
-          argsObj?.filePath
-        const filename = path ? getFileLabel(path) : ''
-        if (name.includes('write') || name.includes('create')) {
-          return `写入文件 ${filename}`
-        }
-        if (name.includes('replace') || name.includes('edit')) {
-          return `修改文件 ${filename}`
-        }
-        return `读取文件 ${filename}`
-      }
-
-      if (name.includes('command') || name.includes('shell') || name.includes('run')) {
-        const cmd = argsObj?.CommandLine || argsObj?.command || argsObj?.cmd
-        return `执行命令: ${cmd ? truncate(cmd) : ''}`
-      }
-
-      if (name.includes('search') || name.includes('query') || name.includes('web') || name.includes('google')) {
-        const query = argsObj?.query || argsObj?.q
-        return `网络搜索: ${query ? truncate(query) : ''}`
-      }
-
-      if (name.includes('url') || name.includes('fetch') || name.includes('browser') || name.includes('http')) {
-        const url = argsObj?.url || argsObj?.Url || argsObj?.uri
-        if (url && typeof url === 'string') {
-          const displayUrl = url.replace(/^https?:\/\/(www\.)?/, '')
-          return `网页抓取: ${truncate(displayUrl)}`
-        }
-      }
-
-      if (name.includes('memory')) {
-        const target = argsObj?.target || argsObj?.group_name || argsObj?.groupName
-        if (name.includes('write')) return `写入记忆: ${target || ''}`
-        if (name.includes('delete')) return `删除记忆: ${target || ''}`
-        return `读取记忆: ${target || ''}`
-      }
-
-      return `调用工具: ${toolName}`
-    }
-
-    if (message.agentEvents && message.agentEvents.length > 0) {
-      const events = message.agentEvents
-      events.forEach((event, idx) => {
-        if (event.type === 'reasoning') {
-          nodes.push({
-            id: `thought-${idx}`,
-            type: 'thought',
-            title: '思考分析',
-            status: 'completed',
-            thought: event.content
-          })
-        } else if (event.type === 'tool_call') {
-          const resultEvent = events.find(
-            (e): e is Extract<AgentEvent, { type: 'tool_result' }> =>
-              e.type === 'tool_result' && e.callId === event.callId
-          )
-          const errorEvent = events.find(
-            (e): e is Extract<AgentEvent, { type: 'tool_error' }> =>
-              e.type === 'tool_error' && e.callId === event.callId
-          )
-
-          let status: TimelineNode['status'] = 'running'
-          if (event.permissionState === 'pending') status = 'pending'
-          else if (event.permissionState === 'denied') status = 'denied'
-          else if (errorEvent) status = 'failed'
-          else if (resultEvent) status = 'completed'
-
-          nodes.push({
-            id: event.callId,
-            type: 'tool',
-            title: event.purpose || getStepDescription(event.toolName, event.args),
-            toolName: event.toolName,
-            purpose: event.purpose,
-            args: event.args,
-            status,
-            result: resultEvent?.result,
-            error: errorEvent?.error
-          })
-        }
-      })
-    } else {
-      // Fallback: Parse legacy string logs
-      const parsed = parseAgentLogs(message.content)
-      parsed.logs.forEach((log, idx) => {
-        if (log.type === 'think') {
-          nodes.push({
-            id: `legacy-thought-${idx}`,
-            type: 'thought',
-            title: log.step > 0 ? `思考步骤 (${log.step}/${log.maxSteps})` : '思考分析',
-            status: 'completed',
-            thought: log.thought
-          })
-        } else if (log.type === 'tool') {
-          const resultLog = parsed.logs.find(
-            (l) => l.step === log.step && l.type === 'result' && l.url === log.url
-          )
-          const errorLog = parsed.logs.find((l) => l.step === log.step && l.type === 'error')
-
-          let status: TimelineNode['status'] = 'running'
-          if (errorLog) status = 'failed'
-          else if (resultLog) status = 'completed'
-
-          nodes.push({
-            id: `legacy-tool-${idx}`,
-            type: 'tool',
-            title: log.toolName ? getStepDescription(log.toolName, { url: log.url }) : '使用工具',
-            toolName: log.toolName || 'tool',
-            args: { url: log.url },
-            status,
-            result: resultLog ? { title: resultLog.title, url: resultLog.url } : undefined,
-            error: errorLog?.error
-          })
-        }
-      })
-    }
-    return nodes
-  }, [message])
-
-  // Manage node expansion states:
-  // - During active run execution (isGenerating is true): Only expand the currently running tool, collapse all others.
-  // - Once complete (isGenerating is false): Collapse all nodes.
+  // Manage steps and tools auto-expansion states during active runs
   useEffect(() => {
-    if (isGenerating) {
-      const newExpanded: Record<string, boolean> = {}
-      timelineNodes.forEach((node) => {
-        newExpanded[node.id] = node.status === 'running'
+    if (isGenerating && parsedRun.steps.length > 0) {
+      const latestStep = parsedRun.steps[parsedRun.steps.length - 1]
+      
+      // Auto-expand the latest step
+      setExpandedSteps({
+        [latestStep.id]: true
       })
-      setExpandedNodes(newExpanded)
+      
+      // Auto-expand any running or pending tool calls
+      const runningTools: Record<string, boolean> = {}
+      latestStep.toolCalls.forEach((tc) => {
+        if (tc.status === 'running' || tc.status === 'pending') {
+          runningTools[tc.callId] = true
+        }
+      })
+      setExpandedTools(runningTools)
     } else {
-      setExpandedNodes({})
+      setExpandedSteps({})
+      setExpandedTools({})
     }
-  }, [timelineNodes, isGenerating])
+  }, [parsedRun.steps, isGenerating])
 
-  const toggleNode = (id: string): void => {
-    setExpandedNodes((prev) => ({
+  const toggleStep = (stepId: string): void => {
+    setExpandedSteps((prev) => ({
       ...prev,
-      [id]: !prev[id]
+      [stepId]: !prev[stepId]
     }))
+  }
+
+  const toggleTool = (toolId: string): void => {
+    setExpandedTools((prev) => ({
+      ...prev,
+      [toolId]: !prev[toolId]
+    }))
+  }
+
+  const getStepTitle = (step: ParsedAgentStep): string => {
+    if (step.progressMessage) {
+      const firstLine = step.progressMessage.trim().split(/[。\n]/)[0].trim()
+      const clean = firstLine.replace(/[\*#_``\[\]]/g, '').trim()
+      if (clean.length > 0) {
+        return clean.length > 30 ? clean.substring(0, 30) + '...' : clean
+      }
+    }
+    if (step.toolCalls.length > 0) {
+      const uniqueTools = Array.from(new Set(step.toolCalls.map(tc => tc.toolName)))
+      return `执行 ${uniqueTools.join(', ')}`
+    }
+    return '思考分析中...'
+  }
+
+  const getStepDescription = (toolName: string, args: any): string => {
+    const argsObj = args && typeof args === 'object' ? args : null
+    const name = toolName.toLowerCase()
+
+    const truncate = (text: string, maxLen: number = 32): string => {
+      if (typeof text !== 'string') return ''
+      if (text.length <= maxLen) return text
+      return text.substring(0, maxLen) + '...'
+    }
+
+    const getFileLabel = (val: any): string => {
+      if (typeof val !== 'string') return ''
+      const parts = val.replace(/\\/g, '/').split('/')
+      if (parts.length > 2) {
+        return '.../' + parts.slice(-2).join('/')
+      }
+      return val
+    }
+
+    if (
+      name.includes('file') ||
+      name.includes('view') ||
+      name.includes('read_file') ||
+      name.includes('write_file')
+    ) {
+      const path =
+        argsObj?.path ||
+        argsObj?.TargetFile ||
+        argsObj?.AbsolutePath ||
+        argsObj?.Target ||
+        argsObj?.file ||
+        argsObj?.filePath
+      const filename = path ? getFileLabel(path) : ''
+      if (name.includes('write') || name.includes('create')) {
+        return `写入文件 ${filename}`
+      }
+      if (name.includes('replace') || name.includes('edit')) {
+        return `修改文件 ${filename}`
+      }
+      return `读取文件 ${filename}`
+    }
+
+    if (name.includes('command') || name.includes('shell') || name.includes('run')) {
+      const cmd = argsObj?.CommandLine || argsObj?.command || argsObj?.cmd
+      return `执行命令: ${cmd ? truncate(cmd) : ''}`
+    }
+
+    if (name.includes('search') || name.includes('query') || name.includes('web') || name.includes('google')) {
+      const query = argsObj?.query || argsObj?.q
+      return `网络搜索: ${query ? truncate(query) : ''}`
+    }
+
+    if (name.includes('url') || name.includes('fetch') || name.includes('browser') || name.includes('http')) {
+      const url = argsObj?.url || argsObj?.Url || argsObj?.uri
+      if (url && typeof url === 'string') {
+        const displayUrl = url.replace(/^https?:\/\/(www\.)?/, '')
+        return `网页抓取: ${truncate(displayUrl)}`
+      }
+    }
+
+    if (name.includes('memory')) {
+      const target = argsObj?.target || argsObj?.group_name || argsObj?.groupName
+      if (name.includes('write')) return `写入记忆: ${target || ''}`
+      if (name.includes('delete')) return `删除记忆: ${target || ''}`
+      return `读取记忆: ${target || ''}`
+    }
+
+    return `调用工具: ${toolName}`
   }
 
   const getToolIcon = (type: 'thought' | 'tool', toolName?: string): React.ReactNode => {
@@ -266,7 +214,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
     return <HelpCircle size={12} />
   }
 
-  const getStatusStyles = (status: TimelineNode['status']) => {
+  const getStatusStyles = (status: ParsedToolCall['status']) => {
     switch (status) {
       case 'completed':
         return {
@@ -317,7 +265,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
     )
   }
 
-  const renderResult = (node: TimelineNode) => {
+  const renderResult = (node: ParsedToolCall) => {
     if (node.error) {
       return (
         <div className="timeline-error-section">
@@ -403,83 +351,123 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
       <div className="task-panel-content">
         {/* Tab 1: Execution steps timeline */}
         {activeTab === 'timeline' && (
-          <div className="timeline-container">
-            {timelineNodes.length === 0 ? (
+          <div className="steps-accordion-container" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {parsedRun.steps.length === 0 ? (
               <div className="timeline-empty">
                 <Loader2 size={14} className="animate-spin" />
                 <span>等待执行步骤...</span>
               </div>
             ) : (
-              <>
-                <div className="timeline-thread" />
-                {timelineNodes.map((node) => {
-                  const isExpanded = !!expandedNodes[node.id]
-                  const statusStyle = getStatusStyles(node.status)
-                  const icon = getToolIcon(node.type, node.toolName)
-
-                  return (
-                    <div key={node.id} className={`timeline-step-item ${node.status}`}>
-                      {/* Left circular node with clean border & status color */}
-                      <div className="timeline-node-circle" style={statusStyle}>
-                        {node.status === 'running' && node.type === 'tool' ? (
-                          <Loader2 size={12} className="animate-spin" />
+              parsedRun.steps.map((step, stepIdx) => {
+                const isExpanded = !!expandedSteps[step.id]
+                const stepTitle = getStepTitle(step)
+                const failedCount = step.toolCalls.filter(tc => tc.status === 'failed' || tc.status === 'denied').length
+                
+                return (
+                  <div key={step.id} className={`step-accordion-item ${step.status} ${isExpanded ? 'open' : ''}`}>
+                    {/* Step Accordion Header */}
+                    <div className="step-accordion-header" onClick={() => toggleStep(step.id)}>
+                      <div className="step-accordion-status">
+                        {step.status === 'running' ? (
+                          <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+                        ) : step.status === 'failed' ? (
+                          <XCircle size={13} style={{ color: 'var(--color-danger)' }} />
                         ) : (
-                          icon
+                          <CheckCircle2 size={13} style={{ color: 'var(--color-success)' }} />
                         )}
                       </div>
-
-                      {/* Right content card (transparent & flat in minimalist theme) */}
-                      <div className="timeline-content-card">
-                        <div className="timeline-header-row" onClick={() => toggleNode(node.id)}>
-                          <span
-                            className="timeline-step-title"
-                            style={
-                              node.type === 'thought'
-                                ? { fontStyle: 'italic', color: 'var(--color-text-faint)' }
-                                : node.status === 'running'
-                                  ? { color: 'var(--color-primary)' }
-                                  : node.status === 'failed' || node.status === 'denied'
-                                    ? { color: 'var(--color-danger)' }
-                                    : {}
-                            }
-                          >
-                            {node.title}
-                            {node.purpose && node.toolName && (
-                              <span className="timeline-step-toolname-tag">
-                                {node.toolName}
-                              </span>
-                            )}
+                      <div className="step-accordion-title">
+                        <span className="step-num">{stepIdx + 1}.</span>
+                        <span className="step-title-text">{stepTitle}</span>
+                      </div>
+                      <div className="step-accordion-meta">
+                        {step.toolCalls.length > 0 && (
+                          <span className="step-tools-count">
+                            {step.toolCalls.length} tools{failedCount > 0 ? ` · ${failedCount} failed` : ''}
                           </span>
-                          <span className="timeline-expand-btn">
-                            <ChevronDown
-                              size={12}
-                              style={{
-                                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)',
-                                transition: 'transform 0.15s ease'
-                              }}
-                            />
-                          </span>
-                        </div>
+                        )}
+                      </div>
+                      <ChevronDown
+                        size={12}
+                        className="step-accordion-chevron"
+                        style={{
+                          transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)',
+                          transition: 'transform 0.15s ease'
+                        }}
+                      />
+                    </div>
 
-                        {/* Collapsible details drawer */}
-                        {isExpanded && (
-                          <div className="timeline-detail-drawer">
-                            {node.type === 'thought' && node.thought && (
-                              <div className="timeline-thought-box">{node.thought}</div>
-                            )}
-                            {node.type === 'tool' && (
-                              <>
-                                {renderArgs(node.args)}
-                                {renderResult(node)}
-                              </>
-                            )}
+                    {/* Step Accordion Content */}
+                    {isExpanded && (
+                      <div className="step-accordion-content" style={{ padding: '10px 12px 14px' }}>
+                        {/* 1. Model Progress Message */}
+                        {step.progressMessage && (
+                          <div className="step-model-progress" style={{ marginBottom: step.toolCalls.length > 0 ? '14px' : '0' }}>
+                            <div className="step-section-subtitle" style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>模型进度</div>
+                            <div className="step-progress-message-content" style={{ fontSize: '12.5px', color: 'var(--color-text)', lineHeight: '1.6' }}>
+                              {renderMessageContent(step.progressMessage)}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 2. Nested Tool Calls */}
+                        {step.toolCalls.length > 0 && (
+                          <div className="step-tool-calls">
+                            <div className="step-section-subtitle" style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>工具调用</div>
+                            <div className="timeline-container nested" style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '4px', position: 'relative' }}>
+                              <div className="timeline-thread" style={{ position: 'absolute', left: '12px', top: '10px', bottom: '10px', width: '2px', background: 'var(--color-border)', opacity: 0.5 }} />
+                              {step.toolCalls.map((tc) => {
+                                const isToolExpanded = !!expandedTools[tc.callId]
+                                const statusStyle = getStatusStyles(tc.status)
+                                const icon = getToolIcon('tool', tc.toolName)
+                                const toolTitle = tc.purpose || getStepDescription(tc.toolName, tc.args)
+
+                                return (
+                                  <div key={tc.callId} className={`timeline-step-item ${tc.status}`} style={{ display: 'flex', gap: '12px', position: 'relative' }}>
+                                    <div className="timeline-node-circle" style={{ ...statusStyle, width: '26px', height: '26px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, zIndex: 1, background: 'var(--color-panel)' }}>
+                                      {tc.status === 'running' ? (
+                                        <Loader2 size={12} className="animate-spin" />
+                                      ) : (
+                                        icon
+                                      )}
+                                    </div>
+                                    <div className="timeline-content-card" style={{ flex: 1, minWidth: 0 }}>
+                                      <div className="timeline-header-row" onClick={() => toggleTool(tc.callId)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '4px 0' }}>
+                                        <span className="timeline-step-title" style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toolTitle}</span>
+                                          {tc.toolName && (
+                                            <span className="timeline-step-toolname-tag" style={{ fontSize: '9.5px', background: 'var(--color-inline-code-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)', padding: '1px 4px', borderRadius: '4px', flexShrink: 0 }}>
+                                              {tc.toolName}
+                                            </span>
+                                          )}
+                                        </span>
+                                        <ChevronDown
+                                          size={12}
+                                          style={{
+                                            transform: isToolExpanded ? 'rotate(180deg)' : 'rotate(0)',
+                                            transition: 'transform 0.15s ease',
+                                            color: 'var(--color-text-faint)'
+                                          }}
+                                        />
+                                      </div>
+                                      {isToolExpanded && (
+                                        <div className="timeline-detail-drawer" style={{ borderLeft: '1px solid var(--color-border)', margin: '5px 0 4px 0', padding: '6px 0 8px 10px' }}>
+                                          {renderArgs(tc.args)}
+                                          {renderResult(tc)}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
                           </div>
                         )}
                       </div>
-                    </div>
-                  )
-                })}
-              </>
+                    )}
+                  </div>
+                )
+              })
             )}
           </div>
         )}

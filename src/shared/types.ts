@@ -12,7 +12,7 @@ export interface ToolResultUi {
 
 export type AgentEvent =
   | { type: 'agent_start'; skillName: string }
-  | { type: 'reasoning'; content: string }
+  | { type: 'reasoning'; content: string; step?: number }
   | {
       type: 'tool_call'
       callId: string
@@ -20,14 +20,16 @@ export type AgentEvent =
       args: unknown
       purpose?: string
       permissionState?: 'pending' | 'approved' | 'denied'
+      step?: number
     }
   | {
       type: 'tool_result'
       callId: string
       result: ToolResultUi
+      step?: number
     }
-  | { type: 'tool_error'; callId: string; error: string }
-  | { type: 'final'; content: string }
+  | { type: 'tool_error'; callId: string; error: string; step?: number }
+  | { type: 'final'; content: string; step?: number }
   | {
       type: 'agent_progress'
       step: number

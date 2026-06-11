@@ -317,10 +317,10 @@ export const runAgentLoop = async (
         signal,
         {
           onReasoning: (content) => {
-            sendEvent(mainWindow, reqId, { type: 'reasoning', content })
+            sendEvent(mainWindow, reqId, { type: 'reasoning', content, step })
           },
           onFinalChunk: (content) => {
-            sendEvent(mainWindow, reqId, { type: 'final', content })
+            sendEvent(mainWindow, reqId, { type: 'final', content, step })
           }
         }
       )
@@ -411,9 +411,10 @@ export const runAgentLoop = async (
               toolName,
               args: toolArgs,
               purpose: prep.purpose,
-              permissionState: 'denied'
+              permissionState: 'denied',
+              step
             })
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: errorMsg })
+            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: errorMsg, step })
             const content = `Error: ${errorMsg}`
             recordAction('denied', content)
             return {
@@ -427,7 +428,7 @@ export const runAgentLoop = async (
           if (prep.isDeadlock) {
             const offset = typeof toolArgs.offset === 'number' ? toolArgs.offset : 0
             const deadlockWarning = `Warning: You have already fetched this URL window: ${toolArgs.url} at offset ${offset}. Use the nextOffset from the previous result to continue.`
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: deadlockWarning })
+            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: deadlockWarning, step })
             recordAction('blocked', deadlockWarning)
             return {
               role: 'tool',
@@ -438,7 +439,7 @@ export const runAgentLoop = async (
           }
 
           if (prep.loopBlock) {
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: prep.loopBlock })
+            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: prep.loopBlock, step })
             recordAction('blocked', prep.loopBlock)
             return {
               role: 'tool',
@@ -451,7 +452,7 @@ export const runAgentLoop = async (
           if (toolName === 'fetch_url') {
             if (fetchUrlsCount >= MAX_FETCH_URLS_PER_RUN) {
               const limitWarning = `Warning: You have reached the maximum fetch limit of ${MAX_FETCH_URLS_PER_RUN} page windows for this run. Please summarize based only on the content you already have.`
-              sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: limitWarning })
+              sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: limitWarning, step })
               recordAction('blocked', limitWarning)
               return {
                 role: 'tool',
@@ -467,7 +468,7 @@ export const runAgentLoop = async (
 
           if (!isApproved) {
             const errorMsg = 'Tool execution denied by user.'
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: errorMsg })
+            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: errorMsg, step })
             const content = `ERROR: ${errorMsg}`
             recordAction('denied', content)
             return {
@@ -511,7 +512,8 @@ export const runAgentLoop = async (
             sendEvent(mainWindow, reqId, {
               type: 'tool_result',
               callId,
-              result: resultForUi
+              result: resultForUi,
+              step
             })
 
             sendEvent(mainWindow, reqId, {
@@ -555,7 +557,7 @@ export const runAgentLoop = async (
             }
 
             const errorContent = `${errorCategory} ${err.message}${guardNote}`
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: err.message })
+            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: err.message, step })
             if (isAmbiguousSideEffect) {
               ambiguousActions.push({
                 callId,
@@ -599,7 +601,8 @@ export const runAgentLoop = async (
               toolName,
               args: toolArgs,
               purpose: prep.purpose,
-              permissionState: 'pending'
+              permissionState: 'pending',
+              step
             })
 
             try {
@@ -612,9 +615,10 @@ export const runAgentLoop = async (
                 toolName,
                 args: toolArgs,
                 purpose: prep.purpose,
-                permissionState: 'denied'
+                permissionState: 'denied',
+                step
               })
-              sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: error.message })
+              sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: error.message, step })
               toolResponses[index] = {
                 role: 'tool',
                 tool_call_id: callId,
@@ -634,7 +638,8 @@ export const runAgentLoop = async (
             toolName,
             args: toolArgs,
             purpose: prep.purpose,
-            permissionState: isApproved ? 'approved' : 'denied'
+            permissionState: isApproved ? 'approved' : 'denied',
+            step
           })
 
           toolResponses[index] = await executeTool(prep, isApproved)
@@ -648,13 +653,14 @@ export const runAgentLoop = async (
         await Promise.all(
           directCalls.map(async (prep) => {
             // Emit tool_call event
-            sendEvent(mainWindow, reqId, {
+             sendEvent(mainWindow, reqId, {
               type: 'tool_call',
               callId: prep.callId,
               toolName: prep.toolName,
               args: prep.args,
               purpose: prep.purpose,
-              permissionState: 'approved'
+              permissionState: 'approved',
+              step
             })
 
             toolResponses[prep.index] = await executeTool(prep, true)
