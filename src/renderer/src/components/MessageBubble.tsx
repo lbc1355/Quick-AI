@@ -168,6 +168,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       : parseAgentLogs(displayContent).cleanContent
 
     const [copied, setCopied] = useState(false)
+    const [isStepsExpanded, setIsStepsExpanded] = useState(false)
     const isEditing = editingMessageId === msg.id
     const isBranchForkMessage = Boolean(msg.isBranchFork || msg.forkedFrom)
     const branchRunId = shortBranchRunId(msg.forkedFrom?.runId)
@@ -494,23 +495,65 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                     {/* Render main text content */}
                     {(hasStructuredEvents || parsedRun.steps.length > 0) ? (
                       <div className="agent-structured-steps-area">
-                        {parsedRun.steps.map((step, stepIdx) => {
-                          const isLatest = stepIdx === parsedRun.steps.length - 1
-                          return (
-                            <div key={step.id} className={`agent-step-block ${step.status}`}>
-                              {step.progressMessage && (
-                                <div className="agent-step-progress-message">
-                                  {renderMessageContent(step.progressMessage)}
-                                </div>
-                              )}
-                              <StepToolGroup
-                                step={step}
-                                isLatest={isLatest}
-                                isGenerating={isGenerating}
+                        {isGenerating ? (
+                          parsedRun.steps.map((step, stepIdx) => {
+                            const isLatest = stepIdx === parsedRun.steps.length - 1
+                            return (
+                              <div key={step.id} className={`agent-step-block ${step.status}`}>
+                                {step.progressMessage && (
+                                  <div className="agent-step-progress-message">
+                                    {renderMessageContent(step.progressMessage)}
+                                  </div>
+                                )}
+                                <StepToolGroup
+                                  step={step}
+                                  isLatest={isLatest}
+                                  isGenerating={isGenerating}
+                                />
+                              </div>
+                            )
+                          })
+                        ) : parsedRun.steps.length > 0 ? (
+                          <div className="agent-completed-steps-collapsible">
+                            <button
+                              type="button"
+                              className={`agent-steps-collapse-toggle ${isStepsExpanded ? 'expanded' : ''}`}
+                              onClick={() => setIsStepsExpanded(!isStepsExpanded)}
+                            >
+                              <ChevronRight
+                                size={13}
+                                className="toggle-icon"
+                                style={{
+                                  transform: isStepsExpanded ? 'rotate(90deg)' : 'none',
+                                  transition: 'transform 0.15s ease'
+                                }}
                               />
-                            </div>
-                          )
-                        })}
+                              <span>查看执行步骤 ({parsedRun.steps.length} 步)</span>
+                            </button>
+                            {isStepsExpanded && (
+                              <div className="agent-steps-collapsed-content">
+                                {parsedRun.steps.map((step, stepIdx) => {
+                                  const isLatest = stepIdx === parsedRun.steps.length - 1
+                                  return (
+                                    <div key={step.id} className={`agent-step-block ${step.status}`}>
+                                      {step.progressMessage && (
+                                        <div className="agent-step-progress-message">
+                                          {renderMessageContent(step.progressMessage)}
+                                        </div>
+                                      )}
+                                      <StepToolGroup
+                                        step={step}
+                                        isLatest={isLatest}
+                                        isGenerating={isGenerating}
+                                      />
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+
                         {parsedRun.finalAnswer && (
                           <div className="agent-event-final-text">
                             {renderMessageContent(parsedRun.finalAnswer)}
