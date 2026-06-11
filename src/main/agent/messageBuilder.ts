@@ -141,6 +141,10 @@ export function buildSkillMessages(options: AgentSkillRunOptions): ChatCompletio
     ? `User global system prompt:\n${options.systemPrompt}\n\n`
     : ''
 
+  const toolDiscovery = options.skill.toolDiscovery || 'static'
+  const scope = toolDiscovery === 'dynamic' ? 'all' : new Set(options.skill.tools || [])
+  const toolDirs = buildToolDirectorySummary(scope)
+
   const memorySegment = buildMemoryInjection()
 
   const msgs: ChatCompletionMessage[] = [
@@ -152,16 +156,20 @@ ${buildDateLine()}
 
 **Platform:** ${process.platform === 'win32' ? 'Windows (cmd.exe shell). Use Windows-native commands: findstr (not grep), dir (not ls), type (not cat), where (not which), del (not rm), copy / move (not cp / mv), mkdir / md (not mkdir). Paths use backslashes.' : process.platform === 'darwin' ? 'macOS (zsh shell). Use standard Unix commands.' : 'Linux (bash shell). Use standard Unix commands.'}
 
+${toolDirs ? `${toolDirs}\n\n` : ''}Concept Clarification:
+- **Skill**: The high-level operating instructions and manuals (provided in SKILL.md) that guide how you should approach and complete this task. A Skill is NOT a tool that you call; it is the manual you follow.
+- **Tool**: The programmatic function calls (listed in the "Available tools" section above, e.g., 'file_read', 'shell', etc.) that you invoke to interact with the system or environment to perform actions.
+
 You have access to tools that you can call.
 
 Memory Lifecycle:
-A durable memory library lives on disk: always-injected constant memory plus an on-demand index of Task Groups (shown below).
 1. START: If a Task Group in the index relates to this task, call read_memory("<group name>") before proceeding (use list_memory to browse). Do not guess what is stored.
 2. FINISH: If this task produced stable, reusable knowledge or a durable user preference, call write_memory to persist it. Use target="task_group" with a clear group_name for on-demand knowledge; use target="always" only for short, always-relevant rules. Never store one-off context or unverified guesses.
 ${memorySegment}
 
 Rules:
 - Read the SKILL.md as the operating manual.
+- Do not attempt to call the Skill itself as a tool. Instead, call the programmatic tools (like 'file_read', 'shell', etc.) to execute the instructions described in the SKILL.md.
 - If the Skill describes URL templates, infer the right keyword and fill the URL yourself.
 - Prefer official docs, GitHub repos, release notes, and primary sources.
 - If you perform a search, always prefer to fetch the content of 1 to 3 most relevant URL results using 'fetch_url' to read the page content, rather than relying only on search snippets. If search results are enough only for navigation, fetch the most relevant pages before final answer.

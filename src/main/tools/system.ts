@@ -5,6 +5,7 @@ import { probeEnvironment, formatEnvironmentReport, ProbeSection } from './envir
 import { readResourceChunk } from '../resourceCache'
 import { loadResourceCache } from '../database'
 import { getRun } from '../agent/AgentRunContext'
+import { loadSkillsFromFolders } from '../skillManager'
 
 export const systemTools: Record<string, ToolDefinition> = {
   read_cached_resource: {
@@ -467,6 +468,109 @@ export const systemTools: Record<string, ToolDefinition> = {
         resultForUi: {
           title: 'Notification',
           summary: sent ? title : 'Notifications unsupported'
+        }
+      }
+    }
+  },
+  list_skills: {
+    name: 'list_skills',
+    title: 'List Installed Skills',
+    description:
+      'Lists all custom Skills currently installed in QuickAI. Call without parameters to list summaries, or pass a skillId to retrieve its full prompt instructions and auxiliary files list.',
+    tags: ['skills', 'list', 'available', 'triggers', 'commands', '列表', '技能', '快捷指令'],
+    category: 'system',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        skillId: {
+          type: 'string',
+          description: 'Optional. The ID of a specific skill to retrieve its full prompt instructions and packaged files.'
+        }
+      }
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      void ctx
+      const skills = loadSkillsFromFolders()
+
+      const skillId = typeof args.skillId === 'string' ? args.skillId.trim() : undefined
+      if (skillId) {
+        const s = skills.find((x) => x.id === skillId)
+        if (!s) {
+          throw new Error(`Skill with ID "${skillId}" not found. Call list_skills without parameters to list all installed skills.`)
+        }
+
+        const lines = [
+          `Skill ID: ${s.id}`,
+          `Name: ${s.name}`,
+          `Triggers: ${s.triggers && s.triggers.length > 0 ? s.triggers.join(', ') : s.trigger}`,
+          s.description ? `Description: ${s.description}` : '',
+          s.filePath ? `File Path: ${s.filePath}` : '',
+          s.dirPath ? `Directory Path: ${s.dirPath}` : '',
+          `Mode: ${s.mode || 'insert'}`,
+          `Kind: ${s.kind || 'prompt'}`,
+          s.tools && s.tools.length > 0 ? `Declared Tools: ${s.tools.join(', ')}` : '',
+          '',
+          '--- SKILL.md Prompt Instructions ---',
+          s.prompt,
+          '-------------------------------------'
+        ]
+
+        if (s.packageFiles && s.packageFiles.length > 0) {
+          lines.push('', 'Packaged Auxiliary Files:')
+          s.packageFiles.forEach((file) => {
+            lines.push(`- Path: ${file.path} (${file.size} bytes)`)
+          })
+        }
+
+        return {
+          resultForModel: lines.filter((l) => l !== '').join('\n'),
+          resultForUi: {
+            title: `Skill Details: ${s.name}`,
+            summary: `Loaded details for skill ${s.id}`
+          }
+        }
+      }
+
+      if (skills.length === 0) {
+        return {
+          resultForModel: 'No custom skills installed.',
+          resultForUi: {
+            title: 'List Skills',
+            summary: '0 skills installed'
+          }
+        }
+      }
+
+      const lines = ['Installed Skills:']
+      const items = skills.map((s) => {
+        const triggersStr = s.triggers && s.triggers.length > 0 ? s.triggers.join(', ') : s.trigger
+        lines.push(`- ID: ${s.id}`)
+        lines.push(`  Name: ${s.name}`)
+        lines.push(`  Triggers: ${triggersStr}`)
+        if (s.description) lines.push(`  Description: ${s.description}`)
+        if (s.filePath) lines.push(`  File Path: ${s.filePath}`)
+        if (s.dirPath) lines.push(`  Directory Path: ${s.dirPath}`)
+        lines.push(`  Mode: ${s.mode || 'insert'}`)
+        lines.push(`  Kind: ${s.kind || 'prompt'}`)
+        if (s.tools && s.tools.length > 0) lines.push(`  Declared Tools: ${s.tools.join(', ')}`)
+        lines.push('')
+
+        return {
+          title: s.name,
+          snippet: `Triggers: ${triggersStr} | Mode: ${s.mode || 'insert'}${s.description ? ` | ${s.description}` : ''}`,
+          source: s.source || 'markdown'
+        }
+      })
+
+      return {
+        resultForModel: lines.join('\n'),
+        resultForUi: {
+          title: 'List Skills',
+          summary: `Found ${skills.length} skills`,
+          items
         }
       }
     }

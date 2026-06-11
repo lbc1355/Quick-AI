@@ -205,6 +205,8 @@ export interface Skill {
   installedAt?: number
   updatedAt?: number
   toolDiscovery?: 'static' | 'dynamic'
+  filePath?: string
+  dirPath?: string
 }
 
 export interface SkillInstallPayload {

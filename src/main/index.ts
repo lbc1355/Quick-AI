@@ -24,6 +24,8 @@ import {
 } from './memory/memoryStore'
 import { logger } from './logger'
 import { McpManager } from './mcpManager'
+import { migrateDbSkillsToFolders } from './skillManager'
+
 
 
 let mainWindow: BrowserWindow | null = null
@@ -208,6 +210,9 @@ app.whenReady().then(() => {
   logger.info('System', 'QuickAI App initializing...')
   // Initialize storage
   store = new FileStore()
+
+  // Migrate DB skills to folders if global folder is empty
+  migrateDbSkillsToFolders()
 
   // Initialize MCP Manager
   McpManager.init()
