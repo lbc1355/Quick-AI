@@ -168,16 +168,17 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onToggleTasks
   }) => {
     const [isExpanded, setIsExpanded] = useState(true)
-    const { content: displayContent, reasoning: displayReasoning } = parseThinkTags(
-      msg.content,
-      msg.reasoning_content
+    const { content: displayContent, reasoning: displayReasoning } = useMemo(
+      () => parseThinkTags(msg.content, msg.reasoning_content),
+      [msg.content, msg.reasoning_content]
     )
 
     // Determine if we use structured agent events or legacy string logs fallback
     const hasStructuredEvents = msg.agentEvents && msg.agentEvents.length > 0
-    const cleanContent = hasStructuredEvents
-      ? displayContent
-      : parseAgentLogs(displayContent).cleanContent
+    const cleanContent = useMemo(
+      () => (hasStructuredEvents ? displayContent : parseAgentLogs(displayContent).cleanContent),
+      [hasStructuredEvents, displayContent]
+    )
 
     const [copied, setCopied] = useState(false)
     const [isStepsExpanded, setIsStepsExpanded] = useState(false)
@@ -201,15 +202,23 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     }, [isGenerating, cleanContent, hasLogs, msg.id])
 
     // Find agent_end event in the events list
-    const agentEndEvent = msg.agentEvents?.reduce<Extract<
-      AgentEvent,
-      { type: 'agent_end' }
-    > | null>((last, e) => (e.type === 'agent_end' ? e : last), null)
+    const agentEndEvent = useMemo(
+      () =>
+        msg.agentEvents?.reduce<Extract<AgentEvent, { type: 'agent_end' }> | null>(
+          (last, e) => (e.type === 'agent_end' ? e : last),
+          null
+        ),
+      [msg.agentEvents]
+    )
     // Find the last agent_progress event in the events list
-    const lastProgressEvent = msg.agentEvents?.reduce<Extract<
-      AgentEvent,
-      { type: 'agent_progress' }
-    > | null>((last, e) => (e.type === 'agent_progress' ? e : last), null)
+    const lastProgressEvent = useMemo(
+      () =>
+        msg.agentEvents?.reduce<Extract<AgentEvent, { type: 'agent_progress' }> | null>(
+          (last, e) => (e.type === 'agent_progress' ? e : last),
+          null
+        ),
+      [msg.agentEvents]
+    )
 
     let agentStatus: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' =
       'idle'
@@ -233,6 +242,18 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     // The assistant's final reply text — the last final answer for structured runs, otherwise
     // the cleaned content. This is what the copy button puts on the clipboard.
     const finalReplyText = hasStructuredEvents ? parsedRun.finalAnswer : cleanContent
+
+    // Memoize the rendered markdown/KaTeX output. renderMessageContent runs regex splits and a
+    // synchronous katex.renderToString per math span; without memoization it re-runs on every
+    // re-render (notably the high-frequency re-renders during streaming).
+    const renderedFinalAnswer = useMemo(
+      () => (parsedRun.finalAnswer ? renderMessageContent(parsedRun.finalAnswer) : null),
+      [parsedRun.finalAnswer]
+    )
+    const renderedCleanContent = useMemo(
+      () => (cleanContent ? renderMessageContent(cleanContent) : null),
+      [cleanContent]
+    )
 
     const handleCopy = (): void => {
       if (!finalReplyText) return
@@ -567,9 +588,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                         ) : null}
 
                         {parsedRun.finalAnswer && (
-                          <div className="agent-event-final-text">
-                            {renderMessageContent(parsedRun.finalAnswer)}
-                          </div>
+                          <div className="agent-event-final-text">{renderedFinalAnswer}</div>
                         )}
                         {isGenerating && parsedRun.steps.length === 0 && !parsedRun.finalAnswer && (
                           <span style={{ opacity: 0.5, fontSize: '13px', fontStyle: 'italic' }}>
@@ -582,7 +601,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       msg.role === 'user' ? (
                         cleanContent
                       ) : (
-                        renderMessageContent(cleanContent)
+                        renderedCleanContent
                       )
                     ) : (
                       isGenerating &&

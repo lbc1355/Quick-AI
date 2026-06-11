@@ -439,29 +439,36 @@ export function loadSettings(): AppSettings {
 export function saveSettings(settings: AppSettings): void {
   const database = getDb()
   const upsert = database.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
-
-  upsert.run('systemPrompt', settings.systemPrompt)
-  upsert.run('autoHideOnBlur', String(settings.autoHideOnBlur))
-  upsert.run('theme', settings.theme || 'dark')
-  upsert.run('activeProviderId', settings.activeProviderId)
-  upsert.run('permissions', JSON.stringify(settings.permissions || {}))
-
-  // Providers: delete all then re-insert
-  database.prepare('DELETE FROM providers').run()
+  const deleteProviders = database.prepare('DELETE FROM providers')
   const insert = database.prepare(
     'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList) VALUES (?, ?, ?, ?, ?, ?, ?)'
   )
-  for (const p of settings.providers) {
-    insert.run(
-      p.id,
-      p.name,
-      p.type,
-      p.apiKey || '',
-      p.apiUrl,
-      p.model,
-      JSON.stringify(p.modelsList || [])
-    )
-  }
+
+  // Wrap the whole save in a single transaction: turns N independent fsync-per-statement
+  // writes into one, and makes the delete-then-reinsert atomic (a mid-write crash can no
+  // longer leave the providers table empty).
+  const persist = database.transaction((s: AppSettings) => {
+    upsert.run('systemPrompt', s.systemPrompt)
+    upsert.run('autoHideOnBlur', String(s.autoHideOnBlur))
+    upsert.run('theme', s.theme || 'dark')
+    upsert.run('activeProviderId', s.activeProviderId)
+    upsert.run('permissions', JSON.stringify(s.permissions || {}))
+
+    // Providers: delete all then re-insert
+    deleteProviders.run()
+    for (const p of s.providers) {
+      insert.run(
+        p.id,
+        p.name,
+        p.type,
+        p.apiKey || '',
+        p.apiUrl,
+        p.model,
+        JSON.stringify(p.modelsList || [])
+      )
+    }
+  })
+  persist(settings)
 }
 
 // Sessions
@@ -480,70 +487,83 @@ export function loadSessions(): Session[] {
     branchOf: string | null
   }>
 
-  const msgStmt = database.prepare(
-    'SELECT id, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, createdAt FROM messages WHERE sessionId = ? ORDER BY createdAt ASC'
-  )
-  const fileStmt = database.prepare(
-    'SELECT name, content, type FROM message_files WHERE messageId = ?'
-  )
+  // Bulk-load every message and file in two queries, then group in memory. The previous
+  // approach issued one query per session plus one per message (an N+1 fan-out), so startup
+  // cost grew with total message count; this keeps it to a constant number of round-trips.
+  const allMsgRows = database
+    .prepare(
+      'SELECT id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, createdAt FROM messages ORDER BY createdAt ASC'
+    )
+    .all() as Array<{
+    id: string
+    sessionId: string
+    role: string
+    content: string
+    reasoning_content: string | null
+    agentRunId: string | null
+    agentRunIds: string | null
+    agentEvents: string | null
+    forkedFrom: string | null
+    isBranchFork: number | null
+    createdAt: number
+  }>
 
-  return sessionRows.map((s) => {
-    const msgRows = msgStmt.all(s.id) as Array<{
-      id: string
-      role: string
-      content: string
-      reasoning_content: string | null
-      agentRunId: string | null
-      agentRunIds: string | null
-      agentEvents: string | null
-      forkedFrom: string | null
-      isBranchFork: number | null
-      createdAt: number
-    }>
+  const allFileRows = database
+    .prepare('SELECT messageId, name, content, type FROM message_files')
+    .all() as Array<{
+    messageId: string
+    name: string
+    content: string
+    type: string
+  }>
 
-    const messages: Message[] = msgRows.map((m) => {
-      const fileRows = fileStmt.all(m.id) as Array<{
-        name: string
-        content: string
-        type: string
-      }>
+  const filesByMessage = new Map<string, Array<{ name: string; content: string; type: string }>>()
+  for (const f of allFileRows) {
+    const list = filesByMessage.get(f.messageId)
+    const entry = { name: f.name, content: f.content, type: f.type }
+    if (list) list.push(entry)
+    else filesByMessage.set(f.messageId, [entry])
+  }
 
-      let agentEvents = undefined
-      if (m.agentEvents) {
-        try {
-          agentEvents = JSON.parse(m.agentEvents)
-        } catch {
-          // ignore
-        }
+  const messagesBySession = new Map<string, Message[]>()
+  for (const m of allMsgRows) {
+    let agentEvents = undefined
+    if (m.agentEvents) {
+      try {
+        agentEvents = JSON.parse(m.agentEvents)
+      } catch {
+        // ignore
       }
-
-      const forkedFrom = parseBranchRef(m.forkedFrom)
-
-      return {
-        id: m.id,
-        role: m.role as Message['role'],
-        content: m.content,
-        reasoning_content: m.reasoning_content || undefined,
-        agentRunId: m.agentRunId || undefined,
-        agentRunIds: parseRunIds(m.agentRunIds, m.agentRunId),
-        agentEvents,
-        forkedFrom,
-        isBranchFork: m.isBranchFork === 1 || (m.isBranchFork == null && !!forkedFrom) || undefined,
-        files:
-          fileRows.length > 0
-            ? fileRows.map((f) => ({ name: f.name, content: f.content, type: f.type }))
-            : undefined
-      }
-    })
-
-    return {
-      id: s.id,
-      title: s.title,
-      lastActiveTime: s.lastActiveTime || undefined,
-      branchOf: parseBranchRef(s.branchOf),
-      messages
     }
-  })
+
+    const forkedFrom = parseBranchRef(m.forkedFrom)
+    const fileRows = filesByMessage.get(m.id)
+
+    const message: Message = {
+      id: m.id,
+      role: m.role as Message['role'],
+      content: m.content,
+      reasoning_content: m.reasoning_content || undefined,
+      agentRunId: m.agentRunId || undefined,
+      agentRunIds: parseRunIds(m.agentRunIds, m.agentRunId),
+      agentEvents,
+      forkedFrom,
+      isBranchFork: m.isBranchFork === 1 || (m.isBranchFork == null && !!forkedFrom) || undefined,
+      files: fileRows && fileRows.length > 0 ? fileRows : undefined
+    }
+
+    const list = messagesBySession.get(m.sessionId)
+    if (list) list.push(message)
+    else messagesBySession.set(m.sessionId, [message])
+  }
+
+  return sessionRows.map((s) => ({
+    id: s.id,
+    title: s.title,
+    lastActiveTime: s.lastActiveTime || undefined,
+    branchOf: parseBranchRef(s.branchOf),
+    messages: messagesBySession.get(s.id) || []
+  }))
 }
 
 /** Parse a JSON-serialised branch reference column back into its typed shape (null/garbage → undefined). */
@@ -585,9 +605,7 @@ function parseRunIds(value: string | null, fallbackRunId: string | null): string
 export function saveSessions(sessions: Session[]): void {
   const database = getDb()
 
-  // Delete all existing sessions (cascade deletes messages and files)
-  database.prepare('DELETE FROM sessions').run()
-
+  const deleteSessions = database.prepare('DELETE FROM sessions')
   const insertSession = database.prepare(
     'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, branchOf) VALUES (?, ?, ?, ?)'
   )
@@ -599,37 +617,46 @@ export function saveSessions(sessions: Session[]): void {
     'INSERT INTO message_files (messageId, name, content, type) VALUES (?, ?, ?, ?)'
   )
 
-  for (const session of sessions) {
-    insertSession.run(
-      session.id,
-      session.title,
-      session.lastActiveTime || 0,
-      session.branchOf ? JSON.stringify(session.branchOf) : null
-    )
+  // One transaction for the entire snapshot. Without this, the delete-all plus the hundreds
+  // of per-message/per-file inserts each commit (and fsync under WAL) independently — orders
+  // of magnitude slower — and a crash mid-loop could leave every session wiped.
+  const persist = database.transaction((sessionList: Session[]) => {
+    // Delete all existing sessions (cascade deletes messages and files)
+    deleteSessions.run()
 
-    if (session.messages) {
-      for (const msg of session.messages) {
-        insertMessage.run(
-          msg.id,
-          session.id,
-          msg.role,
-          msg.content || '',
-          msg.reasoning_content || null,
-          msg.agentRunId || null,
-          JSON.stringify(msg.agentRunIds || (msg.agentRunId ? [msg.agentRunId] : [])),
-          msg.agentEvents ? JSON.stringify(msg.agentEvents) : null,
-          msg.forkedFrom ? JSON.stringify(msg.forkedFrom) : null,
-          msg.isBranchFork ? 1 : 0,
-          parseInt(msg.id) || Date.now()
-        )
-        if (msg.files && msg.files.length > 0) {
-          for (const f of msg.files) {
-            insertFile.run(msg.id, f.name, f.content, f.type)
+    for (const session of sessionList) {
+      insertSession.run(
+        session.id,
+        session.title,
+        session.lastActiveTime || 0,
+        session.branchOf ? JSON.stringify(session.branchOf) : null
+      )
+
+      if (session.messages) {
+        for (const msg of session.messages) {
+          insertMessage.run(
+            msg.id,
+            session.id,
+            msg.role,
+            msg.content || '',
+            msg.reasoning_content || null,
+            msg.agentRunId || null,
+            JSON.stringify(msg.agentRunIds || (msg.agentRunId ? [msg.agentRunId] : [])),
+            msg.agentEvents ? JSON.stringify(msg.agentEvents) : null,
+            msg.forkedFrom ? JSON.stringify(msg.forkedFrom) : null,
+            msg.isBranchFork ? 1 : 0,
+            parseInt(msg.id) || Date.now()
+          )
+          if (msg.files && msg.files.length > 0) {
+            for (const f of msg.files) {
+              insertFile.run(msg.id, f.name, f.content, f.type)
+            }
           }
         }
       }
     }
-  }
+  })
+  persist(sessions)
 }
 
 // Skills
@@ -708,34 +735,38 @@ function parseSkillPackageFiles(value: string | null): Skill['packageFiles'] {
 
 export function saveSkills(skills: Skill[]): void {
   const database = getDb()
-  database.prepare('DELETE FROM skills').run()
+  const deleteSkills = database.prepare('DELETE FROM skills')
   const insert = database.prepare(
     `INSERT OR REPLACE INTO skills
      (id, name, trigger, prompt, description, triggers, mode, kind, tools, maxSteps, rawMarkdown, source, entryPath, packageRoot, packageFiles, installedAt, updatedAt, toolDiscovery)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-  for (const s of skills) {
-    insert.run(
-      s.id,
-      s.name,
-      s.trigger,
-      s.prompt,
-      s.description || '',
-      JSON.stringify(s.triggers || []),
-      s.mode || 'insert',
-      s.kind || 'prompt',
-      JSON.stringify(s.tools || []),
-      s.maxSteps ?? 30,
-      s.rawMarkdown || null,
-      s.source || 'manual',
-      s.entryPath || null,
-      s.packageRoot || null,
-      JSON.stringify(s.packageFiles || []),
-      s.installedAt || null,
-      s.updatedAt || null,
-      s.toolDiscovery || 'static'
-    )
-  }
+  const persist = database.transaction((skillList: Skill[]) => {
+    deleteSkills.run()
+    for (const s of skillList) {
+      insert.run(
+        s.id,
+        s.name,
+        s.trigger,
+        s.prompt,
+        s.description || '',
+        JSON.stringify(s.triggers || []),
+        s.mode || 'insert',
+        s.kind || 'prompt',
+        JSON.stringify(s.tools || []),
+        s.maxSteps ?? 30,
+        s.rawMarkdown || null,
+        s.source || 'manual',
+        s.entryPath || null,
+        s.packageRoot || null,
+        JSON.stringify(s.packageFiles || []),
+        s.installedAt || null,
+        s.updatedAt || null,
+        s.toolDiscovery || 'static'
+      )
+    }
+  })
+  persist(skills)
 }
 
 // ── Resource Cache CRUD helpers ──────────────────────────────────────────
@@ -912,13 +943,22 @@ export function pruneResourceChunks(resourceId: string, maxTextChars: number): v
     .all(resourceId) as Array<{ id: string; text: string | null }>
 
   let totalChars = chunks.reduce((sum, c) => sum + (c.text?.length || 0), 0)
+  const idsToDelete: string[] = []
   for (const chunk of chunks) {
     if (totalChars <= maxTextChars) break
-    database
-      .prepare('DELETE FROM resource_chunks WHERE resourceId = ? AND id = ?')
-      .run(resourceId, chunk.id)
+    idsToDelete.push(chunk.id)
     totalChars -= chunk.text?.length || 0
   }
+
+  if (idsToDelete.length === 0) return
+
+  // Single batched DELETE inside a transaction instead of one round-trip per chunk.
+  const placeholders = idsToDelete.map(() => '?').join(', ')
+  database
+    .prepare(
+      `DELETE FROM resource_chunks WHERE resourceId = ? AND id IN (${placeholders})`
+    )
+    .run(resourceId, ...idsToDelete)
 }
 
 export function getResourceChunksMetadata(

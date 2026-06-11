@@ -46,7 +46,6 @@ export const fileTools: Record<string, ToolDefinition> = {
       }
 
       const root = getWorkspaceRoot()
-      console.log(`[file_read] Workspace root is: ${root}`)
       const resolvedPath = resolve(root, filePath)
 
       let realPath = resolvedPath
