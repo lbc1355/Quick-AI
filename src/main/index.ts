@@ -23,6 +23,8 @@ import {
   writeMemoryEntry
 } from './memory/memoryStore'
 import { logger } from './logger'
+import { McpManager } from './mcpManager'
+
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -207,6 +209,9 @@ app.whenReady().then(() => {
   // Initialize storage
   store = new FileStore()
 
+  // Initialize MCP Manager
+  McpManager.init()
+
   // Seed the on-disk Markdown memory library (~/.quickai/memories) and its git repo.
   ensureMemoryLibrary().catch((err) =>
     logger.warn('Memory', 'Failed to initialize memory library:', (err as Error).message)
@@ -222,6 +227,27 @@ app.whenReady().then(() => {
 
   // IPC handlers for FileStore with security whitelist
   const ALLOWED_STORE_KEYS = ['sessions', 'settings', 'skills']
+
+  // MCP IPC handlers
+  ipcMain.handle('mcp-get-config', () => {
+    return McpManager.readConfigRaw()
+  })
+
+  ipcMain.handle('mcp-set-config', (_event, content) => {
+    const merged = McpManager.writeConfigRaw(content)
+    McpManager.reload().catch((err) => {
+      logger.error('MCP', `Error reloading after config write: ${err.message}`)
+    })
+    return merged
+  })
+
+  ipcMain.handle('mcp-get-status', () => {
+    return McpManager.getStatuses()
+  })
+
+  ipcMain.handle('mcp-open-config', () => {
+    McpManager.openConfigFolder()
+  })
 
   ipcMain.handle('store-get', (_event, key) => {
     if (typeof key !== 'string' || !ALLOWED_STORE_KEYS.includes(key)) {
@@ -427,9 +453,12 @@ app.on('before-quit', () => {
   isQuitting = true
 })
 
-// Clean up global shortcuts when app closes
+// Clean up global shortcuts and MCP processes when app closes
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  McpManager.shutdown().catch((err) => {
+    logger.error('MCP', `Error shutting down MCP: ${err.message}`)
+  })
 })
 
 // Prevent app from quitting when window is closed unless explicit exit

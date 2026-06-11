@@ -4,6 +4,8 @@ import { ProviderList } from './ProviderList'
 import { ProviderEditor } from './ProviderEditor'
 import { SkillManager } from './SkillManager'
 import { MemoryManager } from './MemoryManager'
+import { McpManagerView } from './McpManagerView'
+
 
 interface SettingsViewProps {
   isEditingProviderDetail: boolean
@@ -55,14 +57,15 @@ interface SettingsViewProps {
   onChangeToolPermission: (toolName: string, policy: 'allow' | 'ask' | 'deny') => void
 }
 
-type SettingsSection = 'providers' | 'general' | 'agent' | 'skills' | 'memory'
+type SettingsSection = 'providers' | 'general' | 'agent' | 'skills' | 'memory' | 'mcp'
 
 const settingsSections: Array<{ id: SettingsSection; label: string; detail: string }> = [
   { id: 'providers', label: '服务商', detail: 'API 与模型' },
   { id: 'general', label: '通用', detail: '提示词与窗口' },
   { id: 'agent', label: 'Agent', detail: '工具权限' },
   { id: 'skills', label: 'Skills', detail: 'Markdown / 文件夹' },
-  { id: 'memory', label: '记忆', detail: '管理常态与按需记忆' }
+  { id: 'memory', label: '记忆', detail: '管理常态与按需记忆' },
+  { id: 'mcp', label: 'MCP', detail: '管理外部工具' }
 ]
 
 const agentTools: Array<{
@@ -353,6 +356,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </header>
               <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
                 <MemoryManager sessionId={activeSessionId} />
+              </div>
+            </section>
+          )}
+
+          {activeSection === 'mcp' && (
+            <section className="control-section" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <header className="control-section-header" style={{ flexShrink: 0 }}>
+                <div>
+                  <h2>MCP 外部工具</h2>
+                  <p>通过 Model Context Protocol 协议配置外部工具服务器</p>
+                </div>
+              </header>
+              <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+                <McpManagerView />
               </div>
             </section>
           )}

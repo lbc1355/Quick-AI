@@ -983,3 +983,455 @@
 .skill-list {
   max-height: none;
 }
+
+/* MCP Manager Styling */
+.mcp-layout {
+  display: flex;
+  gap: 20px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mcp-editor-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mcp-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.mcp-textarea-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mcp-textarea {
+  flex: 1;
+  font-family: 'Consolas', 'Courier New', Courier, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: none;
+  background: var(--color-input-container-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.mcp-textarea.error {
+  border-color: var(--color-danger, #ef4444);
+}
+
+.mcp-error-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-danger, #ef4444);
+  font-size: 11.5px;
+  margin-top: 6px;
+}
+
+.mcp-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.mcp-save-btn {
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+}
+
+.mcp-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mcp-save-status {
+  font-size: 12px;
+}
+
+.mcp-save-status.success {
+  color: #10b981;
+}
+
+.mcp-save-status.error {
+  color: #ef4444;
+}
+
+.mcp-servers-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--color-border);
+  padding-left: 20px;
+}
+
+.mcp-servers-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding-right: 4px;
+}
+
+.mcp-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 20px;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  height: 150px;
+}
+
+.mcp-empty-state p {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin: 8px 0 2px;
+}
+
+.mcp-empty-state small {
+  font-size: 11px;
+  color: var(--color-text-faint);
+}
+
+.mcp-server-card {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.01);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.mcp-server-card:hover {
+  background: var(--color-card-bg-hover);
+}
+
+.mcp-server-card.connected {
+  border-left: 3px solid #10b981;
+}
+
+.mcp-server-card.failed {
+  border-left: 3px solid #ef4444;
+}
+
+.mcp-server-card.connecting {
+  border-left: 3px solid #f59e0b;
+}
+
+.mcp-server-card.disabled {
+  border-left: 3px solid var(--color-text-faint);
+  opacity: 0.7;
+}
+
+.mcp-server-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mcp-server-name-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mcp-server-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-title);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcp-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.mcp-status-pill.connected {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.mcp-status-pill.failed {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.mcp-status-pill.connecting {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.mcp-status-pill.disabled {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-faint);
+  border-color: var(--color-border);
+}
+
+.mcp-expand-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.mcp-expand-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text);
+}
+
+.mcp-expand-label {
+  font-weight: 500;
+}
+
+.mcp-server-error-log {
+  display: flex;
+  gap: 6px;
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #f87171;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.mcp-server-tools-tree {
+  margin-top: 4px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-tool-tree-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.005);
+}
+
+.mcp-tool-tree-item:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mcp-tool-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-tool-name {
+  font-family: 'Consolas', monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.mcp-tool-description {
+  margin: 2px 0 0 18px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.35;
+}
+
+.spin {
+  animation: spin-anim 1s linear infinite;
+}
+
+@keyframes spin-anim {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mcp-icon-success { color: #10b981; }
+.mcp-icon-danger { color: #ef4444; }
+.mcp-icon-warning { color: #f59e0b; }
+.mcp-icon-muted { color: var(--color-text-faint); }
+.mcp-icon-tool { color: var(--color-text-faint); flex-shrink: 0; }
+
+.mcp-actions-row-top {
+  display: flex;
+  gap: 8px;
+}
+
+.mcp-quick-add-panel {
+  background: var(--color-bg-header);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mcp-quick-add-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mcp-quick-add-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-title);
+}
+
+.mcp-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-faint);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+.mcp-close-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text);
+}
+
+.mcp-form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mcp-form-row {
+  display: flex;
+  gap: 10px;
+}
+
+.mcp-form-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mcp-form-field span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.mcp-form-input {
+  width: 100%;
+  height: 30px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.mcp-form-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-danger, #ef4444);
+  font-size: 11.5px;
+}
+
+.mcp-form-submit-btn {
+  height: 30px;
+  align-self: flex-end;
+  margin-top: 4px;
+  font-size: 12px;
+  padding: 0 12px;
+}
+
+.mcp-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-delete-card-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-faint);
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.mcp-delete-card-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.active-tab {
+  border-color: rgba(52, 120, 246, 0.32) !important;
+  background: rgba(52, 120, 246, 0.08) !important;
+  color: var(--color-primary) !important;
+}
+
+

@@ -6,7 +6,8 @@ import {
   ChatChunkData,
   ChatRunOptions,
   ClearSessionCachesPayload,
-  ForkSessionCachesPayload
+  ForkSessionCachesPayload,
+  McpServerStatus
 } from '../shared/types'
 
 declare global {
@@ -47,6 +48,11 @@ declare global {
       listMemoryEntries: () => Promise<Array<{ id: string; label: string; kind: string }>>
       readMemoryEntry: (id: string) => Promise<string>
       writeMemoryEntry: (id: string, content: string) => Promise<{ ok: boolean }>
+      mcpGetConfig: () => Promise<string>
+      mcpSetConfig: (content: string) => Promise<string>
+      mcpGetStatus: () => Promise<McpServerStatus[]>
+      mcpOpenConfig: () => Promise<void>
     }
   }
 }
+

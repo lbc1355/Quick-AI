@@ -318,3 +318,14 @@ export interface ChatRunOptions {
   assistantMessageId?: string
   branchOf?: { sessionId: string; messageId: string; runId?: string }
 }
+
+export interface McpServerStatus {
+  name: string
+  status: 'connected' | 'connecting' | 'failed' | 'disabled'
+  error?: string
+  tools: {
+    name: string
+    description?: string
+  }[]
+}
+

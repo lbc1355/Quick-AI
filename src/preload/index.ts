@@ -7,7 +7,8 @@ import {
   ChatChunkData,
   ChatRunOptions,
   ClearSessionCachesPayload,
-  ForkSessionCachesPayload
+  ForkSessionCachesPayload,
+  McpServerStatus
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -63,7 +64,11 @@ const api = {
     ipcRenderer.invoke('memory-entries'),
   readMemoryEntry: (id: string): Promise<string> => ipcRenderer.invoke('memory-entry-read', id),
   writeMemoryEntry: (id: string, content: string): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke('memory-entry-write', id, content)
+    ipcRenderer.invoke('memory-entry-write', id, content),
+  mcpGetConfig: (): Promise<string> => ipcRenderer.invoke('mcp-get-config'),
+  mcpSetConfig: (content: string): Promise<boolean> => ipcRenderer.invoke('mcp-set-config', content),
+  mcpGetStatus: (): Promise<McpServerStatus[]> => ipcRenderer.invoke('mcp-get-status'),
+  mcpOpenConfig: (): Promise<void> => ipcRenderer.invoke('mcp-open-config')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
