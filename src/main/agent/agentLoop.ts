@@ -410,6 +410,7 @@ export const runAgentLoop = async (
               callId,
               toolName,
               args: toolArgs,
+              purpose: prep.purpose,
               permissionState: 'denied'
             })
             sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: errorMsg })
@@ -597,6 +598,7 @@ export const runAgentLoop = async (
               callId,
               toolName,
               args: toolArgs,
+              purpose: prep.purpose,
               permissionState: 'pending'
             })
 
@@ -609,6 +611,7 @@ export const runAgentLoop = async (
                 callId,
                 toolName,
                 args: toolArgs,
+                purpose: prep.purpose,
                 permissionState: 'denied'
               })
               sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: error.message })
@@ -630,6 +633,7 @@ export const runAgentLoop = async (
             callId,
             toolName,
             args: toolArgs,
+            purpose: prep.purpose,
             permissionState: isApproved ? 'approved' : 'denied'
           })
 
@@ -649,6 +653,7 @@ export const runAgentLoop = async (
               callId: prep.callId,
               toolName: prep.toolName,
               args: prep.args,
+              purpose: prep.purpose,
               permissionState: 'approved'
             })
 

@@ -1,6 +1,6 @@
 /* eslint-disable react/display-name, react/prop-types */
 import React, { useState, useEffect } from 'react'
-import { Message, AgentEvent, ToolResultUi } from '../../../shared/types'
+import { Message, AgentEvent } from '../../../shared/types'
 import {
   Edit,
   RefreshCw,
@@ -15,7 +15,8 @@ import {
   Brain,
   AlertCircle,
   GitBranch,
-  ListTodo
+  ListTodo,
+  Loader2
 } from 'lucide-react'
 import {
   parseThinkTags,
@@ -132,274 +133,7 @@ const LogThinkRow: React.FC<{
   )
 }
 
-interface EventStepRowProps {
-  callId: string
-  agentRunId?: string
-  toolName: string
-  args: unknown
-  permissionState?: 'pending' | 'approved' | 'denied'
-  result?: ToolResultUi
-  error?: string
-  parentExpanded: boolean
-}
 
-interface EventToolCallItem {
-  event: Extract<AgentEvent, { type: 'tool_call' }>
-  result?: ToolResultUi
-  error?: string
-}
-
-const EventStepRow: React.FC<EventStepRowProps> = ({
-  callId,
-  agentRunId,
-  toolName,
-  args,
-  permissionState,
-  result,
-  error,
-  parentExpanded
-}) => {
-  void callId
-  void agentRunId
-  const [isExpanded, setIsExpanded] = useState(false)
-
-  const argsObj = args && typeof args === 'object' ? (args as Record<string, unknown>) : null
-  const url = typeof argsObj?.url === 'string' ? argsObj.url : ''
-  const displayUrl = url ? url.replace(/^https?:\/\/(www\.)?/, '') : ''
-  const truncatedUrl = displayUrl.length > 55 ? displayUrl.substring(0, 55) + '...' : displayUrl
-  const statusText =
-    permissionState === 'pending'
-      ? 'Waiting for'
-      : permissionState === 'denied'
-        ? 'Denied'
-        : error
-          ? 'Failed'
-          : result
-            ? 'Ran'
-            : 'Running'
-  const statusClass =
-    permissionState === 'pending'
-      ? 'waiting'
-      : permissionState === 'denied' || error
-        ? 'failed'
-        : result
-          ? 'done'
-          : 'running'
-
-  useEffect(() => {
-    if (statusClass === 'running' || statusClass === 'waiting') {
-      setIsExpanded(true)
-    } else {
-      setIsExpanded(false)
-    }
-  }, [statusClass])
-
-  return (
-    <div className="agent-flow-step">
-      <button
-        type="button"
-        className={`agent-flow-row ${statusClass}`}
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        {statusClass === 'failed' ? <AlertCircle size={13} /> : <SquareTerminal size={13} />}
-        <span className="agent-flow-label">
-          {statusText} {toolName}
-        </span>
-        {truncatedUrl && <span className="agent-flow-meta">{truncatedUrl}</span>}
-        <span className="agent-flow-toggle">
-          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </span>
-      </button>
-
-      <div
-        className="agent-flow-detail"
-        style={{ display: parentExpanded && isExpanded ? 'flex' : 'none' }}
-      >
-        {url && (
-          <div style={{ wordBreak: 'break-all' }}>
-            URL:{' '}
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: 'var(--color-primary)', textDecoration: 'none' }}
-            >
-              {url}
-            </a>
-          </div>
-        )}
-        {argsObj &&
-          Object.keys(argsObj)
-            .filter((k) => k !== 'url')
-            .map((key) => (
-              <div key={key}>
-                {key}: {JSON.stringify(argsObj[key])}
-              </div>
-            ))}
-        {result && (
-          <>
-            {result.title && (
-              <div style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                Title: {result.title}
-              </div>
-            )}
-            {result.summary && (
-              <div style={{ fontStyle: 'italic', opacity: 0.9 }}>Summary: {result.summary}</div>
-            )}
-            {result.items && result.items.length > 0 && (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                  marginTop: '6px',
-                  borderTop: '1px dashed var(--color-border)',
-                  paddingTop: '6px'
-                }}
-              >
-                {result.items.map((item, itemIdx) => (
-                  <div
-                    key={itemIdx}
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px',
-                      paddingBottom: itemIdx < result.items!.length - 1 ? '4px' : '0',
-                      borderBottom:
-                        itemIdx < result.items!.length - 1
-                          ? '1px solid rgba(255, 255, 255, 0.03)'
-                          : 'none'
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        flexWrap: 'wrap'
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, color: 'var(--color-primary)' }}>
-                        [{itemIdx + 1}]
-                      </span>
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          color: 'var(--color-text-title)',
-                          textDecoration: 'none',
-                          fontWeight: 500
-                        }}
-                      >
-                        {item.title}
-                      </a>
-                      {item.source && (
-                        <span
-                          style={{
-                            fontSize: '9px',
-                            background: 'rgba(255, 255, 255, 0.06)',
-                            padding: '0px 4px',
-                            borderRadius: '3px',
-                            color: 'var(--color-text-muted)'
-                          }}
-                        >
-                          {item.source}
-                        </span>
-                      )}
-                    </div>
-                    {item.snippet && (
-                      <div
-                        style={{
-                          fontSize: '9px',
-                          color: 'var(--color-text-muted)',
-                          paddingLeft: '14px',
-                          lineHeight: '1.3',
-                          whiteSpace: 'normal',
-                          wordBreak: 'break-word'
-                        }}
-                      >
-                        {item.snippet}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        {error && <div style={{ color: '#f87171' }}>Error: {error}</div>}
-      </div>
-    </div>
-  )
-}
-
-const EventToolGroup: React.FC<{
-  toolName: string
-  calls: EventToolCallItem[]
-  agentRunId?: string
-  parentExpanded: boolean
-}> = ({ toolName, calls, agentRunId, parentExpanded }) => {
-  const [isExpanded, setIsExpanded] = useState(false)
-  const hasError = calls.some((call) => call.error || call.event.permissionState === 'denied')
-  const hasPending = calls.some((call) => call.event.permissionState === 'pending')
-  const hasRunning = calls.some(
-    (call) => !call.result && !call.error && call.event.permissionState !== 'denied'
-  )
-  const statusClass = hasError ? 'failed' : hasPending || hasRunning ? 'running' : 'done'
-  const statusText = hasError
-    ? 'Failed'
-    : hasPending
-      ? 'Waiting for'
-      : hasRunning
-        ? 'Running'
-        : 'Ran'
-
-  useEffect(() => {
-    if (statusClass === 'running') {
-      setIsExpanded(true)
-    } else {
-      setIsExpanded(false)
-    }
-  }, [statusClass])
-
-  return (
-    <div className="agent-flow-step agent-flow-group">
-      <button
-        type="button"
-        className={`agent-flow-row ${statusClass}`}
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        {statusClass === 'failed' ? <AlertCircle size={13} /> : <SquareTerminal size={13} />}
-        <span className="agent-flow-label">
-          {statusText} {toolName}
-        </span>
-        <span className="agent-flow-meta">{calls.length} calls</span>
-        <span className="agent-flow-toggle">
-          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </span>
-      </button>
-
-      {parentExpanded && isExpanded && (
-        <div className="agent-flow-group-children">
-          {calls.map((call, callIndex) => (
-            <EventStepRow
-              key={`${call.event.callId}-${callIndex}`}
-              callId={call.event.callId}
-              agentRunId={agentRunId}
-              toolName={call.event.toolName}
-              args={call.event.args}
-              permissionState={call.event.permissionState}
-              result={call.result}
-              error={call.error}
-              parentExpanded={parentExpanded && isExpanded}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 interface MessageBubbleProps {
   msg: Message
@@ -567,188 +301,159 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     const actionMetaText =
       thoughtCount > 0 && toolCallCount > 0 ? `含 ${thoughtCount} 条思考` : undefined
 
+    const formatToolArgsSummary = (toolName: string, args: any): string => {
+      if (!args || typeof args !== 'object') return ''
+      const name = toolName.toLowerCase()
+      if (name.includes('command') || name.includes('shell') || name.includes('run')) {
+        const cmd = args.CommandLine || args.command || args.cmd
+        if (typeof cmd === 'string') {
+          return cmd.length > 50 ? cmd.substring(0, 50) + '...' : cmd
+        }
+      }
+      const path = args.path || args.TargetFile || args.AbsolutePath || args.Target || args.file || args.filePath
+      if (path && typeof path === 'string') {
+        const parts = path.replace(/\\/g, '/').split('/')
+        return parts.length > 2 ? '.../' + parts.slice(-2).join('/') : path
+      }
+      const query = args.query || args.q
+      if (query && typeof query === 'string') {
+        return `"${query.length > 40 ? query.substring(0, 40) + '...' : query}"`
+      }
+      const url = args.url || args.Url || args.uri
+      if (url && typeof url === 'string') {
+        const displayUrl = url.replace(/^https?:\/\/(www\.)?/, '')
+        return displayUrl.length > 40 ? displayUrl.substring(0, 40) + '...' : displayUrl
+      }
+      const keyVal = Object.entries(args)
+        .filter(([k]) => k !== 'purpose')
+        .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+        .join(', ')
+      return keyVal.length > 50 ? `{${keyVal.substring(0, 50)}...}` : `{${keyVal}}`
+    }
+
+    const totalToolsCount = msg.agentEvents
+      ? msg.agentEvents.filter((e) => e.type === 'tool_call').length
+      : 0
+    const failedToolsCount = msg.agentEvents
+      ? msg.agentEvents.filter((e) => e.type === 'tool_error').length
+      : 0
+    const latestToolCall = msg.agentEvents
+      ? [...msg.agentEvents].reverse().find((e): e is Extract<AgentEvent, { type: 'tool_call' }> => e.type === 'tool_call')
+      : undefined
+
+    const latestTaskEvent = msg.agentEvents
+      ? [...msg.agentEvents].reverse().find((e): e is Extract<AgentEvent, { type: 'task_update' }> => e.type === 'task_update')
+      : undefined
+    const tasks = latestTaskEvent?.tasks || []
+    const inProgressTaskIdx = tasks.findIndex((t) => t.status === 'in_progress')
+    const inProgressTask = inProgressTaskIdx !== -1 ? tasks[inProgressTaskIdx] : undefined
+
+    const pendingToolCall = msg.agentEvents
+      ? msg.agentEvents.find((e): e is Extract<AgentEvent, { type: 'tool_call' }> => e.type === 'tool_call' && e.permissionState === 'pending')
+      : undefined
+
+    let statusText = ''
+    let opText = ''
+    let toolsSummaryText = ''
+    let cockpitColor = '#94a3b8'
+
+    if (pendingToolCall) {
+      cockpitColor = '#f59e0b'
+      const progressStr = inProgressTask
+        ? `${inProgressTaskIdx + 1}/${tasks.length}`
+        : `第 ${currentStep}/${maxSteps} 步`
+      statusText = `等待确认 · ${progressStr} ${inProgressTask ? inProgressTask.title : ''}`
+      const argsStr = formatToolArgsSummary(pendingToolCall.toolName, pendingToolCall.args)
+      opText = pendingToolCall.toolName === 'shell'
+        ? `shell 需要授权：${argsStr}`
+        : `${pendingToolCall.toolName} 需要授权：${argsStr}`
+      toolsSummaryText = `已运行 ${totalToolsCount - 1} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
+    } else if (agentStatus === 'running') {
+      cockpitColor = '#3b82f6'
+      const progressStr = inProgressTask
+        ? `${inProgressTaskIdx + 1}/${tasks.length} ${inProgressTask.title}`
+        : `第 ${currentStep}/${maxSteps} 步`
+      statusText = `正在执行 · ${progressStr}`
+      if (latestToolCall) {
+        const argsStr = formatToolArgsSummary(latestToolCall.toolName, latestToolCall.args)
+        opText = `当前操作：${latestToolCall.purpose || `${latestToolCall.toolName} ${argsStr}`}`
+        toolsSummaryText = `工具：${latestToolCall.toolName} · 已运行 ${totalToolsCount} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
+      } else {
+        opText = '当前操作：思考分析中...'
+        toolsSummaryText = `已运行 ${totalToolsCount} 个工具`
+      }
+    } else if (agentStatus === 'completed') {
+      cockpitColor = '#10b981'
+      const taskTitle = tasks.length > 0 ? tasks[tasks.length - 1].title : '完成所有任务'
+      const progressStr = tasks.length > 0 ? `${tasks.length}/${tasks.length} ${taskTitle}` : '任务已完成'
+      statusText = `已完成 · ${progressStr}`
+      opText = `共运行 ${totalToolsCount} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
+      toolsSummaryText = ''
+    } else if (agentStatus === 'cancelled') {
+      cockpitColor = '#f59e0b'
+      const completedTasksCount = tasks.filter((t) => t.status === 'completed').length
+      statusText = `已取消 · ${completedTasksCount}/${tasks.length} 已完成`
+      opText = `共运行 ${totalToolsCount} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败` : ''}`
+    } else if (agentStatus === 'failed' || agentStatus === 'max_steps') {
+      cockpitColor = '#ef4444'
+      const completedTasksCount = tasks.filter((t) => t.status === 'completed').length
+      statusText = `${agentStatus === 'max_steps' ? '步数上限' : '执行失败'} · ${completedTasksCount}/${tasks.length} 已完成`
+      opText = `共运行 ${totalToolsCount} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败` : ''}`
+    } else {
+      statusText = '空闲'
+      opText = `共运行 ${totalToolsCount} 个工具`
+    }
+
     return (
       <div className={`message-row-shell ${msg.role}`} data-message-id={msg.id}>
         {/* 1. Collapsible logs area for structured events */}
         {hasStructuredEvents && (
           <div
-            className="agent-logs-container-fullwidth"
+            className="agent-inline-summary-box"
             style={{
-              margin: '12px 0 8px 0',
-              padding: '0 4px',
-              fontSize: '11px',
-              color: 'var(--color-text-muted)'
+              borderColor: pendingToolCall ? '#f59e0b' : undefined
             }}
           >
-            <div
-              onClick={() => setUserExpandedOverride(!effectiveLogsExpanded)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                cursor: 'pointer',
-                userSelect: 'none',
-                fontWeight: '500',
-                color: 'var(--color-text-muted)',
-                gap: '8px'
-              }}
-            >
-              <span style={{ fontSize: '9px', opacity: 0.7 }}>
-                {effectiveLogsExpanded ? '▼' : '▶'}
-              </span>
-              {statusLabel && (
-                <span
-                  style={{
-                    color: statusColor,
-                    backgroundColor: `${statusColor}14`,
-                    border: `1px solid ${statusColor}2c`,
-                    padding: '1px 5px',
-                    borderRadius: '3px',
-                    fontSize: '9.5px',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  {statusLabel}
+            <div className="summary-header">
+              <div className="summary-title-wrapper">
+                {(agentStatus === 'running' || pendingToolCall) ? (
+                  <Loader2 size={12} className="animate-spin summary-status-icon" style={{ color: cockpitColor }} />
+                ) : agentStatus === 'completed' ? (
+                  <Check size={12} className="summary-status-icon" style={{ color: cockpitColor }} />
+                ) : (
+                  <AlertCircle size={12} className="summary-status-icon" style={{ color: cockpitColor }} />
+                )}
+                <span className="summary-status-text" style={{ color: cockpitColor }}>
+                  {statusText}
                 </span>
-              )}
-              <span>{actionSummaryText}</span>
-              {actionMetaText && (
-                <span style={{ fontSize: '10px', opacity: 0.6 }}>{actionMetaText}</span>
-              )}
-              {agentStatus === 'running' && (
-                <span style={{ fontSize: '10px', opacity: 0.6 }}>• {elapsed}s</span>
+                {agentStatus === 'running' && !pendingToolCall && (
+                  <span className="summary-timer">• {elapsed}s</span>
+                )}
+              </div>
+              <button
+                type="button"
+                className={`summary-details-btn ${
+                  activeTaskMessageId === msg.id && isTaskPanelOpen ? 'active' : ''
+                }`}
+                onClick={() => onToggleTasks(msg.id)}
+              >
+                <ListTodo size={11} />
+                <span>
+                  {activeTaskMessageId === msg.id && isTaskPanelOpen ? '关闭详情' : '执行详情'}
+                </span>
+              </button>
+            </div>
+            
+            <div className="summary-body">
+              <div className="summary-current-op" title={opText}>
+                {opText}
+              </div>
+              {toolsSummaryText && (
+                <div className="summary-tools-info">
+                  {toolsSummaryText}
+                </div>
               )}
             </div>
-
-            {/* Intermediate event stream inside the collapsible container */}
-            {effectiveLogsExpanded && (
-              <div
-                className="agent-log-stream"
-                style={{
-                  flexDirection: 'column',
-                  gap: '2px',
-                  paddingLeft: '16px',
-                  marginTop: '4px'
-                }}
-              >
-                {msg.agentEvents!.reduce<React.ReactNode[]>((acc, event, eventIdx) => {
-                  // Skip the last final event (which is the final answer rendered outside)
-                  if (eventIdx === lastFinalEventIdx) {
-                    return acc
-                  }
-
-                  if (event.type === 'final') {
-                    acc.push(
-                      <div
-                        key={`final-${eventIdx}`}
-                        className="agent-event-final-text"
-                        style={{ margin: '4px 0' }}
-                      >
-                        {renderMessageContent(event.content)}
-                      </div>
-                    )
-                  } else if (event.type === 'reasoning') {
-                    acc.push(
-                      <div
-                        key={`think-${eventIdx}`}
-                        style={{
-                          margin: '2px 0'
-                        }}
-                      >
-                        <LogThinkRow
-                          log={{
-                            step: 0,
-                            maxSteps: 0,
-                            type: 'think',
-                            thought: event.content
-                          }}
-                          parentExpanded={effectiveLogsExpanded}
-                          isThinking={isGenerating && eventIdx === msg.agentEvents!.length - 1}
-                        />
-                      </div>
-                    )
-                  } else if (event.type === 'tool_call') {
-                    const isToolGroupBoundary = (candidate: AgentEvent): boolean =>
-                      candidate.type === 'reasoning' ||
-                      candidate.type === 'final' ||
-                      candidate.type === 'agent_start' ||
-                      candidate.type === 'agent_end'
-
-                    for (let i = eventIdx - 1; i >= 0; i -= 1) {
-                      const previousEvent = msg.agentEvents![i]
-                      if (previousEvent.type === 'tool_call') {
-                        if (previousEvent.toolName === event.toolName) return acc
-                        break
-                      }
-                      if (isToolGroupBoundary(previousEvent)) break
-                    }
-
-                    const groupedCalls: EventToolCallItem[] = []
-                    for (let i = eventIdx; i < msg.agentEvents!.length; i += 1) {
-                      const candidate = msg.agentEvents![i]
-                      if (candidate.type === 'tool_call') {
-                        if (candidate.toolName !== event.toolName) break
-                        const resultEvent = msg.agentEvents!.find(
-                          (e): e is Extract<AgentEvent, { type: 'tool_result' }> =>
-                            e.type === 'tool_result' && e.callId === candidate.callId
-                        )
-                        const errorEvent = msg.agentEvents!.find(
-                          (e): e is Extract<AgentEvent, { type: 'tool_error' }> =>
-                            e.type === 'tool_error' && e.callId === candidate.callId
-                        )
-                        groupedCalls.push({
-                          event: candidate,
-                          result: resultEvent?.result,
-                          error: errorEvent?.error
-                        })
-                        continue
-                      }
-                      if (isToolGroupBoundary(candidate)) break
-                    }
-
-                    const callId = event.callId
-                    const resultEvent = msg.agentEvents!.find(
-                      (e): e is Extract<AgentEvent, { type: 'tool_result' }> =>
-                        e.type === 'tool_result' && e.callId === callId
-                    )
-                    const errorEvent = msg.agentEvents!.find(
-                      (e): e is Extract<AgentEvent, { type: 'tool_error' }> =>
-                        e.type === 'tool_error' && e.callId === callId
-                    )
-                    const permState = event.permissionState
-
-                    acc.push(
-                      <div
-                        key={`step-${callId}-${eventIdx}`}
-                        style={{
-                          margin: '2px 0'
-                        }}
-                      >
-                        {groupedCalls.length > 1 ? (
-                          <EventToolGroup
-                            toolName={event.toolName}
-                            calls={groupedCalls}
-                            agentRunId={msg.agentRunId}
-                            parentExpanded={effectiveLogsExpanded}
-                          />
-                        ) : (
-                          <EventStepRow
-                            callId={callId}
-                            agentRunId={msg.agentRunId}
-                            toolName={event.toolName}
-                            args={event.args}
-                            permissionState={permState}
-                            result={resultEvent?.result}
-                            error={errorEvent?.error}
-                            parentExpanded={effectiveLogsExpanded}
-                          />
-                        )}
-                      </div>
-                    )
-                  }
-                  return acc
-                }, [])}
-              </div>
-            )}
           </div>
         )}
 

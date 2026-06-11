@@ -617,3 +617,90 @@
   overflow-y: auto;
   margin: 2px 0 4px 6px;
 }
+
+/* Agent Inline Summary Box (Cockpit) */
+.agent-inline-summary-box {
+  margin: 12px 0 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.2s ease-in-out;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.summary-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.summary-status-icon {
+  flex-shrink: 0;
+}
+
+.summary-status-text {
+  font-weight: 600;
+  font-size: 11.5px;
+}
+
+.summary-timer {
+  font-size: 10px;
+  opacity: 0.6;
+  color: var(--color-text-muted);
+}
+
+.summary-details-btn {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.summary-details-btn:hover,
+.summary-details-btn.active {
+  background: var(--color-card-bg-hover);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.summary-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid rgba(128, 128, 128, 0.1);
+  padding-top: 6px;
+}
+
+.summary-current-op {
+  color: var(--color-text-title);
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-tools-info {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  opacity: 0.85;
+}

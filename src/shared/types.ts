@@ -18,6 +18,7 @@ export type AgentEvent =
       callId: string
       toolName: string
       args: unknown
+      purpose?: string
       permissionState?: 'pending' | 'approved' | 'denied'
     }
   | {

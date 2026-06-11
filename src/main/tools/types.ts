@@ -44,12 +44,23 @@ export interface ToolSummary {
 }
 
 export function toChatToolDeclaration(tool: ToolDefinition): ChatToolDeclaration {
+  const parameters = {
+    ...tool.parameters,
+    properties: {
+      ...tool.parameters.properties,
+      purpose: {
+        type: 'string',
+        description: 'Optional explanation of why this tool is being called (e.g., "Reading package.json to verify dependencies"). Keep it concise (approx. 80-120 characters).'
+      }
+    }
+  }
+
   return {
     type: 'function',
     function: {
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters
+      parameters
     }
   }
 }

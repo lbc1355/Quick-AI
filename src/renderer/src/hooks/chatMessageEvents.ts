@@ -69,7 +69,8 @@ export const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Mess
       if (existingEvent.type === 'tool_call') {
         updatedEvents[existingIdx] = {
           ...existingEvent,
-          permissionState: newEvent.permissionState
+          permissionState: newEvent.permissionState,
+          purpose: newEvent.purpose || existingEvent.purpose
         }
       }
     } else {

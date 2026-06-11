@@ -32,6 +32,7 @@ interface TimelineNode {
   type: 'thought' | 'tool'
   title: string
   toolName?: string
+  purpose?: string
   args?: any
   status: 'pending' | 'running' | 'completed' | 'failed' | 'denied'
   thought?: string
@@ -167,8 +168,9 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
           nodes.push({
             id: event.callId,
             type: 'tool',
-            title: getStepDescription(event.toolName, event.args),
+            title: event.purpose || getStepDescription(event.toolName, event.args),
             toolName: event.toolName,
+            purpose: event.purpose,
             args: event.args,
             status,
             result: resultEvent?.result,
@@ -442,6 +444,11 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
                             }
                           >
                             {node.title}
+                            {node.purpose && node.toolName && (
+                              <span className="timeline-step-toolname-tag">
+                                {node.toolName}
+                              </span>
+                            )}
                           </span>
                           <span className="timeline-expand-btn">
                             <ChevronDown

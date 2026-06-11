@@ -186,4 +186,14 @@ describe('prepareToolCalls', () => {
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()
   })
+
+  it('extracts purpose from arguments and deletes it from args to prevent pollution', () => {
+    const result = plan({
+      toolCalls: [toolCall('web_search', { query: 'test', purpose: 'searching for tests' })]
+    })
+
+    expect(result.prepared).toHaveLength(1)
+    expect(result.prepared[0].purpose).toBe('searching for tests')
+    expect(result.prepared[0].args).toEqual({ query: 'test' })
+  })
 })

@@ -13,6 +13,7 @@ export interface PreparedToolCall {
   toolName: string
   callId: string
   args: ToolArgs
+  purpose?: string
   permission: ToolPermission
   isValid: boolean
   isDeadlock: boolean
@@ -66,6 +67,11 @@ export function prepareToolCalls(input: {
       args = JSON.parse(toolCall.function.arguments) as ToolArgs
     } catch {
       console.warn('Failed to parse tool call arguments:', toolCall.function.arguments)
+    }
+
+    const purpose = typeof args.purpose === 'string' ? args.purpose : undefined
+    if (purpose !== undefined) {
+      delete args.purpose
     }
 
     const toolDef = ToolRegistry[toolName]
@@ -137,6 +143,7 @@ export function prepareToolCalls(input: {
       toolName,
       callId,
       args,
+      purpose,
       permission: effectivePermission,
       isValid,
       isDeadlock,
