@@ -27,6 +27,18 @@ import {
 import { shortBranchRunId, type BranchChildInfo } from '../utils/branchDisplay'
 
 
+const formatWorkedDuration = (seconds: number, stepsCount: number): string => {
+  if (seconds > 0) {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    if (mins > 0) {
+      return `Worked for ${mins}m${secs > 0 ? ` ${secs}s` : ''}`
+    }
+    return `Worked for ${secs}s`
+  }
+  return `Worked for ${stepsCount} step${stepsCount === 1 ? '' : 's'}`
+}
+
 const formatToolArgsSummary = (toolName: string, args: any): string => {
   if (!args || typeof args !== 'object') return ''
   const name = toolName.toLowerCase()
@@ -514,24 +526,24 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                             )
                           })
                         ) : parsedRun.steps.length > 0 ? (
-                          <div className="agent-completed-steps-collapsible">
+                          <div className="agent-completed-steps-simple-collapsible">
                             <button
                               type="button"
-                              className={`agent-steps-collapse-toggle ${isStepsExpanded ? 'expanded' : ''}`}
+                              className={`agent-steps-simple-toggle ${isStepsExpanded ? 'expanded' : ''}`}
                               onClick={() => setIsStepsExpanded(!isStepsExpanded)}
                             >
+                              <span>{formatWorkedDuration(elapsed, parsedRun.steps.length)}</span>
                               <ChevronRight
-                                size={13}
+                                size={12}
                                 className="toggle-icon"
                                 style={{
                                   transform: isStepsExpanded ? 'rotate(90deg)' : 'none',
                                   transition: 'transform 0.15s ease'
                                 }}
                               />
-                              <span>查看执行步骤 ({parsedRun.steps.length} 步)</span>
                             </button>
                             {isStepsExpanded && (
-                              <div className="agent-steps-collapsed-content">
+                              <div className="agent-steps-simple-collapsed-content">
                                 {parsedRun.steps.map((step, stepIdx) => {
                                   const isLatest = stepIdx === parsedRun.steps.length - 1
                                   return (

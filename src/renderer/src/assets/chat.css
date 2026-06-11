@@ -812,52 +812,44 @@
   font-size: 11px;
 }
 
-/* Collapsible container for completed steps in message bubble */
-.agent-completed-steps-collapsible {
+/* Simple link-style completed steps collapsible */
+.agent-completed-steps-simple-collapsible {
   margin: 10px 0;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-card-bg);
-  overflow: hidden;
+  border: none;
+  background: transparent;
 }
 
-.agent-steps-collapse-toggle {
-  display: flex;
+.agent-steps-simple-toggle {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
+  gap: 4px;
   background: transparent;
   border: none;
+  padding: 0;
+  margin: 0 0 6px 0;
   color: var(--color-text-muted);
   font-size: 12.5px;
   font-weight: 500;
-  text-align: left;
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: color 0.12s ease;
 }
 
-.agent-steps-collapse-toggle:hover {
-  background: var(--color-card-bg-hover);
-  color: var(--color-text-title);
+.agent-steps-simple-toggle:hover {
+  color: var(--color-text);
 }
 
-.agent-steps-collapse-toggle.expanded {
-  border-bottom: 1px solid var(--color-border);
-}
-
-.agent-steps-collapse-toggle .toggle-icon {
+.agent-steps-simple-toggle .toggle-icon {
   color: var(--color-text-faint);
   transition: transform 0.15s ease;
   display: flex;
   align-items: center;
 }
 
-.agent-steps-collapsed-content {
-  padding: 12px;
+.agent-steps-simple-collapsed-content {
+  margin-top: 8px;
+  padding-left: 4px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: rgba(0, 0, 0, 0.05);
 }
