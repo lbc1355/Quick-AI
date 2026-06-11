@@ -60,7 +60,12 @@ export const createForkedSession = ({
   const keptMessages = sourceSession.messages
     .slice(0, clampedThroughIdx + 1)
     .map((message, idx) => {
-      const copied = { ...message }
+      const copied = {
+        ...message,
+        id: message.id.includes('-fork-')
+          ? `${message.id.split('-fork-')[0]}-fork-${id}`
+          : `${message.id}-fork-${id}`
+      }
       return transformMessage ? transformMessage(copied, idx) : copied
     })
 
