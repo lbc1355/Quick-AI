@@ -33,7 +33,13 @@ const api = {
     callId: string,
     approved:
       | boolean
-      | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+      | {
+          approved: boolean
+          scope?: 'prefix' | 'tool'
+          prefix?: string
+          prefixes?: string[]
+          tool?: string
+        }
   ): void => ipcRenderer.send('respond-tool-permission', reqId, callId, approved),
   abortGeneration: (reqId: string): void => ipcRenderer.send('abort-generation', reqId),
   clearSessionCaches: (payload: ClearSessionCachesPayload): Promise<{ ok: boolean }> =>

@@ -614,7 +614,13 @@ function App(): React.JSX.Element {
   const handlePermissionResponse = (
     approved:
       | boolean
-      | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+      | {
+          approved: boolean
+          scope?: 'prefix' | 'tool'
+          prefix?: string
+          prefixes?: string[]
+          tool?: string
+        }
   ): void => {
     const pending = getPendingPermission()
     if (pending) {

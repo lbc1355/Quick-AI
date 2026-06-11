@@ -16,7 +16,13 @@ interface PermissionPopupProps {
   onResponse: (
     payload:
       | boolean
-      | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+      | {
+          approved: boolean
+          scope?: 'prefix' | 'tool'
+          prefix?: string
+          prefixes?: string[]
+          tool?: string
+        }
   ) => void
 }
 

@@ -28,7 +28,13 @@ declare global {
         callId: string,
         approved:
           | boolean
-          | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+          | {
+              approved: boolean
+              scope?: 'prefix' | 'tool'
+              prefix?: string
+              prefixes?: string[]
+              tool?: string
+            }
       ) => void
       abortGeneration: (reqId: string) => void
       clearSessionCaches: (payload: ClearSessionCachesPayload) => Promise<{ ok: boolean }>

@@ -27,7 +27,13 @@ export const resolveToolPermission = (
   callId: string,
   approved:
     | boolean
-    | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+    | {
+        approved: boolean
+        scope?: 'prefix' | 'tool'
+        prefix?: string
+        prefixes?: string[]
+        tool?: string
+      }
 ): void => {
   let isApproved = false
   if (typeof approved === 'boolean') {
@@ -37,8 +43,16 @@ export const resolveToolPermission = (
     if (approved.approved) {
       const run = getRun(reqId)
       if (run) {
-        if (approved.scope === 'prefix' && approved.prefix) {
-          run.approveCommandPrefix(approved.prefix)
+        if (approved.scope === 'prefix') {
+          // A chained command sends every segment prefix at once (prefixes); a single command
+          // sends one (prefix). Approve whichever is present so the combined option grants all.
+          if (approved.prefixes && approved.prefixes.length > 0) {
+            for (const prefix of approved.prefixes) {
+              run.approveCommandPrefix(prefix)
+            }
+          } else if (approved.prefix) {
+            run.approveCommandPrefix(approved.prefix)
+          }
         } else if (approved.scope === 'tool' && approved.tool) {
           run.approveTool(approved.tool)
         }

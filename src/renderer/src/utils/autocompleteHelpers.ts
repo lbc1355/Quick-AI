@@ -4,7 +4,13 @@ export interface PopupOption {
   label: string
   payload:
     | boolean
-    | { approved: boolean; scope?: 'prefix' | 'tool'; prefix?: string; tool?: string }
+    | {
+        approved: boolean
+        scope?: 'prefix' | 'tool'
+        prefix?: string
+        prefixes?: string[]
+        tool?: string
+      }
 }
 
 function splitCommandSegmentsRenderer(command: string): string[] {
@@ -45,11 +51,30 @@ function splitCommandSegmentsRenderer(command: string): string[] {
   return segments.map((s) => s.trim()).filter((s) => s.length > 0)
 }
 
+/**
+ * Per-segment leading prefixes for a (possibly chained) command. Returns one entry per
+ * independently-executed segment, in order, de-duplicated. `cd "x" && dir && type "y"` →
+ * ['cd', 'dir', 'type']. Used to decide approval granularity in getPopupOptions.
+ */
+export function getSegmentPrefixes(command: string): string[] {
+  if (!command) return []
+  const segments = splitCommandSegmentsRenderer(command)
+  const prefixes: string[] = []
+  for (const segment of segments) {
+    const firstToken = segment.split(/\s+/)[0]
+    if (firstToken && !prefixes.includes(firstToken)) prefixes.push(firstToken)
+  }
+  return prefixes
+}
+
+/**
+ * Approval-button prefixes for a SINGLE-segment command. Offers the leading word plus, when the
+ * subcommand is a clean alphanumeric word, the two-word prefix (e.g. `git` and `git status`).
+ * Only meaningful for single commands — chained commands are collapsed into one combined option
+ * by getPopupOptions to avoid flooding the popup with one prefix per segment.
+ */
 export function getCommandPrefixes(command: string): string[] {
   if (!command) return []
-  // Split chained commands (`cd "x" && type "y"`) so each independently-executed part can be
-  // approved on its own. The main process enforces the authoritative segment-aware check; this
-  // just surfaces a button per segment so the user can grant `cd`, `type`, `findstr`, etc.
   const segments = splitCommandSegmentsRenderer(command)
   const prefixes: string[] = []
   const push = (p: string): void => {
@@ -91,12 +116,23 @@ export function getPopupOptions(
   if (pending.toolName === 'shell' && pending.args && typeof pending.args === 'object') {
     const argsObj = pending.args as Record<string, unknown>
     const command = typeof argsObj.command === 'string' ? argsObj.command : ''
-    const prefixes = getCommandPrefixes(command)
-    for (const prefix of prefixes) {
+    const segmentPrefixes = getSegmentPrefixes(command)
+
+    if (segmentPrefixes.length > 1) {
+      // Chained command: collapse into ONE option that approves every segment's prefix at once,
+      // instead of emitting a separate button per segment (which floods the popup).
       options.push({
-        label: `在此任务中允许所有 "${prefix}" 开头的命令`,
-        payload: { approved: true, scope: 'prefix', prefix }
+        label: `允许此命令的所有指令 (${segmentPrefixes.join('、')})`,
+        payload: { approved: true, scope: 'prefix', prefixes: segmentPrefixes }
       })
+    } else {
+      // Single command: keep finer granularity, including the two-word prefix (e.g. `git status`).
+      for (const prefix of getCommandPrefixes(command)) {
+        options.push({
+          label: `在此任务中允许所有 "${prefix}" 开头的命令`,
+          payload: { approved: true, scope: 'prefix', prefix }
+        })
+      }
     }
   }
 
