@@ -1007,6 +1007,134 @@ describe('runAgentLoop', () => {
     })
   })
 
+  it('emits one agent_step for a model turn with multiple tool calls', async () => {
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async () => {
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: 'I will search and fetch the relevant source first.',
+          tool_calls: [
+            {
+              id: 'tc-search',
+              type: 'function',
+              function: { name: 'web_search', arguments: JSON.stringify({ query: 'quickai' }) }
+            },
+            {
+              id: 'tc-fetch',
+              type: 'function',
+              function: { name: 'fetch_url', arguments: JSON.stringify({ url: 'https://example.com' }) }
+            }
+          ]
+        }
+      }
+      return { role: 'assistant', content: 'Done.' }
+    })
+
+    await runAgentLoop(mockWindow, 'test-req-agent-step', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Find source' }]
+    })
+
+    const events = sendMock.mock.calls
+      .map(([, payload]) => payload.event)
+      .filter(Boolean)
+    const stepEvents = events.filter((event) => event.type === 'agent_step')
+    const toolCallEvents = events.filter((event) => event.type === 'tool_call')
+    const finalEvents = events.filter((event) => event.type === 'final')
+
+    expect(stepEvents).toHaveLength(1)
+    expect(stepEvents[0]).toMatchObject({
+      type: 'agent_step',
+      stepId: 'test-req-agent-step:step:1',
+      message: 'I will search and fetch the relevant source first.'
+    })
+    expect(toolCallEvents).toHaveLength(2)
+    expect(toolCallEvents.every((event) => event.stepId === stepEvents[0].stepId)).toBe(true)
+    expect(finalEvents).toEqual([
+      {
+        type: 'final',
+        content: 'Done.',
+        step: 2,
+        stepId: 'test-req-agent-step:step:2'
+      }
+    ])
+  })
+
+  it('does not create an agent_step for a final-only answer', async () => {
+    vi.mocked(callModel).mockResolvedValue({
+      role: 'assistant',
+      content: 'Final only.'
+    })
+
+    await runAgentLoop(mockWindow, 'test-req-final-only', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Hello' }]
+    })
+
+    const events = sendMock.mock.calls
+      .map(([, payload]) => payload.event)
+      .filter(Boolean)
+
+    expect(events.some((event) => event.type === 'agent_step')).toBe(false)
+    expect(events).toContainEqual({
+      type: 'final',
+      content: 'Final only.',
+      step: 1,
+      stepId: 'test-req-final-only:step:1'
+    })
+  })
+
+  it('streams unclassified model text before committing it as final', async () => {
+    vi.mocked(callModel).mockImplementation(
+      async (_options, _messages, _tools, _signal, callbacks) => {
+        callbacks?.onFinalChunk('Final ')
+        callbacks?.onFinalChunk('answer.')
+        return {
+          role: 'assistant',
+          content: 'Final answer.'
+        }
+      }
+    )
+
+    await runAgentLoop(mockWindow, 'test-req-stream-final', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Hello' }]
+    })
+
+    const events = sendMock.mock.calls
+      .map(([, payload]) => payload.event)
+      .filter(Boolean)
+
+    expect(events.filter((event) => event.type === 'agent_message_delta')).toEqual([
+      {
+        type: 'agent_message_delta',
+        content: 'Final ',
+        step: 1,
+        stepId: 'test-req-stream-final:step:1'
+      },
+      {
+        type: 'agent_message_delta',
+        content: 'answer.',
+        step: 1,
+        stepId: 'test-req-stream-final:step:1'
+      }
+    ])
+    expect(events).toContainEqual({
+      type: 'final',
+      content: 'Final answer.',
+      step: 1,
+      stepId: 'test-req-stream-final:step:1'
+    })
+  })
+
   it('emits agent_end max_steps on maxSteps exhaustion', async () => {
     let callCount = 0
     vi.mocked(callModel).mockImplementation(async () => {

@@ -102,6 +102,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
   }
 
   const getStepTitle = (step: ParsedAgentStep): string => {
+    if (step.title) return step.title
     if (step.progressMessage) {
       const firstLine = step.progressMessage.trim().split(/[。\n]/)[0].trim()
       const clean = firstLine.replace(/[\*#_``\[\]]/g, '').trim()
@@ -372,6 +373,8 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
                           <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
                         ) : step.status === 'failed' ? (
                           <XCircle size={13} style={{ color: 'var(--color-danger)' }} />
+                        ) : step.status === 'cancelled' ? (
+                          <XCircle size={13} style={{ color: 'var(--color-warning)' }} />
                         ) : (
                           <CheckCircle2 size={13} style={{ color: 'var(--color-success)' }} />
                         )}

@@ -47,6 +47,68 @@ const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent):
   mainWindow.webContents.send('chat-chunk', { reqId, event })
 }
 
+const getAssistantText = (content: ChatCompletionMessage['content']): string => {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (part.type === 'text' && typeof part.text === 'string' ? part.text : ''))
+      .join('')
+  }
+  return ''
+}
+
+const compactText = (text: string): string => text.replace(/\s+/g, ' ').trim()
+
+const stripMarkdownMarkers = (text: string): string =>
+  text
+    .replace(/[`*_#[\]()]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const truncate = (text: string, maxLength: number): string => {
+  const clean = compactText(text)
+  return clean.length > maxLength ? `${clean.slice(0, Math.max(0, maxLength - 1))}…` : clean
+}
+
+const buildToolNamesSummary = (calls: PreparedToolCall[]): string => {
+  const names = Array.from(new Set(calls.map((call) => call.toolName).filter(Boolean)))
+  if (names.length === 0) return '工具'
+  if (names.length <= 3) return names.join('、')
+  return `${names.slice(0, 3).join('、')} 等 ${names.length} 类工具`
+}
+
+const buildAgentStepPresentation = (
+  assistantText: string,
+  calls: PreparedToolCall[]
+): { title: string; message: string } => {
+  const visibleMessage = compactText(assistantText)
+  const purposes = calls
+    .map((call) => (typeof call.purpose === 'string' ? compactText(call.purpose) : ''))
+    .filter(Boolean)
+
+  let message = visibleMessage
+  if (!message && purposes.length === 1) {
+    message = purposes[0]
+  } else if (!message && purposes.length > 1) {
+    message = `准备执行 ${calls.length} 个工具：${purposes.slice(0, 2).join('；')}${
+      purposes.length > 2 ? '…' : ''
+    }`
+  } else if (!message) {
+    message = `准备调用 ${calls.length} 个工具：${buildToolNamesSummary(calls)}。`
+  }
+
+  const firstSentence =
+    stripMarkdownMarkers(message)
+      .split(/[。.!?\n]/)
+      .map((part) => part.trim())
+      .find(Boolean) || `调用 ${buildToolNamesSummary(calls)}`
+
+  return {
+    title: truncate(firstSentence, 42),
+    message
+  }
+}
+
 export const runAgentLoop = async (
   mainWindow: BrowserWindow,
   reqId: string,
@@ -255,6 +317,7 @@ export const runAgentLoop = async (
 
     for (let step = 1; step <= maxSteps; ) {
       runCtx.currentStep = step
+      const stepId = `${reqId}:step:${step}`
       if (signal.aborted) {
         throw new Error('Agent execution aborted by user.')
       }
@@ -263,6 +326,7 @@ export const runAgentLoop = async (
         type: 'agent_progress',
         step,
         maxSteps,
+        stepId,
         activeTools: Array.from(runCtx.activeTools)
       })
 
@@ -305,7 +369,10 @@ export const runAgentLoop = async (
         strategy: 'truncate-oldest-tool'
       })
 
-      // Call the model with streaming callbacks
+      // Stream assistant text as an unclassified model message until we know whether this
+      // model turn becomes a tool step or the final answer. Some providers emit content
+      // before tool_call deltas, so the final/step classification has to happen after the turn.
+      let assistantTextBuffer = ''
       const assistantMessage = await callModel(
         {
           apiUrl: options.apiUrl,
@@ -317,10 +384,16 @@ export const runAgentLoop = async (
         signal,
         {
           onReasoning: (content) => {
-            sendEvent(mainWindow, reqId, { type: 'reasoning', content, step })
+            sendEvent(mainWindow, reqId, { type: 'reasoning', content, step, stepId })
           },
           onFinalChunk: (content) => {
-            sendEvent(mainWindow, reqId, { type: 'final', content, step })
+            assistantTextBuffer += content
+            sendEvent(mainWindow, reqId, {
+              type: 'agent_message_delta',
+              content,
+              step,
+              stepId
+            })
           }
         }
       )
@@ -340,6 +413,27 @@ export const runAgentLoop = async (
           isCommandPrefixApproved: (command) => runCtx.isCommandPrefixApproved(command),
           hasExecuted: (callKey) => runCtx.hasExecuted(callKey),
           loopGuard
+        })
+
+        const preparedCalls = [...askCalls, ...directCalls, ...blockedCalls].sort(
+          (a, b) => a.index - b.index
+        )
+        const assistantStepText = getAssistantText(assistantMessage.content) || assistantTextBuffer
+        const stepPresentation = buildAgentStepPresentation(assistantStepText, preparedCalls)
+        let stepHadToolFailure = false
+        const sendToolErrorEvent = (callId: string, error: string): void => {
+          stepHadToolFailure = true
+          sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error, step, stepId })
+        }
+
+        sendEvent(mainWindow, reqId, {
+          type: 'agent_step',
+          stepId,
+          step,
+          maxSteps,
+          title: stepPresentation.title,
+          message: stepPresentation.message,
+          status: 'running'
         })
 
         const toolResponses = new Array<ChatCompletionMessage>(assistantMessage.tool_calls.length)
@@ -412,9 +506,10 @@ export const runAgentLoop = async (
               args: toolArgs,
               purpose: prep.purpose,
               permissionState: 'denied',
-              step
+              step,
+              stepId
             })
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: errorMsg, step })
+            sendToolErrorEvent(callId, errorMsg)
             const content = `Error: ${errorMsg}`
             recordAction('denied', content)
             return {
@@ -428,7 +523,7 @@ export const runAgentLoop = async (
           if (prep.isDeadlock) {
             const offset = typeof toolArgs.offset === 'number' ? toolArgs.offset : 0
             const deadlockWarning = `Warning: You have already fetched this URL window: ${toolArgs.url} at offset ${offset}. Use the nextOffset from the previous result to continue.`
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: deadlockWarning, step })
+            sendToolErrorEvent(callId, deadlockWarning)
             recordAction('blocked', deadlockWarning)
             return {
               role: 'tool',
@@ -439,7 +534,7 @@ export const runAgentLoop = async (
           }
 
           if (prep.loopBlock) {
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: prep.loopBlock, step })
+            sendToolErrorEvent(callId, prep.loopBlock)
             recordAction('blocked', prep.loopBlock)
             return {
               role: 'tool',
@@ -452,7 +547,7 @@ export const runAgentLoop = async (
           if (toolName === 'fetch_url') {
             if (fetchUrlsCount >= MAX_FETCH_URLS_PER_RUN) {
               const limitWarning = `Warning: You have reached the maximum fetch limit of ${MAX_FETCH_URLS_PER_RUN} page windows for this run. Please summarize based only on the content you already have.`
-              sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: limitWarning, step })
+              sendToolErrorEvent(callId, limitWarning)
               recordAction('blocked', limitWarning)
               return {
                 role: 'tool',
@@ -468,7 +563,7 @@ export const runAgentLoop = async (
 
           if (!isApproved) {
             const errorMsg = 'Tool execution denied by user.'
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: errorMsg, step })
+            sendToolErrorEvent(callId, errorMsg)
             const content = `ERROR: ${errorMsg}`
             recordAction('denied', content)
             return {
@@ -513,13 +608,15 @@ export const runAgentLoop = async (
               type: 'tool_result',
               callId,
               result: resultForUi,
-              step
+              step,
+              stepId
             })
 
             sendEvent(mainWindow, reqId, {
               type: 'agent_progress',
               step,
               maxSteps,
+              stepId,
               activeTools: Array.from(runCtx.activeTools),
               message: `Completed ${toolName}`
             })
@@ -557,7 +654,7 @@ export const runAgentLoop = async (
             }
 
             const errorContent = `${errorCategory} ${err.message}${guardNote}`
-            sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: err.message, step })
+            sendToolErrorEvent(callId, err.message)
             if (isAmbiguousSideEffect) {
               ambiguousActions.push({
                 callId,
@@ -602,7 +699,8 @@ export const runAgentLoop = async (
               args: toolArgs,
               purpose: prep.purpose,
               permissionState: 'pending',
-              step
+              step,
+              stepId
             })
 
             try {
@@ -616,9 +714,10 @@ export const runAgentLoop = async (
                 args: toolArgs,
                 purpose: prep.purpose,
                 permissionState: 'denied',
-                step
+                step,
+                stepId
               })
-              sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error: error.message, step })
+              sendToolErrorEvent(callId, error.message)
               toolResponses[index] = {
                 role: 'tool',
                 tool_call_id: callId,
@@ -639,7 +738,8 @@ export const runAgentLoop = async (
             args: toolArgs,
             purpose: prep.purpose,
             permissionState: isApproved ? 'approved' : 'denied',
-            step
+            step,
+            stepId
           })
 
           toolResponses[index] = await executeTool(prep, isApproved)
@@ -660,7 +760,8 @@ export const runAgentLoop = async (
               args: prep.args,
               purpose: prep.purpose,
               permissionState: 'approved',
-              step
+              step,
+              stepId
             })
 
             toolResponses[prep.index] = await executeTool(prep, true)
@@ -684,6 +785,11 @@ export const runAgentLoop = async (
           .reverse()
           .find((response): response is ChatCompletionMessage => !!response)?.tool_call_id
         persistCheckpoint(step, lastRecordedCallId)
+        sendEvent(mainWindow, reqId, {
+          type: 'agent_step_end',
+          stepId,
+          status: stepHadToolFailure ? 'failed' : 'completed'
+        })
 
         // A loop-guard halt ends tool use immediately; fall through to the final-answer path.
         if (haltRequested) {
@@ -692,6 +798,10 @@ export const runAgentLoop = async (
 
         step++
       } else {
+        const finalText = getAssistantText(assistantMessage.content) || assistantTextBuffer
+        if (finalText) {
+          sendEvent(mainWindow, reqId, { type: 'final', content: finalText, step, stepId })
+        }
         setRunEnd('completed')
         mainWindow.webContents.send('chat-chunk', { reqId, done: true })
         return
@@ -719,7 +829,8 @@ export const runAgentLoop = async (
       strategy: 'truncate-oldest-tool'
     })
 
-    await callModel(
+    let forcedFinalEmitted = false
+    const forcedFinalMessage = await callModel(
       {
         apiUrl: options.apiUrl,
         apiKey: options.apiKey,
@@ -733,10 +844,15 @@ export const runAgentLoop = async (
           sendEvent(mainWindow, reqId, { type: 'reasoning', content })
         },
         onFinalChunk: (content) => {
+          forcedFinalEmitted = true
           sendEvent(mainWindow, reqId, { type: 'final', content })
         }
       }
     )
+    const forcedFinalText = getAssistantText(forcedFinalMessage.content)
+    if (!forcedFinalEmitted && forcedFinalText) {
+      sendEvent(mainWindow, reqId, { type: 'final', content: forcedFinalText })
+    }
 
     setRunEnd('max_steps')
     mainWindow.webContents.send('chat-chunk', { reqId, done: true })

@@ -21,7 +21,8 @@ import {
   renderMessageContent,
   parseAgentLogs,
   parseAgentSteps,
-  ParsedAgentStep
+  ParsedAgentStep,
+  ParsedToolCall
 } from '../utils/messageFormat'
 import { shortBranchRunId, type BranchChildInfo } from '../utils/branchDisplay'
 
@@ -236,9 +237,13 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     const totalToolsCount = parsedRun.totalToolsCount
     const failedToolsCount = parsedRun.failedToolsCount
 
-    const latestToolCall = msg.agentEvents
-      ? [...msg.agentEvents].reverse().find((e): e is Extract<AgentEvent, { type: 'tool_call' }> => e.type === 'tool_call')
-      : undefined
+    const activeParsedStep = [...parsedRun.steps]
+      .reverse()
+      .find((step) => step.status === 'running' || step.status === 'failed') ||
+      parsedRun.steps[parsedRun.steps.length - 1]
+    const latestToolCall: ParsedToolCall | undefined =
+      activeParsedStep?.toolCalls.find((tc) => tc.status === 'pending' || tc.status === 'running') ||
+      activeParsedStep?.toolCalls[activeParsedStep.toolCalls.length - 1]
 
     const latestTaskEvent = msg.agentEvents
       ? [...msg.agentEvents].reverse().find((e): e is Extract<AgentEvent, { type: 'task_update' }> => e.type === 'task_update')
@@ -252,9 +257,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       : undefined
 
     const activeStepTitle = useMemo(() => {
-      if (inProgressTask) return inProgressTask.title
-      if (parsedRun.steps.length > 0) {
-        const latestStep = parsedRun.steps[parsedRun.steps.length - 1]
+      if (activeParsedStep?.title) return activeParsedStep.title
+      if (activeParsedStep) {
+        const latestStep = activeParsedStep
         if (latestStep.progressMessage) {
           const firstLine = latestStep.progressMessage.trim().split(/[。\n]/)[0].trim()
           const clean = firstLine.replace(/[\*#_``\[\]]/g, '').trim()
@@ -266,8 +271,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
           return `执行 ${latestStep.toolCalls[0].toolName}`
         }
       }
+      if (inProgressTask) return inProgressTask.title
       return `第 ${currentStep}/${maxSteps} 步`
-    }, [inProgressTask, parsedRun.steps, currentStep, maxSteps])
+    }, [activeParsedStep, inProgressTask, currentStep, maxSteps])
 
     let statusText = ''
     let opText = ''
@@ -310,7 +316,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     return (
       <div className={`message-row-shell ${msg.role}`} data-message-id={msg.id}>
         {/* 1. Collapsible logs area for structured events */}
-        {hasStructuredEvents && (
+        {hasStructuredEvents && (agentStatus !== 'completed' || isGenerating || pendingToolCall) && (
           <div
             className="agent-inline-summary-box"
             style={{
@@ -491,7 +497,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                         {parsedRun.steps.map((step, stepIdx) => {
                           const isLatest = stepIdx === parsedRun.steps.length - 1
                           return (
-                            <div key={step.id} className="agent-step-block" style={{ marginBottom: '12px' }}>
+                            <div key={step.id} className={`agent-step-block ${step.status}`}>
                               {step.progressMessage && (
                                 <div className="agent-step-progress-message">
                                   {renderMessageContent(step.progressMessage)}
@@ -506,7 +512,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           )
                         })}
                         {parsedRun.finalAnswer && (
-                          <div className="agent-event-final-text" style={{ marginTop: '12px' }}>
+                          <div className="agent-event-final-text">
                             {renderMessageContent(parsedRun.finalAnswer)}
                           </div>
                         )}

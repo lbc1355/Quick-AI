@@ -12,7 +12,22 @@ export interface ToolResultUi {
 
 export type AgentEvent =
   | { type: 'agent_start'; skillName: string }
-  | { type: 'reasoning'; content: string; step?: number }
+  | { type: 'reasoning'; content: string; step?: number; stepId?: string }
+  | { type: 'agent_message_delta'; content: string; step: number; stepId: string }
+  | {
+      type: 'agent_step'
+      stepId: string
+      step: number
+      maxSteps: number
+      title: string
+      message: string
+      status: 'running' | 'completed' | 'failed' | 'cancelled'
+    }
+  | {
+      type: 'agent_step_end'
+      stepId: string
+      status: 'completed' | 'failed' | 'cancelled'
+    }
   | {
       type: 'tool_call'
       callId: string
@@ -21,21 +36,24 @@ export type AgentEvent =
       purpose?: string
       permissionState?: 'pending' | 'approved' | 'denied'
       step?: number
+      stepId?: string
     }
   | {
       type: 'tool_result'
       callId: string
       result: ToolResultUi
       step?: number
+      stepId?: string
     }
-  | { type: 'tool_error'; callId: string; error: string; step?: number }
-  | { type: 'final'; content: string; step?: number }
+  | { type: 'tool_error'; callId: string; error: string; step?: number; stepId?: string }
+  | { type: 'final'; content: string; step?: number; stepId?: string }
   | {
       type: 'agent_progress'
       step: number
       maxSteps: number
       activeTools?: string[]
       message?: string
+      stepId?: string
     }
   | {
       type: 'agent_end'

@@ -437,3 +437,425 @@
   background: var(--color-card-bg);
   backdrop-filter: none;
 }
+
+/* Agent execution stream: compact message/tool/message rhythm. */
+.agent-structured-steps-area {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  max-width: 100%;
+}
+
+.agent-step-block {
+  margin: 0;
+  padding: 0;
+}
+
+.agent-step-progress-message {
+  margin: 0 0 4px;
+  color: var(--color-text-title);
+  font-size: 14px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+
+.agent-step-progress-message p {
+  margin: 0;
+}
+
+.agent-step-progress-message :is(ul, ol, blockquote, table, pre) {
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+
+.agent-step-tool-group {
+  margin: 2px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.agent-step-tool-group-header {
+  width: auto;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.agent-step-tool-group-header:hover,
+.agent-step-tool-group-header.expanded {
+  background: transparent;
+  color: var(--color-text-title);
+}
+
+.agent-step-tool-group-header .header-status-dot {
+  width: 5px;
+  height: 5px;
+  margin: 0;
+  background: var(--color-text-faint) !important;
+}
+
+.agent-step-tool-group-header .header-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-step-tool-group-header .header-chevron {
+  flex: 0 0 auto;
+  color: var(--color-text-faint);
+}
+
+.agent-step-tools-list {
+  margin: 3px 0 0 13px;
+  padding: 3px 0 4px 11px;
+  border-top: 0;
+  border-left: 1px solid var(--color-border);
+  background: transparent;
+  gap: 4px;
+}
+
+.agent-step-tool-row {
+  min-height: 20px;
+  font-size: 11.5px;
+  gap: 3px;
+}
+
+.agent-step-tool-row .tool-row-header {
+  min-height: 20px;
+  gap: 6px;
+}
+
+.agent-step-tool-row .tool-status-icon {
+  color: var(--color-text-faint);
+}
+
+.agent-step-tool-row .tool-name {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--color-inline-code-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.agent-step-tool-row .tool-purpose {
+  color: var(--color-text-muted);
+  min-width: 0;
+}
+
+.agent-step-tool-row .tool-error-text {
+  margin-left: 18px;
+  color: var(--color-danger);
+}
+
+.agent-event-final-text {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Task panel execution details: flat list, not nested cards. */
+.task-panel .task-panel-content {
+  padding: 0;
+  gap: 0;
+}
+
+.task-panel .steps-accordion-container {
+  padding: 6px 14px 18px !important;
+  gap: 0 !important;
+}
+
+.task-panel .step-accordion-item {
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.task-panel .step-accordion-item:first-child {
+  border-top: 1px solid var(--color-border);
+}
+
+.task-panel .step-accordion-item:hover,
+.task-panel .step-accordion-item.running,
+.task-panel .step-accordion-item.failed,
+.task-panel .step-accordion-item.cancelled {
+  border-color: var(--color-border);
+}
+
+.task-panel .step-accordion-header {
+  padding: 10px 0 !important;
+  background: transparent !important;
+}
+
+.task-panel .step-accordion-header:hover {
+  background: transparent !important;
+}
+
+.task-panel .step-accordion-status {
+  width: 18px;
+}
+
+.task-panel .step-accordion-title .step-num {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.task-panel .step-accordion-title .step-title-text {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.task-panel .step-accordion-meta {
+  font-size: 10.5px;
+}
+
+.task-panel .step-accordion-content {
+  padding: 0 0 12px 26px !important;
+  border-top: 0;
+  background: transparent !important;
+}
+
+.task-panel .step-model-progress {
+  margin: 0 0 10px !important;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.task-panel .step-section-subtitle {
+  margin-bottom: 4px !important;
+  color: var(--color-text-faint) !important;
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.task-panel .step-progress-message-content {
+  color: var(--color-text-muted) !important;
+  font-size: 12px !important;
+}
+
+.task-panel .step-progress-message-content p {
+  margin: 0;
+}
+
+.task-panel .step-tool-calls .timeline-container.nested {
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 6px !important;
+}
+
+.task-panel .step-tool-calls .timeline-thread {
+  display: none;
+}
+
+.task-panel .step-tool-calls .timeline-step-item {
+  min-height: 24px;
+  gap: 8px !important;
+}
+
+.task-panel .step-tool-calls .timeline-node-circle {
+  width: 16px !important;
+  height: 16px !important;
+  margin-top: 4px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--color-text-faint) !important;
+}
+
+.task-panel .step-tool-calls .timeline-content-card {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.task-panel .step-tool-calls .timeline-header-row {
+  padding: 1px 0 !important;
+}
+
+.task-panel .step-tool-calls .timeline-step-title {
+  color: var(--color-text-muted) !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+.task-panel .timeline-step-toolname-tag {
+  margin-left: 4px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--color-text-faint) !important;
+  font-size: 10px !important;
+}
+
+.task-panel .timeline-detail-drawer {
+  margin: 3px 0 6px !important;
+  padding: 4px 0 6px 10px !important;
+  border-left: 1px solid var(--color-border) !important;
+}
+
+.task-panel .timeline-pre-code,
+.task-panel .timeline-error-box {
+  padding: 5px 0 5px 8px;
+  border: 0;
+  border-left: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.task-panel .timeline-error-box {
+  border-left-color: var(--color-danger);
+}
+
+.task-panel .timeline-result-item-card {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.task-panel .task-items-list {
+  gap: 0;
+  padding: 6px 14px 18px;
+}
+
+.task-panel .task-item-row {
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Keep the right panel as a timeline, but without card surfaces. */
+.task-panel .steps-accordion-container {
+  position: relative;
+  padding-left: 18px !important;
+}
+
+.task-panel .step-accordion-item {
+  position: relative;
+  border-bottom: 0;
+  padding-left: 18px;
+}
+
+.task-panel .step-accordion-item:first-child {
+  border-top: 0;
+}
+
+.task-panel .step-accordion-item::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--color-border);
+}
+
+.task-panel .step-accordion-item:first-child::before {
+  top: 16px;
+}
+
+.task-panel .step-accordion-header {
+  min-height: 34px;
+}
+
+.task-panel .step-accordion-status {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 17px;
+  height: 17px;
+  z-index: 1;
+  background: var(--color-panel);
+}
+
+.task-panel .step-accordion-status svg {
+  display: block;
+  background: var(--color-panel);
+  border-radius: 999px;
+}
+
+.task-panel .step-accordion-title {
+  padding-left: 0;
+}
+
+.task-panel .step-accordion-content {
+  padding-left: 0 !important;
+}
+
+.task-panel .step-model-progress,
+.task-panel .step-tool-calls {
+  margin-left: 0;
+}
+
+.task-panel .step-tool-calls .timeline-container.nested {
+  position: relative !important;
+  padding-left: 0 !important;
+}
+
+.task-panel .step-tool-calls .timeline-thread {
+  display: block !important;
+  left: 8px !important;
+  top: 12px !important;
+  bottom: 12px !important;
+  width: 1px !important;
+  opacity: 1 !important;
+  background: var(--color-border) !important;
+}
+
+.task-panel .step-tool-calls .timeline-step-item {
+  gap: 9px !important;
+  min-height: 28px;
+}
+
+.task-panel .step-tool-calls .timeline-node-circle {
+  width: 17px !important;
+  height: 17px !important;
+  margin-top: 3px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 999px !important;
+  background: var(--color-panel) !important;
+  color: var(--color-text-faint) !important;
+}
+
+.task-panel .step-tool-calls .timeline-step-item.running .timeline-node-circle {
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+}
+
+.task-panel .step-tool-calls .timeline-step-item.failed .timeline-node-circle,
+.task-panel .step-tool-calls .timeline-step-item.denied .timeline-node-circle {
+  border-color: var(--color-danger) !important;
+  color: var(--color-danger) !important;
+}
+
+.task-panel .step-tool-calls .timeline-step-item.completed .timeline-node-circle {
+  border-color: var(--color-border-strong) !important;
+}
+
+.task-panel .step-tool-calls .timeline-header-row {
+  min-height: 24px;
+}
+
+.task-panel .timeline-detail-drawer {
+  margin-left: 0 !important;
+}

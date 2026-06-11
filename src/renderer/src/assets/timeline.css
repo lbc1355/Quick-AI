@@ -454,6 +454,10 @@
   border-color: var(--color-danger);
 }
 
+.step-accordion-item.cancelled {
+  border-color: var(--color-warning);
+}
+
 .step-accordion-header {
   display: flex;
   align-items: center;
@@ -527,5 +531,4 @@
   padding: 4px 0 10px 0;
   margin-top: 4px;
 }
-
 

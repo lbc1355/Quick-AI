@@ -88,6 +88,15 @@ export const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Mess
         ...lastEvent,
         content: lastEvent.content + newEvent.content
       }
+    } else if (
+      lastEvent.type === 'agent_message_delta' &&
+      newEvent.type === 'agent_message_delta' &&
+      lastEvent.stepId === newEvent.stepId
+    ) {
+      updatedEvents[updatedEvents.length - 1] = {
+        ...lastEvent,
+        content: lastEvent.content + newEvent.content
+      }
     } else if (lastEvent.type === 'final' && newEvent.type === 'final') {
       updatedEvents[updatedEvents.length - 1] = {
         ...lastEvent,

@@ -365,7 +365,8 @@ export interface ParsedToolCall {
 export interface ParsedAgentStep {
   id: string
   stepNumber: number
-  status: 'running' | 'completed' | 'failed'
+  title?: string
+  status: 'running' | 'completed' | 'failed' | 'cancelled'
   progressMessage: string
   toolCalls: ParsedToolCall[]
   reasoning: string
@@ -392,6 +393,215 @@ export const parseAgentSteps = (
   }
 
   if (events && events.length > 0) {
+    const hasStructuredTimeline = events.some(
+      (event) => event.type === 'agent_step' || event.type === 'agent_message_delta'
+    )
+
+    if (hasStructuredTimeline) {
+      interface ExplicitGroup {
+        id: string
+        stepNumber: number
+        title?: string
+        progressMessage: string
+        messageDeltaTexts: string[]
+        reasoningTexts: string[]
+        toolCalls: Map<string, ParsedToolCall>
+        explicitStatus?: ParsedAgentStep['status']
+        hasAgentStep?: boolean
+      }
+
+      const groups: ExplicitGroup[] = []
+      const groupsById = new Map<string, ExplicitGroup>()
+      const callToGroupId = new Map<string, string>()
+      const errorCountedCallIds = new Set<string>()
+      const finalizedMessageStepIds = new Set<string>()
+      let latestStepId: string | undefined
+
+      const getStepMeta = (event: AgentEvent): { stepId?: string; step?: number } => ({
+        stepId: 'stepId' in event && typeof event.stepId === 'string' ? event.stepId : undefined,
+        step: 'step' in event && typeof event.step === 'number' ? event.step : undefined
+      })
+
+      const getOrCreateGroup = (stepId: string, stepNum?: number): ExplicitGroup => {
+        const existing = groupsById.get(stepId)
+        if (existing) {
+          if (stepNum !== undefined) existing.stepNumber = stepNum
+          return existing
+        }
+        const g: ExplicitGroup = {
+          id: stepId,
+          stepNumber: stepNum ?? groups.length + 1,
+          progressMessage: '',
+          messageDeltaTexts: [],
+          reasoningTexts: [],
+          toolCalls: new Map()
+        }
+        groups.push(g)
+        groupsById.set(stepId, g)
+        return g
+      }
+
+      const getGroupForEvent = (event: AgentEvent): ExplicitGroup => {
+        const meta = getStepMeta(event)
+        if (meta.stepId) return getOrCreateGroup(meta.stepId, meta.step)
+        if (latestStepId) return getOrCreateGroup(latestStepId, meta.step)
+        return getOrCreateGroup(`implicit-step-${groups.length + 1}`, meta.step)
+      }
+
+      const getGroupForCallResult = (
+        event: Extract<AgentEvent, { type: 'tool_result' | 'tool_error' }>
+      ): ExplicitGroup => {
+        const meta = getStepMeta(event)
+        if (meta.stepId) return getOrCreateGroup(meta.stepId, meta.step)
+        const mappedGroupId = callToGroupId.get(event.callId)
+        const mappedGroup = mappedGroupId ? groupsById.get(mappedGroupId) : undefined
+        return mappedGroup || getGroupForEvent(event)
+      }
+
+      events.forEach((event) => {
+        if (event.type === 'agent_end') {
+          run.status = event.status
+          return
+        }
+
+        if (event.type === 'agent_step') {
+          const g = getOrCreateGroup(event.stepId, event.step)
+          g.title = event.title
+          g.progressMessage = event.message || g.messageDeltaTexts.join('')
+          g.explicitStatus = event.status
+          g.hasAgentStep = true
+          latestStepId = event.stepId
+          return
+        }
+
+        if (event.type === 'agent_step_end') {
+          const g = getOrCreateGroup(event.stepId)
+          g.explicitStatus = event.status
+          return
+        }
+
+        if (event.type === 'final') {
+          const meta = getStepMeta(event)
+          if (meta.stepId) finalizedMessageStepIds.add(meta.stepId)
+          run.finalAnswer += event.content
+          return
+        }
+
+        if (event.type === 'agent_message_delta') {
+          const g = getGroupForEvent(event)
+          g.messageDeltaTexts.push(event.content)
+          latestStepId = event.stepId
+          return
+        }
+
+        if (event.type === 'reasoning') {
+          const g = getGroupForEvent(event)
+          g.reasoningTexts.push(event.content)
+          return
+        }
+
+        if (event.type === 'tool_call') {
+          const g = getGroupForEvent(event)
+          callToGroupId.set(event.callId, g.id)
+          run.totalToolsCount++
+          let status: ParsedToolCall['status'] = 'running'
+          if (event.permissionState === 'pending') status = 'pending'
+          else if (event.permissionState === 'denied') status = 'denied'
+
+          g.toolCalls.set(event.callId, {
+            callId: event.callId,
+            toolName: event.toolName,
+            args: event.args,
+            purpose: event.purpose,
+            permissionState: event.permissionState,
+            status
+          })
+          return
+        }
+
+        if (event.type === 'tool_result') {
+          const g = getGroupForCallResult(event)
+          const tc = g.toolCalls.get(event.callId)
+          if (tc) {
+            tc.result = event.result
+            tc.status = 'completed'
+          }
+          return
+        }
+
+        if (event.type === 'tool_error') {
+          const g = getGroupForCallResult(event)
+          let tc = g.toolCalls.get(event.callId)
+          if (!tc) {
+            tc = {
+              callId: event.callId,
+              toolName: 'tool',
+              args: {},
+              status: 'failed'
+            }
+            g.toolCalls.set(event.callId, tc)
+            run.totalToolsCount++
+          }
+          tc.error = event.error
+          tc.status = 'failed'
+          if (!errorCountedCallIds.has(event.callId)) {
+            run.failedToolsCount++
+            errorCountedCallIds.add(event.callId)
+          }
+        }
+      })
+
+      run.steps = groups
+        .map((g): ParsedAgentStep | null => {
+          const toolCallsList = Array.from(g.toolCalls.values())
+          const streamedMessage = g.messageDeltaTexts.join('')
+          const progressMessage = g.progressMessage || streamedMessage
+          const isUnclassifiedModelMessage =
+            !g.hasAgentStep && toolCallsList.length === 0 && streamedMessage.length > 0
+
+          if (isUnclassifiedModelMessage) {
+            if (!finalizedMessageStepIds.has(g.id) && !run.finalAnswer) {
+              run.finalAnswer = streamedMessage
+            }
+            return null
+          }
+
+          let stepStatus: ParsedAgentStep['status'] = 'completed'
+          if (g.explicitStatus === 'cancelled') {
+            stepStatus = 'cancelled'
+          } else if (
+            g.explicitStatus === 'failed' ||
+            toolCallsList.some((tc) => tc.status === 'failed' || tc.status === 'denied')
+          ) {
+            stepStatus = 'failed'
+          } else if (
+            g.explicitStatus === 'running' ||
+            toolCallsList.some((tc) => tc.status === 'running' || tc.status === 'pending')
+          ) {
+            stepStatus = 'running'
+          }
+
+          return {
+            id: g.id,
+            stepNumber: g.stepNumber,
+            title: g.title,
+            status: stepStatus,
+            progressMessage,
+            toolCalls: toolCallsList,
+            reasoning: g.reasoningTexts.join('')
+          }
+        })
+        .filter((step): step is ParsedAgentStep => step !== null)
+        .sort((a, b) => a.stepNumber - b.stepNumber)
+
+      if (run.status === 'cancelled') {
+        run.steps = run.steps.map((step, idx) =>
+          idx === run.steps.length - 1 && step.status === 'running'
+            ? { ...step, status: 'cancelled' }
+            : step
+        )
+      }
+    } else {
     interface RawGroup {
       stepNumber: number
       finalTexts: string[]
@@ -530,6 +740,7 @@ export const parseAgentSteps = (
     }
 
     run.steps = steps
+    }
   } else if (legacyContent) {
     const parsed = parseAgentLogs(legacyContent)
     run.finalAnswer = parsed.cleanContent

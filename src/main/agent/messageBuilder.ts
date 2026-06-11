@@ -170,6 +170,7 @@ Rules:
 - In final answers, mention the source URLs you used. Do not invent sources.
 - If observations are insufficient, say so in the final answer.
 - If you use the 'task' tool to track progress, ensure you update each task's status as you complete it. Before outputting your final text response, make a final call to the 'task' tool to mark the last tasks as completed.
+- Before each batch of tool calls, write one short user-visible progress sentence in the user's language that describes the current phase (for example: "我先检查相关文件。"). Do not expose hidden reasoning.
 - Stop when you can answer the user question. Write your final answer in Markdown.`
     },
     {
@@ -269,6 +270,7 @@ Rules:
 - In final answers, mention the source URLs you used. Do not invent sources.
 - If observations are insufficient, say so in the final answer.
 - If you use the 'task' tool to track progress, ensure you update each task's status as you complete it. Before outputting your final text response, make a final call to the 'task' tool to mark the last tasks as completed.
+- Before each batch of tool calls, write one short user-visible progress sentence in the user's language that describes the current phase (for example: "我先检查相关文件。"). Do not expose hidden reasoning.
 - Stop when you can answer the user question directly. Write your final answer in Markdown.`
 
   const copy = messages.map((m) => ({ ...m }))
