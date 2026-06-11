@@ -1,4 +1,4 @@
-import { ToolArgs, TaskItem } from '../../shared/types'
+import { Skill, ToolArgs, TaskItem } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { showDesktopNotification } from './helpers'
 import { probeEnvironment, formatEnvironmentReport, ProbeSection } from './environmentProbe'
@@ -6,6 +6,172 @@ import { readResourceChunk } from '../resourceCache'
 import { loadResourceCache } from '../database'
 import { getRun } from '../agent/AgentRunContext'
 import { loadSkillsFromFolders } from '../skillManager'
+
+const MAX_SKILL_PACKAGE_FILE_CHARS = 6000
+const MAX_SKILL_PACKAGE_TOTAL_CHARS = 20000
+
+function cleanSkillLookup(value: string): string {
+  return value
+    .trim()
+    .replace(/^[@/]+/, '')
+    .toLowerCase()
+}
+
+function getSkillLookupKeys(skill: Skill): string[] {
+  const keys = new Set<string>()
+  const add = (value: string | undefined): void => {
+    if (!value) return
+    const clean = cleanSkillLookup(value)
+    if (clean) keys.add(clean)
+  }
+
+  add(skill.id)
+  add(skill.id.replace(/^skill-/, ''))
+  add(skill.name)
+  add(skill.trigger)
+  ;(skill.triggers || []).forEach(add)
+
+  return Array.from(keys)
+}
+
+function resolveSkill(skills: Skill[], lookup: string): Skill | undefined {
+  const clean = cleanSkillLookup(lookup)
+  if (!clean) return undefined
+  return skills.find((skill) => getSkillLookupKeys(skill).includes(clean))
+}
+
+function formatSkillPackageFiles(skill: Skill, includeContent: boolean): string[] {
+  const files = (skill.packageFiles || [])
+    .filter((file) => file.content.trim())
+    .filter((file) => file.path.toLowerCase() !== (skill.entryPath || 'SKILL.md').toLowerCase())
+    .sort((a, b) => a.path.localeCompare(b.path))
+
+  if (files.length === 0) return []
+
+  const lines = ['', includeContent ? '--- Skill Package Files ---' : 'Packaged Auxiliary Files:']
+  let totalChars = 0
+
+  for (const file of files) {
+    if (!includeContent) {
+      lines.push(`- Path: ${file.path} (${file.size} bytes)`)
+      continue
+    }
+
+    if (totalChars >= MAX_SKILL_PACKAGE_TOTAL_CHARS) break
+    const remaining = MAX_SKILL_PACKAGE_TOTAL_CHARS - totalChars
+    const limit = Math.min(MAX_SKILL_PACKAGE_FILE_CHARS, remaining)
+    const content =
+      file.content.length > limit
+        ? `${file.content.slice(0, Math.max(0, limit - 34))}\n[File truncated for context size]`
+        : file.content
+
+    lines.push(`Path: ${file.path} (${file.size} bytes)`)
+    lines.push(content)
+    lines.push('---')
+    totalChars += content.length
+  }
+
+  return lines
+}
+
+function formatSkillForModel(skill: Skill, includePackageContent: boolean): string {
+  const triggers = skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
+  const lines = [
+    `Skill ID: ${skill.id}`,
+    `Name: ${skill.name}`,
+    `Triggers: ${triggers.filter(Boolean).join(', ')}`,
+    skill.description ? `Description: ${skill.description}` : '',
+    skill.filePath ? `File Path: ${skill.filePath}` : '',
+    skill.dirPath ? `Directory Path: ${skill.dirPath}` : '',
+    `Mode: ${skill.mode || 'insert'}`,
+    `Kind: ${skill.kind || 'prompt'}`,
+    skill.tools && skill.tools.length > 0 ? `Declared Tools: ${skill.tools.join(', ')}` : '',
+    '',
+    '--- SKILL.md Prompt Instructions ---',
+    skill.rawMarkdown || skill.prompt,
+    '-------------------------------------',
+    ...formatSkillPackageFiles(skill, includePackageContent)
+  ]
+
+  return lines.filter((line) => line !== '').join('\n')
+}
+
+const TASK_STATUSES: TaskItem['status'][] = ['pending', 'in_progress', 'completed', 'cancelled']
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function readTaskStatus(value: unknown, fallback: TaskItem['status']): TaskItem['status'] {
+  return typeof value === 'string' && (TASK_STATUSES as string[]).includes(value)
+    ? (value as TaskItem['status'])
+    : fallback
+}
+
+function makeTaskId(title: string, index: number): string {
+  const id = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 32)
+  return id || `task-${index + 1}`
+}
+
+function pickTaskSource(args: unknown): unknown {
+  if (Array.isArray(args) || typeof args === 'string') return args
+  if (!isRecord(args)) return undefined
+  if (args.tasks !== undefined) return args.tasks
+  if (args.task !== undefined) return args.task
+  if (args.items !== undefined) return args.items
+  if (
+    args.title !== undefined ||
+    args.description !== undefined ||
+    args.id !== undefined ||
+    args.status !== undefined
+  ) {
+    return args
+  }
+  return undefined
+}
+
+function normalizeTaskEntry(
+  item: unknown,
+  index: number,
+  fallbackStatus: TaskItem['status']
+): TaskItem | undefined {
+  if (typeof item === 'string') {
+    const title = item.trim()
+    if (!title) return undefined
+    return {
+      id: makeTaskId(title, index),
+      title,
+      status: fallbackStatus
+    }
+  }
+
+  if (!isRecord(item)) return undefined
+
+  const titleValue = item.title ?? item.description ?? item.task ?? item.name ?? item.id
+  const title = typeof titleValue === 'string' ? titleValue.trim() : ''
+  if (!title) return undefined
+
+  const rawId = typeof item.id === 'string' ? item.id.trim() : ''
+  return {
+    id: rawId || makeTaskId(title, index),
+    title,
+    status: readTaskStatus(item.status, fallbackStatus)
+  }
+}
+
+function normalizeTaskArgs(args: unknown): TaskItem[] {
+  const source = pickTaskSource(args)
+  const entries = Array.isArray(source) ? source : source !== undefined ? [source] : []
+  const fallbackStatus = entries.length === 1 ? 'in_progress' : 'pending'
+  return entries
+    .map((item, index) => normalizeTaskEntry(item, index, fallbackStatus))
+    .filter((item): item is TaskItem => Boolean(item))
+}
 
 export const systemTools: Record<string, ToolDefinition> = {
   read_cached_resource: {
@@ -282,6 +448,22 @@ export const systemTools: Record<string, ToolDefinition> = {
     parameters: {
       type: 'object',
       properties: {
+        task: {
+          type: 'string',
+          description:
+            'Optional single task title. Use this for a one-step task when a full tasks array is unnecessary.'
+        },
+        title: {
+          type: 'string',
+          description:
+            'Optional single task title. Equivalent to task; useful when sending one task object.'
+        },
+        status: {
+          type: 'string',
+          enum: ['pending', 'in_progress', 'completed', 'cancelled'],
+          description:
+            'Optional status for a single task title. Defaults to in_progress for one task.'
+        },
         tasks: {
           type: 'array',
           items: {
@@ -300,34 +482,14 @@ export const systemTools: Record<string, ToolDefinition> = {
           description:
             'The task list. Provide the COMPLETE list on first call; on subsequent calls only include items whose status changed.'
         }
-      },
-      required: ['tasks']
+      }
     },
     execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      const raw = args.tasks
-      if (!Array.isArray(raw) || raw.length === 0) {
-        throw new Error('Missing or invalid tasks parameter — expected a non-empty array.')
-      }
-
-      const incoming: TaskItem[] = []
-      for (const item of raw) {
-        if (
-          typeof item !== 'object' ||
-          !item ||
-          typeof item.id !== 'string' ||
-          !item.id.trim() ||
-          typeof item.title !== 'string' ||
-          typeof item.status !== 'string'
-        ) {
-          continue
-        }
-        const status = item.status as TaskItem['status']
-        if (!['pending', 'in_progress', 'completed', 'cancelled'].includes(status)) continue
-        incoming.push({ id: item.id.trim(), title: item.title.trim(), status })
-      }
-
+      const incoming = normalizeTaskArgs(args)
       if (incoming.length === 0) {
-        throw new Error('No valid task items found. Each item needs id, title, and status.')
+        throw new Error(
+          'No valid task items found. Expected { "tasks": [{ "id": "1", "title": "...", "status": "pending|in_progress|completed|cancelled" }] }, or a task title string.'
+        )
       }
 
       const run = getRun(ctx.reqId)
@@ -472,6 +634,59 @@ export const systemTools: Record<string, ToolDefinition> = {
       }
     }
   },
+  load_skill: {
+    name: 'load_skill',
+    title: 'Load Skill',
+    description:
+      'Loads the full SKILL.md instructions for an installed QuickAI Skill. Use this when the user mentions @skill, names a skill, or the task matches a skill in the system prompt skill catalog.',
+    tags: ['skills', 'load', 'invoke', 'manual', 'instructions', 'skill'],
+    category: 'system',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description:
+            'Skill name, trigger, @mention, or ID. Examples: "@paper-reader", "paper-reader", "skill-paper-reader".'
+        }
+      },
+      required: ['name']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      void ctx
+      const name = typeof args.name === 'string' ? args.name.trim() : ''
+      if (!name) {
+        throw new Error('Missing or invalid name parameter')
+      }
+
+      const skills = loadSkillsFromFolders()
+      const skill = resolveSkill(skills, name)
+      if (!skill) {
+        const available = skills
+          .map((s) => {
+            const triggers = s.triggers && s.triggers.length > 0 ? s.triggers : [s.trigger]
+            return `${s.name} (${triggers.map((t) => `@${t}`).join(', ')})`
+          })
+          .join(', ')
+        throw new Error(
+          available
+            ? `Skill "${name}" not found. Available skills: ${available}`
+            : `Skill "${name}" not found. No custom skills are installed.`
+        )
+      }
+
+      return {
+        resultForModel: `Loaded QuickAI Skill. Follow these instructions for the current user request.\n\n${formatSkillForModel(skill, true)}`,
+        resultForUi: {
+          title: `Load Skill: ${skill.name}`,
+          summary: `Loaded ${skill.id}`
+        }
+      }
+    }
+  },
   list_skills: {
     name: 'list_skills',
     title: 'List Installed Skills',
@@ -487,7 +702,8 @@ export const systemTools: Record<string, ToolDefinition> = {
       properties: {
         skillId: {
           type: 'string',
-          description: 'Optional. The ID of a specific skill to retrieve its full prompt instructions and packaged files.'
+          description:
+            'Optional. The ID of a specific skill to retrieve its full prompt instructions and packaged files.'
         }
       }
     },
@@ -497,36 +713,15 @@ export const systemTools: Record<string, ToolDefinition> = {
 
       const skillId = typeof args.skillId === 'string' ? args.skillId.trim() : undefined
       if (skillId) {
-        const s = skills.find((x) => x.id === skillId)
+        const s = resolveSkill(skills, skillId)
         if (!s) {
-          throw new Error(`Skill with ID "${skillId}" not found. Call list_skills without parameters to list all installed skills.`)
-        }
-
-        const lines = [
-          `Skill ID: ${s.id}`,
-          `Name: ${s.name}`,
-          `Triggers: ${s.triggers && s.triggers.length > 0 ? s.triggers.join(', ') : s.trigger}`,
-          s.description ? `Description: ${s.description}` : '',
-          s.filePath ? `File Path: ${s.filePath}` : '',
-          s.dirPath ? `Directory Path: ${s.dirPath}` : '',
-          `Mode: ${s.mode || 'insert'}`,
-          `Kind: ${s.kind || 'prompt'}`,
-          s.tools && s.tools.length > 0 ? `Declared Tools: ${s.tools.join(', ')}` : '',
-          '',
-          '--- SKILL.md Prompt Instructions ---',
-          s.prompt,
-          '-------------------------------------'
-        ]
-
-        if (s.packageFiles && s.packageFiles.length > 0) {
-          lines.push('', 'Packaged Auxiliary Files:')
-          s.packageFiles.forEach((file) => {
-            lines.push(`- Path: ${file.path} (${file.size} bytes)`)
-          })
+          throw new Error(
+            `Skill "${skillId}" not found. Call list_skills without parameters to list all installed skills.`
+          )
         }
 
         return {
-          resultForModel: lines.filter((l) => l !== '').join('\n'),
+          resultForModel: formatSkillForModel(s, false),
           resultForUi: {
             title: `Skill Details: ${s.name}`,
             summary: `Loaded details for skill ${s.id}`
@@ -560,6 +755,7 @@ export const systemTools: Record<string, ToolDefinition> = {
 
         return {
           title: s.name,
+          url: s.filePath ? `file:///${s.filePath.replace(/\\/g, '/')}` : '',
           snippet: `Triggers: ${triggersStr} | Mode: ${s.mode || 'insert'}${s.description ? ` | ${s.description}` : ''}`,
           source: s.source || 'markdown'
         }

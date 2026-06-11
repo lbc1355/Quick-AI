@@ -24,13 +24,12 @@ import {
 } from './memory/memoryStore'
 import { logger } from './logger'
 import { McpManager } from './mcpManager'
-import { migrateDbSkillsToFolders } from './skillManager'
-
-
+import { migrateDbSkillsToFolders, watchSkillFolders } from './skillManager'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let store: FileStore | null = null
+let stopSkillWatcher: (() => void) | null = null
 let isWindowVisible = false
 let isFilePickerActive = false
 let isQuitting = false
@@ -159,6 +158,15 @@ function toggleWindow(): void {
   }
 }
 
+function broadcastSkillsUpdated(skills?: StorageSchema['skills']): void {
+  const nextSkills = skills || (store?.get('skills') as StorageSchema['skills']) || []
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('skills-updated', nextSkills)
+    }
+  }
+}
+
 function createTray(): void {
   // Use the asset icon
   tray = new Tray(icon)
@@ -214,6 +222,10 @@ app.whenReady().then(() => {
   // Migrate DB skills to folders if global folder is empty
   migrateDbSkillsToFolders()
 
+  stopSkillWatcher = watchSkillFolders((skills) => {
+    broadcastSkillsUpdated(skills)
+  })
+
   // Initialize MCP Manager
   McpManager.init()
 
@@ -268,6 +280,9 @@ app.whenReady().then(() => {
     }
     const storeKey = key as keyof StorageSchema
     store?.set(storeKey, value as StorageSchema[typeof storeKey])
+    if (storeKey === 'skills') {
+      broadcastSkillsUpdated(store?.get('skills') as StorageSchema['skills'])
+    }
     return true
   })
 
@@ -460,6 +475,8 @@ app.on('before-quit', () => {
 
 // Clean up global shortcuts and MCP processes when app closes
 app.on('will-quit', () => {
+  stopSkillWatcher?.()
+  stopSkillWatcher = null
   globalShortcut.unregisterAll()
   McpManager.shutdown().catch((err) => {
     logger.error('MCP', `Error shutting down MCP: ${err.message}`)

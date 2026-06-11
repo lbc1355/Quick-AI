@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
+import { join } from 'path'
+import { existsSync, promises as fs } from 'fs'
 import {
   buildToolDirectorySummary,
   prepareChatAgentMessages,
   buildDateLine,
-  buildSkillMessages
+  buildSkillMessages,
+  buildAvailableSkillsSummary
 } from './messageBuilder'
 
 describe('buildToolDirectorySummary', () => {
@@ -148,6 +151,41 @@ describe('prepareChatAgentMessages tool directory injection', () => {
     expect(content).not.toContain('web_search')
   })
 
+  it('injects installed skill summaries and points the agent at load_skill', async () => {
+    const testDir = join(__dirname, '../../../temp-message-builder-skills-test')
+    const originalQuickAiHome = process.env.QUICKAI_HOME
+    process.env.QUICKAI_HOME = testDir
+
+    try {
+      if (existsSync(testDir)) {
+        await fs.rm(testDir, { recursive: true, force: true })
+      }
+      const skillRoot = join(testDir, 'skill')
+      await fs.mkdir(skillRoot, { recursive: true })
+      await fs.writeFile(
+        join(skillRoot, 'reader.md'),
+        '---\nname: Reader Skill\ntrigger: reader\ndescription: Read documents carefully\n---\nReader instructions',
+        'utf-8'
+      )
+
+      const summary = buildAvailableSkillsSummary()
+      expect(summary).toContain('## Skills')
+      expect(summary).toContain('@reader')
+      expect(summary).toContain('load_skill')
+
+      const msgs = prepareChatAgentMessages([{ role: 'user', content: '@reader analyze this' }])
+      const content = msgs.find((m) => m.role === 'system')!.content as string
+      expect(content).toContain('## Skills')
+      expect(content).toContain('@reader')
+      expect(content).toContain('call load_skill')
+    } finally {
+      process.env.QUICKAI_HOME = originalQuickAiHome
+      if (existsSync(testDir)) {
+        await fs.rm(testDir, { recursive: true, force: true })
+      }
+    }
+  })
+
   it('works without permissions', () => {
     const msgs = prepareChatAgentMessages(
       [{ role: 'user', content: 'test' }],
@@ -169,7 +207,7 @@ describe('prepareChatAgentMessages tool directory injection', () => {
     )
     const system = msgs.find((m) => m.role === 'system')
     const content = system!.content as string
-    
+
     // Check that it contains "custom system prompt" exactly once
     const matches = content.match(/custom system prompt/g)
     expect(matches).toHaveLength(1)

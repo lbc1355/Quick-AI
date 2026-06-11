@@ -7,7 +7,8 @@ import {
   ChatRunOptions,
   ClearSessionCachesPayload,
   ForkSessionCachesPayload,
-  McpServerStatus
+  McpServerStatus,
+  Skill
 } from '../shared/types'
 
 declare global {
@@ -44,6 +45,7 @@ declare global {
       ) => Promise<{ ok: boolean; actions: number; checkpoints: number; manifests: number }>
       showNotification: (title: string, body: string) => void
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
+      onSkillsUpdated: (callback: (skills: Skill[]) => void) => () => void
       fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
       listMemoryEntries: () => Promise<Array<{ id: string; label: string; kind: string }>>
       readMemoryEntry: (id: string) => Promise<string>
@@ -55,4 +57,3 @@ declare global {
     }
   }
 }
-

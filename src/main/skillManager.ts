@@ -1,10 +1,29 @@
-import { readdirSync, statSync, readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'fs'
-import { join, relative } from 'path'
+import {
+  FSWatcher,
+  readdirSync,
+  statSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  watch
+} from 'fs'
+import { dirname, join, normalize, relative } from 'path'
 import { homedir } from 'os'
-import { getSkillRoot, getWorkspaceRoot } from './paths'
+import { getQuickAiRoot, getSkillRoot, getWorkspaceRoot } from './paths'
 import { parseSkillMarkdown, serializeSkillToMarkdown } from '../shared/skillParser'
 import { Skill, SkillPackageFile } from '../shared/types'
 import { logger } from './logger'
+
+const WATCH_IGNORED_DIRS = new Set(['node_modules', 'build', 'dist', 'out'])
+
+function addUniqueDir(dirs: string[], seen: Set<string>, dir: string): void {
+  const canonical = normalize(dir)
+  if (seen.has(canonical)) return
+  seen.add(canonical)
+  dirs.push(dir)
+}
 
 // Recursively find text files in a directory, ignoring hidden dirs, node_modules, etc.
 function findFilesRecursive(dir: string, baseDir: string): SkillPackageFile[] {
@@ -57,15 +76,16 @@ function findFilesRecursive(dir: string, baseDir: string): SkillPackageFile[] {
   return files
 }
 
-export function getSkillDirectories(): string[] {
+export function getSkillCandidateDirectories(): string[] {
   const dirs: string[] = []
+  const seen = new Set<string>()
 
   // 1. Workspace-local directories (precedence order)
   try {
     const ws = getWorkspaceRoot()
     if (ws && existsSync(ws)) {
-      dirs.push(join(ws, 'skills'))
-      dirs.push(join(ws, '.quickai', 'skills'))
+      addUniqueDir(dirs, seen, join(ws, 'skills'))
+      addUniqueDir(dirs, seen, join(ws, '.quickai', 'skills'))
     }
   } catch (err) {
     // Ignore context errors in path resolution
@@ -73,15 +93,19 @@ export function getSkillDirectories(): string[] {
 
   // 2. Global user home directories
   const home = process.env.QUICKAI_HOME || homedir()
-  dirs.push(getSkillRoot()) // ~/.quickai/skill
+  addUniqueDir(dirs, seen, getSkillRoot()) // ~/.quickai/skill
   if (home) {
-    dirs.push(join(home, '.quickai', 'skills'))
+    addUniqueDir(dirs, seen, join(home, '.quickai', 'skills'))
   }
 
+  return dirs
+}
+
+export function getSkillDirectories(): string[] {
   // Deduplicate and filter to directories that exist on disk
   const seen = new Set<string>()
   const result: string[] = []
-  for (const d of dirs) {
+  for (const d of getSkillCandidateDirectories()) {
     if (existsSync(d)) {
       try {
         const stat = statSync(d)
@@ -98,6 +122,123 @@ export function getSkillDirectories(): string[] {
     }
   }
   return result
+}
+
+function addExistingDirectory(dirs: string[], seen: Set<string>, dir: string): void {
+  if (!existsSync(dir)) return
+  try {
+    if (statSync(dir).isDirectory()) {
+      addUniqueDir(dirs, seen, dir)
+    }
+  } catch {
+    // Skip unreadable paths
+  }
+}
+
+function addSubdirectories(dir: string, dirs: string[], seen: Set<string>): void {
+  if (!existsSync(dir)) return
+
+  try {
+    const entries = readdirSync(dir)
+    for (const entry of entries) {
+      if (entry.startsWith('.') || WATCH_IGNORED_DIRS.has(entry)) continue
+      const fullPath = join(dir, entry)
+      try {
+        if (!statSync(fullPath).isDirectory()) continue
+        addUniqueDir(dirs, seen, fullPath)
+        addSubdirectories(fullPath, dirs, seen)
+      } catch {
+        // Skip unreadable paths
+      }
+    }
+  } catch {
+    // Skip unreadable paths
+  }
+}
+
+export function getSkillWatchDirectories(): string[] {
+  const dirs: string[] = []
+  const seen = new Set<string>()
+
+  addExistingDirectory(dirs, seen, getQuickAiRoot())
+  addExistingDirectory(dirs, seen, getWorkspaceRoot())
+
+  for (const candidate of getSkillCandidateDirectories()) {
+    addExistingDirectory(dirs, seen, dirname(candidate))
+    addExistingDirectory(dirs, seen, candidate)
+    addSubdirectories(candidate, dirs, seen)
+  }
+
+  return dirs
+}
+
+export function watchSkillFolders(onChange: (skills: Skill[]) => void): () => void {
+  const watchers = new Map<string, FSWatcher>()
+  let stopped = false
+  let refreshTimer: NodeJS.Timeout | undefined
+  let emitTimer: NodeJS.Timeout | undefined
+
+  const emitChange = (): void => {
+    if (stopped) return
+    try {
+      onChange(loadSkillsFromFolders())
+    } catch (err) {
+      logger.warn('SkillManager', `Failed to broadcast skill changes: ${(err as Error).message}`)
+    }
+  }
+
+  const scheduleEmit = (): void => {
+    if (emitTimer) clearTimeout(emitTimer)
+    emitTimer = setTimeout(emitChange, 200)
+  }
+
+  const refreshWatchers = (): void => {
+    if (stopped) return
+    const nextDirs = new Set(getSkillWatchDirectories())
+
+    for (const [dir, watcher] of watchers) {
+      if (!nextDirs.has(dir)) {
+        watcher.close()
+        watchers.delete(dir)
+      }
+    }
+
+    for (const dir of nextDirs) {
+      if (watchers.has(dir)) continue
+      try {
+        const watcher = watch(dir, { persistent: false }, () => {
+          scheduleRefresh()
+          scheduleEmit()
+        })
+        watcher.on('error', (err) => {
+          logger.warn('SkillManager', `Skill watcher failed for ${dir}: ${err.message}`)
+          watchers.delete(dir)
+          watcher.close()
+          scheduleRefresh()
+        })
+        watchers.set(dir, watcher)
+      } catch (err) {
+        logger.warn('SkillManager', `Failed to watch ${dir}: ${(err as Error).message}`)
+      }
+    }
+  }
+
+  const scheduleRefresh = (): void => {
+    if (refreshTimer) clearTimeout(refreshTimer)
+    refreshTimer = setTimeout(refreshWatchers, 200)
+  }
+
+  refreshWatchers()
+
+  return () => {
+    stopped = true
+    if (refreshTimer) clearTimeout(refreshTimer)
+    if (emitTimer) clearTimeout(emitTimer)
+    for (const watcher of watchers.values()) {
+      watcher.close()
+    }
+    watchers.clear()
+  }
 }
 
 export function loadSkillsFromFolders(): Skill[] {
@@ -147,7 +288,10 @@ export function loadSkillsFromFolders(): Skill[] {
                 skills.push(skill)
               }
             } catch (err) {
-              logger.warn('SkillManager', `Failed to parse folder skill ${entry}: ${(err as Error).message}`)
+              logger.warn(
+                'SkillManager',
+                `Failed to parse folder skill ${entry}: ${(err as Error).message}`
+              )
             }
           }
         } else if (stat.isFile() && (entry.endsWith('.md') || entry.endsWith('.markdown'))) {
@@ -166,12 +310,18 @@ export function loadSkillsFromFolders(): Skill[] {
               skills.push(skill)
             }
           } catch (err) {
-            logger.warn('SkillManager', `Failed to parse flat skill file ${entry}: ${(err as Error).message}`)
+            logger.warn(
+              'SkillManager',
+              `Failed to parse flat skill file ${entry}: ${(err as Error).message}`
+            )
           }
         }
       }
     } catch (err) {
-      logger.warn('SkillManager', `Failed to read skills directory ${dir}: ${(err as Error).message}`)
+      logger.warn(
+        'SkillManager',
+        `Failed to read skills directory ${dir}: ${(err as Error).message}`
+      )
     }
   }
 
@@ -259,6 +409,9 @@ export function migrateDbSkillsToFolders(): void {
       }
     }
   } catch (err) {
-    logger.warn('SkillManager', `Migration from database to folders failed: ${(err as Error).message}`)
+    logger.warn(
+      'SkillManager',
+      `Migration from database to folders failed: ${(err as Error).message}`
+    )
   }
 }

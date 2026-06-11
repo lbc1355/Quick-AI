@@ -200,7 +200,8 @@ export function getAutocompleteDescription(item: AutocompleteItem): string {
     return commandText[item.cmd].description
   }
   const split = splitAutocompleteName(item.name)
-  if (item.type === 'skill') return split.description || '插入或运行自定义技能'
+  if (item.type === 'skill')
+    return split.description || 'Mention this Skill; the agent will load it'
   if (item.type === 'model') return '切换当前模型'
   if (item.type === 'provider') return '切换当前服务商'
   if (item.type === 'session') return '打开历史对话'
@@ -210,9 +211,7 @@ export function getAutocompleteDescription(item: AutocompleteItem): string {
 
 export function getAutocompleteMeta(item: AutocompleteItem): string {
   if (item.type === 'skill') {
-    if (item.skillMode === 'run') return '运行'
-    if (item.skillMode === 'send') return '发送'
-    return '插入'
+    return 'Skill'
   }
   return autocompleteGroupLabels[item.type]
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Skill, SkillInstallPayload, SkillPackageFile } from '../../../shared/types'
 import { parseSkillMarkdown } from '../utils/skillMarkdown'
 
@@ -54,14 +54,32 @@ const sortSkills = (skills: Skill[]): Skill[] => {
 export const useSkills = (): UseSkillsReturn => {
   const [skills, setSkills] = useState<Skill[]>([])
 
+  const applyLoadedSkills = useCallback((loadedSkills: Skill[]): void => {
+    setSkills(sortSkills(loadedSkills.map(normalizeLoadedSkill)))
+  }, [])
+
   useEffect(() => {
+    let active = true
+
     const loadSkills = async (): Promise<void> => {
       const savedSkills = ((await window.api.storeGet('skills')) as Skill[]) || []
-      setSkills(sortSkills(savedSkills.map(normalizeLoadedSkill)))
+      if (active) {
+        applyLoadedSkills(savedSkills)
+      }
     }
 
     loadSkills().catch(console.error)
-  }, [])
+    const unsubscribe = window.api.onSkillsUpdated((nextSkills) => {
+      if (active) {
+        applyLoadedSkills(nextSkills || [])
+      }
+    })
+
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [applyLoadedSkills])
 
   const persistSkills = async (nextSkills: Skill[]): Promise<void> => {
     const sorted = sortSkills(nextSkills.map(normalizeLoadedSkill))

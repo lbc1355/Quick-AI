@@ -48,7 +48,43 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
     providers: ApiProvider[],
     skills: Skill[]
   ): void => {
-    if (val.startsWith('/')) {
+    if (val.startsWith('@')) {
+      const skillSearch = val.slice(1).trimStart().split(/\s+/)[0].toLowerCase()
+      const skillPrefix = `@${skillSearch}`
+      const search = skillSearch
+
+      const matchingSkills: AutocompleteItem[] = skills
+        .map((skill) => {
+          const triggers =
+            skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
+          const matchingTrigger = triggers.find((trigger) =>
+            `@${trigger}`.toLowerCase().startsWith(skillPrefix)
+          )
+          return { skill, triggers, matchingTrigger }
+        })
+        .filter(
+          ({ skill, matchingTrigger }) =>
+            Boolean(matchingTrigger) ||
+            skill.name.toLowerCase().includes(search) ||
+            (skill.description || '').toLowerCase().includes(search)
+        )
+        .map(({ skill, matchingTrigger }) => ({
+          id: skill.id,
+          name: skill.description ? `${skill.name} - ${skill.description}` : skill.name,
+          trigger: `@${matchingTrigger || skill.trigger}`,
+          prompt: skill.prompt,
+          skillId: skill.id,
+          skillMode: skill.mode || 'insert',
+          type: 'skill'
+        }))
+
+      setAutocompleteItems(matchingSkills)
+      setSelectedItemIdx((prev) => {
+        if (matchingSkills.length === 0) return 0
+        if (prev < 0 || prev >= matchingSkills.length) return 0
+        return prev
+      })
+    } else if (val.startsWith('/')) {
       const commandSearch = val.slice(1).trimStart().split(/\s+/)[0].toLowerCase()
       const commandPrefix = `/${commandSearch}`
       const search = commandSearch
@@ -95,33 +131,7 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
         c.trigger.toLowerCase().startsWith(commandPrefix)
       )
 
-      // 2. Predefined Skills
-      const matchingSkills: AutocompleteItem[] = skills
-        .map((skill) => {
-          const triggers =
-            skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
-          const matchingTrigger = triggers.find((trigger) =>
-            `/${trigger}`.toLowerCase().startsWith(commandPrefix)
-          )
-          return { skill, triggers, matchingTrigger }
-        })
-        .filter(
-          ({ skill, matchingTrigger }) =>
-            Boolean(matchingTrigger) ||
-            skill.name.toLowerCase().includes(search) ||
-            (skill.description || '').toLowerCase().includes(search)
-        )
-        .map(({ skill, matchingTrigger }) => ({
-          id: skill.id,
-          name: skill.description ? `${skill.name} - ${skill.description}` : skill.name,
-          trigger: `/${matchingTrigger || skill.trigger}`,
-          prompt: skill.prompt,
-          skillId: skill.id,
-          skillMode: skill.mode || 'insert',
-          type: 'skill'
-        }))
-
-      // 3. Models switching command options
+      // 2. Models switching command options
       const matchingModels: AutocompleteItem[] = modelsList
         .filter(
           (m) =>
@@ -135,7 +145,7 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
           type: 'model'
         }))
 
-      // 4. Session histories (exclude active one and empty ones)
+      // 3. Session histories (exclude active one and empty ones)
       const matchingSessions: AutocompleteItem[] = sessions
         .filter((s) => s.id !== activeSessionId && s.messages.length > 0)
         .filter((s) => s.title.toLowerCase().includes(search) || 'history'.includes(search))
@@ -147,7 +157,7 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
           type: 'session'
         }))
 
-      // 5. Session deletion options
+      // 4. Session deletion options
       const matchingDeleteSessions: AutocompleteItem[] = sessions
         .filter((s) => s.messages.length > 0)
         .filter(
@@ -165,7 +175,7 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
           type: 'delete-session'
         }))
 
-      // 6. Provider switching options
+      // 5. Provider switching options
       const matchingProviders: AutocompleteItem[] = providers
         .filter(
           (p) =>
@@ -184,7 +194,6 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
 
       const combined: AutocompleteItem[] = [
         ...matchingCmds,
-        ...matchingSkills,
         ...matchingModels,
         ...matchingSessions,
         ...matchingDeleteSessions,

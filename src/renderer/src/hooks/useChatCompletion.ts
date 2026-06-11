@@ -281,6 +281,7 @@ export const useChatCompletion = ({
     const promptToSend = customPrompt !== undefined ? customPrompt : inputVal
     if (!promptToSend.trim() && attachedFiles.length === 0 && !customPrompt) return
     if (isGeneratingRef.current) return
+    const effectiveRunMode: RunMode = /^\s*@\S+/.test(promptToSend) ? 'agent' : runModeRef.current
 
     // Verify key
     if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
@@ -401,7 +402,7 @@ export const useChatCompletion = ({
       role: 'assistant',
       content: '',
       reasoning_content: '',
-      ...(runModeRef.current === 'agent'
+      ...(effectiveRunMode === 'agent'
         ? { agentRunId: reqId, agentRunIds: [reqId], agentEvents: [] }
         : {}),
       ...(branchOf ? { isBranchFork: true, forkedFrom: branchOf } : {})
@@ -473,7 +474,7 @@ export const useChatCompletion = ({
           apiKey: requestConfig.apiKey,
           model: requestConfig.selectedModel,
           messages: apiMessages,
-          runMode: runModeRef.current,
+          runMode: effectiveRunMode,
           resources: targetSession.resources,
           sessionId: targetSession.id,
           sourceMessageId,

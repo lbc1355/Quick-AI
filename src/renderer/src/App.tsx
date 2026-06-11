@@ -156,7 +156,6 @@ function App(): React.JSX.Element {
     runMode,
     setRunMode,
     handleSendMessage,
-    handleRunAgentSkill,
     handleStartEdit,
     handleSaveEdit,
     handleRegenerate,
@@ -483,19 +482,13 @@ function App(): React.JSX.Element {
 
   const getSkillInputTail = (item: AutocompleteItem): string => {
     const currentValue = inputVal.trimStart()
+    if (item.type === 'skill' && currentValue.startsWith('@')) {
+      const firstSpace = currentValue.search(/\s/)
+      return firstSpace === -1 ? '' : currentValue.slice(firstSpace).trim()
+    }
     return currentValue.toLowerCase().startsWith(item.trigger.toLowerCase())
       ? currentValue.slice(item.trigger.length).trim()
       : ''
-  }
-
-  const buildSkillPrompt = (item: AutocompleteItem): string => {
-    const prompt = item.prompt || ''
-    const inputTail = getSkillInputTail(item)
-    if (/\{\{\s*input\s*\}\}/i.test(prompt)) {
-      return prompt.replace(/\{\{\s*input\s*\}\}/gi, inputTail)
-    }
-
-    return inputTail ? `${prompt.trimEnd()}\n\n${inputTail}` : prompt
   }
 
   // Action executed on autocomplete item select
@@ -555,20 +548,10 @@ function App(): React.JSX.Element {
       setAutocompleteItems([])
       setInputVal('')
     } else {
-      // Injects prompt skill
+      // Select a skill mention. The general agent will load the Skill via load_skill.
       setAutocompleteItems([])
-      const targetSkill = skills.find((skill) => skill.id === item.skillId || skill.id === item.id)
-      if (targetSkill && (targetSkill.kind === 'agent' || targetSkill.mode === 'run')) {
-        setInputVal('')
-        await handleRunAgentSkill(targetSkill, getSkillInputTail(item))
-      } else if (item.skillMode === 'send') {
-        setInputVal('')
-        const skillPrompt = buildSkillPrompt(item)
-        await handleSendMessage(skillPrompt)
-      } else {
-        const skillPrompt = buildSkillPrompt(item)
-        setInputVal(skillPrompt)
-      }
+      const inputTail = getSkillInputTail(item)
+      setInputVal(inputTail ? `${item.trigger} ${inputTail}` : `${item.trigger} `)
     }
     textareaRef.current?.focus()
   }
@@ -867,7 +850,13 @@ function App(): React.JSX.Element {
                 <div
                   ref={messagesInnerRef}
                   className="messages-inner-wrapper"
-                  style={{ display: 'flex', flexDirection: 'column', gap: 'inherit', width: '100%', minHeight: '100%' }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 'inherit',
+                    width: '100%',
+                    minHeight: '100%'
+                  }}
                 >
                   {activeSession?.messages.map((msg, idx) => (
                     <MessageBubble
@@ -877,7 +866,9 @@ function App(): React.JSX.Element {
                       branchChildren={
                         branchChildIndex[getBranchSourceKey(activeSessionId, msg.id)] || []
                       }
-                      isGenerating={isCurrentSessionGenerating && idx === activeSession.messages.length - 1}
+                      isGenerating={
+                        isCurrentSessionGenerating && idx === activeSession.messages.length - 1
+                      }
                       editingMessageId={editingMessageId}
                       editingText={editingText}
                       onStartEdit={handleStartEdit}
@@ -924,7 +915,8 @@ function App(): React.JSX.Element {
             />
           </section>
 
-          {activeTaskMessageId && activeSession && (
+          {activeTaskMessageId &&
+            activeSession &&
             (() => {
               const msg = activeSession.messages.find((m) => m.id === activeTaskMessageId)
               return msg ? (
@@ -932,11 +924,13 @@ function App(): React.JSX.Element {
                   message={msg}
                   isOpen={isTaskPanelOpen}
                   onClose={() => setIsTaskPanelOpen(false)}
-                  isGenerating={isCurrentSessionGenerating && msg.id === activeSession.messages[activeSession.messages.length - 1]?.id}
+                  isGenerating={
+                    isCurrentSessionGenerating &&
+                    msg.id === activeSession.messages[activeSession.messages.length - 1]?.id
+                  }
                 />
               ) : null
-            })()
-          )}
+            })()}
         </div>
       )}
 

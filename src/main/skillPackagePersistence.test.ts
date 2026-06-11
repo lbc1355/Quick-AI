@@ -1,7 +1,11 @@
 import { it, expect, beforeEach, afterEach, describe } from 'vitest'
 import { join } from 'path'
 import { promises as fs, existsSync, writeFileSync, mkdirSync } from 'fs'
-import { loadSkillsFromFolders, saveSkillsToFolders } from './skillManager'
+import {
+  getSkillWatchDirectories,
+  loadSkillsFromFolders,
+  saveSkillsToFolders
+} from './skillManager'
 import { Skill } from '../shared/types'
 import { getSkillRoot } from './paths'
 
@@ -38,9 +42,7 @@ describe('folder-based skill package persistence', () => {
         source: 'folder',
         entryPath: 'SKILL.md',
         packageRoot: 'folder-skill-test',
-        packageFiles: [
-          { path: 'scripts/helper.py', content: 'print("helper")', size: 15 }
-        ]
+        packageFiles: [{ path: 'scripts/helper.py', content: 'print("helper")', size: 15 }]
       }
     ]
 
@@ -65,7 +67,7 @@ describe('folder-based skill package persistence', () => {
       entryPath: 'SKILL.md',
       packageRoot: 'skill-folder-test'
     })
-    
+
     expect(loaded[0].packageFiles).toBeDefined()
     expect(loaded[0].packageFiles?.[0].path).toBe('scripts/helper.py')
     expect(loaded[0].packageFiles?.[0].content).toBe('print("helper")')
@@ -114,5 +116,20 @@ describe('folder-based skill package persistence', () => {
       prompt: 'Flat instructions.',
       source: 'markdown'
     })
+  })
+
+  it('includes skill roots and package subdirectories in watch directories', () => {
+    const skillRoot = getSkillRoot()
+    const skillDir = join(skillRoot, 'skill-watch-test')
+    const refsDir = join(skillDir, 'references')
+    mkdirSync(refsDir, { recursive: true })
+    writeFileSync(join(skillDir, 'SKILL.md'), '# Watch Test\n\nWatch instructions.', 'utf-8')
+    writeFileSync(join(refsDir, 'notes.md'), 'Reference notes', 'utf-8')
+
+    const watched = getSkillWatchDirectories().map((dir) => dir.replace(/\\/g, '/'))
+
+    expect(watched).toContain(skillRoot.replace(/\\/g, '/'))
+    expect(watched).toContain(skillDir.replace(/\\/g, '/'))
+    expect(watched).toContain(refsDir.replace(/\\/g, '/'))
   })
 })

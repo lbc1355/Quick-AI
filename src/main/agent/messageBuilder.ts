@@ -1,9 +1,16 @@
-import { ChatCompletionMessage, AgentSkillRunOptions, SessionResource } from '../../shared/types'
+import {
+  ChatCompletionMessage,
+  AgentSkillRunOptions,
+  SessionResource,
+  Skill
+} from '../../shared/types'
 import { searchToolDefinitions } from '../toolRegistry'
 import { getFirstMissingOffset } from '../resourceCache'
 import { buildMemoryInjection } from './memoryContext'
+import { loadSkillsFromFolders } from '../skillManager'
 
 export const TOOL_DIRECTORY_BUDGET = 2000 // max chars injected into system prompt
+export const SKILL_DIRECTORY_BUDGET = 6000 // max chars injected into system prompt
 
 /**
  * A single line stating the current date, injected at the top of the system prompt so the model
@@ -134,6 +141,56 @@ export function buildResourceSummaryPrompt(resources: SessionResource[] | undefi
   return finalPrompt
 }
 
+export function buildAvailableSkillsSummary(): string {
+  let skills: Skill[]
+  try {
+    skills = loadSkillsFromFolders()
+  } catch (error) {
+    return `## Skills\nSkill discovery failed: ${(error as Error).message}`
+  }
+
+  if (skills.length === 0) return ''
+
+  const lines = [
+    '## Skills',
+    'Skills are local SKILL.md instruction packages available to this agent.',
+    'Only summaries are shown here. A skill is not a tool call; it is guidance you load and follow.',
+    'This catalog is refreshed for each new agent request; after creating, editing, or deleting skill files during a run, call list_skills to inspect the live on-disk catalog before using a changed skill.',
+    'When the user starts a request with @skill or clearly asks for a listed skill, call load_skill with that name or trigger before proceeding.',
+    'When a task clearly matches a skill description, prefer loading that skill before acting. Do not claim you used a skill unless you loaded it.',
+    '',
+    'Available skills:'
+  ]
+  let chars = lines.join('\n').length + 1
+  let emitted = 0
+
+  for (const skill of skills) {
+    const triggers = skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
+    const primary = triggers.find(Boolean) || skill.trigger || skill.id.replace(/^skill-/, '')
+    const aliases = triggers
+      .filter((trigger) => trigger && trigger !== primary)
+      .map((trigger) => `@${trigger}`)
+      .join(', ')
+    const desc = skill.description ? ` - ${skill.description.replace(/\s+/g, ' ').trim()}` : ''
+    const aliasText = aliases ? `; aliases: ${aliases}` : ''
+    const line = `- @${primary}: ${skill.name}${desc} (id: ${skill.id}${aliasText})`
+
+    if (chars + line.length + 1 > SKILL_DIRECTORY_BUDGET) {
+      const remaining = skills.length - emitted
+      if (remaining > 0) {
+        lines.push(`- ... ${remaining} additional skills omitted from this prompt budget.`)
+      }
+      break
+    }
+
+    lines.push(line)
+    chars += line.length + 1
+    emitted += 1
+  }
+
+  return lines.join('\n')
+}
+
 export function buildSkillMessages(options: AgentSkillRunOptions): ChatCompletionMessage[] {
   const skillMarkdown = options.skill.rawMarkdown || options.skill.prompt
   const packageFilesPrompt = buildSkillPackageFilesPrompt(options.skill)
@@ -242,6 +299,7 @@ export function prepareChatAgentMessages(
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): ChatCompletionMessage[] {
   const toolDirs = buildToolDirectorySummary('all', permissions)
+  const skillsSummary = buildAvailableSkillsSummary()
   const memorySegment = buildMemoryInjection()
 
   const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can call to search the web, fetch pages, read, write, edit, and diff files (both inside the workspace, and outside the workspace via absolute paths which will trigger a user permission prompt), and search the codebase.
@@ -250,7 +308,7 @@ ${buildDateLine()}
 
 **Platform:** ${process.platform === 'win32' ? 'Windows (cmd.exe shell). Use Windows-native commands: findstr (not grep), dir (not ls), type (not cat), where (not which), del (not rm), copy / move (not cp / mv), mkdir / md (not mkdir). Paths use backslashes.' : process.platform === 'darwin' ? 'macOS (zsh shell). Use standard Unix commands.' : 'Linux (bash shell). Use standard Unix commands.'}
 
-${toolDirs ? `${toolDirs}\n\n` : ''}Operation history & cache — your second memory track:
+${toolDirs ? `${toolDirs}\n\n` : ''}${skillsSummary ? `${skillsSummary}\n\n` : ''}Operation history & cache — your second memory track:
 This conversation is backed by two parallel tracks:
 1. The dialogue: alternating user and assistant turns.
 2. A persistent operation layer that survives across turns but is NOT replayed in the dialogue. Consult list_past_actions and get_past_action to see completed actions, and read_cached_resource or search_cached_resource for cached files and fetched web content.
@@ -296,7 +354,9 @@ Rules:
         systemMsg.content = `Global system prompt:\n${globalSystemPrompt}\n\n${systemMsg.content}\n\nTool instructions:\n${agentInstructions}`
       }
     } else {
-      const globalPrefix = globalSystemPrompt ? `Global system prompt:\n${globalSystemPrompt}\n\n` : ''
+      const globalPrefix = globalSystemPrompt
+        ? `Global system prompt:\n${globalSystemPrompt}\n\n`
+        : ''
       const toolSuffix = `\n\nTool instructions:\n${agentInstructions}`
       prependToMessageContent(systemMsg, globalPrefix)
       if (!systemMsg.content) {

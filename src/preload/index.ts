@@ -8,7 +8,8 @@ import {
   ChatRunOptions,
   ClearSessionCachesPayload,
   ForkSessionCachesPayload,
-  McpServerStatus
+  McpServerStatus,
+  Skill
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -56,6 +57,13 @@ const api = {
       ipcRenderer.removeListener('chat-chunk', listener)
     }
   },
+  onSkillsUpdated: (callback: (skills: Skill[]) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, skills: Skill[]): void => callback(skills)
+    ipcRenderer.on('skills-updated', listener)
+    return (): void => {
+      ipcRenderer.removeListener('skills-updated', listener)
+    }
+  },
   showNotification: (title: string, body: string): void =>
     ipcRenderer.send('show-notification', title, body),
   fetchModels: (fetchUrl: string, apiKey: string): Promise<string[]> =>
@@ -66,7 +74,8 @@ const api = {
   writeMemoryEntry: (id: string, content: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('memory-entry-write', id, content),
   mcpGetConfig: (): Promise<string> => ipcRenderer.invoke('mcp-get-config'),
-  mcpSetConfig: (content: string): Promise<boolean> => ipcRenderer.invoke('mcp-set-config', content),
+  mcpSetConfig: (content: string): Promise<boolean> =>
+    ipcRenderer.invoke('mcp-set-config', content),
   mcpGetStatus: (): Promise<McpServerStatus[]> => ipcRenderer.invoke('mcp-get-status'),
   mcpOpenConfig: (): Promise<void> => ipcRenderer.invoke('mcp-open-config')
 }
