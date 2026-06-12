@@ -736,33 +736,3 @@ export function saveSkillsToFolders(skillsList: Skill[]): void {
     }
   }
 }
-
-export function migrateDbSkillsToFolders(): void {
-  try {
-    const globalRoot = getSkillRoot()
-    if (!existsSync(globalRoot)) {
-      mkdirSync(globalRoot, { recursive: true })
-    }
-
-    const entries = readdirSync(globalRoot)
-    const folderSkillsExist = entries.some((entry) => {
-      const fullPath = join(globalRoot, entry)
-      return statSync(fullPath).isDirectory() && entry.startsWith('skill-')
-    })
-
-    if (!folderSkillsExist) {
-      // Lazy load SQLite loader to migrate skills if folders are empty
-      const { loadSkills } = require('./database')
-      const dbSkills = loadSkills() as Skill[]
-      if (dbSkills.length > 0) {
-        logger.info('SkillManager', `Migrating ${dbSkills.length} skills from SQLite to folders...`)
-        saveSkillsToFolders(dbSkills)
-      }
-    }
-  } catch (err) {
-    logger.warn(
-      'SkillManager',
-      `Migration from database to folders failed: ${(err as Error).message}`
-    )
-  }
-}
