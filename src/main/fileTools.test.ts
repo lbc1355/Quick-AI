@@ -97,7 +97,7 @@ describe('File Safety & Search Tools', () => {
     it('permits reading outside workspace if run context is active', async () => {
       const { createRun, destroyRun } = await import('./agent/AgentRunContext')
       const { ActionLog } = await import('./agent/actionLog')
-      
+
       const reqId = 'test-req-read-run'
       createRun(reqId, [], 'all', new ActionLog())
 
@@ -472,7 +472,7 @@ describe('File Safety & Search Tools', () => {
     it('permits writing outside workspace if run context is active', async () => {
       const { createRun, destroyRun } = await import('./agent/AgentRunContext')
       const { ActionLog } = await import('./agent/actionLog')
-      
+
       const reqId = 'test-req-write-run'
       createRun(reqId, [], 'all', new ActionLog())
 
@@ -522,7 +522,7 @@ describe('File Safety & Search Tools', () => {
     it('rejects editing outside workspace if no active run context', async () => {
       const context = { reqId: 'test-req-no-run', signal: new AbortController().signal }
       const outsidePath = resolve(workspaceRoot, '..', 'traversal-edit.txt')
-      
+
       await fs.writeFile(outsidePath, 'some data')
 
       try {
@@ -544,13 +544,13 @@ describe('File Safety & Search Tools', () => {
     it('permits editing outside workspace if run context is active', async () => {
       const { createRun, destroyRun } = await import('./agent/AgentRunContext')
       const { ActionLog } = await import('./agent/actionLog')
-      
+
       const reqId = 'test-req-with-run'
       createRun(reqId, [], 'all', new ActionLog())
 
       const context = { reqId, signal: new AbortController().signal }
       const outsidePath = resolve(workspaceRoot, '..', 'temp-outside-edit.txt')
-      
+
       // Create the outside file first since file_edit requires file to exist
       await fs.writeFile(outsidePath, 'original outside data')
 
@@ -574,6 +574,150 @@ describe('File Safety & Search Tools', () => {
     })
   })
 
+  describe('directory_create, file_copy, file_move, and file_delete tools', () => {
+    it('creates nested directories', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const targetPath = join(testDir, 'ops-create', 'nested')
+
+      try {
+        const res = await ToolRegistry.directory_create.execute({ path: targetPath }, context)
+        const stat = await fs.stat(targetPath)
+
+        expect(stat.isDirectory()).toBe(true)
+        expect(res.resultForUi.summary).toContain('Created directory')
+      } finally {
+        await fs.rm(join(testDir, 'ops-create'), { recursive: true, force: true })
+      }
+    })
+
+    it('copies files and requires overwrite for an existing destination', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const sourcePath = join(testDir, 'copy-source.txt')
+      const destinationPath = join(testDir, 'ops-copy', 'copy-destination.txt')
+
+      try {
+        await fs.writeFile(sourcePath, 'copy source')
+
+        const res = await ToolRegistry.file_copy.execute({ sourcePath, destinationPath }, context)
+        expect(res.resultForModel).toContain('Copied file')
+        expect(await fs.readFile(destinationPath, 'utf-8')).toBe('copy source')
+
+        await expect(
+          ToolRegistry.file_copy.execute({ sourcePath, destinationPath }, context)
+        ).rejects.toThrow('Destination file already exists')
+
+        await fs.writeFile(sourcePath, 'copy replacement')
+        await ToolRegistry.file_copy.execute(
+          { sourcePath, destinationPath, overwrite: true },
+          context
+        )
+        expect(await fs.readFile(destinationPath, 'utf-8')).toBe('copy replacement')
+      } finally {
+        await fs.unlink(sourcePath).catch(() => {})
+        await fs.rm(join(testDir, 'ops-copy'), { recursive: true, force: true })
+      }
+    })
+
+    it('moves files and refuses to move a directory inside itself', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const sourcePath = join(testDir, 'move-source.txt')
+      const destinationPath = join(testDir, 'ops-move', 'move-destination.txt')
+      const sourceDir = join(testDir, 'move-dir')
+
+      try {
+        await fs.writeFile(sourcePath, 'move source')
+        const res = await ToolRegistry.file_move.execute({ sourcePath, destinationPath }, context)
+
+        expect(res.resultForModel).toContain('Moved path')
+        await expect(fs.stat(sourcePath)).rejects.toThrow()
+        expect(await fs.readFile(destinationPath, 'utf-8')).toBe('move source')
+
+        await fs.mkdir(sourceDir, { recursive: true })
+        await expect(
+          ToolRegistry.file_move.execute(
+            { sourcePath: sourceDir, destinationPath: join(sourceDir, 'child') },
+            context
+          )
+        ).rejects.toThrow('Destination cannot be inside the source path')
+      } finally {
+        await fs.unlink(sourcePath).catch(() => {})
+        await fs.rm(join(testDir, 'ops-move'), { recursive: true, force: true })
+        await fs.rm(sourceDir, { recursive: true, force: true })
+      }
+    })
+
+    it('deletes files and requires recursive=true for directories', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const filePath = join(testDir, 'delete-me.txt')
+      const dirPath = join(testDir, 'delete-dir')
+
+      try {
+        await fs.writeFile(filePath, 'delete me')
+        const res = await ToolRegistry.file_delete.execute({ path: filePath }, context)
+        expect(res.resultForModel).toContain('Deleted path')
+        await expect(fs.stat(filePath)).rejects.toThrow()
+
+        await fs.mkdir(dirPath, { recursive: true })
+        await fs.writeFile(join(dirPath, 'nested.txt'), 'nested')
+        await expect(ToolRegistry.file_delete.execute({ path: dirPath }, context)).rejects.toThrow(
+          'Set recursive=true'
+        )
+
+        await ToolRegistry.file_delete.execute({ path: dirPath, recursive: true }, context)
+        await expect(fs.stat(dirPath)).rejects.toThrow()
+      } finally {
+        await fs.unlink(filePath).catch(() => {})
+        await fs.rm(dirPath, { recursive: true, force: true })
+      }
+    })
+
+    it('refuses to delete the workspace root or .git directory', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const gitPath = join(workspaceRoot, '.git')
+      const sourcePath = join(testDir, 'git-target-source.txt')
+      let createdGitPath = false
+
+      try {
+        await expect(
+          ToolRegistry.file_delete.execute({ path: workspaceRoot, recursive: true }, context)
+        ).rejects.toThrow('workspace root')
+
+        try {
+          await fs.stat(gitPath)
+        } catch {
+          await fs.mkdir(gitPath, { recursive: true })
+          createdGitPath = true
+        }
+
+        await expect(
+          ToolRegistry.file_delete.execute({ path: gitPath, recursive: true }, context)
+        ).rejects.toThrow('.git directory')
+
+        await fs.writeFile(sourcePath, 'source')
+        await expect(
+          ToolRegistry.directory_create.execute({ path: join(gitPath, 'new-dir') }, context)
+        ).rejects.toThrow('.git directory')
+        await expect(
+          ToolRegistry.file_copy.execute(
+            { sourcePath, destinationPath: join(gitPath, 'copy.txt') },
+            context
+          )
+        ).rejects.toThrow('.git directory')
+        await expect(
+          ToolRegistry.file_move.execute(
+            { sourcePath, destinationPath: join(gitPath, 'move.txt') },
+            context
+          )
+        ).rejects.toThrow('.git directory')
+      } finally {
+        await fs.unlink(sourcePath).catch(() => {})
+        if (createdGitPath) {
+          await fs.rm(gitPath, { recursive: true, force: true })
+        }
+      }
+    })
+  })
+
   describe('file_diff tool', () => {
     it('compares identical files', async () => {
       const context = { reqId: 'test-req', signal: new AbortController().signal }
@@ -592,7 +736,7 @@ describe('File Safety & Search Tools', () => {
       const context = { reqId: 'test-req', signal: new AbortController().signal }
       const pathA = join(testDir, 'a.txt')
       const pathB = join(testDir, 'b.log')
-      
+
       const res = await ToolRegistry.file_diff.execute(
         {
           path_a: pathA,
@@ -631,7 +775,7 @@ describe('File Safety & Search Tools', () => {
     it('permits comparing outside workspace if run context is active', async () => {
       const { createRun, destroyRun } = await import('./agent/AgentRunContext')
       const { ActionLog } = await import('./agent/actionLog')
-      
+
       const reqId = 'test-req-diff-run'
       createRun(reqId, [], 'all', new ActionLog())
 

@@ -4,6 +4,7 @@ import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
 import { createRun, destroyRun } from '../agent/AgentRunContext'
 import { ActionLog } from '../agent/actionLog'
+import { getSkillRoot, getWorkspaceRoot } from '../paths'
 
 const testDir = join(__dirname, '../../../temp-system-tools-test')
 
@@ -136,6 +137,183 @@ describe('systemTools.list_skills', () => {
     expect(result.resultForModel).toContain('Path: references/notes.md')
     expect(result.resultForModel).toContain('Reference details')
     expect(result.resultForUi.title).toBe('Skill Resource: references/notes.md')
+  })
+
+  it('creates, validates, and loads a folder skill', async () => {
+    const executionContext = {
+      reqId: 'test-req',
+      signal: new AbortController().signal,
+      mainWindow: null as any
+    }
+
+    const createResult = await systemTools.create_skill.execute(
+      {
+        name: 'Example Skill',
+        trigger: '@example-skill',
+        description: 'Use for testing the example skill lifecycle.',
+        shortDescription: 'Example skill lifecycle',
+        instructions: 'Follow the example workflow.'
+      },
+      executionContext
+    )
+    expect(createResult.resultForModel).toContain('Created QuickAI skill')
+
+    const skillDir = join(getSkillRoot(), 'skill-example-skill')
+    expect(await fs.readFile(join(skillDir, 'SKILL.md'), 'utf-8')).toContain(
+      'Follow the example workflow.'
+    )
+
+    const validateResult = await systemTools.validate_skill.execute(
+      { name: '@example-skill' },
+      executionContext
+    )
+    expect(validateResult.resultForModel).toContain('skill-example-skill (@example-skill): OK')
+
+    const loadResult = await systemTools.load_skill.execute(
+      { name: '@example-skill' },
+      executionContext
+    )
+    expect(loadResult.resultForModel).toContain('Loaded QuickAI Skill')
+    expect(loadResult.resultForModel).toContain('Follow the example workflow.')
+  })
+
+  it('installs a folder skill and preserves auxiliary resources', async () => {
+    const sourceDir = join(getWorkspaceRoot(), 'install-source-skill')
+    await fs.mkdir(join(sourceDir, 'references'), { recursive: true })
+    await fs.writeFile(
+      join(sourceDir, 'SKILL.md'),
+      '---\nname: Installed Skill\ntrigger: installed\ndescription: Use installed skill.\n---\nRun installed workflow.',
+      'utf-8'
+    )
+    await fs.writeFile(join(sourceDir, 'references', 'notes.md'), 'Installed reference', 'utf-8')
+
+    const executionContext = {
+      reqId: 'test-req',
+      signal: new AbortController().signal,
+      mainWindow: null as any
+    }
+
+    const installResult = await systemTools.install_skill.execute(
+      { path: sourceDir },
+      executionContext
+    )
+    expect(installResult.resultForModel).toContain('Installed QuickAI skill')
+
+    const installedDir = join(getSkillRoot(), 'skill-installed')
+    expect(await fs.readFile(join(installedDir, 'references', 'notes.md'), 'utf-8')).toBe(
+      'Installed reference'
+    )
+
+    const loadResult = await systemTools.load_skill.execute(
+      { name: '@installed' },
+      executionContext
+    )
+    expect(loadResult.resultForModel).toContain('Path: references/notes.md')
+
+    const resourceResult = await systemTools.read_skill_resource.execute(
+      { name: '@installed', path: 'references/notes.md' },
+      executionContext
+    )
+    expect(resourceResult.resultForModel).toContain('Installed reference')
+  })
+
+  it('removes a folder skill', async () => {
+    const executionContext = {
+      reqId: 'test-req',
+      signal: new AbortController().signal,
+      mainWindow: null as any
+    }
+    await systemTools.create_skill.execute(
+      {
+        name: 'Remove Me',
+        trigger: 'remove-me',
+        description: 'Use for remove tests.',
+        instructions: 'Remove this workflow.'
+      },
+      executionContext
+    )
+
+    const skillDir = join(getSkillRoot(), 'skill-remove-me')
+    const removeResult = await systemTools.remove_skill.execute(
+      { name: '@remove-me' },
+      executionContext
+    )
+    expect(removeResult.resultForModel).toContain('Removed QuickAI skill')
+    await expect(fs.stat(skillDir)).rejects.toThrow()
+  })
+
+  it('removes a flat markdown skill without deleting the skill root', async () => {
+    const skillRoot = getSkillRoot()
+    const flatSkillPath = join(skillRoot, 'flat-skill.md')
+    const sentinelPath = join(skillRoot, 'keep.txt')
+    await fs.writeFile(
+      flatSkillPath,
+      '---\nname: Flat Skill\ntrigger: flat-skill\ndescription: Use flat skill.\n---\nFlat workflow.',
+      'utf-8'
+    )
+    await fs.writeFile(sentinelPath, 'keep me', 'utf-8')
+
+    const executionContext = {
+      reqId: 'test-req',
+      signal: new AbortController().signal,
+      mainWindow: null as any
+    }
+
+    await systemTools.remove_skill.execute({ name: '@flat-skill' }, executionContext)
+
+    await expect(fs.stat(flatSkillPath)).rejects.toThrow()
+    expect((await fs.stat(skillRoot)).isDirectory()).toBe(true)
+    expect(await fs.readFile(sentinelPath, 'utf-8')).toBe('keep me')
+  })
+
+  it('protects system skills from removal by default', async () => {
+    const systemSkillDir = join(getSkillRoot(), '.system', 'system-demo')
+    await fs.mkdir(systemSkillDir, { recursive: true })
+    await fs.writeFile(
+      join(systemSkillDir, 'SKILL.md'),
+      '---\nname: System Demo\ntrigger: system-demo\ndescription: Use system demo.\n---\nSystem workflow.',
+      'utf-8'
+    )
+
+    const executionContext = {
+      reqId: 'test-req',
+      signal: new AbortController().signal,
+      mainWindow: null as any
+    }
+
+    await expect(
+      systemTools.remove_skill.execute({ name: '@system-demo' }, executionContext)
+    ).rejects.toThrow('Refusing to remove a system skill')
+    expect((await fs.stat(systemSkillDir)).isDirectory()).toBe(true)
+  })
+
+  it('rejects duplicate skill IDs before creating another skill', async () => {
+    const executionContext = {
+      reqId: 'test-req',
+      signal: new AbortController().signal,
+      mainWindow: null as any
+    }
+    await systemTools.create_skill.execute(
+      {
+        name: 'Duplicate Skill',
+        trigger: 'duplicate-skill',
+        description: 'Use duplicate skill.',
+        instructions: 'First duplicate workflow.'
+      },
+      executionContext
+    )
+
+    await expect(
+      systemTools.create_skill.execute(
+        {
+          name: 'Duplicate Skill Copy',
+          trigger: 'duplicate-skill',
+          description: 'Use duplicate skill copy.',
+          instructions: 'Second duplicate workflow.'
+        },
+        executionContext
+      )
+    ).rejects.toThrow('Skill already installed')
   })
 
   it('returns appropriate message when no skills exist', async () => {

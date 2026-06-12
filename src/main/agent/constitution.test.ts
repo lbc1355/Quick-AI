@@ -53,6 +53,9 @@ describe('evaluateToolGuard', () => {
 
   it('exposes a default constitution with the expected arg keys', () => {
     expect(DEFAULT_CONSTITUTION.pathArgKeys).toContain('path')
+    expect(DEFAULT_CONSTITUTION.pathArgKeys).toContain('sourcePath')
+    expect(DEFAULT_CONSTITUTION.pathArgKeys).toContain('destinationPath')
+    expect(DEFAULT_CONSTITUTION.pathArgKeys).toContain('targetPath')
     expect(DEFAULT_CONSTITUTION.commandArgKeys).toContain('command')
     expect(DEFAULT_CONSTITUTION.escalateHighRiskToAsk).toBe(true)
   })

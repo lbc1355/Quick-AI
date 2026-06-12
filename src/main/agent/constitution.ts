@@ -33,7 +33,19 @@ export interface Constitution {
 }
 
 export const DEFAULT_CONSTITUTION: Constitution = {
-  pathArgKeys: ['path', 'filePath', 'file_path', 'dirPath', 'directory', 'dir', 'path_a', 'path_b'],
+  pathArgKeys: [
+    'path',
+    'filePath',
+    'file_path',
+    'dirPath',
+    'directory',
+    'dir',
+    'path_a',
+    'path_b',
+    'sourcePath',
+    'destinationPath',
+    'targetPath'
+  ],
   commandArgKeys: ['command', 'cmd'],
   escalateHighRiskToAsk: true
 }

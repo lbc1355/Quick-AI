@@ -3,7 +3,19 @@ import { ActionRecord } from './actionLog'
 import { analyzeCommand } from './commandSafety'
 import { SideEffectEntry, SideEffectKind, SideEffectReversibility } from './runManifest'
 
-export const SIDE_EFFECTING_TOOLS = new Set(['shell', 'file_write', 'write_memory'])
+export const SIDE_EFFECTING_TOOLS = new Set([
+  'shell',
+  'file_write',
+  'file_edit',
+  'file_move',
+  'file_copy',
+  'file_delete',
+  'directory_create',
+  'write_memory',
+  'create_skill',
+  'install_skill',
+  'remove_skill'
+])
 
 const IRREVERSIBLE_SHELL_PATTERNS = [
   /\b(npm|pnpm|yarn)\s+(install|add|remove|uninstall)\b/i,
@@ -52,14 +64,42 @@ export const buildSideEffectEntry = (
   if (toolName === 'shell') {
     kind = 'shell'
     reversibility = getShellReversibility(command || '', status)
-  } else if (toolName === 'file_write') {
+  } else if (
+    toolName === 'file_write' ||
+    toolName === 'file_edit' ||
+    toolName === 'file_move' ||
+    toolName === 'file_copy' ||
+    toolName === 'file_delete' ||
+    toolName === 'directory_create'
+  ) {
     kind = 'file_write'
-    reversibility = status === 'success' ? 'ambiguous' : 'metadata_only'
+    reversibility =
+      status === 'success' && toolName === 'file_delete'
+        ? 'irreversible'
+        : status === 'success'
+          ? 'ambiguous'
+          : 'metadata_only'
     if (typeof args.path === 'string') filesTouched.push(args.path)
+    if (typeof args.sourcePath === 'string') filesTouched.push(args.sourcePath)
+    if (typeof args.destinationPath === 'string') filesTouched.push(args.destinationPath)
   } else if (toolName === 'write_memory') {
     kind = 'memory'
     // Memory writes are git-committed, so they are recoverable.
     reversibility = status === 'success' ? 'reversible' : 'metadata_only'
+  } else if (
+    toolName === 'create_skill' ||
+    toolName === 'install_skill' ||
+    toolName === 'remove_skill'
+  ) {
+    kind = 'file_write'
+    reversibility =
+      status === 'success' && toolName === 'remove_skill'
+        ? 'irreversible'
+        : status === 'success'
+          ? 'ambiguous'
+          : 'metadata_only'
+    if (typeof args.name === 'string') filesTouched.push(`skill:${args.name}`)
+    if (typeof args.path === 'string') filesTouched.push(args.path)
   } else if (toolName === 'fetch_url' || toolName === 'click_link') {
     kind = 'cache'
     reversibility = 'metadata_only'
