@@ -161,7 +161,6 @@ describe('folder-based skill package persistence', () => {
     const loaded = loadSkillsFromFolders()
     const skillCreator = loaded.find((skill) => skill.id === 'skill-skill-creator')
     const skillInstaller = loaded.find((skill) => skill.id === 'skill-skill-installer')
-    const openaiDocs = loaded.find((skill) => skill.id === 'skill-openai-docs')
     const quickAiAgent = loaded.find((skill) => skill.id === 'skill-quickai-agent')
 
     expect(skillCreator).toBeDefined()
@@ -171,8 +170,8 @@ describe('folder-based skill package persistence', () => {
       '/skill/.system/skill-creator/SKILL.md'
     )
     expect(skillInstaller?.interface?.displayName).toBe('Skill Installer')
-    expect(openaiDocs?.triggers).toContain('docs')
     expect(quickAiAgent?.triggers).toContain('quickai')
+    expect(loaded.find((skill) => skill.id === 'skill-openai-docs')).toBeUndefined()
   })
 
   it('includes skill roots and package subdirectories in watch directories', () => {

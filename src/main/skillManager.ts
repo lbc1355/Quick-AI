@@ -143,46 +143,6 @@ Do not install ordinary user skills into \`.system\` unless the user explicitly 
     }
   },
   {
-    dir: 'openai-docs',
-    skillMarkdown: `---
-name: openai-docs
-trigger: openai-docs
-aliases: [docs]
-description: Look up or reason about OpenAI, Codex, and QuickAI-adjacent documentation with source-priority discipline. Use when the user asks about OpenAI APIs, Codex behavior, model guidance, docs-backed answers, or how Codex-style skills/plugins map into QuickAI.
-kind: agent
----
-
-# OpenAI Docs
-
-Answer docs and product-behavior questions with explicit source priority.
-
-## Source Priority
-
-1. Local project code and bundled QuickAI behavior when the question is about this app.
-2. Local skill/package files when the user points to a skill or plugin directory.
-3. Official OpenAI docs or Codex manual when current OpenAI/Codex product facts are needed.
-4. Bounded uncertainty when the available sources do not establish the claim.
-
-## Workflow
-
-1. Clarify whether the question is about QuickAI implementation, Codex behavior, OpenAI APIs, or model guidance.
-2. For QuickAI behavior, inspect the local code first.
-3. For Codex skill/plugin behavior, inspect the local Codex skill package or official docs if available.
-4. For OpenAI API questions, prefer official docs and cite the source when browsing is used.
-5. Keep migration advice narrow and behavior-preserving.
-6. Do not invent model availability, pricing, rollout status, parameters, or undocumented product names.
-
-## Reference Discipline
-
-When a relevant reference file exists in this skill package, read it with \`read_skill_resource\` only when needed. Keep answers concise and say when a claim is inferred from local code rather than documented externally.
-`,
-    interface: {
-      displayName: 'OpenAI Docs',
-      shortDescription: 'Use official docs and local code for OpenAI/Codex answers',
-      defaultPrompt: 'Use @openai-docs for docs-backed OpenAI, Codex, or model guidance.'
-    }
-  },
-  {
     dir: 'quickai-agent',
     skillMarkdown: `---
 name: quickai-agent
