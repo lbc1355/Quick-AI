@@ -504,7 +504,7 @@ export const useChatCompletion = ({
     }))
     const currentSession = resolveSessionForSend(currentSessions)
 
-    const displayPrompt = `/${skill.trigger}${userInput.trim() ? ` ${userInput.trim()}` : ''}`
+    const displayPrompt = `@${skill.trigger}${userInput.trim() ? ` ${userInput.trim()}` : ''}`
     const userMsg: Message = {
       id: Date.now().toString(),
       role: 'user',

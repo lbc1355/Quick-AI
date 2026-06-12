@@ -224,7 +224,7 @@ export const SkillManager: React.FC<SkillManagerProps> = ({
         markdown,
         source: 'markdown'
       })
-      setStatusText(`已安装 /${skill.trigger}`)
+      setStatusText(`已安装 @${skill.trigger}`)
       setErrorText('')
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
@@ -248,7 +248,7 @@ export const SkillManager: React.FC<SkillManagerProps> = ({
       const payload = await readSkillFolderPayload(files)
       const skill = await onInstallSkill(payload)
       const fileCount = skill.packageFiles?.length || 1
-      setStatusText(`已安装 /${skill.trigger}（${fileCount} 个文件）`)
+      setStatusText(`已安装 @${skill.trigger}（${fileCount} 个文件）`)
       setErrorText('')
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
@@ -325,11 +325,13 @@ export const SkillManager: React.FC<SkillManagerProps> = ({
           {skills.map((skill) => {
             const triggers =
               skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
+            const displayName = skill.interface?.displayName || skill.name
+            const description = skill.interface?.shortDescription || skill.description
             return (
               <div key={skill.id} className="skill-card">
                 <div className="skill-card-main">
                   <div className="skill-card-title-row">
-                    <span className="skill-card-title">{skill.name}</span>
+                    <span className="skill-card-title">{displayName}</span>
                     <span className="skill-card-mode">{skill.mode || 'insert'}</span>
                     {skill.packageFiles && skill.packageFiles.length > 0 && (
                       <span className="skill-card-mode">{skill.packageFiles.length} files</span>
@@ -338,13 +340,11 @@ export const SkillManager: React.FC<SkillManagerProps> = ({
                   <div className="skill-trigger-row">
                     {triggers.map((trigger) => (
                       <span key={trigger} className="skill-trigger-pill">
-                        /{trigger}
+                        @{trigger}
                       </span>
                     ))}
                   </div>
-                  {skill.description && (
-                    <div className="skill-description">{skill.description}</div>
-                  )}
+                  {description && <div className="skill-description">{description}</div>}
                 </div>
                 <button
                   className="skill-remove-btn"

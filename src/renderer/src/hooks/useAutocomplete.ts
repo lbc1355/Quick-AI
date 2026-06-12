@@ -60,17 +60,20 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
           const matchingTrigger = triggers.find((trigger) =>
             `@${trigger}`.toLowerCase().startsWith(skillPrefix)
           )
-          return { skill, triggers, matchingTrigger }
+          const displayName = skill.interface?.displayName || skill.name
+          const description = skill.interface?.shortDescription || skill.description || ''
+          return { skill, triggers, matchingTrigger, displayName, description }
         })
         .filter(
-          ({ skill, matchingTrigger }) =>
+          ({ skill, matchingTrigger, displayName, description }) =>
             Boolean(matchingTrigger) ||
             skill.name.toLowerCase().includes(search) ||
-            (skill.description || '').toLowerCase().includes(search)
+            displayName.toLowerCase().includes(search) ||
+            description.toLowerCase().includes(search)
         )
-        .map(({ skill, matchingTrigger }) => ({
+        .map(({ skill, matchingTrigger, displayName, description }) => ({
           id: skill.id,
-          name: skill.description ? `${skill.name} - ${skill.description}` : skill.name,
+          name: description ? `${displayName} - ${description}` : displayName,
           trigger: `@${matchingTrigger || skill.trigger}`,
           prompt: skill.prompt,
           skillId: skill.id,

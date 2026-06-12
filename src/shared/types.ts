@@ -186,12 +186,21 @@ export interface SkillPackageFile {
   size: number
 }
 
+export interface SkillInterfaceMetadata {
+  displayName?: string
+  shortDescription?: string
+  iconSmall?: string
+  iconLarge?: string
+  defaultPrompt?: string
+}
+
 export interface Skill {
   id: string
   name: string
   trigger: string
   prompt: string
   description?: string
+  interface?: SkillInterfaceMetadata
   triggers?: string[]
   mode?: SkillMode
   kind?: SkillKind
@@ -330,4 +339,3 @@ export interface McpServerStatus {
     description?: string
   }[]
 }
-

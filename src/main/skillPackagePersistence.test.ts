@@ -2,6 +2,7 @@ import { it, expect, beforeEach, afterEach, describe } from 'vitest'
 import { join } from 'path'
 import { promises as fs, existsSync, writeFileSync, mkdirSync } from 'fs'
 import {
+  ensureSystemSkills,
   getSkillWatchDirectories,
   loadSkillsFromFolders,
   saveSkillsToFolders
@@ -116,6 +117,62 @@ describe('folder-based skill package persistence', () => {
       prompt: 'Flat instructions.',
       source: 'markdown'
     })
+  })
+
+  it('loads quickai interface metadata without treating agents yaml as a resource', () => {
+    const skillRoot = getSkillRoot()
+    const skillDir = join(skillRoot, 'skill-interface-test')
+    mkdirSync(join(skillDir, 'agents'), { recursive: true })
+    mkdirSync(join(skillDir, 'references'), { recursive: true })
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      '---\nname: Internal Skill\ntrigger: iface\ndescription: Internal description\n---\nInterface instructions.',
+      'utf-8'
+    )
+    writeFileSync(
+      join(skillDir, 'agents', 'quickai.yaml'),
+      'interface:\n  display_name: "Display Skill"\n  short_description: "Shown in menus"\n  icon_small: "./assets/small.svg"\n  default_prompt: "Use @iface"\n',
+      'utf-8'
+    )
+    writeFileSync(join(skillDir, 'references', 'notes.md'), 'Reference notes', 'utf-8')
+
+    const loaded = loadSkillsFromFolders()
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0].interface).toMatchObject({
+      displayName: 'Display Skill',
+      shortDescription: 'Shown in menus',
+      iconSmall: './assets/small.svg',
+      defaultPrompt: 'Use @iface'
+    })
+    expect(loaded[0].packageFiles?.map((file) => file.path)).toEqual(['references/notes.md'])
+  })
+
+  it('creates missing system skills and loads them from .system', () => {
+    const skillRoot = getSkillRoot()
+    const systemSkillDir = join(skillRoot, '.system', 'skill-creator')
+
+    expect(existsSync(systemSkillDir)).toBe(false)
+
+    ensureSystemSkills()
+
+    expect(existsSync(join(systemSkillDir, 'SKILL.md'))).toBe(true)
+    expect(existsSync(join(systemSkillDir, 'agents', 'quickai.yaml'))).toBe(true)
+
+    const loaded = loadSkillsFromFolders()
+    const skillCreator = loaded.find((skill) => skill.id === 'skill-skill-creator')
+    const skillInstaller = loaded.find((skill) => skill.id === 'skill-skill-installer')
+    const openaiDocs = loaded.find((skill) => skill.id === 'skill-openai-docs')
+    const quickAiAgent = loaded.find((skill) => skill.id === 'skill-quickai-agent')
+
+    expect(skillCreator).toBeDefined()
+    expect(skillCreator?.trigger).toBe('skill-creator')
+    expect(skillCreator?.interface?.displayName).toBe('Skill Creator')
+    expect(skillCreator?.filePath?.replace(/\\/g, '/')).toContain(
+      '/skill/.system/skill-creator/SKILL.md'
+    )
+    expect(skillInstaller?.interface?.displayName).toBe('Skill Installer')
+    expect(openaiDocs?.triggers).toContain('docs')
+    expect(quickAiAgent?.triggers).toContain('quickai')
   })
 
   it('includes skill roots and package subdirectories in watch directories', () => {

@@ -79,7 +79,7 @@ describe('systemTools.list_skills', () => {
     expect(result.resultForUi.title).toBe('Skill Details: Test Skill')
   })
 
-  it('loads full skill instructions and package files by @trigger', async () => {
+  it('loads skill instructions and resource list by @trigger', async () => {
     const skillRoot = join(testDir, 'skill')
     const skillDir = join(skillRoot, 'rich-skill')
     await fs.mkdir(skillDir, { recursive: true })
@@ -103,10 +103,39 @@ describe('systemTools.list_skills', () => {
     expect(result.resultForModel).toContain('Loaded QuickAI Skill')
     expect(result.resultForModel).toContain('Rich Skill')
     expect(result.resultForModel).toContain('Follow the rich workflow.')
-    expect(result.resultForModel).toContain('--- Skill Package Files ---')
+    expect(result.resultForModel).toContain('Packaged Auxiliary Files:')
+    expect(result.resultForModel).toContain('Path: references/notes.md')
+    expect(result.resultForModel).toContain('read_skill_resource')
+    expect(result.resultForModel).not.toContain('Reference details')
+    expect(result.resultForUi.title).toBe('Load Skill: Rich Skill')
+  })
+
+  it('reads an auxiliary skill resource on demand', async () => {
+    const skillRoot = join(testDir, 'skill')
+    const skillDir = join(skillRoot, 'rich-skill')
+    await fs.mkdir(join(skillDir, 'references'), { recursive: true })
+
+    await fs.writeFile(
+      join(skillDir, 'SKILL.md'),
+      '---\nname: Rich Skill\ntrigger: rich\ndescription: Use rich workflow\n---\nFollow the rich workflow.',
+      'utf-8'
+    )
+    await fs.writeFile(join(skillDir, 'references', 'notes.md'), 'Reference details', 'utf-8')
+
+    const executionContext = {
+      reqId: 'test-req',
+      signal: new AbortController().signal,
+      mainWindow: null as any
+    }
+
+    const result = await systemTools.read_skill_resource.execute(
+      { name: '@rich', path: 'references/notes.md' },
+      executionContext
+    )
+    expect(result.resultForModel).toContain('Skill Resource: skill-rich')
     expect(result.resultForModel).toContain('Path: references/notes.md')
     expect(result.resultForModel).toContain('Reference details')
-    expect(result.resultForUi.title).toBe('Load Skill: Rich Skill')
+    expect(result.resultForUi.title).toBe('Skill Resource: references/notes.md')
   })
 
   it('returns appropriate message when no skills exist', async () => {

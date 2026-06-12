@@ -24,7 +24,7 @@ import {
 } from './memory/memoryStore'
 import { logger } from './logger'
 import { McpManager } from './mcpManager'
-import { migrateDbSkillsToFolders, watchSkillFolders } from './skillManager'
+import { ensureSystemSkills, migrateDbSkillsToFolders, watchSkillFolders } from './skillManager'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -221,6 +221,7 @@ app.whenReady().then(() => {
 
   // Migrate DB skills to folders if global folder is empty
   migrateDbSkillsToFolders()
+  ensureSystemSkills()
 
   stopSkillWatcher = watchSkillFolders((skills) => {
     broadcastSkillsUpdated(skills)

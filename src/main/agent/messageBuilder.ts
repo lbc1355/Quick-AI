@@ -157,6 +157,7 @@ export function buildAvailableSkillsSummary(): string {
     'Only summaries are shown here. A skill is not a tool call; it is guidance you load and follow.',
     'This catalog is refreshed for each new agent request; after creating, editing, or deleting skill files during a run, call list_skills to inspect the live on-disk catalog before using a changed skill.',
     'When the user starts a request with @skill or clearly asks for a listed skill, call load_skill with that name or trigger before proceeding.',
+    'After load_skill, read auxiliary files only when needed by calling read_skill_resource with a listed Path.',
     'When a task clearly matches a skill description, prefer loading that skill before acting. Do not claim you used a skill unless you loaded it.',
     '',
     'Available skills:'
@@ -171,9 +172,11 @@ export function buildAvailableSkillsSummary(): string {
       .filter((trigger) => trigger && trigger !== primary)
       .map((trigger) => `@${trigger}`)
       .join(', ')
-    const desc = skill.description ? ` - ${skill.description.replace(/\s+/g, ' ').trim()}` : ''
+    const displayName = skill.interface?.displayName || skill.name
+    const description = skill.interface?.shortDescription || skill.description || ''
+    const desc = description ? ` - ${description.replace(/\s+/g, ' ').trim()}` : ''
     const aliasText = aliases ? `; aliases: ${aliases}` : ''
-    const line = `- @${primary}: ${skill.name}${desc} (id: ${skill.id}${aliasText})`
+    const line = `- @${primary}: ${displayName}${desc} (id: ${skill.id}${aliasText})`
 
     if (chars + line.length + 1 > SKILL_DIRECTORY_BUDGET) {
       const remaining = skills.length - emitted

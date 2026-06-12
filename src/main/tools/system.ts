@@ -1,4 +1,4 @@
-import { Skill, ToolArgs, TaskItem } from '../../shared/types'
+import { Skill, SkillPackageFile, ToolArgs, TaskItem } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { showDesktopNotification } from './helpers'
 import { probeEnvironment, formatEnvironmentReport, ProbeSection } from './environmentProbe'
@@ -9,6 +9,14 @@ import { loadSkillsFromFolders } from '../skillManager'
 
 const MAX_SKILL_PACKAGE_FILE_CHARS = 6000
 const MAX_SKILL_PACKAGE_TOTAL_CHARS = 20000
+
+function getSkillDisplayName(skill: Skill): string {
+  return skill.interface?.displayName || skill.name
+}
+
+function getSkillShortDescription(skill: Skill): string {
+  return skill.interface?.shortDescription || skill.description || ''
+}
 
 function cleanSkillLookup(value: string): string {
   return value
@@ -40,10 +48,21 @@ function resolveSkill(skills: Skill[], lookup: string): Skill | undefined {
   return skills.find((skill) => getSkillLookupKeys(skill).includes(clean))
 }
 
+function normalizeSkillResourcePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/^\/+/, '').trim()
+}
+
+function resolveSkillResource(skill: Skill, path: string): SkillPackageFile | undefined {
+  const normalized = normalizeSkillResourcePath(path).toLowerCase()
+  const files = skill.packageFiles || []
+  return files.find((file) => normalizeSkillResourcePath(file.path).toLowerCase() === normalized)
+}
+
 function formatSkillPackageFiles(skill: Skill, includeContent: boolean): string[] {
   const files = (skill.packageFiles || [])
     .filter((file) => file.content.trim())
     .filter((file) => file.path.toLowerCase() !== (skill.entryPath || 'SKILL.md').toLowerCase())
+    .filter((file) => !normalizeSkillResourcePath(file.path).toLowerCase().startsWith('agents/'))
     .sort((a, b) => a.path.localeCompare(b.path))
 
   if (files.length === 0) return []
@@ -76,11 +95,14 @@ function formatSkillPackageFiles(skill: Skill, includeContent: boolean): string[
 
 function formatSkillForModel(skill: Skill, includePackageContent: boolean): string {
   const triggers = skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
+  const shortDescription = getSkillShortDescription(skill)
+  const packageLines = formatSkillPackageFiles(skill, includePackageContent)
   const lines = [
     `Skill ID: ${skill.id}`,
-    `Name: ${skill.name}`,
+    `Name: ${getSkillDisplayName(skill)}`,
+    getSkillDisplayName(skill) !== skill.name ? `Internal Name: ${skill.name}` : '',
     `Triggers: ${triggers.filter(Boolean).join(', ')}`,
-    skill.description ? `Description: ${skill.description}` : '',
+    shortDescription ? `Description: ${shortDescription}` : '',
     skill.filePath ? `File Path: ${skill.filePath}` : '',
     skill.dirPath ? `Directory Path: ${skill.dirPath}` : '',
     `Mode: ${skill.mode || 'insert'}`,
@@ -90,7 +112,13 @@ function formatSkillForModel(skill: Skill, includePackageContent: boolean): stri
     '--- SKILL.md Prompt Instructions ---',
     skill.rawMarkdown || skill.prompt,
     '-------------------------------------',
-    ...formatSkillPackageFiles(skill, includePackageContent)
+    ...packageLines,
+    ...(!includePackageContent && packageLines.length > 0
+      ? [
+          '',
+          'Load auxiliary files only when needed with read_skill_resource using the listed Path.'
+        ]
+      : [])
   ]
 
   return lines.filter((line) => line !== '').join('\n')
@@ -638,7 +666,7 @@ export const systemTools: Record<string, ToolDefinition> = {
     name: 'load_skill',
     title: 'Load Skill',
     description:
-      'Loads the full SKILL.md instructions for an installed QuickAI Skill. Use this when the user mentions @skill, names a skill, or the task matches a skill in the system prompt skill catalog.',
+      'Loads SKILL.md instructions and an auxiliary file list for an installed QuickAI Skill. Use this when the user mentions @skill, names a skill, or the task matches a skill in the system prompt skill catalog. Use read_skill_resource to load listed auxiliary files only when needed.',
     tags: ['skills', 'load', 'invoke', 'manual', 'instructions', 'skill'],
     category: 'system',
     risk: 'low',
@@ -668,7 +696,7 @@ export const systemTools: Record<string, ToolDefinition> = {
         const available = skills
           .map((s) => {
             const triggers = s.triggers && s.triggers.length > 0 ? s.triggers : [s.trigger]
-            return `${s.name} (${triggers.map((t) => `@${t}`).join(', ')})`
+            return `${getSkillDisplayName(s)} (${triggers.map((t) => `@${t}`).join(', ')})`
           })
           .join(', ')
         throw new Error(
@@ -679,10 +707,95 @@ export const systemTools: Record<string, ToolDefinition> = {
       }
 
       return {
-        resultForModel: `Loaded QuickAI Skill. Follow these instructions for the current user request.\n\n${formatSkillForModel(skill, true)}`,
+        resultForModel: `Loaded QuickAI Skill. Follow these instructions for the current user request. Auxiliary package files are listed but not loaded; call read_skill_resource for a listed Path when needed.\n\n${formatSkillForModel(skill, false)}`,
         resultForUi: {
-          title: `Load Skill: ${skill.name}`,
+          title: `Load Skill: ${getSkillDisplayName(skill)}`,
           summary: `Loaded ${skill.id}`
+        }
+      }
+    }
+  },
+  read_skill_resource: {
+    name: 'read_skill_resource',
+    title: 'Read Skill Resource',
+    description:
+      'Reads a specific auxiliary file from an installed QuickAI Skill package. Use after load_skill or list_skills shows a resource Path that is relevant to the current task.',
+    tags: ['skills', 'resource', 'reference', 'script', 'read', 'skill'],
+    category: 'system',
+    risk: 'low',
+    implemented: true,
+    discoverable: true,
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Skill name, trigger, @mention, or ID.'
+        },
+        path: {
+          type: 'string',
+          description:
+            'Auxiliary file path exactly as listed by load_skill/list_skills, such as references/api.md or scripts/helper.py.'
+        },
+        offset: {
+          type: 'number',
+          description: 'Optional character offset for paging through long files. Defaults to 0.'
+        },
+        maxChars: {
+          type: 'number',
+          description:
+            'Optional max characters to return in this window (1000-16000). Defaults to 8000.'
+        }
+      },
+      required: ['name', 'path']
+    },
+    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
+      void ctx
+      const name = typeof args.name === 'string' ? args.name.trim() : ''
+      const path = typeof args.path === 'string' ? normalizeSkillResourcePath(args.path) : ''
+      if (!name) throw new Error('Missing or invalid name parameter')
+      if (!path) throw new Error('Missing or invalid path parameter')
+
+      const skills = loadSkillsFromFolders()
+      const skill = resolveSkill(skills, name)
+      if (!skill) {
+        throw new Error(`Skill "${name}" not found. Call list_skills to inspect installed skills.`)
+      }
+
+      const resource = resolveSkillResource(skill, path)
+      if (!resource || !resource.content.trim()) {
+        const available = (skill.packageFiles || [])
+          .filter(
+            (file) => !normalizeSkillResourcePath(file.path).toLowerCase().startsWith('agents/')
+          )
+          .map((file) => file.path)
+          .sort()
+          .join(', ')
+        throw new Error(
+          available
+            ? `Resource "${path}" not found in ${skill.id}. Available resources: ${available}`
+            : `Resource "${path}" not found in ${skill.id}. This skill has no auxiliary resources.`
+        )
+      }
+
+      const full = resource.content
+      const rawOffset =
+        typeof args.offset === 'number' && Number.isFinite(args.offset) ? args.offset : 0
+      const offset = Math.max(0, Math.min(Math.floor(rawOffset), full.length))
+      const rawMax =
+        typeof args.maxChars === 'number' && Number.isFinite(args.maxChars) ? args.maxChars : 8000
+      const maxChars = Math.min(16000, Math.max(1000, Math.floor(rawMax)))
+      const slice = full.slice(offset, offset + maxChars)
+      const endOffset = offset + slice.length
+      const nextOffset = endOffset < full.length ? endOffset : undefined
+
+      return {
+        resultForModel: `Skill Resource: ${skill.id}\nPath: ${resource.path}\nChars: ${offset}-${endOffset} of ${full.length}${
+          nextOffset !== undefined ? `\nMore available: call again with offset=${nextOffset}.` : ''
+        }\n\nContent:\n${slice}`,
+        resultForUi: {
+          title: `Skill Resource: ${resource.path}`,
+          summary: `${skill.id} chars ${offset}-${endOffset}`
         }
       }
     }
@@ -723,7 +836,7 @@ export const systemTools: Record<string, ToolDefinition> = {
         return {
           resultForModel: formatSkillForModel(s, false),
           resultForUi: {
-            title: `Skill Details: ${s.name}`,
+            title: `Skill Details: ${getSkillDisplayName(s)}`,
             summary: `Loaded details for skill ${s.id}`
           }
         }
@@ -742,10 +855,13 @@ export const systemTools: Record<string, ToolDefinition> = {
       const lines = ['Installed Skills:']
       const items = skills.map((s) => {
         const triggersStr = s.triggers && s.triggers.length > 0 ? s.triggers.join(', ') : s.trigger
+        const displayName = getSkillDisplayName(s)
+        const shortDescription = getSkillShortDescription(s)
         lines.push(`- ID: ${s.id}`)
-        lines.push(`  Name: ${s.name}`)
+        lines.push(`  Name: ${displayName}`)
+        if (displayName !== s.name) lines.push(`  Internal Name: ${s.name}`)
         lines.push(`  Triggers: ${triggersStr}`)
-        if (s.description) lines.push(`  Description: ${s.description}`)
+        if (shortDescription) lines.push(`  Description: ${shortDescription}`)
         if (s.filePath) lines.push(`  File Path: ${s.filePath}`)
         if (s.dirPath) lines.push(`  Directory Path: ${s.dirPath}`)
         lines.push(`  Mode: ${s.mode || 'insert'}`)
@@ -754,9 +870,9 @@ export const systemTools: Record<string, ToolDefinition> = {
         lines.push('')
 
         return {
-          title: s.name,
+          title: displayName,
           url: s.filePath ? `file:///${s.filePath.replace(/\\/g, '/')}` : '',
-          snippet: `Triggers: ${triggersStr} | Mode: ${s.mode || 'insert'}${s.description ? ` | ${s.description}` : ''}`,
+          snippet: `Triggers: ${triggersStr} | Mode: ${s.mode || 'insert'}${shortDescription ? ` | ${shortDescription}` : ''}`,
           source: s.source || 'markdown'
         }
       })

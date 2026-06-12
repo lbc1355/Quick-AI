@@ -162,15 +162,24 @@ describe('prepareChatAgentMessages tool directory injection', () => {
       }
       const skillRoot = join(testDir, 'skill')
       await fs.mkdir(skillRoot, { recursive: true })
+      const readerDir = join(skillRoot, 'reader')
+      await fs.mkdir(join(readerDir, 'agents'), { recursive: true })
       await fs.writeFile(
-        join(skillRoot, 'reader.md'),
-        '---\nname: Reader Skill\ntrigger: reader\ndescription: Read documents carefully\n---\nReader instructions',
+        join(readerDir, 'SKILL.md'),
+        '---\nname: Reader Skill\ntrigger: reader\ndescription: Internal reader description\n---\nReader instructions',
+        'utf-8'
+      )
+      await fs.writeFile(
+        join(readerDir, 'agents', 'quickai.yaml'),
+        'interface:\n  display_name: "Reader Display"\n  short_description: "Read documents carefully"\n',
         'utf-8'
       )
 
       const summary = buildAvailableSkillsSummary()
       expect(summary).toContain('## Skills')
       expect(summary).toContain('@reader')
+      expect(summary).toContain('Reader Display')
+      expect(summary).toContain('Read documents carefully')
       expect(summary).toContain('load_skill')
 
       const msgs = prepareChatAgentMessages([{ role: 'user', content: '@reader analyze this' }])

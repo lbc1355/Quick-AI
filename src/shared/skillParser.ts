@@ -1,4 +1,4 @@
-import { Skill, SkillKind, SkillMode, SkillPackageFile } from './types'
+import { Skill, SkillInterfaceMetadata, SkillKind, SkillMode, SkillPackageFile } from './types'
 
 type FrontmatterValue = string | string[]
 type Frontmatter = Record<string, FrontmatterValue>
@@ -151,6 +151,7 @@ export interface ParseSkillMarkdownOptions {
   entryPath?: string
   packageRoot?: string
   packageFiles?: SkillPackageFile[]
+  interface?: SkillInterfaceMetadata
 }
 
 export const parseSkillMarkdown = (
@@ -202,6 +203,7 @@ export const parseSkillMarkdown = (
     triggers,
     prompt,
     description: description || undefined,
+    interface: options.interface,
     mode: kind === 'agent' && mode === 'insert' ? 'run' : mode,
     kind,
     tools,
