@@ -237,7 +237,7 @@ Rules:
 - When executing shell commands, try to run only one command/operation per 'shell' tool call. Do not chain multiple operations together in a single call using '&&', '||', ';', or newlines.
 - In final answers, mention the source URLs you used. Do not invent sources.
 - If observations are insufficient, say so in the final answer.
-- If you use the 'task' tool to track progress, ensure you update each task's status as you complete it. Before outputting your final text response, make a final call to the 'task' tool to mark the last tasks as completed.
+- If you use the 'task' tool to track progress, treat it as a progress ledger, not proof of completion. Use short task titles only, never JSON/code/markdown as a title. Mark a task 'completed' only after the underlying work has actually been performed and verified. Before outputting your final text response, update the task list so unfinished or unverified work remains pending/in_progress/cancelled; do not mark items completed just to close the plan.
 - Before each batch of tool calls, write one short user-visible progress sentence in the user's language that describes the current phase (for example: "我先检查相关文件。"). Do not expose hidden reasoning.
 - Stop when you can answer the user question. Write your final answer in Markdown.`
     },
@@ -338,7 +338,7 @@ Rules:
 - When executing shell commands, try to run only one command/operation per 'shell' tool call. Do not chain multiple operations together in a single call using '&&', '||', ';', or newlines.
 - In final answers, mention the source URLs you used. Do not invent sources.
 - If observations are insufficient, say so in the final answer.
-- If you use the 'task' tool to track progress, ensure you update each task's status as you complete it. Before outputting your final text response, make a final call to the 'task' tool to mark the last tasks as completed.
+- If you use the 'task' tool to track progress, treat it as a progress ledger, not proof of completion. Use short task titles only, never JSON/code/markdown as a title. Mark a task 'completed' only after the underlying work has actually been performed and verified. Before outputting your final text response, update the task list so unfinished or unverified work remains pending/in_progress/cancelled; do not mark items completed just to close the plan.
 - Before each batch of tool calls, write one short user-visible progress sentence in the user's language that describes the current phase (for example: "我先检查相关文件。"). Do not expose hidden reasoning.
 - Stop when you can answer the user question directly. Write your final answer in Markdown.`
 

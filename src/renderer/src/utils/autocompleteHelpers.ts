@@ -13,6 +13,15 @@ export interface PopupOption {
       }
 }
 
+export interface PermissionRequestDisplay {
+  question: string
+  toolLabel: string
+  action: string
+  target?: string
+  details: string[]
+  code?: string
+}
+
 function splitCommandSegmentsRenderer(command: string): string[] {
   const segments: string[] = []
   let current = ''
@@ -49,6 +58,37 @@ function splitCommandSegmentsRenderer(command: string): string[] {
   }
   segments.push(current)
   return segments.map((s) => s.trim()).filter((s) => s.length > 0)
+}
+
+function describeShellCommand(command: string): PermissionRequestDisplay {
+  return {
+    question: '是否允许执行这个 Shell 命令？',
+    toolLabel: 'Shell',
+    action: '执行 Shell 命令',
+    details: [],
+    code: command
+  }
+}
+
+export function getPermissionRequestDisplay(
+  toolName: string,
+  args: unknown
+): PermissionRequestDisplay {
+  if (toolName === 'shell' && args && typeof args === 'object') {
+    const command = (args as Record<string, unknown>).command
+    if (typeof command === 'string' && command.trim()) {
+      return describeShellCommand(command.trim())
+    }
+  }
+
+  const argsText = getArgsText(toolName, args)
+  return {
+    question: '是否允许执行这个工具？',
+    toolLabel: toolName,
+    action: `调用工具：${toolName}`,
+    details: argsText ? [argsText] : [],
+    code: argsText
+  }
 }
 
 /**

@@ -1,4 +1,3 @@
-
 /* Custom Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 6px;
@@ -1406,12 +1405,12 @@ select {
 }
 
 .skills-item {
-  min-height: 38px;
+  min-height: 28px;
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
-  padding: 7px 9px;
+  gap: 10px;
+  padding: 4px 8px;
   border: 0;
   border-radius: 8px;
 }
@@ -1422,17 +1421,17 @@ select {
 }
 
 .skills-trigger {
-  min-width: 78px;
+  max-width: min(220px, 35vw);
   color: var(--color-text-title);
   font-family: 'SFMono-Regular', 'Consolas', monospace;
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .skills-name {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: block;
 }
 
 .skills-title,
@@ -1443,9 +1442,16 @@ select {
 }
 
 .skills-title {
+  display: block;
   color: var(--color-text-title);
   font-size: 12px;
   font-weight: 500;
+  line-height: 20px;
+}
+
+.skills-description,
+.skills-kind {
+  display: none;
 }
 
 .skills-description {

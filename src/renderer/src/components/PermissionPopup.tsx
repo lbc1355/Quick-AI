@@ -1,6 +1,10 @@
 import React from 'react'
 import { Terminal } from 'lucide-react'
-import { PopupOption, getPopupOptions, getArgsText } from '../utils/autocompleteHelpers'
+import {
+  PopupOption,
+  getPopupOptions,
+  getPermissionRequestDisplay
+} from '../utils/autocompleteHelpers'
 
 interface PendingPermission {
   msgId: string
@@ -31,21 +35,31 @@ export const PermissionPopup: React.FC<PermissionPopupProps> = ({
   selectedOptionIndex,
   onResponse
 }) => {
-  const argsText = getArgsText(pending.toolName, pending.args)
+  const display = getPermissionRequestDisplay(pending.toolName, pending.args)
   const options: PopupOption[] = getPopupOptions(pending)
 
   return (
     <div className="permission-popup-container">
       <div className="permission-popup-header">
         <Terminal size={14} style={{ color: 'var(--color-primary)' }} />
-        <span>是否允许执行此工具？</span>
+        <span>{display.question}</span>
       </div>
 
-      {argsText && (
-        <div className="permission-popup-code">
-          {pending.toolName} {argsText}
+      <div className="permission-popup-summary">
+        <div className="permission-popup-summary-main">
+          <span className="permission-popup-tool">{display.toolLabel}</span>
+          <span className="permission-popup-action">{display.action}</span>
         </div>
-      )}
+        {display.target && <div className="permission-popup-target">{display.target}</div>}
+        {display.details.length > 0 && (
+          <div className="permission-popup-details">
+            {display.details.map((detail, index) => (
+              <span key={index}>{detail}</span>
+            ))}
+          </div>
+        )}
+        {display.code && <div className="permission-popup-code">{display.code}</div>}
+      </div>
 
       <div className="permission-popup-options">
         {options.map((opt, idx) => (

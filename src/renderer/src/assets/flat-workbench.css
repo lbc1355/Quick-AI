@@ -859,3 +859,112 @@
 .task-panel .timeline-detail-drawer {
   margin-left: 0 !important;
 }
+
+/* Codex-like floating execution panel. */
+.task-panel {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  bottom: auto;
+  width: clamp(300px, 32vw, 340px);
+  max-width: calc(100% - 28px);
+  max-height: min(340px, calc(100% - 28px));
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-panel) 96%, transparent);
+  box-shadow:
+    0 14px 36px rgba(15, 23, 42, 0.14),
+    0 2px 10px rgba(15, 23, 42, 0.08);
+  transform: translateY(-8px) scale(0.98);
+  transform-origin: top right;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.task-panel.open,
+.chat-area.task-panel-open .task-panel.open {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  border: 1px solid var(--color-border);
+}
+
+.task-panel-header {
+  min-height: 46px;
+  height: auto;
+  padding: 9px 14px 8px;
+  background: transparent;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.task-panel-content {
+  max-height: 286px;
+  background: transparent;
+}
+
+.task-panel .steps-accordion-container {
+  padding: 4px 12px 12px 16px !important;
+}
+
+.task-panel .step-accordion-item {
+  padding-left: 16px;
+}
+
+.task-panel .step-accordion-item::before {
+  left: 7px;
+}
+
+.task-panel .step-accordion-item:first-child::before {
+  top: 14px;
+}
+
+.task-panel .step-accordion-header {
+  min-height: 30px;
+  padding: 7px 0 !important;
+}
+
+.task-panel .step-accordion-status {
+  top: 8px;
+  width: 16px;
+  height: 16px;
+}
+
+.task-panel .step-accordion-title .step-title-text {
+  font-size: 12px;
+}
+
+.task-panel .step-accordion-meta {
+  font-size: 10px;
+}
+
+@media (max-width: 980px) {
+  .task-panel {
+    width: clamp(288px, 34vw, 320px);
+    max-height: min(310px, calc(100% - 28px));
+  }
+
+  .task-panel-content {
+    max-height: 258px;
+  }
+}
+
+@media (max-width: 720px) {
+  .task-panel {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    max-height: min(280px, calc(100% - 24px));
+  }
+
+  .task-panel-content {
+    max-height: 232px;
+  }
+}
+
+.task-panel .sidebar-icon-btn {
+  border: 0;
+  background: transparent;
+}

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { getCommandPrefixes, getSegmentPrefixes, getPopupOptions } from './autocompleteHelpers'
+import {
+  getCommandPrefixes,
+  getSegmentPrefixes,
+  getPopupOptions,
+  getPermissionRequestDisplay
+} from './autocompleteHelpers'
 
 describe('getCommandPrefixes', () => {
   it('returns empty array for empty command', () => {
@@ -88,5 +93,41 @@ describe('getPopupOptions shell prefix collapsing', () => {
       (o) => typeof o.payload === 'object' && o.payload.scope === 'prefix'
     )
     expect(prefixOptions).toHaveLength(0)
+  })
+})
+
+describe('getPermissionRequestDisplay', () => {
+  it('shows a shell command without splitting command arguments', () => {
+    const display = getPermissionRequestDisplay('shell', {
+      command: 'dir /a D:\\Git\\gitrepo'
+    })
+
+    expect(display.question).toBe('是否允许执行这个 Shell 命令？')
+    expect(display.toolLabel).toBe('Shell')
+    expect(display.action).toBe('执行 Shell 命令')
+    expect(display.target).toBeUndefined()
+    expect(display.details).toEqual([])
+    expect(display.code).toBe('dir /a D:\\Git\\gitrepo')
+  })
+
+  it('keeps chained shell commands intact in the display', () => {
+    const display = getPermissionRequestDisplay('shell', {
+      command: 'cd "x" && git status && npm test'
+    })
+
+    expect(display.action).toBe('执行 Shell 命令')
+    expect(display.target).toBeUndefined()
+    expect(display.details).toEqual([])
+    expect(display.code).toBe('cd "x" && git status && npm test')
+  })
+
+  it('summarizes non-shell tool calls without raw JSON prefixes', () => {
+    const display = getPermissionRequestDisplay('file_read', {
+      path: 'README.md'
+    })
+
+    expect(display.action).toBe('调用工具：file_read')
+    expect(display.details.length).toBeGreaterThan(0)
+    expect(display.code).not.toContain('file_read')
   })
 })

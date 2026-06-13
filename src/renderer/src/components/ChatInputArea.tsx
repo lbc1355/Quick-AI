@@ -109,7 +109,9 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                     <div
                       key={item.id}
                       data-autocomplete-index={itemIndex}
-                      className={`skills-item ${selectedItemIdx === itemIndex ? 'selected' : ''}`}
+                      className={`skills-item skills-item-${item.type} ${
+                        selectedItemIdx === itemIndex ? 'selected' : ''
+                      }`}
                       onClick={() => triggerAutocompleteItem(item)}
                     >
                       <span className="skills-trigger">{item.trigger}</span>

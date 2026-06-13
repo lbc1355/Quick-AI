@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import {
-  ChevronRight,
   CheckCircle2,
   XCircle,
+  X,
   Circle,
   Loader2,
   FileText,
@@ -33,16 +33,21 @@ interface TaskPanelProps {
   isGenerating?: boolean
 }
 
-export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, isGenerating = false }) => {
+export const TaskPanel: React.FC<TaskPanelProps> = ({
+  message,
+  isOpen,
+  onClose,
+  isGenerating = false
+}) => {
   const [activeTab, setActiveTab] = useState<'timeline' | 'tasks'>('timeline')
 
   // Parse high-level tasks checklist if present in agentEvents
   const tasks = useMemo<TaskItem[]>(() => {
     if (!message || !message.agentEvents) return []
-    const taskEvent = message.agentEvents.reduce<Extract<AgentEvent, { type: 'task_update' }> | null>(
-      (last, e) => (e.type === 'task_update' ? e : last),
-      null
-    )
+    const taskEvent = message.agentEvents.reduce<Extract<
+      AgentEvent,
+      { type: 'task_update' }
+    > | null>((last, e) => (e.type === 'task_update' ? e : last), null)
     return taskEvent ? taskEvent.tasks : []
   }, [message])
 
@@ -67,12 +72,12 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
   useEffect(() => {
     if (isGenerating && parsedRun.steps.length > 0) {
       const latestStep = parsedRun.steps[parsedRun.steps.length - 1]
-      
+
       // Auto-expand the latest step
       setExpandedSteps({
         [latestStep.id]: true
       })
-      
+
       // Auto-expand any running or pending tool calls
       const runningTools: Record<string, boolean> = {}
       latestStep.toolCalls.forEach((tc) => {
@@ -104,14 +109,17 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
   const getStepTitle = (step: ParsedAgentStep): string => {
     if (step.title) return step.title
     if (step.progressMessage) {
-      const firstLine = step.progressMessage.trim().split(/[。\n]/)[0].trim()
+      const firstLine = step.progressMessage
+        .trim()
+        .split(/[。\n]/)[0]
+        .trim()
       const clean = firstLine.replace(/[\*#_``\[\]]/g, '').trim()
       if (clean.length > 0) {
         return clean.length > 30 ? clean.substring(0, 30) + '...' : clean
       }
     }
     if (step.toolCalls.length > 0) {
-      const uniqueTools = Array.from(new Set(step.toolCalls.map(tc => tc.toolName)))
+      const uniqueTools = Array.from(new Set(step.toolCalls.map((tc) => tc.toolName)))
       return `执行 ${uniqueTools.join(', ')}`
     }
     return '思考分析中...'
@@ -164,12 +172,22 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
       return `执行命令: ${cmd ? truncate(cmd) : ''}`
     }
 
-    if (name.includes('search') || name.includes('query') || name.includes('web') || name.includes('google')) {
+    if (
+      name.includes('search') ||
+      name.includes('query') ||
+      name.includes('web') ||
+      name.includes('google')
+    ) {
       const query = argsObj?.query || argsObj?.q
       return `网络搜索: ${query ? truncate(query) : ''}`
     }
 
-    if (name.includes('url') || name.includes('fetch') || name.includes('browser') || name.includes('http')) {
+    if (
+      name.includes('url') ||
+      name.includes('fetch') ||
+      name.includes('browser') ||
+      name.includes('http')
+    ) {
       const url = argsObj?.url || argsObj?.Url || argsObj?.uri
       if (url && typeof url === 'string') {
         const displayUrl = url.replace(/^https?:\/\/(www\.)?/, '')
@@ -203,10 +221,20 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
     if (name.includes('command') || name.includes('shell') || name.includes('run')) {
       return <Terminal size={12} />
     }
-    if (name.includes('search') || name.includes('query') || name.includes('web') || name.includes('google')) {
+    if (
+      name.includes('search') ||
+      name.includes('query') ||
+      name.includes('web') ||
+      name.includes('google')
+    ) {
       return <Search size={12} />
     }
-    if (name.includes('url') || name.includes('fetch') || name.includes('browser') || name.includes('http')) {
+    if (
+      name.includes('url') ||
+      name.includes('fetch') ||
+      name.includes('browser') ||
+      name.includes('http')
+    ) {
       return <Globe size={12} />
     }
     if (name.includes('memory')) {
@@ -301,10 +329,17 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
               <div key={itemIdx} className="timeline-result-item-card">
                 <div className="timeline-result-item-card-header">
                   <span className="timeline-result-item-idx">#{itemIdx + 1}</span>
-                  <a href={item.url} target="_blank" rel="noreferrer" className="timeline-result-item-link">
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="timeline-result-item-link"
+                  >
                     {item.title}
                   </a>
-                  {item.source && <span className="timeline-result-item-source">{item.source}</span>}
+                  {item.source && (
+                    <span className="timeline-result-item-source">{item.source}</span>
+                  )}
                 </div>
                 {item.snippet && <div className="timeline-result-item-snippet">{item.snippet}</div>}
               </div>
@@ -324,7 +359,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
           <span>运行分析</span>
         </div>
         <button type="button" className="sidebar-icon-btn" onClick={onClose} title="收起面板">
-          <ChevronRight size={14} />
+          <X size={14} />
         </button>
       </div>
 
@@ -352,7 +387,10 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
       <div className="task-panel-content">
         {/* Tab 1: Execution steps timeline */}
         {activeTab === 'timeline' && (
-          <div className="steps-accordion-container" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div
+            className="steps-accordion-container"
+            style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
+          >
             {parsedRun.steps.length === 0 ? (
               <div className="timeline-empty">
                 <Loader2 size={14} className="animate-spin" />
@@ -362,15 +400,24 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
               parsedRun.steps.map((step, stepIdx) => {
                 const isExpanded = !!expandedSteps[step.id]
                 const stepTitle = getStepTitle(step)
-                const failedCount = step.toolCalls.filter(tc => tc.status === 'failed' || tc.status === 'denied').length
-                
+                const failedCount = step.toolCalls.filter(
+                  (tc) => tc.status === 'failed' || tc.status === 'denied'
+                ).length
+
                 return (
-                  <div key={step.id} className={`step-accordion-item ${step.status} ${isExpanded ? 'open' : ''}`}>
+                  <div
+                    key={step.id}
+                    className={`step-accordion-item ${step.status} ${isExpanded ? 'open' : ''}`}
+                  >
                     {/* Step Accordion Header */}
                     <div className="step-accordion-header" onClick={() => toggleStep(step.id)}>
                       <div className="step-accordion-status">
                         {step.status === 'running' ? (
-                          <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-primary)' }} />
+                          <Loader2
+                            size={13}
+                            className="animate-spin"
+                            style={{ color: 'var(--color-primary)' }}
+                          />
                         ) : step.status === 'failed' ? (
                           <XCircle size={13} style={{ color: 'var(--color-danger)' }} />
                         ) : step.status === 'cancelled' ? (
@@ -386,7 +433,8 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
                       <div className="step-accordion-meta">
                         {step.toolCalls.length > 0 && (
                           <span className="step-tools-count">
-                            {step.toolCalls.length} tools{failedCount > 0 ? ` · ${failedCount} failed` : ''}
+                            {step.toolCalls.length} tools
+                            {failedCount > 0 ? ` · ${failedCount} failed` : ''}
                           </span>
                         )}
                       </div>
@@ -405,9 +453,31 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
                       <div className="step-accordion-content" style={{ padding: '10px 12px 14px' }}>
                         {/* 1. Model Progress Message */}
                         {step.progressMessage && (
-                          <div className="step-model-progress" style={{ marginBottom: step.toolCalls.length > 0 ? '14px' : '0' }}>
-                            <div className="step-section-subtitle" style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>模型进度</div>
-                            <div className="step-progress-message-content" style={{ fontSize: '12.5px', color: 'var(--color-text)', lineHeight: '1.6' }}>
+                          <div
+                            className="step-model-progress"
+                            style={{ marginBottom: step.toolCalls.length > 0 ? '14px' : '0' }}
+                          >
+                            <div
+                              className="step-section-subtitle"
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                color: 'var(--color-text-faint)',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px',
+                                marginBottom: '6px'
+                              }}
+                            >
+                              模型进度
+                            </div>
+                            <div
+                              className="step-progress-message-content"
+                              style={{
+                                fontSize: '12.5px',
+                                color: 'var(--color-text)',
+                                lineHeight: '1.6'
+                              }}
+                            >
                               {renderMessageContent(step.progressMessage)}
                             </div>
                           </div>
@@ -416,30 +486,125 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
                         {/* 2. Nested Tool Calls */}
                         {step.toolCalls.length > 0 && (
                           <div className="step-tool-calls">
-                            <div className="step-section-subtitle" style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-text-faint)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>工具调用</div>
-                            <div className="timeline-container nested" style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '4px', position: 'relative' }}>
-                              <div className="timeline-thread" style={{ position: 'absolute', left: '12px', top: '10px', bottom: '10px', width: '2px', background: 'var(--color-border)', opacity: 0.5 }} />
+                            <div
+                              className="step-section-subtitle"
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                color: 'var(--color-text-faint)',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px',
+                                marginBottom: '8px'
+                              }}
+                            >
+                              工具调用
+                            </div>
+                            <div
+                              className="timeline-container nested"
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '12px',
+                                paddingLeft: '4px',
+                                position: 'relative'
+                              }}
+                            >
+                              <div
+                                className="timeline-thread"
+                                style={{
+                                  position: 'absolute',
+                                  left: '12px',
+                                  top: '10px',
+                                  bottom: '10px',
+                                  width: '2px',
+                                  background: 'var(--color-border)',
+                                  opacity: 0.5
+                                }}
+                              />
                               {step.toolCalls.map((tc) => {
                                 const isToolExpanded = !!expandedTools[tc.callId]
                                 const statusStyle = getStatusStyles(tc.status)
                                 const icon = getToolIcon('tool', tc.toolName)
-                                const toolTitle = tc.purpose || getStepDescription(tc.toolName, tc.args)
+                                const toolTitle =
+                                  tc.purpose || getStepDescription(tc.toolName, tc.args)
 
                                 return (
-                                  <div key={tc.callId} className={`timeline-step-item ${tc.status}`} style={{ display: 'flex', gap: '12px', position: 'relative' }}>
-                                    <div className="timeline-node-circle" style={{ ...statusStyle, width: '26px', height: '26px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, zIndex: 1, background: 'var(--color-panel)' }}>
+                                  <div
+                                    key={tc.callId}
+                                    className={`timeline-step-item ${tc.status}`}
+                                    style={{ display: 'flex', gap: '12px', position: 'relative' }}
+                                  >
+                                    <div
+                                      className="timeline-node-circle"
+                                      style={{
+                                        ...statusStyle,
+                                        width: '26px',
+                                        height: '26px',
+                                        borderRadius: '50%',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        flexShrink: 0,
+                                        zIndex: 1,
+                                        background: 'var(--color-panel)'
+                                      }}
+                                    >
                                       {tc.status === 'running' ? (
                                         <Loader2 size={12} className="animate-spin" />
                                       ) : (
                                         icon
                                       )}
                                     </div>
-                                    <div className="timeline-content-card" style={{ flex: 1, minWidth: 0 }}>
-                                      <div className="timeline-header-row" onClick={() => toggleTool(tc.callId)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '4px 0' }}>
-                                        <span className="timeline-step-title" style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
-                                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toolTitle}</span>
+                                    <div
+                                      className="timeline-content-card"
+                                      style={{ flex: 1, minWidth: 0 }}
+                                    >
+                                      <div
+                                        className="timeline-header-row"
+                                        onClick={() => toggleTool(tc.callId)}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          cursor: 'pointer',
+                                          padding: '4px 0'
+                                        }}
+                                      >
+                                        <span
+                                          className="timeline-step-title"
+                                          style={{
+                                            fontSize: '12px',
+                                            fontWeight: 500,
+                                            color: 'var(--color-text)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            flex: 1,
+                                            minWidth: 0
+                                          }}
+                                        >
+                                          <span
+                                            style={{
+                                              overflow: 'hidden',
+                                              textOverflow: 'ellipsis',
+                                              whiteSpace: 'nowrap'
+                                            }}
+                                          >
+                                            {toolTitle}
+                                          </span>
                                           {tc.toolName && (
-                                            <span className="timeline-step-toolname-tag" style={{ fontSize: '9.5px', background: 'var(--color-inline-code-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)', padding: '1px 4px', borderRadius: '4px', flexShrink: 0 }}>
+                                            <span
+                                              className="timeline-step-toolname-tag"
+                                              style={{
+                                                fontSize: '9.5px',
+                                                background: 'var(--color-inline-code-bg)',
+                                                border: '1px solid var(--color-border)',
+                                                color: 'var(--color-text-muted)',
+                                                padding: '1px 4px',
+                                                borderRadius: '4px',
+                                                flexShrink: 0
+                                              }}
+                                            >
                                               {tc.toolName}
                                             </span>
                                           )}
@@ -447,14 +612,23 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({ message, isOpen, onClose, 
                                         <ChevronDown
                                           size={12}
                                           style={{
-                                            transform: isToolExpanded ? 'rotate(180deg)' : 'rotate(0)',
+                                            transform: isToolExpanded
+                                              ? 'rotate(180deg)'
+                                              : 'rotate(0)',
                                             transition: 'transform 0.15s ease',
                                             color: 'var(--color-text-faint)'
                                           }}
                                         />
                                       </div>
                                       {isToolExpanded && (
-                                        <div className="timeline-detail-drawer" style={{ borderLeft: '1px solid var(--color-border)', margin: '5px 0 4px 0', padding: '6px 0 8px 10px' }}>
+                                        <div
+                                          className="timeline-detail-drawer"
+                                          style={{
+                                            borderLeft: '1px solid var(--color-border)',
+                                            margin: '5px 0 4px 0',
+                                            padding: '6px 0 8px 10px'
+                                          }}
+                                        >
                                           {renderArgs(tc.args)}
                                           {renderResult(tc)}
                                         </div>

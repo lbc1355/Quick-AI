@@ -202,36 +202,6 @@ function App(): React.JSX.Element {
     return info && info.members.length > 1 ? info : null
   }, [activeSessionId, sessions])
 
-  // Selector to find the latest tasks from the active session
-  const currentTasks = useMemo(() => {
-    if (!activeSession) return null
-    if (activeTaskMessageId) {
-      const msg = activeSession.messages.find((m) => m.id === activeTaskMessageId)
-      const taskEvent = msg?.agentEvents?.find((e) => e.type === 'task_update')
-      if (taskEvent && taskEvent.type === 'task_update') {
-        return taskEvent.tasks
-      }
-    }
-    for (let i = activeSession.messages.length - 1; i >= 0; i--) {
-      const msg = activeSession.messages[i]
-      const taskEvent = msg.agentEvents?.find((e) => e.type === 'task_update')
-      if (taskEvent && taskEvent.type === 'task_update') {
-        return taskEvent.tasks
-      }
-    }
-    return null
-  }, [activeSession, activeTaskMessageId])
-
-  // Track the previous task count to detect when tasks first appear
-  const prevTasksLengthRef = useRef(0)
-  useEffect(() => {
-    const newLength = currentTasks ? currentTasks.length : 0
-    if (newLength > 0 && prevTasksLengthRef.current === 0) {
-      setIsTaskPanelOpen(true)
-    }
-    prevTasksLengthRef.current = newLength
-  }, [currentTasks])
-
   // Reset active task message and task panel state when active session changes using render-phase state adjustment
   const [prevSessionId, setPrevSessionId] = useState(activeSessionId)
   if (activeSessionId !== prevSessionId) {
@@ -239,19 +209,6 @@ function App(): React.JSX.Element {
     setActiveTaskMessageId(null)
     setIsTaskPanelOpen(false)
   }
-
-  // Auto-select the active task message when the last message is generating and has tasks
-  useEffect(() => {
-    if (!activeSession) return
-    const lastMsg = activeSession.messages[activeSession.messages.length - 1]
-    if (lastMsg && lastMsg.role === 'assistant') {
-      const hasTasks = lastMsg.agentEvents?.some((e) => e.type === 'task_update')
-      if (hasTasks) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setActiveTaskMessageId(lastMsg.id)
-      }
-    }
-  }, [activeSession, isCurrentSessionGenerating])
 
   const handleToggleTasks = useCallback(
     (msgId: string) => {

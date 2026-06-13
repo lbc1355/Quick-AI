@@ -340,6 +340,9 @@ describe('systemTools.task', () => {
   afterEach(() => {
     destroyRun('task-text-req')
     destroyRun('task-title-req')
+    destroyRun('task-json-string-req')
+    destroyRun('task-bad-json-req')
+    destroyRun('task-code-title-req')
   })
 
   it('accepts a plain text task title', async () => {
@@ -368,5 +371,49 @@ describe('systemTools.task', () => {
     expect(result.resultForModel).toContain('Create sample skill')
     expect(result.resultForModel).toContain('[pending]')
     expect(result.resultForUi.summary).toBe('0/1 done')
+  })
+
+  it('parses a JSON task list string instead of creating a raw JSON task title', async () => {
+    const reqId = 'task-json-string-req'
+    createRun(reqId, ['task'], 'all', new ActionLog())
+
+    const result = await systemTools.task.execute(
+      {
+        task: JSON.stringify([
+          { id: '1', title: 'Initialize project environment', status: 'completed' },
+          { id: '2', title: 'Write sample code', status: 'pending' }
+        ])
+      },
+      executionContext(reqId)
+    )
+
+    expect(result.resultForModel).toContain('Initialize project environment [completed]')
+    expect(result.resultForModel).toContain('Write sample code [pending]')
+    expect(result.resultForModel).not.toContain('[{')
+    expect(result.resultForUi.summary).toBe('1/2 done')
+  })
+
+  it('rejects malformed JSON-like task strings', async () => {
+    const reqId = 'task-bad-json-req'
+    createRun(reqId, ['task'], 'all', new ActionLog())
+
+    await expect(
+      systemTools.task.execute(
+        { task: '[{"id":"1","title":"Broken task","status":"completed"' },
+        executionContext(reqId)
+      )
+    ).rejects.toThrow('No valid task items found')
+  })
+
+  it('rejects code-like task titles', async () => {
+    const reqId = 'task-code-title-req'
+    createRun(reqId, ['task'], 'all', new ActionLog())
+
+    await expect(
+      systemTools.task.execute(
+        { task: 'task(tasks=[{"id":"1","title":"Fake completion","status":"completed"}])' },
+        executionContext(reqId)
+      )
+    ).rejects.toThrow('No valid task items found')
   })
 })

@@ -296,6 +296,7 @@ function formatSkillForModel(skill: Skill, includePackageContent: boolean): stri
 }
 
 const TASK_STATUSES: TaskItem['status'][] = ['pending', 'in_progress', 'completed', 'cancelled']
+const MAX_TASK_TITLE_LENGTH = 160
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -317,6 +318,35 @@ function makeTaskId(title: string, index: number): string {
   return id || `task-${index + 1}`
 }
 
+function stripMarkdownJsonFence(value: string): string {
+  const trimmed = value.trim()
+  const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+  return match ? match[1].trim() : trimmed
+}
+
+function tryParseTaskJsonString(value: string): { jsonLike: boolean; parsed?: unknown } {
+  const trimmed = stripMarkdownJsonFence(value)
+  const jsonLike = trimmed.startsWith('{') || trimmed.startsWith('[')
+  if (!jsonLike) return { jsonLike: false }
+  try {
+    return { jsonLike: true, parsed: JSON.parse(trimmed) }
+  } catch {
+    return { jsonLike: true }
+  }
+}
+
+function isUnsafeTaskTitle(title: string): boolean {
+  const trimmed = title.trim()
+  if (!trimmed) return true
+  if (trimmed.length > MAX_TASK_TITLE_LENGTH) return true
+  if (/[\r\n]/.test(trimmed)) return true
+  if (/^```/.test(trimmed)) return true
+  if (/^task\s*\(/i.test(trimmed)) return true
+  if (/^[\[{]/.test(trimmed)) return true
+  if (/"(?:tasks?|status|title|id)"\s*:/.test(trimmed)) return true
+  return false
+}
+
 function pickTaskSource(args: unknown): unknown {
   if (Array.isArray(args) || typeof args === 'string') return args
   if (!isRecord(args)) return undefined
@@ -334,6 +364,20 @@ function pickTaskSource(args: unknown): unknown {
   return undefined
 }
 
+function expandTaskSource(source: unknown): unknown[] {
+  if (typeof source === 'string') {
+    const parsed = tryParseTaskJsonString(source)
+    if (parsed.jsonLike) {
+      if (parsed.parsed === undefined) return []
+      const parsedSource = pickTaskSource(parsed.parsed)
+      return expandTaskSource(parsedSource ?? parsed.parsed)
+    }
+    return [source]
+  }
+  if (Array.isArray(source)) return source
+  return source !== undefined ? [source] : []
+}
+
 function normalizeTaskEntry(
   item: unknown,
   index: number,
@@ -341,7 +385,7 @@ function normalizeTaskEntry(
 ): TaskItem | undefined {
   if (typeof item === 'string') {
     const title = item.trim()
-    if (!title) return undefined
+    if (isUnsafeTaskTitle(title)) return undefined
     return {
       id: makeTaskId(title, index),
       title,
@@ -353,7 +397,7 @@ function normalizeTaskEntry(
 
   const titleValue = item.title ?? item.description ?? item.task ?? item.name ?? item.id
   const title = typeof titleValue === 'string' ? titleValue.trim() : ''
-  if (!title) return undefined
+  if (isUnsafeTaskTitle(title)) return undefined
 
   const rawId = typeof item.id === 'string' ? item.id.trim() : ''
   return {
@@ -365,7 +409,7 @@ function normalizeTaskEntry(
 
 function normalizeTaskArgs(args: unknown): TaskItem[] {
   const source = pickTaskSource(args)
-  const entries = Array.isArray(source) ? source : source !== undefined ? [source] : []
+  const entries = expandTaskSource(source)
   const fallbackStatus = entries.length === 1 ? 'in_progress' : 'pending'
   return entries
     .map((item, index) => normalizeTaskEntry(item, index, fallbackStatus))
@@ -638,7 +682,7 @@ export const systemTools: Record<string, ToolDefinition> = {
     name: 'task',
     title: 'Task Tracker',
     description:
-      'Track progress on complex multi-step tasks. Create a structured task list at the start of non-trivial work and update individual step statuses as you go. The task list appears in the UI so the user can follow your progress. Tasks with duplicate IDs update the existing entry; new IDs are appended.',
+      'Track progress on complex multi-step tasks. Create a structured task list at the start of non-trivial work and update individual step statuses as you go. The task list appears in the UI so the user can follow your progress. Tasks with duplicate IDs update the existing entry; new IDs are appended. Mark a task completed only after the underlying work has actually been performed.',
     tags: ['task', 'todo', 'plan', 'track', 'progress', '任务', '计划', '追踪'],
     category: 'system',
     risk: 'low',
@@ -650,12 +694,12 @@ export const systemTools: Record<string, ToolDefinition> = {
         task: {
           type: 'string',
           description:
-            'Optional single task title. Use this for a one-step task when a full tasks array is unnecessary.'
+            'Optional short single task title. Do not pass JSON, code, markdown, or a serialized task list here; use tasks for lists.'
         },
         title: {
           type: 'string',
           description:
-            'Optional single task title. Equivalent to task; useful when sending one task object.'
+            'Optional short single task title. Equivalent to task; useful when sending one task object.'
         },
         status: {
           type: 'string',
@@ -679,7 +723,7 @@ export const systemTools: Record<string, ToolDefinition> = {
             required: ['id', 'title', 'status']
           },
           description:
-            'The task list. Provide the COMPLETE list on first call; on subsequent calls only include items whose status changed.'
+            'The task list. Provide the COMPLETE list on first call; on subsequent calls only include items whose status changed. Use completed only after the work is actually done, not as a planning placeholder.'
         }
       }
     },
@@ -687,7 +731,7 @@ export const systemTools: Record<string, ToolDefinition> = {
       const incoming = normalizeTaskArgs(args)
       if (incoming.length === 0) {
         throw new Error(
-          'No valid task items found. Expected { "tasks": [{ "id": "1", "title": "...", "status": "pending|in_progress|completed|cancelled" }] }, or a task title string.'
+          'No valid task items found. Expected { "tasks": [{ "id": "1", "title": "...", "status": "pending|in_progress|completed|cancelled" }] }, or a short single task title. Do not pass JSON/code as a task title.'
         )
       }
 
@@ -723,7 +767,7 @@ export const systemTools: Record<string, ToolDefinition> = {
       const total = merged.length
 
       return {
-        resultForModel: `${lines.join('\n')}\n\nProgress: ${doneCount}/${total} done. Update task statuses with this tool as you complete each step.`,
+        resultForModel: `${lines.join('\n')}\n\nProgress: ${doneCount}/${total} done. Update task statuses with this tool as you complete each step. Use completed only after the underlying work is actually performed and verified; leave unfinished or unverified work pending/in_progress/cancelled.`,
         resultForUi: {
           title: 'Tasks',
           summary: `${doneCount}/${total} done`
