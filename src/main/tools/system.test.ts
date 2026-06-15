@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { systemTools } from './system'
+import { clearPendingRemindersForTests, setReminderNotificationSenderForTests } from './reminders'
 import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
 import { createRun, destroyRun } from '../agent/AgentRunContext'
@@ -415,5 +416,87 @@ describe('systemTools.task', () => {
         executionContext(reqId)
       )
     ).rejects.toThrow('No valid task items found')
+  })
+})
+
+describe('systemTools reminders', () => {
+  const executionContext = {
+    reqId: 'reminder-req',
+    signal: new AbortController().signal,
+    mainWindow: null as any
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-15T12:00:00.000Z'))
+    clearPendingRemindersForTests()
+  })
+
+  afterEach(() => {
+    clearPendingRemindersForTests()
+    vi.useRealTimers()
+  })
+
+  it('schedules a desktop notification after the requested delay', async () => {
+    const notify = vi.fn().mockReturnValue(true)
+    setReminderNotificationSenderForTests(notify)
+
+    const result = await systemTools.schedule_reminder.execute(
+      { delaySeconds: 600, message: 'Drink water' },
+      executionContext
+    )
+
+    expect(result.resultForModel).toContain('Reminder scheduled.')
+    expect(result.resultForModel).toContain('Message: Drink water')
+    expect(result.resultForModel).toContain('Delay: 10 minutes')
+    expect(result.resultForUi.summary).toBe('Drink water in 10 minutes')
+
+    const listResult = await systemTools.list_reminders.execute({}, executionContext)
+    expect(listResult.resultForModel).toContain('Pending reminders:')
+    expect(listResult.resultForModel).toContain('Drink water')
+
+    await vi.advanceTimersByTimeAsync(599_000)
+    expect(notify).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(notify).toHaveBeenCalledWith('Reminder', 'Drink water', undefined)
+
+    const emptyListResult = await systemTools.list_reminders.execute({}, executionContext)
+    expect(emptyListResult.resultForModel).toBe('No pending reminders.')
+  })
+
+  it('cancels a pending reminder before it fires', async () => {
+    const notify = vi.fn().mockReturnValue(true)
+    setReminderNotificationSenderForTests(notify)
+
+    const scheduleResult = await systemTools.schedule_reminder.execute(
+      { delaySeconds: 5, title: 'Hydration', message: 'Drink water' },
+      executionContext
+    )
+    const match = scheduleResult.resultForModel.match(/Reminder ID: (\S+)/)
+    expect(match).not.toBeNull()
+    const reminderId = match![1]
+
+    const cancelResult = await systemTools.cancel_reminder.execute({ reminderId }, executionContext)
+    expect(cancelResult.resultForModel).toContain(`Cancelled reminder ${reminderId}`)
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(notify).not.toHaveBeenCalled()
+
+    const listResult = await systemTools.list_reminders.execute({}, executionContext)
+    expect(listResult.resultForModel).toBe('No pending reminders.')
+  })
+
+  it('rejects invalid reminder delays and empty messages', async () => {
+    await expect(
+      systemTools.schedule_reminder.execute(
+        { delaySeconds: 0, message: 'Too soon' },
+        executionContext
+      )
+    ).rejects.toThrow('delaySeconds must be at least 1')
+
+    await expect(
+      systemTools.schedule_reminder.execute({ delaySeconds: 60, message: '   ' }, executionContext)
+    ).rejects.toThrow('Missing or invalid message parameter')
   })
 })
