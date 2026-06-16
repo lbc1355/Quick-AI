@@ -177,6 +177,13 @@ export interface AppSettings {
   }
 }
 
+export type WindowMode = 'floating' | 'window'
+
+export interface WindowState {
+  mode: WindowMode
+  isMaximized: boolean
+}
+
 export type SkillMode = 'insert' | 'send' | 'run'
 export type SkillKind = 'prompt' | 'agent'
 

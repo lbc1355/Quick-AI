@@ -9,7 +9,9 @@ import {
   ClearSessionCachesPayload,
   ForkSessionCachesPayload,
   McpServerStatus,
-  Skill
+  Skill,
+  WindowMode,
+  WindowState
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -21,6 +23,11 @@ const api = {
   getAppInfo: (): Promise<{ storePath: string; version: string }> =>
     ipcRenderer.invoke('get-app-info'),
   hideWindow: (): void => ipcRenderer.send('hide-window'),
+  getWindowState: (): Promise<WindowState> => ipcRenderer.invoke('get-window-state'),
+  setWindowMode: (mode: WindowMode): Promise<WindowState> =>
+    ipcRenderer.invoke('set-window-mode', mode),
+  minimizeWindow: (): void => ipcRenderer.send('minimize-window'),
+  toggleWindowMaximized: (): void => ipcRenderer.send('toggle-window-maximized'),
   toggleDevTools: (): void => ipcRenderer.send('toggle-devtools'),
   setFilePickerActive: (active: boolean): void =>
     ipcRenderer.send('set-file-picker-active', active),
@@ -62,6 +69,13 @@ const api = {
     ipcRenderer.on('skills-updated', listener)
     return (): void => {
       ipcRenderer.removeListener('skills-updated', listener)
+    }
+  },
+  onWindowStateChanged: (callback: (state: WindowState) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, state: WindowState): void => callback(state)
+    ipcRenderer.on('window-state-changed', listener)
+    return (): void => {
+      ipcRenderer.removeListener('window-state-changed', listener)
     }
   },
   showNotification: (title: string, body: string): void =>

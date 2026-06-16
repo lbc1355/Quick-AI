@@ -8,7 +8,9 @@ import {
   ClearSessionCachesPayload,
   ForkSessionCachesPayload,
   McpServerStatus,
-  Skill
+  Skill,
+  WindowMode,
+  WindowState
 } from '../shared/types'
 
 declare global {
@@ -19,6 +21,10 @@ declare global {
       storeSet: <K extends StoreKey>(key: K, value: StoreValue<K>) => Promise<boolean>
       getAppInfo: () => Promise<{ storePath: string; version: string }>
       hideWindow: () => void
+      getWindowState: () => Promise<WindowState>
+      setWindowMode: (mode: WindowMode) => Promise<WindowState>
+      minimizeWindow: () => void
+      toggleWindowMaximized: () => void
       toggleDevTools: () => void
       setFilePickerActive: (active: boolean) => void
       setWindowPinned: (pinned: boolean) => void
@@ -46,6 +52,7 @@ declare global {
       showNotification: (title: string, body: string) => void
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       onSkillsUpdated: (callback: (skills: Skill[]) => void) => () => void
+      onWindowStateChanged: (callback: (state: WindowState) => void) => () => void
       fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
       listMemoryEntries: () => Promise<Array<{ id: string; label: string; kind: string }>>
       readMemoryEntry: (id: string) => Promise<string>

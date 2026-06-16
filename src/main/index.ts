@@ -3,7 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
-import { StorageSchema } from '../shared/types'
+import type { StorageSchema, WindowMode, WindowState } from '../shared/types'
 import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClient'
 import { runAgentSkill, runGeneralAgent, resolveToolPermission, abortAgentSkill } from './agent'
 import { deleteActionLog, ActionLog, getActionLogPath } from './agent/actionLog'
@@ -34,10 +34,46 @@ let isWindowVisible = false
 let isFilePickerActive = false
 let isQuitting = false
 let isWindowPinned = false
-const winWidth = 780
-const winHeight = 520
+let windowMode: WindowMode = 'floating'
+const floatingWinWidth = 780
+const floatingWinHeight = 520
+const windowModeDefaultWidth = 1080
+const windowModeDefaultHeight = 720
 const hiddenX = -9999
 const hiddenY = -9999
+let windowModeBounds: { x: number; y: number; width: number; height: number } | null = null
+
+function getCenteredBounds(
+  width: number,
+  height: number
+): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
+  const { workArea } = screen.getPrimaryDisplay()
+  const boundedWidth = Math.min(width, workArea.width)
+  const boundedHeight = Math.min(height, workArea.height)
+  return {
+    x: workArea.x + Math.round((workArea.width - boundedWidth) / 2),
+    y: workArea.y + Math.round((workArea.height - boundedHeight) / 2),
+    width: boundedWidth,
+    height: boundedHeight
+  }
+}
+
+function getCurrentWindowState(): WindowState {
+  return {
+    mode: windowMode,
+    isMaximized: Boolean(mainWindow?.isMaximized())
+  }
+}
+
+function emitWindowState(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('window-state-changed', getCurrentWindowState())
+}
 
 function createWindow(): void {
   // Position initially off-screen to avoid any visual flicker or animation on start
@@ -46,15 +82,17 @@ function createWindow(): void {
 
   // Create the browser window.
   mainWindow = new BrowserWindow({
-    width: winWidth,
-    height: winHeight,
+    width: floatingWinWidth,
+    height: floatingWinHeight,
     x,
     y,
     show: false,
     frame: false, // Borderless
-    thickFrame: false, // Disables standard window resizing, native window shadow and DWM animations on Windows
+    thickFrame: true,
     transparent: true, // Transparent for glassmorphic borders
     resizable: false,
+    minimizable: true,
+    maximizable: true,
     alwaysOnTop: true, // Always float on top
     skipTaskbar: true, // Do not display in taskbar
     hasShadow: false,
@@ -70,6 +108,7 @@ function createWindow(): void {
 
   // Focus-loss auto-hide behavior
   mainWindow.on('blur', () => {
+    if (windowMode === 'window') return
     if (isFilePickerActive || isWindowPinned) return
     if (store) {
       const autoHide = store.get('settings').autoHideOnBlur
@@ -94,6 +133,19 @@ function createWindow(): void {
     hideWindow()
   })
 
+  mainWindow.on('maximize', emitWindowState)
+  mainWindow.on('unmaximize', emitWindowState)
+  mainWindow.on('restore', () => {
+    isWindowVisible = true
+    emitWindowState()
+  })
+  mainWindow.on('minimize', () => {
+    if (windowMode === 'window') {
+      isWindowVisible = false
+    }
+    emitWindowState()
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -116,20 +168,36 @@ function createWindow(): void {
   mainWindow.once('ready-to-show', () => {
     mainWindow?.setPosition(hiddenX, hiddenY)
     mainWindow?.showInactive()
+    emitWindowState()
   })
 }
 
 function showWindow(): void {
   if (!mainWindow) return
 
+  if (windowMode === 'window') {
+    isWindowVisible = true
+    mainWindow.setOpacity(1)
+    if (!mainWindow.isVisible()) {
+      mainWindow.show()
+    }
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+    mainWindow.focus()
+    mainWindow.webContents.send('window-shown')
+    emitWindowState()
+    return
+  }
+
   // Recenter horizontally to account for screen configuration changes
   const { width, height } = screen.getPrimaryDisplay().workAreaSize
-  const x = Math.round((width - winWidth) / 2)
+  const x = Math.round((width - floatingWinWidth) / 2)
   const y = Math.round(height * 0.15) // Spotlight upper center placement
 
   isWindowVisible = true
   mainWindow.setOpacity(0)
-  mainWindow.setBounds({ x, y, width: winWidth, height: winHeight })
+  mainWindow.setBounds({ x, y, width: floatingWinWidth, height: floatingWinHeight })
 
   setTimeout(() => {
     if (!mainWindow || !isWindowVisible) return
@@ -138,15 +206,27 @@ function showWindow(): void {
 
     // Notify frontend that the window has been summoned/shown
     mainWindow.webContents.send('window-shown')
+    emitWindowState()
   }, 16)
 }
 
 function hideWindow(): void {
   if (!mainWindow) return
   isWindowVisible = false
+
+  if (windowMode === 'window') {
+    if (!mainWindow.isMinimized() && !mainWindow.isMaximized()) {
+      windowModeBounds = mainWindow.getBounds()
+    }
+    mainWindow.hide()
+    emitWindowState()
+    return
+  }
+
   mainWindow.setOpacity(0)
   mainWindow.setPosition(hiddenX, hiddenY)
   mainWindow.blur()
+  emitWindowState()
 }
 
 function toggleWindow(): void {
@@ -156,6 +236,74 @@ function toggleWindow(): void {
   } else {
     showWindow()
   }
+}
+
+function setWindowMode(mode: WindowMode): WindowState {
+  if (!mainWindow) return getCurrentWindowState()
+  if (windowMode === mode) return getCurrentWindowState()
+
+  if (windowMode === 'window' && !mainWindow.isMinimized() && !mainWindow.isMaximized()) {
+    windowModeBounds = mainWindow.getBounds()
+  }
+
+  windowMode = mode
+  isWindowPinned = false
+
+  if (mode === 'window') {
+    const bounds =
+      windowModeBounds || getCenteredBounds(windowModeDefaultWidth, windowModeDefaultHeight)
+    mainWindow.setAlwaysOnTop(false)
+    mainWindow.setSkipTaskbar(false)
+    mainWindow.setMinimumSize(floatingWinWidth, floatingWinHeight)
+    mainWindow.setResizable(true)
+    mainWindow.setMaximizable(true)
+    mainWindow.setMinimizable(true)
+    mainWindow.setOpacity(1)
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+    }
+    mainWindow.setBounds(bounds)
+    isWindowVisible = true
+    mainWindow.show()
+    mainWindow.focus()
+    mainWindow.webContents.send('window-shown')
+  } else {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+    }
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+    mainWindow.setResizable(false)
+    mainWindow.setAlwaysOnTop(true)
+    mainWindow.setSkipTaskbar(true)
+    showWindow()
+  }
+
+  emitWindowState()
+  return getCurrentWindowState()
+}
+
+function minimizeWindow(): void {
+  if (!mainWindow) return
+  if (windowMode === 'window') {
+    mainWindow.minimize()
+  } else {
+    hideWindow()
+  }
+}
+
+function toggleWindowMaximized(): void {
+  if (!mainWindow || windowMode !== 'window') return
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize()
+  } else {
+    if (!mainWindow.isMinimized()) {
+      windowModeBounds = mainWindow.getBounds()
+    }
+    mainWindow.maximize()
+  }
+  emitWindowState()
 }
 
 function broadcastSkillsUpdated(skills?: StorageSchema['skills']): void {
@@ -395,6 +543,23 @@ app.whenReady().then(() => {
   // IPC handlers for window control
   ipcMain.on('hide-window', () => {
     hideWindow()
+  })
+
+  ipcMain.handle('get-window-state', () => getCurrentWindowState())
+
+  ipcMain.handle('set-window-mode', (_event, mode: WindowMode) => {
+    if (mode !== 'floating' && mode !== 'window') {
+      throw new Error(`Invalid window mode: ${String(mode)}`)
+    }
+    return setWindowMode(mode)
+  })
+
+  ipcMain.on('minimize-window', () => {
+    minimizeWindow()
+  })
+
+  ipcMain.on('toggle-window-maximized', () => {
+    toggleWindowMaximized()
   })
 
   ipcMain.on('set-file-picker-active', (_event, active) => {

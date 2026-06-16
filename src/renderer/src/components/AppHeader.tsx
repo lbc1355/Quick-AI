@@ -1,12 +1,33 @@
 import React from 'react'
-import { Settings, Terminal, Sparkles, Trash2, Undo2, Sun, Moon, Pin, PinOff } from 'lucide-react'
-import { ApiProvider } from '../../../shared/types'
+import {
+  AppWindow,
+  Minimize2,
+  Minus,
+  Settings,
+  Square,
+  Terminal,
+  Sparkles,
+  Trash2,
+  Undo2,
+  Sun,
+  Moon,
+  Pin,
+  PinOff,
+  X
+} from 'lucide-react'
+import { ApiProvider, WindowMode } from '../../../shared/types'
 
 interface AppHeaderProps {
   theme: string
   toggleTheme: () => void
   isPanelPinned: boolean
   setIsPanelPinned: React.Dispatch<React.SetStateAction<boolean>>
+  windowMode: WindowMode
+  isWindowMaximized: boolean
+  onToggleWindowMode: () => void
+  onMinimizeWindow: () => void
+  onToggleWindowMaximized: () => void
+  onCloseWindow: () => void
   showSettings: boolean
   handleCloseSettings: () => void
   handleClearCurrentSession: () => Promise<void>
@@ -22,6 +43,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   toggleTheme,
   isPanelPinned,
   setIsPanelPinned,
+  windowMode,
+  isWindowMaximized,
+  onToggleWindowMode,
+  onMinimizeWindow,
+  onToggleWindowMaximized,
+  onCloseWindow,
   showSettings,
   handleCloseSettings,
   handleClearCurrentSession,
@@ -31,6 +58,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   activeProviderId,
   selectedModel
 }) => {
+  const isWindowMode = windowMode === 'window'
+
   return (
     <div className="drag-header">
       <div className="drag-header-left">
@@ -52,12 +81,21 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         >
           {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
         </button>
+        {!isWindowMode && (
+          <button
+            className={`header-action-btn ${isPanelPinned ? 'active' : ''}`}
+            onClick={() => setIsPanelPinned((value) => !value)}
+            title={isPanelPinned ? '取消固定' : '固定窗口'}
+          >
+            {isPanelPinned ? <PinOff size={14} /> : <Pin size={14} />}
+          </button>
+        )}
         <button
-          className={`header-action-btn ${isPanelPinned ? 'active' : ''}`}
-          onClick={() => setIsPanelPinned((value) => !value)}
-          title={isPanelPinned ? '取消固定' : '固定窗口'}
+          className={`header-action-btn ${isWindowMode ? 'active' : ''}`}
+          onClick={onToggleWindowMode}
+          title={isWindowMode ? '切换到浮窗模式' : '切换到窗口模式'}
         >
-          {isPanelPinned ? <PinOff size={14} /> : <Pin size={14} />}
+          <AppWindow size={14} />
         </button>
         {showSettings ? (
           <button className="header-action-btn" onClick={handleCloseSettings} title="返回聊天">
@@ -87,6 +125,31 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <Settings size={14} />
             </button>
           </>
+        )}
+        {isWindowMode && (
+          <div className="window-control-group" aria-label="窗口控制">
+            <button
+              className="header-action-btn window-control-btn"
+              onClick={onMinimizeWindow}
+              title="最小化"
+            >
+              <Minus size={15} />
+            </button>
+            <button
+              className="header-action-btn window-control-btn"
+              onClick={onToggleWindowMaximized}
+              title={isWindowMaximized ? '还原' : '最大化'}
+            >
+              {isWindowMaximized ? <Minimize2 size={14} /> : <Square size={13} />}
+            </button>
+            <button
+              className="header-action-btn window-control-btn close"
+              onClick={onCloseWindow}
+              title="隐藏到托盘"
+            >
+              <X size={15} />
+            </button>
+          </div>
         )}
       </div>
     </div>

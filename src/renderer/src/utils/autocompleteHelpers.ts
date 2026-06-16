@@ -275,6 +275,7 @@ export function groupAutocompleteItems(items: AutocompleteItem[]): Array<{
 export function getArgsText(toolName: string, args: unknown): string {
   if (!args || typeof args !== 'object') return ''
   const argsObj = args as Record<string, unknown>
+  if (Object.keys(argsObj).length === 0) return ''
   if (toolName === 'fetch_url') {
     return `URL: ${argsObj.url || ''}`
   }

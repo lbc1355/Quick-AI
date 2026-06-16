@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Sparkles, GitBranch, Paperclip } from 'lucide-react'
 
-import { AutocompleteItem, AppSettings } from '../../shared/types'
+import { AutocompleteItem, AppSettings, WindowState } from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
 import { SettingsView } from './components/SettingsView'
@@ -24,7 +24,6 @@ import { getSessionGenerationState } from './utils/generationState'
 
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
-import { TaskPanel } from './components/TaskPanel'
 import { ChatInputArea } from './components/ChatInputArea'
 import { getPopupOptions, groupAutocompleteItems } from './utils/autocompleteHelpers'
 
@@ -42,8 +41,10 @@ function App(): React.JSX.Element {
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number>(0)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isPanelPinned, setIsPanelPinned] = useState(false)
-  const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false)
-  const [activeTaskMessageId, setActiveTaskMessageId] = useState<string | null>(null)
+  const [windowState, setWindowState] = useState<WindowState>({
+    mode: 'floating',
+    isMaximized: false
+  })
 
   // 1. Providers hook
   const {
@@ -206,21 +207,8 @@ function App(): React.JSX.Element {
   const [prevSessionId, setPrevSessionId] = useState(activeSessionId)
   if (activeSessionId !== prevSessionId) {
     setPrevSessionId(activeSessionId)
-    setActiveTaskMessageId(null)
-    setIsTaskPanelOpen(false)
   }
 
-  const handleToggleTasks = useCallback(
-    (msgId: string) => {
-      if (activeTaskMessageId === msgId && isTaskPanelOpen) {
-        setIsTaskPanelOpen(false)
-      } else {
-        setActiveTaskMessageId(msgId)
-        setIsTaskPanelOpen(true)
-      }
-    },
-    [activeTaskMessageId, isTaskPanelOpen]
-  )
   const isSessionFamilyViewDismissed = dismissedSessionFamilyViewForId === activeSessionId
 
   const visibleSessionFamilyInfo = useMemo(() => {
@@ -279,9 +267,40 @@ function App(): React.JSX.Element {
   }, [sessions, syncSessionsRef])
 
   useEffect(() => {
+    let disposed = false
+    window.api
+      .getWindowState()
+      .then((state) => {
+        if (!disposed) setWindowState(state)
+      })
+      .catch(() => {
+        // Keep the default floating state if the host API is unavailable during early startup.
+      })
+
+    const unsubscribe = window.api.onWindowStateChanged((state) => {
+      setWindowState(state)
+    })
+
+    return () => {
+      disposed = true
+      unsubscribe()
+    }
+  }, [])
+
+  const handleToggleWindowMode = useCallback(async (): Promise<void> => {
+    const nextMode = windowState.mode === 'window' ? 'floating' : 'window'
+    const nextState = await window.api.setWindowMode(nextMode)
+    setWindowState(nextState)
+  }, [windowState.mode])
+
+  useEffect(() => {
+    if (windowState.mode === 'window' && isPanelPinned) {
+      setIsPanelPinned(false)
+      return
+    }
     window.api.setWindowPinned(isPanelPinned)
     return () => window.api.setWindowPinned(false)
-  }, [isPanelPinned])
+  }, [isPanelPinned, windowState.mode])
 
   // Reset auto-scroll flag to true when a new message starts generating
   useEffect(() => {
@@ -642,7 +661,9 @@ function App(): React.JSX.Element {
 
   return (
     <div
-      className={`app-container ${theme === 'light' ? 'theme-light' : ''}`}
+      className={`app-container ${theme === 'light' ? 'theme-light' : ''} ${
+        windowState.mode === 'window' ? 'window-mode' : 'floating-mode'
+      }`}
       onDragEnter={handleDrag}
       onDragOver={handleDrag}
       onDragLeave={handleDrag}
@@ -654,6 +675,12 @@ function App(): React.JSX.Element {
         toggleTheme={toggleTheme}
         isPanelPinned={isPanelPinned}
         setIsPanelPinned={setIsPanelPinned}
+        windowMode={windowState.mode}
+        isWindowMaximized={windowState.isMaximized}
+        onToggleWindowMode={handleToggleWindowMode}
+        onMinimizeWindow={() => window.api.minimizeWindow()}
+        onToggleWindowMaximized={() => window.api.toggleWindowMaximized()}
+        onCloseWindow={() => window.api.hideWindow()}
         showSettings={showSettings}
         handleCloseSettings={handleCloseSettings}
         handleClearCurrentSession={handleClearCurrentSession}
@@ -718,11 +745,7 @@ function App(): React.JSX.Element {
           onChangeToolPermission={onChangeToolPermission}
         />
       ) : (
-        <div
-          className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''} ${
-            isTaskPanelOpen ? 'task-panel-open' : ''
-          }`}
-        >
+        <div className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
           <SessionSidebar
             sessions={sessions}
             activeSessionId={activeSessionId}
@@ -835,9 +858,6 @@ function App(): React.JSX.Element {
                       onResumeAgentRun={handleResumeAgentRun}
                       onOpenBranch={(sessionId) => openSession(sessionId)}
                       onChangeEditingText={setEditingText}
-                      activeTaskMessageId={activeTaskMessageId}
-                      isTaskPanelOpen={isTaskPanelOpen}
-                      onToggleTasks={handleToggleTasks}
                     />
                   ))}
                   <div ref={messagesEndRef} />
@@ -871,23 +891,6 @@ function App(): React.JSX.Element {
               handleSendMessage={handleSendMessage}
             />
           </section>
-
-          {activeTaskMessageId &&
-            activeSession &&
-            (() => {
-              const msg = activeSession.messages.find((m) => m.id === activeTaskMessageId)
-              return msg ? (
-                <TaskPanel
-                  message={msg}
-                  isOpen={isTaskPanelOpen}
-                  onClose={() => setIsTaskPanelOpen(false)}
-                  isGenerating={
-                    isCurrentSessionGenerating &&
-                    msg.id === activeSession.messages[activeSession.messages.length - 1]?.id
-                  }
-                />
-              ) : null
-            })()}
         </div>
       )}
 
