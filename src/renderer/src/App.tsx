@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Sparkles, GitBranch, Paperclip } from 'lucide-react'
 
-import { AutocompleteItem, AppSettings, WindowState } from '../../shared/types'
+import { AutocompleteItem, AppSettings, Project, WindowState } from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
 import { SettingsView } from './components/SettingsView'
@@ -45,6 +45,7 @@ function App(): React.JSX.Element {
     mode: 'floating',
     isMaximized: false
   })
+  const [projects, setProjects] = useState<Project[]>([])
 
   // 1. Providers hook
   const {
@@ -126,6 +127,136 @@ function App(): React.JSX.Element {
     string | null
   >(null)
 
+  useEffect(() => {
+    let disposed = false
+    window.api
+      .storeGet('projects')
+      .then((savedProjects) => {
+        if (!disposed) setProjects(savedProjects || [])
+      })
+      .catch((err) => console.warn('Failed to load projects:', err))
+    return () => {
+      disposed = true
+    }
+  }, [])
+
+  const persistProjects = useCallback(async (nextProjects: Project[]): Promise<void> => {
+    setProjects(nextProjects)
+    await window.api.storeSet('projects', nextProjects)
+  }, [])
+
+  const normalizeProjectPath = useCallback((projectPath: string): string => {
+    const normalized = projectPath.replace(/\\/g, '/').replace(/\/+$/, '')
+    return normalized.toLowerCase()
+  }, [])
+
+  const activeProject = useMemo(() => {
+    if (!activeSession?.projectId) return null
+    return projects.find((project) => project.id === activeSession.projectId) || null
+  }, [activeSession?.projectId, projects])
+
+  const projectSessionCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const session of sessions) {
+      if (!session.projectId) continue
+      counts.set(session.projectId, (counts.get(session.projectId) || 0) + 1)
+    }
+    return counts
+  }, [sessions])
+
+  const openProject = useCallback(
+    async (projectId: string): Promise<void> => {
+      const projectSessions = sessions
+        .filter((session) => session.projectId === projectId)
+        .sort((a, b) => {
+          const aTime = a.lastActiveTime || Number(a.id)
+          const bTime = b.lastActiveTime || Number(b.id)
+          return bTime - aTime
+        })
+
+      setSessionFamilyRootId(null)
+      setDismissedSessionFamilyViewForId(null)
+      if (projectSessions[0]) {
+        setActiveSessionId(projectSessions[0].id)
+      } else {
+        await handleNewSession({ projectId })
+      }
+    },
+    [handleNewSession, sessions, setActiveSessionId]
+  )
+
+  const openFreeConversations = useCallback(async (): Promise<void> => {
+    const freeSessions = sessions
+      .filter((session) => !session.projectId)
+      .sort((a, b) => {
+        const aTime = a.lastActiveTime || Number(a.id)
+        const bTime = b.lastActiveTime || Number(b.id)
+        return bTime - aTime
+      })
+
+    setSessionFamilyRootId(null)
+    setDismissedSessionFamilyViewForId(null)
+    if (freeSessions[0]) {
+      setActiveSessionId(freeSessions[0].id)
+    } else {
+      await handleNewSession()
+    }
+  }, [handleNewSession, sessions, setActiveSessionId])
+
+  const handleAddProject = useCallback(async (): Promise<void> => {
+    const selected = await window.api.selectProjectDirectory()
+    if (!selected) return
+
+    const existing = projects.find(
+      (project) => normalizeProjectPath(project.path) === normalizeProjectPath(selected.path)
+    )
+    if (existing) {
+      await openProject(existing.id)
+      return
+    }
+
+    const now = Date.now()
+    const project: Project = {
+      id: `project-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      name:
+        selected.name ||
+        selected.path.replace(/\\/g, '/').split('/').filter(Boolean).pop() ||
+        'Project',
+      path: selected.path,
+      createdAt: now,
+      updatedAt: now
+    }
+    const nextProjects = [project, ...projects]
+    await persistProjects(nextProjects)
+    await handleNewSession({ projectId: project.id })
+    setSessionFamilyRootId(null)
+    setDismissedSessionFamilyViewForId(null)
+  }, [handleNewSession, normalizeProjectPath, openProject, persistProjects, projects])
+
+  const handleDeleteProject = useCallback(
+    async (projectId: string): Promise<void> => {
+      const project = projects.find((item) => item.id === projectId)
+      if (!project) return
+      const relatedCount = sessions.filter((session) => session.projectId === projectId).length
+      const confirmed = window.confirm(
+        relatedCount > 0
+          ? `移除项目「${project.name}」？磁盘文件不会被删除，${relatedCount} 个对话会保留为自由对话。`
+          : `移除项目「${project.name}」？磁盘文件不会被删除。`
+      )
+      if (!confirmed) return
+
+      const nextProjects = projects.filter((item) => item.id !== projectId)
+      const nextSessions = sessions.map((session) =>
+        session.projectId === projectId ? { ...session, projectId: undefined } : session
+      )
+      await persistProjects(nextProjects)
+      setSessions(nextSessions)
+      sessionsRef.current = nextSessions
+      await window.api.storeSet('sessions', nextSessions)
+    },
+    [persistProjects, projects, sessions, sessionsRef, setSessions]
+  )
+
   // Refs for scrolling and textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -172,6 +303,7 @@ function App(): React.JSX.Element {
     setActiveSessionId,
     activeSessionId,
     sessionsRef,
+    projects,
     apiKey,
     apiUrl,
     selectedModel,
@@ -478,7 +610,7 @@ function App(): React.JSX.Element {
       if (item.cmd === 'new') {
         setSessionFamilyRootId(null)
         setDismissedSessionFamilyViewForId(null)
-        await handleNewSession()
+        await handleNewSession({ projectId: activeProject?.id })
       } else if (item.cmd === 'clear') {
         await handleClearCurrentSession()
       } else if (item.cmd === 'settings') {
@@ -653,12 +785,15 @@ function App(): React.JSX.Element {
     const bTime = b.lastActiveTime || Number(b.id)
     return bTime - aTime
   })
+  const scopedOrderedSessions = activeProject
+    ? orderedSessions.filter((session) => session.projectId === activeProject.id)
+    : orderedSessions.filter((session) => !session.projectId)
   const visibleSessionEntries = visibleSessionFamilyInfo
     ? visibleSessionFamilyInfo.members.map((familyMember) => ({
         session: familyMember.session,
         familyMember
       }))
-    : orderedSessions.map((session) => ({ session, familyMember: null }))
+    : scopedOrderedSessions.map((session) => ({ session, familyMember: null }))
   const autocompleteGroups = groupAutocompleteItems(autocompleteItems)
   const activeBranchInfo = getBranchDisplayInfo(activeSession?.branchOf, sessions, '源会话')
   const branchChildIndex = buildBranchChildIndex(sessions)
@@ -756,6 +891,9 @@ function App(): React.JSX.Element {
         <div className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
           <SessionSidebar
             sessions={sessions}
+            projects={projects}
+            activeProjectId={activeProject?.id || null}
+            projectSessionCounts={projectSessionCounts}
             activeSessionId={activeSessionId}
             isSidebarCollapsed={isSidebarCollapsed}
             setIsSidebarCollapsed={setIsSidebarCollapsed}
@@ -764,8 +902,12 @@ function App(): React.JSX.Element {
             isGenerating={isGenerating}
             activeProviderName={activeProviderName}
             activeModelName={activeModelName}
+            onAddProject={handleAddProject}
+            onOpenProject={(projectId) => void openProject(projectId)}
+            onOpenFreeConversations={() => void openFreeConversations()}
+            onDeleteProject={(projectId) => void handleDeleteProject(projectId)}
             exitSessionFamilyView={exitSessionFamilyView}
-            handleNewSession={handleNewSession}
+            handleNewSession={() => handleNewSession({ projectId: activeProject?.id })}
             handleDeleteSession={handleDeleteSession}
             openSession={openSession}
             setSessionFamilyRootId={setSessionFamilyRootId}
@@ -782,6 +924,11 @@ function App(): React.JSX.Element {
                 </div>
                 <div className="conversation-title-meta">
                   <span>{activeProviderName}</span>
+                  {activeProject && (
+                    <span className="conversation-project-context" title={activeProject.path}>
+                      {activeProject.name} · {activeProject.path}
+                    </span>
+                  )}
                   {activeBranchInfo && (
                     <button
                       type="button"

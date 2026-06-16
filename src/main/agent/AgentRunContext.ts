@@ -38,6 +38,8 @@ export class AgentRunContext {
   readonly executedCalls: Set<string>
   readonly toolScope: Set<string> | 'all'
   readonly permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
+  readonly projectRoot?: string
+  readonly projectName?: string
   readonly approvedCommandPrefixes: string[] = []
   readonly approvedTools: string[] = []
   readonly tasks: TaskItem[] = []
@@ -66,7 +68,9 @@ export class AgentRunContext {
     permissionManager: PermissionManager,
     actionLog: ActionLog,
     permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' },
-    sessionId?: string
+    sessionId?: string,
+    projectRoot?: string,
+    projectName?: string
   ) {
     this.reqId = reqId
     this.sessionId = sessionId
@@ -75,6 +79,8 @@ export class AgentRunContext {
     this.executedCalls = new Set()
     this.toolScope = toolScope
     this.permissionPolicy = permissionPolicy
+    this.projectRoot = projectRoot
+    this.projectName = projectName
     this.permissions = permissionManager
     this.actionLog = actionLog
 
@@ -240,7 +246,9 @@ export function createRun(
   toolScope: Set<string> | 'all',
   actionLog: ActionLog,
   permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' },
-  sessionId?: string
+  sessionId?: string,
+  projectRoot?: string,
+  projectName?: string
 ): AgentRunContext {
   const ctx = new AgentRunContext(
     reqId,
@@ -249,7 +257,9 @@ export function createRun(
     globalPermissionManager,
     actionLog,
     permissionPolicy,
-    sessionId
+    sessionId,
+    projectRoot,
+    projectName
   )
   activeRuns.set(reqId, ctx)
   return ctx

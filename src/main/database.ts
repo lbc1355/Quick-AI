@@ -9,7 +9,8 @@ import {
   Skill,
   AppSettings,
   ApiProvider,
-  SessionResourceChunk
+  SessionResourceChunk,
+  Project
 } from '../shared/types'
 
 let db: Database.Database | null = null
@@ -61,7 +62,16 @@ function createSchema(database: Database.Database): void {
       id             TEXT PRIMARY KEY,
       title          TEXT NOT NULL DEFAULT '',
       lastActiveTime INTEGER NOT NULL DEFAULT 0,
+      projectId      TEXT REFERENCES projects(id) ON DELETE SET NULL,
       branchOf       TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id        TEXT PRIMARY KEY,
+      name      TEXT NOT NULL,
+      path      TEXT NOT NULL UNIQUE,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS messages (
@@ -151,6 +161,7 @@ function createSchema(database: Database.Database): void {
   // IF NOT EXISTS never alters an existing table, so older DBs are missing these and would
   // silently drop the data on save (e.g. branch/fork metadata vanishing after a restart).
   ensureColumn(database, 'sessions', 'branchOf', 'TEXT')
+  ensureColumn(database, 'sessions', 'projectId', 'TEXT REFERENCES projects(id) ON DELETE SET NULL')
   ensureColumn(database, 'messages', 'forkedFrom', 'TEXT')
   ensureColumn(database, 'messages', 'isBranchFork', 'INTEGER NOT NULL DEFAULT 0')
   ensureColumn(database, 'messages', 'agentRunIds', "TEXT DEFAULT '[]'")
@@ -483,6 +494,50 @@ export function saveSettings(settings: AppSettings): void {
   persist(settings)
 }
 
+// Projects
+
+export function loadProjects(): Project[] {
+  const database = getDb()
+  const rows = database
+    .prepare('SELECT id, name, path, createdAt, updatedAt FROM projects ORDER BY updatedAt DESC')
+    .all() as Project[]
+  return rows
+}
+
+export function saveProjects(projects: Project[]): void {
+  const database = getDb()
+  const insertProject = database.prepare(
+    `INSERT INTO projects (id, name, path, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       path = excluded.path,
+       createdAt = excluded.createdAt,
+       updatedAt = excluded.updatedAt`
+  )
+  const deleteProject = database.prepare('DELETE FROM projects WHERE id = ?')
+
+  const persist = database.transaction((projectList: Project[]) => {
+    const nextIds = new Set(projectList.map((project) => project.id))
+    const existing = database.prepare('SELECT id FROM projects').all() as Array<{ id: string }>
+    for (const project of projectList) {
+      insertProject.run(
+        project.id,
+        project.name,
+        project.path,
+        project.createdAt,
+        project.updatedAt
+      )
+    }
+    for (const row of existing) {
+      if (!nextIds.has(row.id)) {
+        deleteProject.run(row.id)
+      }
+    }
+  })
+  persist(projects)
+}
+
 // Sessions
 
 export function loadSessions(): Session[] {
@@ -490,12 +545,13 @@ export function loadSessions(): Session[] {
 
   const sessionRows = database
     .prepare(
-      'SELECT id, title, lastActiveTime, branchOf FROM sessions ORDER BY lastActiveTime DESC'
+      'SELECT id, title, lastActiveTime, projectId, branchOf FROM sessions ORDER BY lastActiveTime DESC'
     )
     .all() as Array<{
     id: string
     title: string
     lastActiveTime: number
+    projectId: string | null
     branchOf: string | null
   }>
 
@@ -575,6 +631,7 @@ export function loadSessions(): Session[] {
     id: s.id,
     title: s.title,
     lastActiveTime: s.lastActiveTime || undefined,
+    projectId: s.projectId || undefined,
     branchOf: parseBranchRef(s.branchOf),
     messages: messagesBySession.get(s.id) || []
   }))
@@ -621,7 +678,7 @@ export function saveSessions(sessions: Session[]): void {
 
   const deleteSessions = database.prepare('DELETE FROM sessions')
   const insertSession = database.prepare(
-    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, branchOf) VALUES (?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, projectId, branchOf) VALUES (?, ?, ?, ?, ?)'
   )
   const insertMessage = database.prepare(
     `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, createdAt)
@@ -643,6 +700,7 @@ export function saveSessions(sessions: Session[]): void {
         session.id,
         session.title,
         session.lastActiveTime || 0,
+        session.projectId || null,
         session.branchOf ? JSON.stringify(session.branchOf) : null
       )
 
@@ -970,9 +1028,7 @@ export function pruneResourceChunks(resourceId: string, maxTextChars: number): v
   // Single batched DELETE inside a transaction instead of one round-trip per chunk.
   const placeholders = idsToDelete.map(() => '?').join(', ')
   database
-    .prepare(
-      `DELETE FROM resource_chunks WHERE resourceId = ? AND id IN (${placeholders})`
-    )
+    .prepare(`DELETE FROM resource_chunks WHERE resourceId = ? AND id IN (${placeholders})`)
     .run(resourceId, ...idsToDelete)
 }
 

@@ -3,7 +3,9 @@ import {
   saveSettings,
   loadSessions,
   saveSessions,
-  getDb
+  getDb,
+  loadProjects,
+  saveProjects
 } from './database'
 import { StorageSchema } from '../shared/types'
 import { loadSkillsFromFolders, saveSkillsToFolders } from './skillManager'
@@ -27,6 +29,8 @@ export class FileStore {
         return loadSessions() as StorageSchema[K]
       case 'skills':
         return loadSkillsFromFolders() as StorageSchema[K]
+      case 'projects':
+        return loadProjects() as StorageSchema[K]
       default:
         throw new Error(`Unknown store key: ${key}`)
     }
@@ -45,6 +49,9 @@ export class FileStore {
       case 'skills':
         saveSkillsToFolders(val as StorageSchema['skills'])
         break
+      case 'projects':
+        saveProjects(val as StorageSchema['projects'])
+        break
       default:
         throw new Error(`Unknown store key: ${key}`)
     }
@@ -54,4 +61,3 @@ export class FileStore {
     return getDb().name
   }
 }
-

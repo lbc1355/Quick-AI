@@ -1,24 +1,123 @@
-import { resolve, relative, join, dirname, basename } from 'path'
+import { resolve, relative, join, dirname, basename, isAbsolute } from 'path'
 import { promises as fs } from 'fs'
 import { ToolArgs } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
-import { pathEscapesWorkspace } from '../agent/commandSafety'
 import { getRun } from '../agent/AgentRunContext'
 import {
   getWorkspaceRoot,
-  isPathInWorkspace,
   isSensitiveFile,
   escapeRegExp,
   SEARCH_IGNORE_EXTENSIONS
 } from './helpers'
 
+type FileRootKind = 'workspace' | 'project'
+type FileRootArg = FileRootKind | undefined
+
+const ROOT_PARAMETER = {
+  type: 'string',
+  enum: ['workspace', 'project'],
+  description:
+    'Optional root selector. In project conversations, relative paths default to project; use "workspace" for QuickAI scratch files.'
+}
+
+interface SafePath {
+  root: string
+  rootKind: FileRootKind
+  resolvedPath: string
+  realPath: string
+  relPath: string
+}
+
+function getRootArg(args: ToolArgs): FileRootArg {
+  return args.root === 'workspace' || args.root === 'project' ? args.root : undefined
+}
+
+function getNamedRootArg(args: ToolArgs, key: string): FileRootArg {
+  return args[key] === 'workspace' || args[key] === 'project'
+    ? (args[key] as FileRootKind)
+    : undefined
+}
+
+function getProjectRoot(ctx: ToolExecutionContext): string | undefined {
+  return ctx.reqId ? getRun(ctx.reqId)?.projectRoot : undefined
+}
+
+function normalizeComparablePath(filePath: string): string {
+  const normalized = resolve(filePath).replace(/\\/g, '/')
+  const trimmed = normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized
+  return process.platform === 'win32' ? trimmed.toLowerCase() : trimmed
+}
+
+function isPathInsideRoot(filePath: string, root: string): boolean {
+  const target = normalizeComparablePath(filePath)
+  const base = normalizeComparablePath(root)
+  if (target === base) return true
+  const rel = relative(base, target)
+  return !!rel && !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+function chooseBaseRoot(
+  inputPath: string,
+  ctx: ToolExecutionContext,
+  requestedRoot?: FileRootArg
+): { root: string; rootKind: FileRootKind } {
+  const workspaceRoot = getWorkspaceRoot()
+  const projectRoot = getProjectRoot(ctx)
+  if (requestedRoot === 'project' && !projectRoot) {
+    throw new Error('No project root is attached to this conversation.')
+  }
+  if (requestedRoot === 'workspace') {
+    return { root: workspaceRoot, rootKind: 'workspace' }
+  }
+  if (!isAbsolute(inputPath) && projectRoot) {
+    return { root: projectRoot, rootKind: 'project' }
+  }
+  return { root: workspaceRoot, rootKind: 'workspace' }
+}
+
+function getAccessibleRootForResolvedPath(
+  resolvedPath: string,
+  ctx: ToolExecutionContext,
+  requestedRoot?: FileRootArg
+): { root: string; rootKind: FileRootKind } {
+  const workspaceRoot = getWorkspaceRoot()
+  const projectRoot = getProjectRoot(ctx)
+
+  if (requestedRoot === 'workspace') {
+    if (isPathInsideRoot(resolvedPath, workspaceRoot)) {
+      return { root: workspaceRoot, rootKind: 'workspace' }
+    }
+    throw new Error('Security Violation: Path is outside the global workspace.')
+  }
+
+  if (requestedRoot === 'project') {
+    if (!projectRoot) throw new Error('No project root is attached to this conversation.')
+    if (isPathInsideRoot(resolvedPath, projectRoot)) {
+      return { root: projectRoot, rootKind: 'project' }
+    }
+    throw new Error('Security Violation: Path is outside the current project root.')
+  }
+
+  if (projectRoot && isPathInsideRoot(resolvedPath, projectRoot)) {
+    return { root: projectRoot, rootKind: 'project' }
+  }
+  if (isPathInsideRoot(resolvedPath, workspaceRoot)) {
+    return { root: workspaceRoot, rootKind: 'workspace' }
+  }
+  throw new Error(
+    'Security Violation: Path is outside the global workspace and current project root.'
+  )
+}
+
 async function resolveExistingSafePath(
   inputPath: string,
   ctx: ToolExecutionContext,
-  label = 'Path'
-): Promise<{ root: string; resolvedPath: string; realPath: string; relPath: string }> {
-  const root = getWorkspaceRoot()
-  const resolvedPath = resolve(root, inputPath)
+  label = 'Path',
+  requestedRoot?: FileRootArg
+): Promise<SafePath> {
+  const base = chooseBaseRoot(inputPath, ctx, requestedRoot)
+  const resolvedPath = isAbsolute(inputPath) ? resolve(inputPath) : resolve(base.root, inputPath)
+  let rootInfo = getAccessibleRootForResolvedPath(resolvedPath, ctx, requestedRoot)
   let realPath: string
   try {
     realPath = await fs.realpath(resolvedPath)
@@ -26,31 +125,29 @@ async function resolveExistingSafePath(
     throw new Error(`${label} does not exist: ${inputPath}`)
   }
 
-  const inputEscapes = pathEscapesWorkspace(inputPath)
-  const hasRunCtx = !!(ctx.reqId && getRun(ctx.reqId))
-  if (!isPathInWorkspace(realPath) && (!inputEscapes || !hasRunCtx)) {
-    throw new Error(`Security Violation: ${label} is outside the workspace directory.`)
-  }
+  rootInfo = getAccessibleRootForResolvedPath(realPath, ctx, requestedRoot)
 
   if (isSensitiveFile(realPath)) {
     throw new Error(`Security Violation: ${label} targets a sensitive file.`)
   }
 
   return {
-    root,
+    root: rootInfo.root,
+    rootKind: rootInfo.rootKind,
     resolvedPath,
     realPath,
-    relPath: relative(root, realPath).replace(/\\/g, '/')
+    relPath: relative(rootInfo.root, realPath).replace(/\\/g, '/')
   }
 }
 
 async function resolveTargetSafePath(
   inputPath: string,
   ctx: ToolExecutionContext,
-  label = 'Path'
-): Promise<{ root: string; resolvedPath: string; realPath: string; relPath: string }> {
-  const root = getWorkspaceRoot()
-  const resolvedPath = resolve(root, inputPath)
+  label = 'Path',
+  requestedRoot?: FileRootArg
+): Promise<SafePath> {
+  const base = chooseBaseRoot(inputPath, ctx, requestedRoot)
+  const resolvedPath = isAbsolute(inputPath) ? resolve(inputPath) : resolve(base.root, inputPath)
 
   let realPath = resolvedPath
   try {
@@ -64,38 +161,29 @@ async function resolveTargetSafePath(
     }
   }
 
-  const inputEscapes = pathEscapesWorkspace(inputPath)
-  const hasRunCtx = !!(ctx.reqId && getRun(ctx.reqId))
-  if (!isPathInWorkspace(realPath) && (!inputEscapes || !hasRunCtx)) {
-    throw new Error(`Security Violation: ${label} is outside the workspace directory.`)
-  }
+  const rootInfo = getAccessibleRootForResolvedPath(realPath, ctx, requestedRoot)
 
   if (isSensitiveFile(realPath)) {
     throw new Error(`Security Violation: ${label} targets a sensitive file.`)
   }
 
   return {
-    root,
+    root: rootInfo.root,
+    rootKind: rootInfo.rootKind,
     resolvedPath,
     realPath,
-    relPath: relative(root, realPath).replace(/\\/g, '/')
+    relPath: relative(rootInfo.root, realPath).replace(/\\/g, '/')
   }
 }
 
 function assertNotProtectedWorkspacePath(root: string, realPath: string, label: string): void {
   const relPath = relative(root, realPath).replace(/\\/g, '/')
   if (!relPath || relPath === '.') {
-    throw new Error(`${label} cannot be the workspace root.`)
+    throw new Error(`${label} cannot be the selected root.`)
   }
   if (relPath === '.git' || relPath.startsWith('.git/')) {
     throw new Error(`${label} cannot target the .git directory.`)
   }
-}
-
-function normalizeComparablePath(filePath: string): string {
-  const normalized = resolve(filePath).replace(/\\/g, '/')
-  const trimmed = normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized
-  return process.platform === 'win32' ? trimmed.toLowerCase() : trimmed
 }
 
 export const fileTools: Record<string, ToolDefinition> = {
@@ -103,7 +191,7 @@ export const fileTools: Record<string, ToolDefinition> = {
     name: 'file_read',
     title: 'Read File',
     description:
-      'Reads the content of a local file. Files inside the workspace are read directly, while files outside the workspace require user approval.',
+      'Reads the content of a local file inside the global workspace or current project root. In project conversations, relative paths default to the project root.',
     tags: ['file', 'read', 'local', '文件', '读取', '内容', '读文件'],
     category: 'file',
     risk: 'low',
@@ -113,6 +201,7 @@ export const fileTools: Record<string, ToolDefinition> = {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'The relative or absolute path to the file.' },
+        root: ROOT_PARAMETER,
         offset: {
           type: 'number',
           description: 'The 1-indexed line number to start reading from (default: 1).'
@@ -125,34 +214,15 @@ export const fileTools: Record<string, ToolDefinition> = {
       required: ['path']
     },
     execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      void ctx
       const filePath = args.path
       if (typeof filePath !== 'string' || !filePath) {
         throw new Error('Missing or invalid path parameter')
       }
 
-      const root = getWorkspaceRoot()
-      const resolvedPath = resolve(root, filePath)
-
-      let realPath = resolvedPath
-      try {
-        realPath = await fs.realpath(resolvedPath)
-      } catch {
-        // Fallback to resolvedPath to allow containment checks on non-existent paths
-      }
-
-      const inputEscapes = pathEscapesWorkspace(filePath)
-      const hasRunCtx = !!(ctx.reqId && getRun(ctx.reqId))
-      if (!isPathInWorkspace(realPath) && (!inputEscapes || !hasRunCtx)) {
-        throw new Error(`Security Violation: Path is outside the workspace directory.`)
-      }
-
-      if (isSensitiveFile(realPath)) {
-        throw new Error(`Security Violation: Reading sensitive file is blocked.`)
-      }
+      const target = await resolveExistingSafePath(filePath, ctx, 'Path', getRootArg(args))
 
       try {
-        const stats = await fs.stat(realPath)
+        const stats = await fs.stat(target.realPath)
         if (stats.isDirectory()) {
           throw new Error('Path is a directory, not a file.')
         }
@@ -170,7 +240,7 @@ export const fileTools: Record<string, ToolDefinition> = {
 
       let content = ''
       try {
-        content = await fs.readFile(realPath, 'utf-8')
+        content = await fs.readFile(target.realPath, 'utf-8')
       } catch (err) {
         const error = err as Error
         throw new Error(`Failed to read file: ${error.message}`)
@@ -186,15 +256,14 @@ export const fileTools: Record<string, ToolDefinition> = {
 
       const totalLines = lines.length
       const isTruncated = offset - 1 + maxLines < totalLines
-      const relPath = relative(root, realPath).replace(/\\/g, '/')
 
       // Mark the file as observed so surgical edit tools (file_edit, multi_edit) can verify the
       // model has seen the content before mutating it. A partial read still counts as "seen".
-      if (ctx.reqId) getRun(ctx.reqId)?.markFileSeen(realPath)
+      if (ctx.reqId) getRun(ctx.reqId)?.markFileSeen(target.realPath)
 
       const resultForModel = [
-        `Workspace Root: ${root}`,
-        `File: ${relPath}`,
+        `Root (${target.rootKind}): ${target.root}`,
+        `File: ${target.relPath}`,
         `Lines: ${offset} to ${offset - 1 + slicedLines.length} of ${totalLines}`,
         isTruncated ? 'Note: file content was truncated.' : '',
         `Content:\n${resultText}`
@@ -202,14 +271,14 @@ export const fileTools: Record<string, ToolDefinition> = {
         .filter(Boolean)
         .join('\n\n')
 
-      const fileUrl = `file:///${resolvedPath.replace(/\\/g, '/')}`
+      const fileUrl = `file:///${target.realPath.replace(/\\/g, '/')}`
 
       return {
         resultForModel,
         resultForUi: {
-          title: `Read File: ${relPath}`,
+          title: `Read File: ${target.relPath}`,
           url: fileUrl,
-          summary: `Read lines ${offset}-${offset - 1 + slicedLines.length} of ${totalLines} in workspace ${root}`
+          summary: `Read lines ${offset}-${offset - 1 + slicedLines.length} of ${totalLines} in ${target.rootKind} ${target.root}`
         }
       }
     }
@@ -218,7 +287,7 @@ export const fileTools: Record<string, ToolDefinition> = {
     name: 'workspace_search',
     title: 'Workspace Search',
     description:
-      'Search for text matches within files in the workspace root directory (skipping build/dependency folders).',
+      'Search for text matches within files in the global workspace or current project root (skipping build/dependency folders). In project conversations, relative paths default to the project root.',
     tags: ['file', 'search', 'grep', 'local', 'find', '搜索', '查找', '全局', '工作区', '内容'],
     dependencies: ['file_read'],
     category: 'file',
@@ -229,6 +298,7 @@ export const fileTools: Record<string, ToolDefinition> = {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'The text query to search for.' },
+        root: ROOT_PARAMETER,
         glob: {
           type: 'string',
           description: 'Optional glob pattern to filter files (e.g., "*.ts" or "src/**/*.tsx").'
@@ -255,8 +325,9 @@ export const fileTools: Record<string, ToolDefinition> = {
       const maxResults = typeof args.maxResults === 'number' ? Math.max(1, args.maxResults) : 100
       const limit = Math.min(maxResults, 500)
 
-      const root = getWorkspaceRoot()
-      console.log(`[workspace_search] Workspace root is: ${root}`)
+      const rootInfo = chooseBaseRoot('.', ctx, getRootArg(args))
+      const root = rootInfo.root
+      console.log(`[workspace_search] Search root is: ${root}`)
 
       const MAX_FILES_SCANNED = 5000
       const MAX_DIRS_SCANNED = 1000
@@ -337,7 +408,7 @@ export const fileTools: Record<string, ToolDefinition> = {
               }
             }
 
-            if (!isPathInWorkspace(resPath) || isSensitiveFile(resPath)) {
+            if (!isPathInsideRoot(resPath, root) || isSensitiveFile(resPath)) {
               continue
             }
 
@@ -391,7 +462,7 @@ export const fileTools: Record<string, ToolDefinition> = {
       }
 
       let resultForModel = [
-        `Workspace Root: ${root}`,
+        `Root (${rootInfo.rootKind}): ${root}`,
         matches.length > 0
           ? matches
               .map((m) => {
@@ -451,7 +522,7 @@ export const fileTools: Record<string, ToolDefinition> = {
     name: 'workspace_list_files',
     title: 'List Workspace Files',
     description:
-      'Lists files matching a glob wildcard pattern within the workspace root directory.',
+      'Lists files matching a glob wildcard pattern within the global workspace or current project root. In project conversations, relative paths default to the project root.',
     tags: [
       'file',
       'list',
@@ -481,6 +552,7 @@ export const fileTools: Record<string, ToolDefinition> = {
           type: 'string',
           description: 'The glob pattern to filter files (e.g., "**/*.md" or "src/**/*.ts").'
         },
+        root: ROOT_PARAMETER,
         maxResults: {
           type: 'number',
           description: 'Maximum number of file paths to return (default: 100).'
@@ -497,8 +569,9 @@ export const fileTools: Record<string, ToolDefinition> = {
       const maxResults = typeof args.maxResults === 'number' ? Math.max(1, args.maxResults) : 100
       const limit = Math.min(maxResults, 1000)
 
-      const root = getWorkspaceRoot()
-      console.log(`[workspace_list_files] Workspace root is: ${root}`)
+      const rootInfo = chooseBaseRoot('.', ctx, getRootArg(args))
+      const root = rootInfo.root
+      console.log(`[workspace_list_files] List root is: ${root}`)
 
       const MAX_FILES_SCANNED = 5000
       const MAX_DIRS_SCANNED = 1000
@@ -569,7 +642,7 @@ export const fileTools: Record<string, ToolDefinition> = {
               continue
             }
 
-            if (!isPathInWorkspace(resPath) || isSensitiveFile(resPath)) {
+            if (!isPathInsideRoot(resPath, root) || isSensitiveFile(resPath)) {
               continue
             }
 
@@ -595,7 +668,7 @@ export const fileTools: Record<string, ToolDefinition> = {
       }
 
       let resultForModel = [
-        `Workspace Root: ${root}`,
+        `Root (${rootInfo.rootKind}): ${root}`,
         matches.length > 0
           ? matches
               .map(
@@ -662,6 +735,7 @@ export const fileTools: Record<string, ToolDefinition> = {
           type: 'string',
           description: 'The relative or absolute path to write the file to.'
         },
+        root: ROOT_PARAMETER,
         content: {
           type: 'string',
           description: 'The file content to write.'
@@ -681,7 +755,6 @@ export const fileTools: Record<string, ToolDefinition> = {
       required: ['path', 'content']
     },
     execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      void ctx
       const filePath = args.path
       const content = args.content
       const mode = (args.mode as string) || 'create'
@@ -694,31 +767,8 @@ export const fileTools: Record<string, ToolDefinition> = {
         throw new Error('Missing or invalid content parameter')
       }
 
-      const root = getWorkspaceRoot()
-      console.log(`[file_write] Workspace root is: ${root}`)
-      const resolvedPath = resolve(root, filePath)
-
-      let realPath = resolvedPath
-      try {
-        realPath = await fs.realpath(resolvedPath)
-      } catch {
-        try {
-          const parentDir = await fs.realpath(dirname(resolvedPath))
-          realPath = join(parentDir, basename(resolvedPath))
-        } catch {
-          // Fallback to containment checks on resolvedPath if parent does not exist either
-        }
-      }
-
-      const inputEscapes = pathEscapesWorkspace(filePath)
-      const hasRunCtx = !!(ctx.reqId && getRun(ctx.reqId))
-      if (!isPathInWorkspace(realPath) && (!inputEscapes || !hasRunCtx)) {
-        throw new Error(`Security Violation: Path is outside the workspace directory.`)
-      }
-
-      if (isSensitiveFile(realPath)) {
-        throw new Error(`Security Violation: Writing to sensitive file is blocked.`)
-      }
+      const target = await resolveTargetSafePath(filePath, ctx, 'Path', getRootArg(args))
+      console.log(`[file_write] ${target.rootKind} root is: ${target.root}`)
 
       const MAX_WRITE_BYTES = 2 * 1024 * 1024
       const contentBuffer = Buffer.from(content, 'utf-8')
@@ -730,7 +780,7 @@ export const fileTools: Record<string, ToolDefinition> = {
 
       let exists = false
       try {
-        const stats = await fs.stat(realPath)
+        const stats = await fs.stat(target.realPath)
         exists = true
         if (stats.isDirectory()) {
           throw new Error('Target path is a directory, not a file.')
@@ -747,29 +797,28 @@ export const fileTools: Record<string, ToolDefinition> = {
 
       try {
         if (createDirs) {
-          const parent = dirname(realPath)
+          const parent = dirname(target.realPath)
           await fs.mkdir(parent, { recursive: true })
         }
-        await fs.writeFile(realPath, content, 'utf-8')
+        await fs.writeFile(target.realPath, content, 'utf-8')
       } catch (err) {
         const error = err as Error
         throw new Error(`Failed to write file: ${error.message}`)
       }
 
-      const relPath = relative(root, realPath).replace(/\\/g, '/')
-      const fileUrl = `file:///${resolvedPath.replace(/\\/g, '/')}`
+      const fileUrl = `file:///${target.realPath.replace(/\\/g, '/')}`
 
       // Writing establishes known content, so subsequent surgical edits in this run are allowed.
-      if (ctx.reqId) getRun(ctx.reqId)?.markFileSeen(realPath)
+      if (ctx.reqId) getRun(ctx.reqId)?.markFileSeen(target.realPath)
 
-      const resultForModel = `Successfully wrote file: ${relPath}\nSize: ${contentBuffer.length} bytes\nPath: ${realPath}`
+      const resultForModel = `Successfully wrote file: ${target.relPath}\nRoot (${target.rootKind}): ${target.root}\nSize: ${contentBuffer.length} bytes\nPath: ${target.realPath}`
 
       return {
         resultForModel,
         resultForUi: {
-          title: `Write File: ${relPath}`,
+          title: `Write File: ${target.relPath}`,
           url: fileUrl,
-          summary: `Wrote ${contentBuffer.length} bytes to ${relPath} (${exists ? 'overwrote' : 'created'}) in workspace ${root}`
+          summary: `Wrote ${contentBuffer.length} bytes to ${target.relPath} (${exists ? 'overwrote' : 'created'}) in ${target.rootKind} ${target.root}`
         }
       }
     }
@@ -803,6 +852,7 @@ export const fileTools: Record<string, ToolDefinition> = {
           type: 'string',
           description: 'The relative or absolute path to the file to edit.'
         },
+        root: ROOT_PARAMETER,
         old_string: {
           type: 'string',
           description:
@@ -821,7 +871,6 @@ export const fileTools: Record<string, ToolDefinition> = {
       required: ['path', 'old_string', 'new_string']
     },
     execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      void ctx
       const filePath = args.path
       const oldString = args.old_string
       const newString = args.new_string
@@ -843,27 +892,10 @@ export const fileTools: Record<string, ToolDefinition> = {
         throw new Error('old_string must not be empty')
       }
 
-      const root = getWorkspaceRoot()
-      const resolvedPath = resolve(root, filePath)
-
-      let realPath = resolvedPath
-      try {
-        realPath = await fs.realpath(resolvedPath)
-      } catch {
-        throw new Error('File does not exist. Use file_write to create a new file.')
-      }
-
-      const inputEscapes = pathEscapesWorkspace(filePath)
-      const hasRunCtx = !!(ctx.reqId && getRun(ctx.reqId))
-      if (!isPathInWorkspace(realPath) && (!inputEscapes || !hasRunCtx)) {
-        throw new Error('Security Violation: Path is outside the workspace directory.')
-      }
-      if (isSensitiveFile(realPath)) {
-        throw new Error('Security Violation: Editing sensitive file is blocked.')
-      }
+      const target = await resolveExistingSafePath(filePath, ctx, 'Path', getRootArg(args))
 
       const runCtx = ctx.reqId ? getRun(ctx.reqId) : undefined
-      if (runCtx && !runCtx.hasSeenFile(realPath)) {
+      if (runCtx && !runCtx.hasSeenFile(target.realPath)) {
         throw new Error(
           'You must read this file before editing it. Call file_read on this path first so the edit is based on its current content, then retry file_edit.'
         )
@@ -871,7 +903,7 @@ export const fileTools: Record<string, ToolDefinition> = {
 
       let content: string
       try {
-        content = await fs.readFile(realPath, 'utf-8')
+        content = await fs.readFile(target.realPath, 'utf-8')
       } catch (err) {
         throw new Error(`Failed to read file: ${(err as Error).message}`)
       }
@@ -931,22 +963,21 @@ export const fileTools: Record<string, ToolDefinition> = {
       }
 
       try {
-        await fs.writeFile(realPath, newContent, 'utf-8')
+        await fs.writeFile(target.realPath, newContent, 'utf-8')
       } catch (err) {
         throw new Error(`Failed to write file: ${(err as Error).message}`)
       }
 
       // Content is now known after the edit; keep the file marked as seen for follow-up edits.
-      runCtx?.markFileSeen(realPath)
+      runCtx?.markFileSeen(target.realPath)
 
-      const relPath = relative(root, realPath).replace(/\\/g, '/')
       const count = replaceAll ? occurrences.length : 1
 
       return {
-        resultForModel: `Successfully edited ${relPath}: replaced ${count} occurrence(s).`,
+        resultForModel: `Successfully edited ${target.relPath}: replaced ${count} occurrence(s).\nRoot (${target.rootKind}): ${target.root}`,
         resultForUi: {
-          title: `Edit File: ${relPath}`,
-          summary: `Replaced ${count} occurrence(s) in ${relPath}`
+          title: `Edit File: ${target.relPath}`,
+          summary: `Replaced ${count} occurrence(s) in ${target.relPath}`
         }
       }
     }
@@ -983,6 +1014,7 @@ export const fileTools: Record<string, ToolDefinition> = {
           type: 'string',
           description: 'The relative or absolute path to the file to edit.'
         },
+        root: ROOT_PARAMETER,
         edits: {
           type: 'array',
           description:
@@ -1036,27 +1068,10 @@ export const fileTools: Record<string, ToolDefinition> = {
         return { oldString, newString, replaceAll }
       })
 
-      const root = getWorkspaceRoot()
-      const resolvedPath = resolve(root, filePath)
-
-      let realPath = resolvedPath
-      try {
-        realPath = await fs.realpath(resolvedPath)
-      } catch {
-        throw new Error('File does not exist. Use file_write to create a new file.')
-      }
-
-      const inputEscapes = pathEscapesWorkspace(filePath)
-      const hasRunCtx = !!(ctx.reqId && getRun(ctx.reqId))
-      if (!isPathInWorkspace(realPath) && (!inputEscapes || !hasRunCtx)) {
-        throw new Error('Security Violation: Path is outside the workspace directory.')
-      }
-      if (isSensitiveFile(realPath)) {
-        throw new Error('Security Violation: Editing sensitive file is blocked.')
-      }
+      const target = await resolveExistingSafePath(filePath, ctx, 'Path', getRootArg(args))
 
       const runCtx = ctx.reqId ? getRun(ctx.reqId) : undefined
-      if (runCtx && !runCtx.hasSeenFile(realPath)) {
+      if (runCtx && !runCtx.hasSeenFile(target.realPath)) {
         throw new Error(
           'You must read this file before editing it. Call file_read on this path first so the edits are based on its current content, then retry multi_edit.'
         )
@@ -1064,7 +1079,7 @@ export const fileTools: Record<string, ToolDefinition> = {
 
       let content: string
       try {
-        content = await fs.readFile(realPath, 'utf-8')
+        content = await fs.readFile(target.realPath, 'utf-8')
       } catch (err) {
         throw new Error(`Failed to read file: ${(err as Error).message}`)
       }
@@ -1118,20 +1133,18 @@ export const fileTools: Record<string, ToolDefinition> = {
       }
 
       try {
-        await fs.writeFile(realPath, working, 'utf-8')
+        await fs.writeFile(target.realPath, working, 'utf-8')
       } catch (err) {
         throw new Error(`Failed to write file: ${(err as Error).message}`)
       }
 
-      runCtx?.markFileSeen(realPath)
-
-      const relPath = relative(root, realPath).replace(/\\/g, '/')
+      runCtx?.markFileSeen(target.realPath)
 
       return {
-        resultForModel: `Successfully applied ${edits.length} edit(s) to ${relPath}: ${totalReplacements} total replacement(s).`,
+        resultForModel: `Successfully applied ${edits.length} edit(s) to ${target.relPath}: ${totalReplacements} total replacement(s).\nRoot (${target.rootKind}): ${target.root}`,
         resultForUi: {
-          title: `Multi-Edit File: ${relPath}`,
-          summary: `Applied ${edits.length} edit(s) (${totalReplacements} replacement(s)) in ${relPath}`
+          title: `Multi-Edit File: ${target.relPath}`,
+          summary: `Applied ${edits.length} edit(s) (${totalReplacements} replacement(s)) in ${target.relPath}`
         }
       }
     }
@@ -1153,6 +1166,7 @@ export const fileTools: Record<string, ToolDefinition> = {
           type: 'string',
           description: 'Directory path to create, relative to the workspace or absolute.'
         },
+        root: ROOT_PARAMETER,
         recursive: {
           type: 'boolean',
           description: 'Whether to create parent directories as needed. Defaults to true.'
@@ -1167,7 +1181,7 @@ export const fileTools: Record<string, ToolDefinition> = {
       }
 
       const recursive = args.recursive !== false
-      const target = await resolveTargetSafePath(dirPath, ctx, 'Directory path')
+      const target = await resolveTargetSafePath(dirPath, ctx, 'Directory path', getRootArg(args))
       assertNotProtectedWorkspacePath(target.root, target.realPath, 'Directory path')
 
       try {
@@ -1203,10 +1217,13 @@ export const fileTools: Record<string, ToolDefinition> = {
           type: 'string',
           description: 'Source file path, relative to the workspace or absolute.'
         },
+        sourceRoot: ROOT_PARAMETER,
         destinationPath: {
           type: 'string',
           description: 'Destination file path, relative to the workspace or absolute.'
         },
+        destinationRoot: ROOT_PARAMETER,
+        root: ROOT_PARAMETER,
         overwrite: {
           type: 'boolean',
           description: 'Whether to overwrite an existing destination file. Defaults to false.'
@@ -1230,8 +1247,18 @@ export const fileTools: Record<string, ToolDefinition> = {
 
       const overwrite = args.overwrite === true
       const createDirs = args.createDirs !== false
-      const source = await resolveExistingSafePath(sourcePath, ctx, 'Source path')
-      const destination = await resolveTargetSafePath(destinationPath, ctx, 'Destination path')
+      const source = await resolveExistingSafePath(
+        sourcePath,
+        ctx,
+        'Source path',
+        getNamedRootArg(args, 'sourceRoot') || getRootArg(args)
+      )
+      const destination = await resolveTargetSafePath(
+        destinationPath,
+        ctx,
+        'Destination path',
+        getNamedRootArg(args, 'destinationRoot') || getRootArg(args)
+      )
       assertNotProtectedWorkspacePath(source.root, source.realPath, 'Source path')
       assertNotProtectedWorkspacePath(destination.root, destination.realPath, 'Destination path')
 
@@ -1289,10 +1316,13 @@ export const fileTools: Record<string, ToolDefinition> = {
           type: 'string',
           description: 'Source path to move, relative to the workspace or absolute.'
         },
+        sourceRoot: ROOT_PARAMETER,
         destinationPath: {
           type: 'string',
           description: 'Destination path, relative to the workspace or absolute.'
         },
+        destinationRoot: ROOT_PARAMETER,
+        root: ROOT_PARAMETER,
         overwrite: {
           type: 'boolean',
           description: 'Whether to overwrite an existing destination file. Defaults to false.'
@@ -1316,8 +1346,18 @@ export const fileTools: Record<string, ToolDefinition> = {
 
       const overwrite = args.overwrite === true
       const createDirs = args.createDirs !== false
-      const source = await resolveExistingSafePath(sourcePath, ctx, 'Source path')
-      const destination = await resolveTargetSafePath(destinationPath, ctx, 'Destination path')
+      const source = await resolveExistingSafePath(
+        sourcePath,
+        ctx,
+        'Source path',
+        getNamedRootArg(args, 'sourceRoot') || getRootArg(args)
+      )
+      const destination = await resolveTargetSafePath(
+        destinationPath,
+        ctx,
+        'Destination path',
+        getNamedRootArg(args, 'destinationRoot') || getRootArg(args)
+      )
       assertNotProtectedWorkspacePath(source.root, source.realPath, 'Source path')
       assertNotProtectedWorkspacePath(destination.root, destination.realPath, 'Destination path')
 
@@ -1382,6 +1422,7 @@ export const fileTools: Record<string, ToolDefinition> = {
           type: 'string',
           description: 'Path to delete, relative to the workspace or absolute.'
         },
+        root: ROOT_PARAMETER,
         recursive: {
           type: 'boolean',
           description: 'Required to delete directories. Defaults to false.'
@@ -1396,7 +1437,7 @@ export const fileTools: Record<string, ToolDefinition> = {
       }
 
       const recursive = args.recursive === true
-      const target = await resolveExistingSafePath(targetPath, ctx, 'Delete path')
+      const target = await resolveExistingSafePath(targetPath, ctx, 'Delete path', getRootArg(args))
       assertNotProtectedWorkspacePath(target.root, target.realPath, 'Delete path')
 
       const stats = await fs.stat(target.realPath)
@@ -1436,15 +1477,17 @@ export const fileTools: Record<string, ToolDefinition> = {
           type: 'string',
           description: 'The relative or absolute path to the first file.'
         },
+        root_a: ROOT_PARAMETER,
         path_b: {
           type: 'string',
           description: 'The relative or absolute path to the second file.'
-        }
+        },
+        root_b: ROOT_PARAMETER,
+        root: ROOT_PARAMETER
       },
       required: ['path_a', 'path_b']
     },
     execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      void ctx
       const filePathA = args.path_a
       const filePathB = args.path_b
 
@@ -1455,47 +1498,28 @@ export const fileTools: Record<string, ToolDefinition> = {
         throw new Error('Missing or invalid path_b parameter')
       }
 
-      const root = getWorkspaceRoot()
-      const resolvedPathA = resolve(root, filePathA)
-      const resolvedPathB = resolve(root, filePathB)
-
-      let realPathA = resolvedPathA
-      let realPathB = resolvedPathB
-      try {
-        realPathA = await fs.realpath(resolvedPathA)
-      } catch {
-        throw new Error(`File does not exist: ${filePathA}`)
-      }
-      try {
-        realPathB = await fs.realpath(resolvedPathB)
-      } catch {
-        throw new Error(`File does not exist: ${filePathB}`)
-      }
-
-      const inputEscapesA = pathEscapesWorkspace(filePathA)
-      const inputEscapesB = pathEscapesWorkspace(filePathB)
-      const hasRunCtx = !!(ctx.reqId && getRun(ctx.reqId))
-
-      if (!isPathInWorkspace(realPathA) && (!inputEscapesA || !hasRunCtx)) {
-        throw new Error('Security Violation: Path_A is outside the workspace directory.')
-      }
-      if (!isPathInWorkspace(realPathB) && (!inputEscapesB || !hasRunCtx)) {
-        throw new Error('Security Violation: Path_B is outside the workspace directory.')
-      }
-
-      if (isSensitiveFile(realPathA) || isSensitiveFile(realPathB)) {
-        throw new Error('Security Violation: Accessing sensitive files is blocked.')
-      }
+      const pathA = await resolveExistingSafePath(
+        filePathA,
+        ctx,
+        'Path_A',
+        getNamedRootArg(args, 'root_a') || getRootArg(args)
+      )
+      const pathB = await resolveExistingSafePath(
+        filePathB,
+        ctx,
+        'Path_B',
+        getNamedRootArg(args, 'root_b') || getRootArg(args)
+      )
 
       let contentA: string
       let contentB: string
       try {
-        contentA = await fs.readFile(realPathA, 'utf-8')
+        contentA = await fs.readFile(pathA.realPath, 'utf-8')
       } catch (err) {
         throw new Error(`Failed to read file A: ${(err as Error).message}`)
       }
       try {
-        contentB = await fs.readFile(realPathB, 'utf-8')
+        contentB = await fs.readFile(pathB.realPath, 'utf-8')
       } catch (err) {
         throw new Error(`Failed to read file B: ${(err as Error).message}`)
       }
@@ -1504,13 +1528,11 @@ export const fileTools: Record<string, ToolDefinition> = {
       const linesB = contentB.split(/\r?\n/)
 
       const diffResult = generateUnifiedDiff(linesA, linesB)
-      const relPathA = relative(root, realPathA).replace(/\\/g, '/')
-      const relPathB = relative(root, realPathB).replace(/\\/g, '/')
 
       return {
-        resultForModel: `Workspace Root: ${root}\nFile A: ${relPathA}\nFile B: ${relPathB}\n\nDiff:\n${diffResult}`,
+        resultForModel: `File A (${pathA.rootKind}): ${pathA.relPath}\nFile B (${pathB.rootKind}): ${pathB.relPath}\n\nDiff:\n${diffResult}`,
         resultForUi: {
-          title: `Compare Files: ${relPathA} vs ${relPathB}`,
+          title: `Compare Files: ${pathA.relPath} vs ${pathB.relPath}`,
           summary:
             diffResult === 'Files are identical.'
               ? 'Files are identical'

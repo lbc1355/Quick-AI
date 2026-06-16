@@ -88,10 +88,27 @@ describe('prepareToolCalls', () => {
     })
   })
 
-  it('escalates guarded file writes from allow to ask', () => {
+  it('blocks file writes outside allowed roots', () => {
     const result = plan({
       toolCalls: [toolCall('file_write', { path: '../../outside.txt', content: 'x' })],
       permissions: { file_write: 'allow' }
+    })
+
+    expect(result.blockedCalls[0]).toMatchObject({
+      toolName: 'file_write',
+      permission: 'deny',
+      classification: 'blocked'
+    })
+    expect(result.blockedCalls[0].blockReason).toContain(
+      'outside the global workspace and current project root'
+    )
+  })
+
+  it('escalates project-root file writes from allow to ask', () => {
+    const result = plan({
+      toolCalls: [toolCall('file_write', { path: 'src/out.txt', content: 'x' })],
+      permissions: { file_write: 'allow' },
+      projectRoot: 'D:/example/project'
     })
 
     expect(result.askCalls[0]).toMatchObject({
@@ -99,7 +116,7 @@ describe('prepareToolCalls', () => {
       permission: 'ask',
       classification: 'ask'
     })
-    expect(result.askCalls[0].blockReason).toContain('escapes the workspace')
+    expect(result.askCalls[0].blockReason).toContain('modify the project root')
   })
 
   it('does not ask again when a tool or command prefix is already approved', () => {

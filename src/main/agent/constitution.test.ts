@@ -10,10 +10,24 @@ describe('evaluateToolGuard', () => {
     expect(evaluateToolGuard('file_read', { path: 'src/a.ts' }, 'ask', 'low').action).toBe('ask')
   })
 
-  it('asks for permission on a file path that escapes the workspace', () => {
+  it('denies a file path outside the workspace and project roots', () => {
     const v = evaluateToolGuard('file_write', { path: '../../etc/passwd' }, 'allow', 'medium')
+    expect(v.action).toBe('deny')
+    expect(v.reason).toContain('outside the global workspace and current project root')
+  })
+
+  it('asks for permission when a mutation targets the project root', () => {
+    const v = evaluateToolGuard(
+      'file_write',
+      { path: 'src/a.ts' },
+      'allow',
+      'medium',
+      DEFAULT_CONSTITUTION,
+      false,
+      { projectRoot: 'D:/example/project' }
+    )
     expect(v.action).toBe('ask')
-    expect(v.reason).toContain('escapes the workspace')
+    expect(v.reason).toContain('modify the project root')
   })
 
   it('escalates allow -> ask for a sensitive file target', () => {

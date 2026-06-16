@@ -6,7 +6,9 @@
  * call's actual arguments. It never weakens a permission; it only tightens it.
  */
 
+import { isAbsolute, relative, resolve } from 'path'
 import { analyzeCommand, pathEscapesWorkspace } from './commandSafety'
+import { getWorkspaceRoot } from '../paths'
 
 export type GuardAction = 'allow' | 'ask' | 'deny'
 
@@ -14,6 +16,10 @@ export interface GuardVerdict {
   action: GuardAction
   /** Set only when the base permission was escalated; surfaced to the user and the model. */
   reason?: string
+}
+
+export interface GuardContext {
+  projectRoot?: string
 }
 
 const SEVERITY: Record<GuardAction, number> = { allow: 0, ask: 1, deny: 2 }
@@ -60,6 +66,72 @@ function isSensitiveFileName(value: string): boolean {
   return ['.pem', '.key', '.pfx', '.p12', '.cert', '.crt', '.der'].some((ext) => name.endsWith(ext))
 }
 
+const FILE_MUTATION_TOOLS = new Set([
+  'file_write',
+  'file_edit',
+  'multi_edit',
+  'file_move',
+  'file_copy',
+  'file_delete',
+  'directory_create'
+])
+
+function comparable(filePath: string): string {
+  const normalized = resolve(filePath).replace(/\\/g, '/').replace(/\/+$/, '')
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
+function isInsideRoot(filePath: string, root: string): boolean {
+  const target = comparable(filePath)
+  const base = comparable(root)
+  if (target === base) return true
+  const rel = relative(base, target)
+  return !!rel && !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+function resolveGuardPath(
+  value: string,
+  context?: GuardContext,
+  requestedRoot?: 'workspace' | 'project'
+): { resolvedPath: string; rootKind: 'workspace' | 'project' | 'outside' } {
+  const workspaceRoot = getWorkspaceRoot()
+  const projectRoot = context?.projectRoot
+  const defaultRoot = projectRoot && requestedRoot !== 'workspace' ? projectRoot : workspaceRoot
+  const baseRoot =
+    requestedRoot === 'workspace'
+      ? workspaceRoot
+      : requestedRoot === 'project' && projectRoot
+        ? projectRoot
+        : defaultRoot
+  const resolvedPath = isAbsolute(value) ? resolve(value) : resolve(baseRoot, value)
+
+  if (projectRoot && isInsideRoot(resolvedPath, projectRoot)) {
+    return { resolvedPath, rootKind: 'project' }
+  }
+  if (isInsideRoot(resolvedPath, workspaceRoot)) {
+    return { resolvedPath, rootKind: 'workspace' }
+  }
+  return { resolvedPath, rootKind: 'outside' }
+}
+
+function getGuardRootArg(
+  args: Record<string, unknown>,
+  key: string
+): 'workspace' | 'project' | undefined {
+  const keyRoot =
+    key === 'sourcePath'
+      ? args.sourceRoot
+      : key === 'destinationPath'
+        ? args.destinationRoot
+        : key === 'path_a'
+          ? args.root_a
+          : key === 'path_b'
+            ? args.root_b
+            : undefined
+  const rootArg = keyRoot || args.root
+  return rootArg === 'workspace' || rootArg === 'project' ? rootArg : undefined
+}
+
 /**
  * Evaluate a tool call against the constitution and return the (possibly escalated) action.
  *
@@ -73,7 +145,8 @@ export function evaluateToolGuard(
   risk: 'low' | 'medium' | 'high',
   constitution: Constitution = DEFAULT_CONSTITUTION,
   /** When true the tool has been explicitly approved for this run — skip high-risk escalation. */
-  isRunApproved = false
+  isRunApproved = false,
+  context?: GuardContext
 ): GuardVerdict {
   let action: GuardAction = basePermission
   let reason: string | undefined
@@ -90,7 +163,19 @@ export function evaluateToolGuard(
   for (const key of constitution.pathArgKeys) {
     const value = args[key]
     if (typeof value !== 'string' || value === '') continue
-    if (pathEscapesWorkspace(value)) {
+    const requestedRoot = getGuardRootArg(args, key)
+    const pathInfo = resolveGuardPath(value, context, requestedRoot)
+    if (pathInfo.rootKind === 'outside') {
+      tighten(
+        'deny',
+        `Blocked by guardrail: "${key}" ("${value}") is outside the global workspace and current project root.`
+      )
+    } else if (FILE_MUTATION_TOOLS.has(toolName) && pathInfo.rootKind === 'project') {
+      tighten(
+        'ask',
+        `Guardrail: "${toolName}" will modify the project root; confirmation required.`
+      )
+    } else if (pathInfo.rootKind === 'workspace' && pathEscapesWorkspace(value)) {
       tighten(
         'ask',
         `Guardrail: "${key}" ("${value}") escapes the workspace / is outside the workspace; confirmation required.`

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Message, Session, Skill, RunMode } from '../../../shared/types'
+import { Message, Project, Session, Skill, RunMode } from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
 import { isRuntimeErrorAssistantMessage, prepareMessageForInlineResume } from './chatMessageEvents'
 import { createForkedSession, getRunIdsThroughMessage } from './sessionBranching'
@@ -21,6 +21,7 @@ interface UseChatCompletionProps {
   setActiveSessionId: React.Dispatch<React.SetStateAction<string>>
   activeSessionId: string
   sessionsRef: React.MutableRefObject<Session[]>
+  projects: Project[]
   apiKey: string
   apiUrl: string
   selectedModel: string
@@ -88,6 +89,7 @@ export const useChatCompletion = ({
   setActiveSessionId,
   activeSessionId,
   sessionsRef,
+  projects,
   apiKey,
   apiUrl,
   selectedModel,
@@ -108,16 +110,18 @@ export const useChatCompletion = ({
     apiKey,
     apiUrl,
     selectedModel,
-    systemPrompt
+    systemPrompt,
+    projects
   })
   useEffect(() => {
     latestRequestConfigRef.current = {
       apiKey,
       apiUrl,
       selectedModel,
-      systemPrompt
+      systemPrompt,
+      projects
     }
-  }, [apiKey, apiUrl, selectedModel, systemPrompt])
+  }, [apiKey, apiUrl, selectedModel, systemPrompt, projects])
 
   const isGeneratingRef = useRef(isGenerating)
   useEffect(() => {
@@ -158,6 +162,19 @@ export const useChatCompletion = ({
     currentSessions.unshift(newSession)
     setActiveSessionId(newSession.id)
     return newSession
+  }
+
+  const getProjectRunContext = (
+    session: Session,
+    projectList = latestRequestConfigRef.current.projects
+  ): { projectRoot?: string; projectName?: string } => {
+    if (!session.projectId) return {}
+    const project = projectList.find((item) => item.id === session.projectId)
+    if (!project) return {}
+    return {
+      projectRoot: project.path,
+      projectName: project.name
+    }
   }
 
   // Replace a single message in the active session, keeping sessionsRef in sync.
@@ -477,6 +494,7 @@ export const useChatCompletion = ({
           runMode: effectiveRunMode,
           resources: targetSession.resources,
           sessionId: targetSession.id,
+          ...getProjectRunContext(targetSession, requestConfig.projects),
           sourceMessageId,
           assistantMessageId: assistantMsgId,
           branchOf
@@ -552,6 +570,7 @@ export const useChatCompletion = ({
           userInput,
           resources: currentSession.resources,
           sessionId: currentSession.id,
+          ...getProjectRunContext(currentSession, requestConfig.projects),
           sourceMessageId: userMsg.id,
           assistantMessageId: assistantMsgId
         }),
@@ -695,6 +714,7 @@ export const useChatCompletion = ({
           runMode: 'agent',
           resources: targetSession.resources,
           sessionId: targetSession.id,
+          ...getProjectRunContext(targetSession, requestConfig.projects),
           resumeFromRunId,
           resumeSourceSessionId: currentSession.id,
           sourceMessageId: failedMsg.id,

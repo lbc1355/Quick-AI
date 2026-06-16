@@ -2,6 +2,7 @@ import { exec } from 'child_process'
 import { ToolArgs } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { getWorkspaceRoot } from './helpers'
+import { getRun } from '../agent/AgentRunContext'
 
 export const shellTools: Record<string, ToolDefinition> = {
   shell: {
@@ -36,7 +37,8 @@ export const shellTools: Record<string, ToolDefinition> = {
         }
       }
 
-      const root = getWorkspaceRoot()
+      const runCtx = ctx.reqId ? getRun(ctx.reqId) : undefined
+      const root = runCtx?.projectRoot || getWorkspaceRoot()
       const TIMEOUT_MS = 60000
 
       return new Promise((resolvePromise) => {

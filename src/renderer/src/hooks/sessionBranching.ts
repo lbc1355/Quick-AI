@@ -75,6 +75,7 @@ export const createForkedSession = ({
     messages: keptMessages,
     resources: forkResourcesForRuns(sourceSession.resources, keptRunIds),
     lastActiveTime: now,
+    projectId: sourceSession.projectId,
     branchOf
   }
 }

@@ -1,5 +1,16 @@
-import { app, shell, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, screen } from 'electron'
-import { join } from 'path'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  globalShortcut,
+  Tray,
+  Menu,
+  screen,
+  dialog
+} from 'electron'
+import { basename, join } from 'path'
+import { realpathSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
@@ -394,7 +405,7 @@ app.whenReady().then(() => {
   })
 
   // IPC handlers for FileStore with security whitelist
-  const ALLOWED_STORE_KEYS = ['sessions', 'settings', 'skills']
+  const ALLOWED_STORE_KEYS = ['sessions', 'settings', 'skills', 'projects']
 
   // MCP IPC handlers
   ipcMain.handle('mcp-get-config', () => {
@@ -441,6 +452,27 @@ app.whenReady().then(() => {
     return {
       storePath: store?.getStorePath() || '',
       version: '1.0.0'
+    }
+  })
+
+  ipcMain.handle('select-project-directory', async () => {
+    if (!mainWindow) return null
+    isFilePickerActive = true
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: '选择项目文件夹',
+        properties: ['openDirectory']
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      const selectedPath = realpathSync.native(result.filePaths[0])
+      return {
+        path: selectedPath,
+        name: basename(selectedPath)
+      }
+    } finally {
+      setTimeout(() => {
+        isFilePickerActive = false
+      }, 300)
     }
   })
 

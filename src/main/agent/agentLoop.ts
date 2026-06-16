@@ -124,6 +124,8 @@ export const runAgentLoop = async (
     resources?: SessionResource[]
     /** Per-conversation id for action-log persistence. Falls back to reqId. */
     sessionId?: string
+    projectRoot?: string
+    projectName?: string
     /** Existing run checkpoint to continue without adding a new user message. */
     resumeFromRunId?: string
     resumeSourceSessionId?: string
@@ -182,7 +184,9 @@ export const runAgentLoop = async (
       options.messages || [],
       options.systemPrompt,
       options.resources,
-      permissions
+      permissions,
+      options.projectRoot,
+      options.projectName
     )
   }
   if (options.branchOf) {
@@ -223,7 +227,9 @@ export const runAgentLoop = async (
     toolScope,
     actionLog,
     permissions,
-    options.sessionId
+    options.sessionId,
+    options.projectRoot,
+    options.projectName
   )
   runCtx.maxSteps = maxSteps
   const signal = runCtx.signal
@@ -256,7 +262,9 @@ export const runAgentLoop = async (
 
   const getTokenSpeed = (): number => {
     const totalGenerationSec = totalGenerationTimeMs / 1000
-    return totalGenerationSec > 0 ? Number((totalGeneratedTokens / totalGenerationSec).toFixed(1)) : 0
+    return totalGenerationSec > 0
+      ? Number((totalGeneratedTokens / totalGenerationSec).toFixed(1))
+      : 0
   }
 
   // Behavioural guardrails (repeated-call blocking + consecutive-failure halt) that
@@ -408,7 +416,8 @@ export const runAgentLoop = async (
       )
       const modelElapsed = Date.now() - modelStartTime
       const reasoningText = assistantMessage.reasoning_content || ''
-      const contentText = typeof assistantMessage.content === 'string' ? assistantMessage.content : ''
+      const contentText =
+        typeof assistantMessage.content === 'string' ? assistantMessage.content : ''
       totalGeneratedTokens += estimateTokens(reasoningText) + estimateTokens(contentText)
       totalGenerationTimeMs += modelElapsed
 
@@ -426,7 +435,8 @@ export const runAgentLoop = async (
           isToolApproved: (toolName) => runCtx.isToolApproved(toolName),
           isCommandPrefixApproved: (command) => runCtx.isCommandPrefixApproved(command),
           hasExecuted: (callKey) => runCtx.hasExecuted(callKey),
-          loopGuard
+          loopGuard,
+          projectRoot: runCtx.projectRoot
         })
 
         const preparedCalls = [...askCalls, ...directCalls, ...blockedCalls].sort(
@@ -767,7 +777,7 @@ export const runAgentLoop = async (
         await Promise.all(
           directCalls.map(async (prep) => {
             // Emit tool_call event
-             sendEvent(mainWindow, reqId, {
+            sendEvent(mainWindow, reqId, {
               type: 'tool_call',
               callId: prep.callId,
               toolName: prep.toolName,
@@ -817,7 +827,11 @@ export const runAgentLoop = async (
           sendEvent(mainWindow, reqId, { type: 'final', content: finalText, step, stepId })
         }
         setRunEnd('completed')
-        mainWindow.webContents.send('chat-chunk', { reqId, done: true, tokenSpeed: getTokenSpeed() })
+        mainWindow.webContents.send('chat-chunk', {
+          reqId,
+          done: true,
+          tokenSpeed: getTokenSpeed()
+        })
         return
       }
     }
@@ -866,7 +880,8 @@ export const runAgentLoop = async (
     )
     const finalModelElapsed = Date.now() - finalModelStartTime
     const finalReasoningText = forcedFinalMessage.reasoning_content || ''
-    const finalContentText = typeof forcedFinalMessage.content === 'string' ? forcedFinalMessage.content : ''
+    const finalContentText =
+      typeof forcedFinalMessage.content === 'string' ? forcedFinalMessage.content : ''
     totalGeneratedTokens += estimateTokens(finalReasoningText) + estimateTokens(finalContentText)
     totalGenerationTimeMs += finalModelElapsed
 
@@ -884,7 +899,12 @@ export const runAgentLoop = async (
       signal.aborted || err.message?.includes('aborted') || err.name === 'AbortError'
     if (isAborted) {
       setRunEnd('cancelled')
-      mainWindow.webContents.send('chat-chunk', { reqId, cancelled: true, done: true, tokenSpeed: getTokenSpeed() })
+      mainWindow.webContents.send('chat-chunk', {
+        reqId,
+        cancelled: true,
+        done: true,
+        tokenSpeed: getTokenSpeed()
+      })
     } else {
       setRunEnd('failed', err.message || 'Agent Loop failed')
       mainWindow.webContents.send('chat-chunk', {

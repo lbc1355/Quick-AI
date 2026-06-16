@@ -65,7 +65,7 @@ export interface UseSessionsReturn {
   activeSessionId: string
   setActiveSessionId: React.Dispatch<React.SetStateAction<string>>
   activeSession: Session | undefined
-  handleNewSession: (onCreated?: () => void) => Promise<void>
+  handleNewSession: (options?: { projectId?: string; onCreated?: () => void }) => Promise<Session>
   handleClearCurrentSession: () => Promise<void>
   handleDeleteSession: (targetSessionId: string) => Promise<void>
   syncSessionsRef: (currentSessions: Session[]) => void
@@ -117,18 +117,22 @@ export const useSessions = (): UseSessionsReturn => {
 
   const activeSession = sessions.find((s) => s.id === activeSessionId)
 
-  const handleNewSession = async (onCreated?: () => void): Promise<void> => {
+  const handleNewSession = async (
+    options: { projectId?: string; onCreated?: () => void } = {}
+  ): Promise<Session> => {
     const newSession: Session = {
       id: Date.now().toString(),
       title: '新对话',
       messages: [],
-      lastActiveTime: Date.now()
+      lastActiveTime: Date.now(),
+      projectId: options.projectId
     }
     const updated = [newSession, ...sessions]
     setSessions(updated)
     setActiveSessionId(newSession.id)
     await window.api.storeSet('sessions', updated)
-    if (onCreated) onCreated()
+    options.onCreated?.()
+    return newSession
   }
 
   const handleClearCurrentSession = async (): Promise<void> => {

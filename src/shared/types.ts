@@ -154,7 +154,16 @@ export interface Session {
   messages: Message[]
   lastActiveTime?: number
   resources?: SessionResource[]
+  projectId?: string
   branchOf?: { sessionId: string; messageId: string; runId?: string }
+}
+
+export interface Project {
+  id: string
+  name: string
+  path: string
+  createdAt: number
+  updatedAt: number
 }
 
 export interface ApiProvider {
@@ -249,6 +258,7 @@ export interface StorageSchema {
   sessions: Session[]
   settings: AppSettings
   skills: Skill[]
+  projects: Project[]
 }
 
 export type StoreKey = keyof StorageSchema
@@ -278,6 +288,9 @@ export interface AgentSkillRunOptions {
   resources?: SessionResource[]
   /** Conversation id used to persist the agent's action log across runs. */
   sessionId?: string
+  /** Optional real project root attached to this conversation. */
+  projectRoot?: string
+  projectName?: string
   /** Resume from a persisted run checkpoint without adding a new user message. */
   resumeFromRunId?: string
   resumeSourceSessionId?: string
@@ -341,6 +354,9 @@ export interface ChatRunOptions {
   resources?: SessionResource[]
   /** Conversation id used to persist the agent's action log across runs. */
   sessionId?: string
+  /** Optional real project root attached to this conversation. */
+  projectRoot?: string
+  projectName?: string
   /** Resume from a persisted run checkpoint without adding a new user message. */
   resumeFromRunId?: string
   resumeSourceSessionId?: string

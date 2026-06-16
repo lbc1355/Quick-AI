@@ -8,6 +8,7 @@ import {
   ClearSessionCachesPayload,
   ForkSessionCachesPayload,
   McpServerStatus,
+  Project,
   Skill,
   WindowMode,
   WindowState
@@ -20,6 +21,7 @@ declare global {
       storeGet: <K extends StoreKey>(key: K) => Promise<StoreValue<K>>
       storeSet: <K extends StoreKey>(key: K, value: StoreValue<K>) => Promise<boolean>
       getAppInfo: () => Promise<{ storePath: string; version: string }>
+      selectProjectDirectory: () => Promise<Pick<Project, 'name' | 'path'> | null>
       hideWindow: () => void
       getWindowState: () => Promise<WindowState>
       setWindowMode: (mode: WindowMode) => Promise<WindowState>

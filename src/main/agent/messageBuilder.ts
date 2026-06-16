@@ -141,6 +141,22 @@ export function buildResourceSummaryPrompt(resources: SessionResource[] | undefi
   return finalPrompt
 }
 
+function buildWorkspaceContextPrompt(projectRoot?: string, projectName?: string): string {
+  const workspaceMode = projectRoot
+    ? [
+        'Workspace roots:',
+        `- Global workspace: the private QuickAI scratch space. Use file tools with {"root":"workspace"} when you explicitly need temporary files there.`,
+        `- Project root${projectName ? ` (${projectName})` : ''}: ${projectRoot}`,
+        'File tool rule: in this project conversation, relative file paths default to the Project root. Writes/edits/deletes in the Project root require user confirmation.'
+      ]
+    : [
+        'Workspace roots:',
+        '- This is a free conversation with only the Global QuickAI workspace available to file tools.',
+        'File tool rule: relative file paths resolve inside the Global workspace. No project directory is attached.'
+      ]
+  return workspaceMode.join('\n')
+}
+
 export function buildAvailableSkillsSummary(): string {
   let skills: Skill[]
   try {
@@ -215,6 +231,8 @@ export function buildSkillMessages(options: AgentSkillRunOptions): ChatCompletio
 ${buildDateLine()}
 
 **Platform:** ${process.platform === 'win32' ? 'Windows (cmd.exe shell). Use Windows-native commands: findstr (not grep), dir (not ls), type (not cat), where (not which), del (not rm), copy / move (not cp / mv), mkdir / md (not mkdir). Paths use backslashes.' : process.platform === 'darwin' ? 'macOS (zsh shell). Use standard Unix commands.' : 'Linux (bash shell). Use standard Unix commands.'}
+
+${buildWorkspaceContextPrompt(options.projectRoot, options.projectName)}
 
 ${toolDirs ? `${toolDirs}\n\n` : ''}Concept Clarification:
 - **Skill**: The high-level operating instructions and manuals (provided in SKILL.md) that guide how you should approach and complete this task. A Skill is NOT a tool that you call; it is the manual you follow.
@@ -299,7 +317,9 @@ export function prepareChatAgentMessages(
   messages: ChatCompletionMessage[],
   globalSystemPrompt?: string,
   resources?: SessionResource[],
-  permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
+  permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' },
+  projectRoot?: string,
+  projectName?: string
 ): ChatCompletionMessage[] {
   const toolDirs = buildToolDirectorySummary('all', permissions)
   const skillsSummary = buildAvailableSkillsSummary()
@@ -310,6 +330,8 @@ export function prepareChatAgentMessages(
 ${buildDateLine()}
 
 **Platform:** ${process.platform === 'win32' ? 'Windows (cmd.exe shell). Use Windows-native commands: findstr (not grep), dir (not ls), type (not cat), where (not which), del (not rm), copy / move (not cp / mv), mkdir / md (not mkdir). Paths use backslashes.' : process.platform === 'darwin' ? 'macOS (zsh shell). Use standard Unix commands.' : 'Linux (bash shell). Use standard Unix commands.'}
+
+${buildWorkspaceContextPrompt(projectRoot, projectName)}
 
 ${toolDirs ? `${toolDirs}\n\n` : ''}${skillsSummary ? `${skillsSummary}\n\n` : ''}Operation history & cache — your second memory track:
 This conversation is backed by two parallel tracks:

@@ -6,9 +6,10 @@ import {
   GitBranch,
   ArrowLeft,
   Folder,
+  FolderPlus,
   MessageSquarePlus
 } from 'lucide-react'
-import { Session } from '../../../shared/types'
+import { Project, Session } from '../../../shared/types'
 import {
   BranchFamilyInfo,
   BranchFamilyMemberInfo,
@@ -18,6 +19,9 @@ import { formatSessionStamp } from '../utils/autocompleteHelpers'
 
 interface SessionSidebarProps {
   sessions: Session[]
+  projects: Project[]
+  activeProjectId: string | null
+  projectSessionCounts: Map<string, number>
   activeSessionId: string
   isSidebarCollapsed: boolean
   setIsSidebarCollapsed: React.Dispatch<React.SetStateAction<boolean>>
@@ -29,8 +33,12 @@ interface SessionSidebarProps {
   isGenerating: boolean
   activeProviderName: string
   activeModelName: string
+  onAddProject: () => void
+  onOpenProject: (projectId: string) => void
+  onOpenFreeConversations: () => void
+  onDeleteProject: (projectId: string) => void
   exitSessionFamilyView: () => void
-  handleNewSession: () => Promise<void>
+  handleNewSession: () => Promise<Session>
   handleDeleteSession: (id: string) => Promise<void>
   openSession: (sessionId: string) => void
   setSessionFamilyRootId: (id: string | null) => void
@@ -40,6 +48,9 @@ interface SessionSidebarProps {
 
 export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   sessions,
+  projects,
+  activeProjectId,
+  projectSessionCounts,
   activeSessionId,
   isSidebarCollapsed,
   setIsSidebarCollapsed,
@@ -48,6 +59,10 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   isGenerating,
   activeProviderName,
   activeModelName,
+  onAddProject,
+  onOpenProject,
+  onOpenFreeConversations,
+  onDeleteProject,
   exitSessionFamilyView,
   handleNewSession,
   handleDeleteSession,
@@ -90,32 +105,70 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
       </div>
 
       <div className="session-list">
-        {visibleSessionFamilyInfo && (
-          <div className="sidebar-section project-section">
-            <div className="sidebar-section-header">
-              <span>项目</span>
-              <span>派生视图</span>
-            </div>
+        <div className="sidebar-section project-section">
+          <div className="sidebar-section-header project-section-header">
+            <span>Projects</span>
             <button
               type="button"
-              className="project-row active"
-              onClick={() => {
-                setSessionFamilyRootId(null)
-                setDismissedSessionFamilyViewForId(null)
-              }}
-              title={visibleSessionFamilyInfo.rootTitle}
+              className="sidebar-mini-action"
+              onClick={onAddProject}
+              title="添加项目"
             >
-              <Folder size={13} />
-              <span className="project-row-title">{visibleSessionFamilyInfo.rootTitle}</span>
-              <span className="project-row-count">{visibleSessionEntries.length}</span>
+              <FolderPlus size={12} />
             </button>
           </div>
-        )}
+          <div className="project-entry">
+            <button
+              type="button"
+              className={`project-row ${activeProjectId ? '' : 'active'}`}
+              onClick={onOpenFreeConversations}
+              title="未绑定项目的自由对话"
+            >
+              <MessageSquarePlus size={13} />
+              <span className="project-row-title">自由对话</span>
+              <span className="project-row-count">
+                {sessions.filter((session) => !session.projectId).length}
+              </span>
+            </button>
+          </div>
+          {projects.length === 0 ? (
+            <button type="button" className="project-row project-empty-row" onClick={onAddProject}>
+              <FolderPlus size={13} />
+              <span className="project-row-title">添加项目</span>
+              <span className="project-row-count">+</span>
+            </button>
+          ) : (
+            projects.map((project) => (
+              <div key={project.id} className="project-entry">
+                <button
+                  type="button"
+                  className={`project-row ${activeProjectId === project.id ? 'active' : ''}`}
+                  onClick={() => onOpenProject(project.id)}
+                  title={project.path}
+                >
+                  <Folder size={13} />
+                  <span className="project-row-title">{project.name}</span>
+                  <span className="project-row-count">
+                    {projectSessionCounts.get(project.id) || 0}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="project-delete-btn"
+                  onClick={() => onDeleteProject(project.id)}
+                  title="移除项目记录"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
 
         <div className="sidebar-section conversation-section">
           <div className="sidebar-section-header">
             <span>对话</span>
-            {visibleSessionFamilyInfo && <span>派生</span>}
+            <span>{visibleSessionFamilyInfo ? '派生' : activeProjectId ? '当前项目' : '自由'}</span>
           </div>
 
           {!visibleSessionFamilyInfo && (

@@ -12,6 +12,7 @@ import {
 describe('File Safety & Search Tools', () => {
   const workspaceRoot = getWorkspaceRoot()
   const testDir = join(workspaceRoot, 'temp-file-test-dir')
+  const projectRoot = resolve(workspaceRoot, '..', 'quickai-filetools-project')
 
   // Use concatenated strings so the test file itself does not contain the literal search terms
   const queryStr = 'uniqueMatch' + 'QueryStringForTestingFileTools'
@@ -20,7 +21,9 @@ describe('File Safety & Search Tools', () => {
   beforeAll(async () => {
     // Set up a temporary folder structure within the workspace for testing
     await fs.rm(testDir, { recursive: true, force: true })
+    await fs.rm(projectRoot, { recursive: true, force: true })
     await fs.mkdir(testDir, { recursive: true })
+    await fs.mkdir(projectRoot, { recursive: true })
     await fs.mkdir(join(testDir, 'sub'), { recursive: true })
     await fs.mkdir(join(testDir, 'sub', 'deep'), { recursive: true })
     await fs.mkdir(join(testDir, 'node_modules'), { recursive: true })
@@ -33,11 +36,14 @@ describe('File Safety & Search Tools', () => {
     await fs.writeFile(join(testDir, 'sub', 'sensitive.key'), 'secret')
     await fs.writeFile(join(testDir, '.env'), 'SECRET_KEY=123')
     await fs.writeFile(join(testDir, 'node_modules', 'ignored.txt'), queryStr)
+    await fs.writeFile(join(projectRoot, 'project-read.txt'), 'project readable content')
+    await fs.writeFile(join(projectRoot, 'project-diff.txt'), queryStr)
   })
 
   afterAll(async () => {
     // Clean up
     await fs.rm(testDir, { recursive: true, force: true })
+    await fs.rm(projectRoot, { recursive: true, force: true })
   })
 
   describe('isPathInWorkspace', () => {
@@ -90,27 +96,34 @@ describe('File Safety & Search Tools', () => {
       const outsidePath = resolve(workspaceRoot, '..', 'traversal.txt')
 
       await expect(ToolRegistry.file_read.execute({ path: outsidePath }, context)).rejects.toThrow(
-        'Path is outside the workspace directory'
+        'outside the global workspace and current project root'
       )
     })
 
-    it('permits reading outside workspace if run context is active', async () => {
+    it('permits reading inside the current project root when run context is active', async () => {
       const { createRun, destroyRun } = await import('./agent/AgentRunContext')
       const { ActionLog } = await import('./agent/actionLog')
 
       const reqId = 'test-req-read-run'
-      createRun(reqId, [], 'all', new ActionLog())
+      createRun(
+        reqId,
+        [],
+        'all',
+        new ActionLog(),
+        undefined,
+        undefined,
+        projectRoot,
+        'Test Project'
+      )
 
       const context = { reqId, signal: new AbortController().signal }
-      const outsidePath = resolve(workspaceRoot, '..', 'temp-outside-read.txt')
-      await fs.writeFile(outsidePath, 'outside readable content')
 
       try {
-        const res = await ToolRegistry.file_read.execute({ path: outsidePath }, context)
-        expect(res.resultForModel).toContain('outside readable content')
+        const res = await ToolRegistry.file_read.execute({ path: 'project-read.txt' }, context)
+        expect(res.resultForModel).toContain('project readable content')
+        expect(res.resultForModel).toContain(`Root (project): ${projectRoot}`)
       } finally {
         destroyRun(reqId)
-        await fs.unlink(outsidePath).catch(() => {})
       }
     })
 
@@ -119,7 +132,7 @@ describe('File Safety & Search Tools', () => {
 
       await expect(
         ToolRegistry.file_read.execute({ path: join(testDir, '.env') }, context)
-      ).rejects.toThrow('Reading sensitive file is blocked')
+      ).rejects.toThrow('sensitive file')
     })
   })
 
@@ -261,7 +274,7 @@ describe('File Safety & Search Tools', () => {
       try {
         await expect(
           ToolRegistry.file_read.execute({ path: symlinkPath }, context)
-        ).rejects.toThrow('Security Violation: Path is outside the workspace directory')
+        ).rejects.toThrow('outside the global workspace and current project root')
       } finally {
         try {
           await fs.unlink(symlinkPath)
@@ -348,14 +361,14 @@ describe('File Safety & Search Tools', () => {
     it('logs and displays workspace root in file_read and workspace_search', async () => {
       const context = { reqId: 'test-req', signal: new AbortController().signal }
       const resSearch = await ToolRegistry.workspace_search.execute({ query: queryStr }, context)
-      expect(resSearch.resultForModel).toContain(`Workspace Root: ${workspaceRoot}`)
+      expect(resSearch.resultForModel).toContain(`Root (workspace): ${workspaceRoot}`)
       expect(resSearch.resultForUi.summary).toContain(workspaceRoot)
 
       const resRead = await ToolRegistry.file_read.execute(
         { path: join(testDir, 'a.txt') },
         context
       )
-      expect(resRead.resultForModel).toContain(`Workspace Root: ${workspaceRoot}`)
+      expect(resRead.resultForModel).toContain(`Root (workspace): ${workspaceRoot}`)
       expect(resRead.resultForUi.summary).toContain(workspaceRoot)
     })
   })
@@ -454,7 +467,7 @@ describe('File Safety & Search Tools', () => {
           },
           context
         )
-      ).rejects.toThrow('outside the workspace directory')
+      ).rejects.toThrow('outside the global workspace and current project root')
 
       const sensitivePath = join(testDir, '.env')
       await expect(
@@ -466,34 +479,43 @@ describe('File Safety & Search Tools', () => {
           },
           context
         )
-      ).rejects.toThrow('sensitive file is blocked')
+      ).rejects.toThrow('sensitive file')
     })
 
-    it('permits writing outside workspace if run context is active', async () => {
+    it('permits writing inside the current project root when run context is active', async () => {
       const { createRun, destroyRun } = await import('./agent/AgentRunContext')
       const { ActionLog } = await import('./agent/actionLog')
 
       const reqId = 'test-req-write-run'
-      createRun(reqId, [], 'all', new ActionLog())
+      createRun(
+        reqId,
+        [],
+        'all',
+        new ActionLog(),
+        undefined,
+        undefined,
+        projectRoot,
+        'Test Project'
+      )
 
       const context = { reqId, signal: new AbortController().signal }
-      const outsidePath = resolve(workspaceRoot, '..', 'temp-outside-write.txt')
+      const projectFile = join(projectRoot, 'project-write.txt')
 
       try {
         const res = await ToolRegistry.file_write.execute(
           {
-            path: outsidePath,
-            content: 'outside writable content',
+            path: 'project-write.txt',
+            content: 'project writable content',
             mode: 'create'
           },
           context
         )
         expect(res.resultForUi.summary).toContain('created')
-        const readContent = await fs.readFile(outsidePath, 'utf-8')
-        expect(readContent).toBe('outside writable content')
+        const readContent = await fs.readFile(projectFile, 'utf-8')
+        expect(readContent).toBe('project writable content')
       } finally {
         destroyRun(reqId)
-        await fs.unlink(outsidePath).catch(() => {})
+        await fs.unlink(projectFile).catch(() => {})
       }
     })
   })
@@ -535,43 +557,51 @@ describe('File Safety & Search Tools', () => {
             },
             context
           )
-        ).rejects.toThrow('Security Violation: Path is outside the workspace directory.')
+        ).rejects.toThrow('outside the global workspace and current project root')
       } finally {
         await fs.unlink(outsidePath).catch(() => {})
       }
     })
 
-    it('permits editing outside workspace if run context is active', async () => {
+    it('permits editing inside the current project root when run context is active', async () => {
       const { createRun, destroyRun } = await import('./agent/AgentRunContext')
       const { ActionLog } = await import('./agent/actionLog')
 
       const reqId = 'test-req-with-run'
-      createRun(reqId, [], 'all', new ActionLog())
+      createRun(
+        reqId,
+        [],
+        'all',
+        new ActionLog(),
+        undefined,
+        undefined,
+        projectRoot,
+        'Test Project'
+      )
 
       const context = { reqId, signal: new AbortController().signal }
-      const outsidePath = resolve(workspaceRoot, '..', 'temp-outside-edit.txt')
+      const projectFile = join(projectRoot, 'project-edit.txt')
 
-      // Create the outside file first since file_edit requires file to exist
-      await fs.writeFile(outsidePath, 'original outside data')
+      await fs.writeFile(projectFile, 'original project data')
 
       try {
         // Read first to satisfy the read-before-edit constraint.
-        await ToolRegistry.file_read.execute({ path: outsidePath }, context)
+        await ToolRegistry.file_read.execute({ path: 'project-edit.txt' }, context)
         const res = await ToolRegistry.file_edit.execute(
           {
-            path: outsidePath,
-            old_string: 'original outside data',
-            new_string: 'edited outside data'
+            path: 'project-edit.txt',
+            old_string: 'original project data',
+            new_string: 'edited project data'
           },
           context
         )
 
         expect(res.resultForUi.summary).toContain('Replaced 1 occurrence')
-        const readContent = await fs.readFile(outsidePath, 'utf-8')
-        expect(readContent).toBe('edited outside data')
+        const readContent = await fs.readFile(projectFile, 'utf-8')
+        expect(readContent).toBe('edited project data')
       } finally {
         destroyRun(reqId)
-        await fs.unlink(outsidePath).catch(() => {})
+        await fs.unlink(projectFile).catch(() => {})
       }
     })
   })
@@ -898,7 +928,7 @@ describe('File Safety & Search Tools', () => {
       try {
         await expect(
           ToolRegistry.file_delete.execute({ path: workspaceRoot, recursive: true }, context)
-        ).rejects.toThrow('workspace root')
+        ).rejects.toThrow('selected root')
 
         try {
           await fs.stat(gitPath)
@@ -984,28 +1014,35 @@ describe('File Safety & Search Tools', () => {
             },
             context
           )
-        ).rejects.toThrow('Security Violation: Path_B is outside the workspace directory.')
+        ).rejects.toThrow('outside the global workspace and current project root')
       } finally {
         await fs.unlink(outsidePath).catch(() => {})
       }
     })
 
-    it('permits comparing outside workspace if run context is active', async () => {
+    it('permits comparing files inside the current project root when run context is active', async () => {
       const { createRun, destroyRun } = await import('./agent/AgentRunContext')
       const { ActionLog } = await import('./agent/actionLog')
 
       const reqId = 'test-req-diff-run'
-      createRun(reqId, [], 'all', new ActionLog())
+      createRun(
+        reqId,
+        [],
+        'all',
+        new ActionLog(),
+        undefined,
+        undefined,
+        projectRoot,
+        'Test Project'
+      )
 
       const context = { reqId, signal: new AbortController().signal }
-      const outsidePath = resolve(workspaceRoot, '..', 'temp-outside-diff.txt')
-      await fs.writeFile(outsidePath, queryStr)
 
       try {
         const res = await ToolRegistry.file_diff.execute(
           {
-            path_a: join(testDir, 'root.ts'),
-            path_b: outsidePath
+            path_a: 'project-diff.txt',
+            path_b: join(projectRoot, 'project-diff.txt')
           },
           context
         )
@@ -1013,7 +1050,6 @@ describe('File Safety & Search Tools', () => {
         expect(res.resultForModel).toContain('Files are identical.')
       } finally {
         destroyRun(reqId)
-        await fs.unlink(outsidePath).catch(() => {})
       }
     })
   })
