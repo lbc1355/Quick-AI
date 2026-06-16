@@ -265,15 +265,6 @@ Rules:
     }
   ]
 
-  // Inject resource context if available
-  if (options.resources && options.resources.length > 0) {
-    const resourcePrompt = buildResourceSummaryPrompt(options.resources)
-    if (resourcePrompt) {
-      // Prepend to the user message content instead of splicing
-      prependToMessageContent(msgs[1], resourcePrompt)
-    }
-  }
-
   return msgs
 }
 
@@ -321,6 +312,7 @@ export function prepareChatAgentMessages(
   projectRoot?: string,
   projectName?: string
 ): ChatCompletionMessage[] {
+  void resources
   const toolDirs = buildToolDirectorySummary('all', permissions)
   const skillsSummary = buildAvailableSkillsSummary()
   const memorySegment = buildMemoryInjection()
@@ -336,7 +328,7 @@ ${buildWorkspaceContextPrompt(projectRoot, projectName)}
 ${toolDirs ? `${toolDirs}\n\n` : ''}${skillsSummary ? `${skillsSummary}\n\n` : ''}Operation history & cache — your second memory track:
 This conversation is backed by two parallel tracks:
 1. The dialogue: alternating user and assistant turns.
-2. A persistent operation layer that survives across turns but is NOT replayed in the dialogue. Consult list_past_actions and get_past_action to see completed actions, and read_cached_resource or search_cached_resource for cached files and fetched web content.
+2. A persistent operation layer that survives across turns but is NOT replayed in the dialogue. Consult list_past_actions and get_past_action to see completed actions, and use list_cached_resources, read_cached_resource, or search_cached_resource for cached files and fetched web content.
 
 Memory Lifecycle:
 A durable memory library lives on disk: always-injected constant memory plus an on-demand index of Task Groups (shown below).
@@ -402,18 +394,6 @@ Rules:
       role: 'system',
       content: `${globalSystemPrompt ? `Global system prompt:\n${globalSystemPrompt}\n\n` : ''}${agentInstructions}`
     })
-  }
-
-  // Inject resource context if available. Prepend it to the content of the latest user message
-  // to avoid shifting message indices and breaking prefix cache stability for conversation history.
-  if (resources && resources.length > 0) {
-    const resourcePrompt = buildResourceSummaryPrompt(resources)
-    if (resourcePrompt) {
-      const latestUserMsg = copy[copy.length - 1]
-      if (latestUserMsg && latestUserMsg.role === 'user') {
-        prependToMessageContent(latestUserMsg, resourcePrompt)
-      }
-    }
   }
 
   return copy

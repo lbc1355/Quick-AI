@@ -1,10 +1,11 @@
-import { ToolArgs, ChatToolDeclaration, ToolResultUi } from '../../shared/types'
+import { ToolArgs, ChatToolDeclaration, ToolResultUi, SessionResource } from '../../shared/types'
 import { BrowserWindow } from 'electron'
 
 export interface ToolExecutionContext {
   reqId: string
   signal: AbortSignal
   mainWindow?: BrowserWindow
+  resources?: SessionResource[]
 }
 
 export interface ToolDefinition {
@@ -50,7 +51,8 @@ export function toChatToolDeclaration(tool: ToolDefinition): ChatToolDeclaration
       ...tool.parameters.properties,
       purpose: {
         type: 'string',
-        description: 'Optional explanation of why this tool is being called (e.g., "Reading package.json to verify dependencies"). Keep it concise (approx. 80-120 characters).'
+        description:
+          'Optional explanation of why this tool is being called (e.g., "Reading package.json to verify dependencies"). Keep it concise (approx. 80-120 characters).'
       }
     }
   }

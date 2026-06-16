@@ -19,7 +19,8 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('./callModel', () => ({
-  callModel: vi.fn()
+  callModel: vi.fn(),
+  getPromptCacheStats: vi.fn(() => undefined)
 }))
 
 vi.mock('./memoryContext', () => ({
@@ -950,7 +951,7 @@ describe('runAgentLoop', () => {
       }
       const lastMsg = messages[messages.length - 1]
       expect(lastMsg.role).toBe('tool')
-      expect(lastMsg.content).toContain('denied by user')
+      expect(lastMsg.content).toContain('outside the global workspace and current project root')
       return { role: 'assistant', content: 'I will not write outside the workspace.' }
     })
 
@@ -975,7 +976,7 @@ describe('runAgentLoop', () => {
       { file_write: 'allow' }
     )
 
-    expect(permissionSpy).toHaveBeenCalled()
+    expect(permissionSpy).not.toHaveBeenCalled()
     expect(writeSpy).not.toHaveBeenCalled()
     expect(callCount).toBe(2)
   })

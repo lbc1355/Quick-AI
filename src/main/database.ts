@@ -86,6 +86,7 @@ function createSchema(database: Database.Database): void {
       forkedFrom        TEXT,
       isBranchFork      INTEGER NOT NULL DEFAULT 0,
       tokenSpeed        REAL,
+      cacheStats        TEXT,
       createdAt         INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(sessionId);
@@ -166,6 +167,7 @@ function createSchema(database: Database.Database): void {
   ensureColumn(database, 'messages', 'isBranchFork', 'INTEGER NOT NULL DEFAULT 0')
   ensureColumn(database, 'messages', 'agentRunIds', "TEXT DEFAULT '[]'")
   ensureColumn(database, 'messages', 'tokenSpeed', 'REAL')
+  ensureColumn(database, 'messages', 'cacheStats', 'TEXT')
   ensureColumn(database, 'skills', 'entryPath', 'TEXT')
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")
@@ -256,8 +258,8 @@ function migrateStore(database: Database.Database, storePath: string): void {
         'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime) VALUES (?, ?, ?)'
       )
       const insertMessage = database.prepare(
-        `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, tokenSpeed, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, tokenSpeed, cacheStats, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       const insertFile = database.prepare(
         'INSERT INTO message_files (messageId, name, content, type) VALUES (?, ?, ?, ?)'
@@ -278,6 +280,7 @@ function migrateStore(database: Database.Database, storePath: string): void {
               JSON.stringify(msg.agentRunIds || (msg.agentRunId ? [msg.agentRunId] : [])),
               msg.agentEvents ? JSON.stringify(msg.agentEvents) : null,
               msg.tokenSpeed || null,
+              msg.cacheStats ? JSON.stringify(msg.cacheStats) : null,
               parseInt(msg.id) || Date.now()
             )
             if (msg.files && msg.files.length > 0) {
@@ -560,7 +563,7 @@ export function loadSessions(): Session[] {
   // cost grew with total message count; this keeps it to a constant number of round-trips.
   const allMsgRows = database
     .prepare(
-      'SELECT id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, createdAt FROM messages ORDER BY createdAt ASC'
+      'SELECT id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, cacheStats, createdAt FROM messages ORDER BY createdAt ASC'
     )
     .all() as Array<{
     id: string
@@ -574,6 +577,7 @@ export function loadSessions(): Session[] {
     forkedFrom: string | null
     isBranchFork: number | null
     tokenSpeed: number | null
+    cacheStats: string | null
     createdAt: number
   }>
 
@@ -607,6 +611,14 @@ export function loadSessions(): Session[] {
 
     const forkedFrom = parseBranchRef(m.forkedFrom)
     const fileRows = filesByMessage.get(m.id)
+    let cacheStats = undefined
+    if (m.cacheStats) {
+      try {
+        cacheStats = JSON.parse(m.cacheStats)
+      } catch {
+        // ignore
+      }
+    }
 
     const message: Message = {
       id: m.id,
@@ -619,7 +631,8 @@ export function loadSessions(): Session[] {
       forkedFrom,
       isBranchFork: m.isBranchFork === 1 || (m.isBranchFork == null && !!forkedFrom) || undefined,
       files: fileRows && fileRows.length > 0 ? fileRows : undefined,
-      tokenSpeed: m.tokenSpeed || undefined
+      tokenSpeed: m.tokenSpeed || undefined,
+      cacheStats
     }
 
     const list = messagesBySession.get(m.sessionId)
@@ -681,8 +694,8 @@ export function saveSessions(sessions: Session[]): void {
     'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, projectId, branchOf) VALUES (?, ?, ?, ?, ?)'
   )
   const insertMessage = database.prepare(
-    `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, cacheStats, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const insertFile = database.prepare(
     'INSERT INTO message_files (messageId, name, content, type) VALUES (?, ?, ?, ?)'
@@ -718,6 +731,7 @@ export function saveSessions(sessions: Session[]): void {
             msg.forkedFrom ? JSON.stringify(msg.forkedFrom) : null,
             msg.isBranchFork ? 1 : 0,
             msg.tokenSpeed || null,
+            msg.cacheStats ? JSON.stringify(msg.cacheStats) : null,
             parseInt(msg.id) || Date.now()
           )
           if (msg.files && msg.files.length > 0) {

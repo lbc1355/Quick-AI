@@ -10,6 +10,13 @@ export interface ToolResultUi {
   }>
 }
 
+export interface PromptCacheStats {
+  promptTokens?: number
+  cacheHitTokens: number
+  cacheMissTokens?: number
+  hitRate: number
+}
+
 export type AgentEvent =
   | { type: 'agent_start'; skillName: string }
   | { type: 'reasoning'; content: string; step?: number; stepId?: string }
@@ -91,6 +98,7 @@ export interface Message {
   /** Source session/message when a branch-like session was forked from history. */
   forkedFrom?: { sessionId: string; messageId: string; runId?: string }
   tokenSpeed?: number
+  cacheStats?: PromptCacheStats
 }
 
 export interface ChatCompletionMessage {
@@ -308,6 +316,7 @@ export interface ChatChunkData {
   error?: string
   event?: AgentEvent
   tokenSpeed?: number
+  cacheStats?: PromptCacheStats
 }
 
 export interface ClearSessionCachesPayload {

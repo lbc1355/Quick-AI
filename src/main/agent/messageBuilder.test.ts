@@ -231,10 +231,11 @@ describe('prepareChatAgentMessages tool directory injection', () => {
     // The tools that access the operation layer are named in the first system message
     expect(content).toContain('list_past_actions')
     expect(content).toContain('get_past_action')
+    expect(content).toContain('list_cached_resources')
     expect(content).toContain('read_cached_resource')
   })
 
-  it('injects resource context when provided', () => {
+  it('does not inject resource context into user messages when resources are provided', () => {
     const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }], 'test', [
       {
         id: 'abc123',
@@ -249,11 +250,10 @@ describe('prepareChatAgentMessages tool directory injection', () => {
     ])
     const userMsg = msgs.find((m) => m.role === 'user')
     expect(userMsg).toBeDefined()
-    expect(userMsg!.content as string).toContain('CONTEXT INFO')
-    expect(userMsg!.content as string).toContain('hi')
+    expect(userMsg!.content).toBe('hi')
   })
 
-  it('places the resource summary inside the latest user message (cache-friendly tail)', () => {
+  it('keeps the latest user message byte-stable when resources change', () => {
     const msgs = prepareChatAgentMessages(
       [
         { role: 'user', content: 'q1' },
@@ -277,7 +277,6 @@ describe('prepareChatAgentMessages tool directory injection', () => {
     const latestUserMsg = msgs[msgs.length - 1]
     expect(latestUserMsg).toBeDefined()
     expect(latestUserMsg.role).toBe('user')
-    expect(latestUserMsg.content as string).toContain('CONTEXT INFO')
-    expect(latestUserMsg.content as string).toContain('q2 (current)')
+    expect(latestUserMsg.content).toBe('q2 (current)')
   })
 })

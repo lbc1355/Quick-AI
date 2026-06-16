@@ -1,4 +1,4 @@
-import { ChatCompletionMessage, ChatToolDeclaration } from '../../shared/types'
+import { ChatCompletionMessage, ChatToolDeclaration, PromptCacheStats } from '../../shared/types'
 import { DEFAULT_RETRY_POLICY, isRetryableError } from './retryPolicy'
 import { detectProvider } from './modelAdapter'
 
@@ -13,15 +13,61 @@ export interface CallModelCallbacks {
   onFinalChunk: (content: string) => void
 }
 
+const promptCacheStatsByMessage = new WeakMap<ChatCompletionMessage, PromptCacheStats>()
+
+const asNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+export function getPromptCacheStats(message: ChatCompletionMessage): PromptCacheStats | undefined {
+  return promptCacheStatsByMessage.get(message)
+}
+
+function extractPromptCacheStats(usage: unknown): PromptCacheStats | undefined {
+  if (!usage || typeof usage !== 'object') return undefined
+  const u = usage as Record<string, unknown>
+  const promptDetails =
+    u.prompt_tokens_details && typeof u.prompt_tokens_details === 'object'
+      ? (u.prompt_tokens_details as Record<string, unknown>)
+      : undefined
+  const inputDetails =
+    u.input_tokens_details && typeof u.input_tokens_details === 'object'
+      ? (u.input_tokens_details as Record<string, unknown>)
+      : undefined
+
+  const promptTokens = asNumber(u.prompt_tokens) ?? asNumber(u.input_tokens)
+  const hitTokens =
+    asNumber(u.prompt_cache_hit_tokens) ??
+    asNumber(u.cache_hit_tokens) ??
+    asNumber(promptDetails?.cached_tokens) ??
+    asNumber(inputDetails?.cached_tokens)
+  let missTokens = asNumber(u.prompt_cache_miss_tokens) ?? asNumber(u.cache_miss_tokens)
+
+  if (hitTokens === undefined) return undefined
+  if (missTokens === undefined && promptTokens !== undefined) {
+    missTokens = Math.max(0, promptTokens - hitTokens)
+  }
+
+  const denominator = missTokens !== undefined ? hitTokens + missTokens : promptTokens
+  if (!denominator || denominator <= 0) return undefined
+
+  return {
+    promptTokens,
+    cacheHitTokens: hitTokens,
+    cacheMissTokens: missTokens,
+    hitRate: Number(((hitTokens / denominator) * 100).toFixed(1))
+  }
+}
+
 export function prepareMessagesForModel(
   messages: ChatCompletionMessage[]
 ): ChatCompletionMessage[] {
   return messages.map((m) => {
-    if (m.role !== 'assistant') return m
+    if (!('reasoning_content' in m)) return m
 
     const copy = { ...m }
-    if (!copy.reasoning_content) {
-      delete copy.reasoning_content
+    delete copy.reasoning_content
+    if (m.role === 'assistant' && copy.tool_calls) {
+      copy.tool_calls = [...copy.tool_calls]
     }
     return copy
   })
@@ -43,6 +89,10 @@ export async function callModel(
     model: options.model,
     messages: sanitizedMessages,
     stream: true
+  }
+
+  if (adapter.supportsStreamUsage) {
+    body.stream_options = { include_usage: true }
   }
 
   if (toolsToDeclare && toolsToDeclare.length > 0) {
@@ -90,6 +140,7 @@ export async function callModel(
     }
 
     let inThinkTag = false
+    let promptCacheStats: PromptCacheStats | undefined
 
     const emitReasoning = (content: string): void => {
       streamingStarted = true
@@ -117,6 +168,10 @@ export async function callModel(
           if (cleanLine.startsWith('data: ')) {
             try {
               const json = JSON.parse(cleanLine.substring(6))
+              const usageStats = extractPromptCacheStats(json.usage)
+              if (usageStats) {
+                promptCacheStats = usageStats
+              }
               const delta = json.choices?.[0]?.delta
               if (!delta) continue
 
@@ -221,6 +276,10 @@ export async function callModel(
           emitFinal(assistantMessage.content)
         }
       }
+    }
+
+    if (promptCacheStats) {
+      promptCacheStatsByMessage.set(assistantMessage, promptCacheStats)
     }
 
     return assistantMessage

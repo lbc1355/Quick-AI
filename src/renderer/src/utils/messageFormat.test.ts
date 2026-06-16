@@ -64,6 +64,12 @@ describe('parseAgentSteps agent_message_delta', () => {
   it('keeps only the committed final answer after final classification', () => {
     const events: AgentEvent[] = [
       {
+        type: 'reasoning',
+        content: 'Final thought. ',
+        step: 1,
+        stepId: 'run-1:step:1'
+      },
+      {
         type: 'agent_message_delta',
         content: 'Final answer.',
         step: 1,
@@ -80,6 +86,57 @@ describe('parseAgentSteps agent_message_delta', () => {
     const run = parseAgentSteps(events, '')
 
     expect(run.finalAnswer).toBe('Final answer.')
+    expect(run.finalReasoning).toBe('Final thought. ')
     expect(run.steps).toEqual([])
+  })
+
+  it('keeps reasoning from a forced final answer without attaching it to the last tool step', () => {
+    const events: AgentEvent[] = [
+      {
+        type: 'agent_step',
+        stepId: 'run-1:step:1',
+        step: 1,
+        maxSteps: 1,
+        title: 'Read files',
+        message: 'Read files',
+        status: 'running'
+      },
+      {
+        type: 'tool_call',
+        callId: 'tc-1',
+        toolName: 'read_file',
+        args: { path: 'README.md' },
+        permissionState: 'approved',
+        step: 1,
+        stepId: 'run-1:step:1'
+      },
+      {
+        type: 'tool_result',
+        callId: 'tc-1',
+        result: { title: 'README.md' },
+        step: 1,
+        stepId: 'run-1:step:1'
+      },
+      {
+        type: 'agent_step_end',
+        stepId: 'run-1:step:1',
+        status: 'completed'
+      },
+      {
+        type: 'reasoning',
+        content: 'Summarizing now.'
+      },
+      {
+        type: 'final',
+        content: 'Summary.'
+      }
+    ]
+
+    const run = parseAgentSteps(events, '')
+
+    expect(run.finalAnswer).toBe('Summary.')
+    expect(run.finalReasoning).toBe('Summarizing now.')
+    expect(run.steps).toHaveLength(1)
+    expect(run.steps[0].reasoning).toBe('')
   })
 })

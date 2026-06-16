@@ -8,6 +8,7 @@ import { ChatCompletionMessage } from '../../shared/types'
  */
 export interface ModelAdapter {
   readonly name: string
+  readonly supportsStreamUsage?: boolean
 
   /** Clean messages before sending. Must not mutate the input array. */
   sanitizeMessages(msgs: ChatCompletionMessage[]): ChatCompletionMessage[]
@@ -25,7 +26,7 @@ function cloneMessage(m: ChatCompletionMessage): ChatCompletionMessage {
 /** Strip `reasoning_content` from every message — used by providers that reject unknown fields. */
 function stripReasoningContent(msgs: ChatCompletionMessage[]): ChatCompletionMessage[] {
   return msgs.map((m) => {
-    if (m.reasoning_content === undefined || m.reasoning_content === '') return m
+    if (!('reasoning_content' in m)) return m
     const copy = cloneMessage(m)
     delete copy.reasoning_content
     return copy
@@ -75,7 +76,8 @@ function stripToolMessageName(msgs: ChatCompletionMessage[]): ChatCompletionMess
 
 const openaiAdapter: ModelAdapter = {
   name: 'openai',
-  sanitizeMessages: (msgs) => msgs,
+  supportsStreamUsage: true,
+  sanitizeMessages: stripReasoningContent,
   sanitizeBody: (body) => body
 }
 
@@ -83,7 +85,8 @@ const openaiAdapter: ModelAdapter = {
 
 const deepseekAdapter: ModelAdapter = {
   name: 'deepseek',
-  sanitizeMessages: (msgs) => msgs, // DeepSeek accepts reasoning_content
+  supportsStreamUsage: true,
+  sanitizeMessages: stripReasoningContent,
   sanitizeBody: (body) => body
 }
 
@@ -91,7 +94,8 @@ const deepseekAdapter: ModelAdapter = {
 
 const kimiAdapter: ModelAdapter = {
   name: 'kimi',
-  sanitizeMessages: (msgs) => msgs,
+  supportsStreamUsage: true,
+  sanitizeMessages: stripReasoningContent,
   sanitizeBody: (body) => body
 }
 

@@ -5,6 +5,7 @@ import {
   getResourceId,
   saveResourceChunk,
   readResourceChunk,
+  readResourceChunkWindow,
   mergeRanges,
   getFirstMissingOffset
 } from './resourceCache'
@@ -292,6 +293,47 @@ describeWithSqlite('resourceCache', () => {
       expect(await readResourceChunk(resourceId, 100)).toBe(largeText2)
       expect(await readResourceChunk(resourceId, 200)).toBe(largeText3)
     })
+
+    it('downgrades out-of-range cached reads to the nearest readable chunk', async () => {
+      const source = 'https://example.com/out-of-range'
+      const resourceId = getResourceId(source)
+
+      const chunk1: SessionResourceChunk = {
+        id: 'chunk-100-150',
+        offset: 100,
+        endOffset: 150,
+        text: 'first cached chunk',
+        createdAt: Date.now()
+      }
+      const chunk2: SessionResourceChunk = {
+        id: 'chunk-300-350',
+        offset: 300,
+        endOffset: 350,
+        text: 'last cached chunk',
+        createdAt: Date.now() + 10
+      }
+
+      await saveResourceChunk(resourceId, 'web', source, 'Out Of Range', 400, 150, chunk1)
+      await saveResourceChunk(resourceId, 'web', source, 'Out Of Range', 400, undefined, chunk2)
+
+      const beforeFirst = await readResourceChunkWindow(resourceId, -50)
+      expect(beforeFirst.offset).toBe(100)
+      expect(beforeFirst.endOffset).toBe(150)
+      expect(beforeFirst.text).toBe('first cached chunk')
+      expect(beforeFirst.warning).toContain('before the first cached chunk')
+
+      const gap = await readResourceChunkWindow(resourceId, 200)
+      expect(gap.offset).toBe(300)
+      expect(gap.endOffset).toBe(350)
+      expect(gap.text).toBe('last cached chunk')
+      expect(gap.warning).toContain('is not cached')
+
+      const beyondEnd = await readResourceChunkWindow(resourceId, 999)
+      expect(beyondEnd.offset).toBe(300)
+      expect(beyondEnd.endOffset).toBe(350)
+      expect(beyondEnd.text).toBe('last cached chunk')
+      expect(beyondEnd.warning).toContain('beyond cached content')
+    })
   })
 
   describe('search_cached_resource tool execution', () => {
@@ -346,6 +388,32 @@ describeWithSqlite('resourceCache', () => {
       )
       expect(res2.resultForModel).toContain('Chunk Offset: 0-100')
       expect(res2.resultForModel).toContain('Chunk Offset: 100-200')
+    })
+
+    it('read_cached_resource reports offset adjustment instead of failing', async () => {
+      const source = 'https://example.com/tool-read-adjust'
+      const resourceId = getResourceId(source)
+      const chunk: SessionResourceChunk = {
+        id: 'chunk-0-20',
+        offset: 0,
+        endOffset: 20,
+        text: 'cached tool content',
+        createdAt: Date.now()
+      }
+
+      await saveResourceChunk(resourceId, 'web', source, 'Tool Read Adjust', 20, undefined, chunk)
+
+      const { ToolRegistry } = await import('./toolRegistry')
+      const result = await ToolRegistry.read_cached_resource.execute(
+        { resourceId, offset: 999 },
+        { reqId: 'test-req', signal: new AbortController().signal }
+      )
+
+      expect(result.resultForModel).toContain('Requested Offset: 999')
+      expect(result.resultForModel).toContain('Returned Offset: 0-20')
+      expect(result.resultForModel).toContain('Warning:')
+      expect(result.resultForModel).toContain('cached tool content')
+      expect(result.resultForUi.summary).toContain('Adjusted offset 999 to 0-20')
     })
   })
 })

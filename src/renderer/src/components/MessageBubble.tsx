@@ -97,6 +97,11 @@ const getToolStatusLabel = (status: ParsedToolCall['status']): string => {
   }
 }
 
+const formatCacheHitRate = (cacheStats: Message['cacheStats']): string | null => {
+  if (!cacheStats || !Number.isFinite(cacheStats.hitRate)) return null
+  return `缓存命中 ${cacheStats.hitRate}%`
+}
+
 const ToolDetailModal: React.FC<{
   toolCall: ParsedToolCall
   onClose: () => void
@@ -225,27 +230,111 @@ const getToolChipText = (toolCall: ParsedToolCall): string => {
   )
 }
 
+interface ToolEventGroup {
+  id: string
+  verb: string
+  calls: ParsedToolCall[]
+}
+
+const groupConsecutiveToolCalls = (step: ParsedAgentStep): ToolEventGroup[] => {
+  const groups: ToolEventGroup[] = []
+
+  step.toolCalls.forEach((toolCall) => {
+    const verb = getToolEventVerb(toolCall)
+    const latestGroup = groups[groups.length - 1]
+    if (latestGroup && latestGroup.verb === verb) {
+      latestGroup.calls.push(toolCall)
+      return
+    }
+
+    groups.push({
+      id: `${step.id}-${toolCall.callId}-${verb}`,
+      verb,
+      calls: [toolCall]
+    })
+  })
+
+  return groups
+}
+
 const StepToolEvents: React.FC<{
   step: ParsedAgentStep
   onOpenToolDetail: (toolCall: ParsedToolCall) => void
 }> = ({ step, onOpenToolDetail }) => {
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+
   if (step.toolCalls.length === 0) return null
+
+  const toolGroups = groupConsecutiveToolCalls(step)
+
+  const toggleGroup = (groupId: string): void => {
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId]
+    }))
+  }
+
+  const renderToolEvent = (tc: ParsedToolCall): React.ReactNode => {
+    const isFocused = tc.status === 'running' || tc.status === 'pending'
+    return (
+      <button
+        key={tc.callId}
+        type="button"
+        className={`agent-tool-event ${tc.status} ${isFocused ? 'focused' : ''}`}
+        onClick={() => onOpenToolDetail(tc)}
+        title="查看工具详情"
+      >
+        <span className="agent-tool-verb">{getToolEventVerb(tc)}</span>
+        <span className="agent-tool-chip">{getToolChipText(tc)}</span>
+      </button>
+    )
+  }
 
   return (
     <div className="agent-tool-events">
-      {step.toolCalls.map((tc) => {
-        const isFocused = tc.status === 'running' || tc.status === 'pending'
+      {toolGroups.map((group) => {
+        if (group.calls.length === 1) return renderToolEvent(group.calls[0])
+
+        const isFocused = group.calls.some(
+          (tc) => tc.status === 'running' || tc.status === 'pending'
+        )
+        const hasFailure = group.calls.some(
+          (tc) => tc.status === 'failed' || tc.status === 'denied'
+        )
+        const groupStatus = hasFailure ? 'failed' : isFocused ? 'running' : 'completed'
+        const isExpanded = expandedGroups[group.id] ?? isFocused
+        const previewCalls = group.calls.slice(0, 3)
+
         return (
-          <button
-            key={tc.callId}
-            type="button"
-            className={`agent-tool-event ${tc.status} ${isFocused ? 'focused' : ''}`}
-            onClick={() => onOpenToolDetail(tc)}
-            title="查看工具详情"
-          >
-            <span className="agent-tool-verb">{getToolEventVerb(tc)}</span>
-            <span className="agent-tool-chip">{getToolChipText(tc)}</span>
-          </button>
+          <div key={group.id} className="agent-tool-group">
+            <button
+              type="button"
+              className={`agent-tool-group-toggle ${groupStatus} ${isFocused ? 'focused' : ''} ${isExpanded ? 'expanded' : ''}`}
+              onClick={() => toggleGroup(group.id)}
+              title={isExpanded ? 'Collapse tool group' : 'Expand tool group'}
+            >
+              <ChevronRight size={12} className="agent-tool-group-caret" />
+              <span className="agent-tool-verb">{group.verb}</span>
+              <span className="agent-tool-group-count">{group.calls.length}</span>
+              <span className="agent-tool-group-preview">
+                {previewCalls.map((tc) => (
+                  <span key={tc.callId} className="agent-tool-chip compact">
+                    {getToolChipText(tc)}
+                  </span>
+                ))}
+                {group.calls.length > previewCalls.length && (
+                  <span className="agent-tool-group-more">
+                    +{group.calls.length - previewCalls.length}
+                  </span>
+                )}
+              </span>
+            </button>
+            {isExpanded && (
+              <div className="agent-tool-group-items">
+                {group.calls.map((tc) => renderToolEvent(tc))}
+              </div>
+            )}
+          </div>
         )
       })}
     </div>
@@ -433,6 +522,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
 
     const totalToolsCount = parsedRun.totalToolsCount
     const failedToolsCount = parsedRun.failedToolsCount
+    const cacheHitRateText = formatCacheHitRate(msg.cacheStats)
 
     const activeParsedStep =
       [...parsedRun.steps]
@@ -459,6 +549,13 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
             e.type === 'tool_call' && e.permissionState === 'pending'
         )
       : undefined
+    const hasActiveToolCall =
+      latestToolCall?.status === 'pending' || latestToolCall?.status === 'running'
+    const isGeneratingAnswer =
+      agentStatus === 'running' &&
+      !pendingToolCall &&
+      !hasActiveToolCall &&
+      (parsedRun.finalAnswer.trim().length > 0 || totalToolsCount > 0)
 
     const activeStepTitle = useMemo(() => {
       if (activeParsedStep?.title) return activeParsedStep.title
@@ -498,10 +595,12 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       toolsSummaryText = `已运行 ${totalToolsCount - 1} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
     } else if (agentStatus === 'running') {
       cockpitColor = '#3b82f6'
-      statusText = `正在${activeStepTitle}`
-      opText = latestToolCall
-        ? `当前操作：${latestToolCall.purpose || formatToolDisplayText(latestToolCall.toolName, latestToolCall.args)}`
-        : '当前操作：思考分析中...'
+      statusText = isGeneratingAnswer ? '正在生成回答' : `正在${activeStepTitle}`
+      opText = isGeneratingAnswer
+        ? `当前操作：正在整理结果${totalToolsCount > 0 ? `（已运行 ${totalToolsCount} 个工具）` : ''}`
+        : latestToolCall
+          ? `当前操作：${latestToolCall.purpose || formatToolDisplayText(latestToolCall.toolName, latestToolCall.args)}`
+          : '当前操作：思考分析中...'
       toolsSummaryText = `已运行 ${totalToolsCount} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
     } else if (agentStatus === 'completed') {
       cockpitColor = '#10b981'
@@ -759,10 +858,11 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           </div>
                         ) : null}
 
-                        {parsedRun.finalAnswer && (
+                        {(parsedRun.finalReasoning || parsedRun.finalAnswer) && (
                           <div className="agent-event-final-text">
+                            <StepReasoningBlock reasoning={parsedRun.finalReasoning} />
                             {renderedFinalAnswer}
-                            {parsedRun.steps.length === 0 && msg.tokenSpeed !== undefined && (
+                            {(msg.tokenSpeed !== undefined || cacheHitRateText) && (
                               <div
                                 className="msg-generation-stats"
                                 style={{
@@ -776,7 +876,15 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                 }}
                               >
                                 <Sparkles size={10} style={{ color: '#10b981' }} />
-                                <span>{msg.tokenSpeed} token/s</span>
+                                {msg.tokenSpeed !== undefined && (
+                                  <span>{msg.tokenSpeed} token/s</span>
+                                )}
+                                {cacheHitRateText && (
+                                  <>
+                                    {msg.tokenSpeed !== undefined && <span>·</span>}
+                                    <span>{cacheHitRateText}</span>
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>
@@ -794,7 +902,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       ) : (
                         <>
                           {renderedCleanContent}
-                          {msg.tokenSpeed !== undefined && (
+                          {(msg.tokenSpeed !== undefined || cacheHitRateText) && (
                             <div
                               className="msg-generation-stats"
                               style={{
@@ -808,7 +916,15 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                               }}
                             >
                               <Sparkles size={10} style={{ color: '#10b981' }} />
-                              <span>{msg.tokenSpeed} token/s</span>
+                              {msg.tokenSpeed !== undefined && (
+                                <span>{msg.tokenSpeed} token/s</span>
+                              )}
+                              {cacheHitRateText && (
+                                <>
+                                  {msg.tokenSpeed !== undefined && <span>·</span>}
+                                  <span>{cacheHitRateText}</span>
+                                </>
+                              )}
                             </div>
                           )}
                         </>

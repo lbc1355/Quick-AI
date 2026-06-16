@@ -98,12 +98,7 @@ export function trimMessagesToFit(
       contentStr = m.content.map((p) => (p.type === 'text' ? p.text || '' : '')).join('')
     }
     const toolCallsStr = m.tool_calls ? JSON.stringify(m.tool_calls) : ''
-    return (
-      estimateTokens(contentStr) +
-      estimateTokens(m.reasoning_content || '') +
-      estimateTokens(toolCallsStr) +
-      4
-    )
+    return estimateTokens(contentStr) + estimateTokens(toolCallsStr) + 4
   }
 
   while (totalTokens > budget && result.length > protectedTail + 1) {

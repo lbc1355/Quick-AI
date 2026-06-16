@@ -76,10 +76,14 @@ export const startStreamingRun = ({
     }
 
     if (data.done) {
-      if (data.tokenSpeed !== undefined) {
+      if (data.tokenSpeed !== undefined || data.cacheStats !== undefined) {
         updateMessageById(
           assistantMsgId,
-          (m) => ({ ...m, tokenSpeed: data.tokenSpeed }),
+          (m) => ({
+            ...m,
+            ...(data.tokenSpeed !== undefined ? { tokenSpeed: data.tokenSpeed } : {}),
+            ...(data.cacheStats !== undefined ? { cacheStats: data.cacheStats } : {})
+          }),
           true,
           sessionId
         )

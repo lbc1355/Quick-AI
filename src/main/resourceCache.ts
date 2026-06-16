@@ -42,6 +42,14 @@ export interface CachedResourceFile {
   updatedAt: number
 }
 
+export interface ReadResourceChunkWindow {
+  text: string
+  offset: number
+  endOffset: number
+  requestedOffset: number
+  warning?: string
+}
+
 export function getResourceId(source: string): string {
   return crypto.createHash('md5').update(source).digest('hex')
 }
@@ -249,6 +257,93 @@ export async function readResourceChunk(resourceId: string, offset: number): Pro
     )
   }
   return text
+}
+
+export async function readResourceChunkWindow(
+  resourceId: string,
+  offset: number
+): Promise<ReadResourceChunkWindow> {
+  if (!RESOURCE_ID_PATTERN.test(resourceId)) {
+    throw new Error('Invalid resource ID')
+  }
+  if (!Number.isFinite(offset)) {
+    throw new Error('Invalid offset')
+  }
+
+  const requestedOffset = Math.floor(offset)
+  const resource = loadResourceCache(resourceId)
+  if (!resource) {
+    throw new Error(`Resource cache not found for ID: ${resourceId}`)
+  }
+
+  const chunks = resource.chunks
+    .map((chunk) => {
+      const text = chunk.text || ''
+      const start =
+        typeof chunk.offset === 'number' && Number.isFinite(chunk.offset) ? chunk.offset : 0
+      const end =
+        typeof chunk.endOffset === 'number' && Number.isFinite(chunk.endOffset)
+          ? chunk.endOffset
+          : start + text.length
+      return {
+        text,
+        offset: start,
+        endOffset: end
+      }
+    })
+    .filter((chunk) => chunk.text.length > 0 && chunk.endOffset > chunk.offset)
+    .sort((a, b) => a.offset - b.offset)
+
+  if (chunks.length === 0) {
+    throw new Error(`No readable cached chunks found in resource ID: ${resourceId}`)
+  }
+
+  const formatRanges = (): string =>
+    chunks.map((chunk) => `${chunk.offset}-${chunk.endOffset}`).join(', ')
+
+  const containing = chunks.find(
+    (chunk) => chunk.offset <= requestedOffset && chunk.endOffset > requestedOffset
+  )
+  if (containing) {
+    return {
+      ...containing,
+      requestedOffset,
+      ...(containing.offset !== requestedOffset
+        ? {
+            warning: `Requested offset ${requestedOffset} falls inside cached chunk ${containing.offset}-${containing.endOffset}; returned the full cached chunk from offset ${containing.offset}.`
+          }
+        : {})
+    }
+  }
+
+  const first = chunks[0]
+  if (requestedOffset < first.offset) {
+    return {
+      ...first,
+      requestedOffset,
+      warning: `Requested offset ${requestedOffset} is before the first cached chunk. Returned the first readable chunk ${first.offset}-${first.endOffset}. Cached ranges: ${formatRanges()}.`
+    }
+  }
+
+  const next = chunks.find((chunk) => chunk.offset > requestedOffset)
+  if (next) {
+    return {
+      ...next,
+      requestedOffset,
+      warning: `Requested offset ${requestedOffset} is not cached. Returned the next readable chunk ${next.offset}-${next.endOffset}. Cached ranges: ${formatRanges()}.`
+    }
+  }
+
+  const last = chunks[chunks.length - 1]
+  const resourceLength =
+    typeof resource.totalChars === 'number' && Number.isFinite(resource.totalChars)
+      ? ` Resource length is ${resource.totalChars}.`
+      : ''
+  return {
+    ...last,
+    requestedOffset,
+    warning: `Requested offset ${requestedOffset} is beyond cached content.${resourceLength} Returned the last readable chunk ${last.offset}-${last.endOffset}. Cached ranges: ${formatRanges()}.`
+  }
 }
 
 // Look up a cached link by its inline id (for click_link).

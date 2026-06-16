@@ -1,9 +1,10 @@
 import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest'
-import { callModel, prepareMessagesForModel } from './callModel'
+import { callModel, getPromptCacheStats, prepareMessagesForModel } from './callModel'
 
 const encoder = new TextEncoder()
 
 const sseLine = (delta: object): string => `data: ${JSON.stringify({ choices: [{ delta }] })}\n`
+const sseUsageLine = (usage: object): string => `data: ${JSON.stringify({ choices: [], usage })}\n`
 
 const sseStream = (chunks: string[]): ReadableStream<Uint8Array> => {
   let i = 0
@@ -22,7 +23,7 @@ const okResponse = (stream: ReadableStream<Uint8Array>): Response =>
   ({ ok: true, body: stream }) as unknown as Response
 
 describe('prepareMessagesForModel', () => {
-  it('keeps non-empty assistant reasoning content for thinking-mode history replay', () => {
+  it('removes non-empty assistant reasoning content from request history', () => {
     const messages = prepareMessagesForModel([
       { role: 'user', content: 'read the file' },
       {
@@ -40,10 +41,9 @@ describe('prepareMessagesForModel', () => {
       { role: 'tool', tool_call_id: 'call-1', name: 'file_read', content: 'file contents' }
     ])
 
-    expect(messages[1]).toMatchObject({
-      role: 'assistant',
-      reasoning_content: 'I need to inspect the project first.'
-    })
+    expect(messages[1]).toMatchObject({ role: 'assistant' })
+    expect(messages[1]).not.toHaveProperty('reasoning_content')
+    expect(messages[1].tool_calls).toHaveLength(1)
   })
 
   it('removes empty assistant reasoning content from request history', () => {
@@ -160,5 +160,36 @@ describe('callModel retry behavior', () => {
     await assertion
 
     expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('extracts prompt cache stats from streaming usage chunks', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(
+        sseStream([
+          sseLine({ content: 'Hello' }),
+          sseUsageLine({
+            prompt_tokens: 100,
+            prompt_cache_hit_tokens: 75,
+            prompt_cache_miss_tokens: 25
+          }),
+          'data: [DONE]\n'
+        ])
+      )
+    )
+
+    const result = await callModel(
+      { apiUrl: 'https://api.deepseek.com', apiKey: 'k', model: 'test-model' },
+      [{ role: 'user', content: 'hi' }]
+    )
+
+    expect(getPromptCacheStats(result)).toEqual({
+      promptTokens: 100,
+      cacheHitTokens: 75,
+      cacheMissTokens: 25,
+      hitRate: 75
+    })
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.stream_options).toEqual({ include_usage: true })
   })
 })

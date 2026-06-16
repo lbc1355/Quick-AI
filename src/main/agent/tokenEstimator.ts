@@ -31,11 +31,7 @@ export function estimateMessagesTokens(messages: ChatCompletionMessage[]): numbe
     }
 
     return (
-      sum +
-      estimateTokens(contentStr) +
-      estimateTokens(msg.reasoning_content || '') +
-      estimateTokens(toolCallsStr) +
-      4 // role/formatting overhead
+      sum + estimateTokens(contentStr) + estimateTokens(toolCallsStr) + 4 // role/formatting overhead
     )
   }, 0)
 }

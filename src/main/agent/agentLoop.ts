@@ -4,7 +4,8 @@ import {
   ChatCompletionMessage,
   AgentEvent,
   ChatToolDeclaration,
-  SessionResource
+  SessionResource,
+  PromptCacheStats
 } from '../../shared/types'
 import { ToolRegistry, toChatToolDeclaration, searchToolDefinitions } from '../toolRegistry'
 import { buildSkillMessages, prepareChatAgentMessages } from './messageBuilder'
@@ -13,7 +14,7 @@ import {
   trimMessagesToFit,
   TOOL_OUTPUT_SPILLOVER_THRESHOLD
 } from './contextManager'
-import { callModel } from './callModel'
+import { callModel, getPromptCacheStats } from './callModel'
 import { estimateTokens } from './tokenEstimator'
 import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
@@ -143,7 +144,13 @@ export const runAgentLoop = async (
     : 'dynamic'
 
   const maxSteps = isSkill ? clampMaxSteps(options.skill!.maxSteps) : 30
-  const skillTools = isSkill ? options.skill!.tools || [] : []
+  const resourceToolNames =
+    options.resources && options.resources.length > 0
+      ? ['list_cached_resources', 'read_cached_resource', 'search_cached_resource']
+      : []
+  const skillTools = isSkill
+    ? Array.from(new Set([...(options.skill!.tools || []), ...resourceToolNames]))
+    : []
   const toolScope = isSkill ? new Set<string>(skillTools) : 'all'
 
   // Per-conversation action log: persists tool call history across runs so the model can
@@ -214,6 +221,9 @@ export const runAgentLoop = async (
     }
   }
   if (options.resources && options.resources.length > 0) {
+    if (!initialActiveTools.includes('list_cached_resources')) {
+      initialActiveTools.push('list_cached_resources')
+    }
     if (!initialActiveTools.includes('read_cached_resource')) {
       initialActiveTools.push('read_cached_resource')
     }
@@ -259,12 +269,56 @@ export const runAgentLoop = async (
   const MAX_FETCH_URLS_PER_RUN = 10
   let totalGeneratedTokens = 0
   let totalGenerationTimeMs = 0
+  let totalCacheHitTokens = 0
+  let totalCacheMissTokens = 0
+  let totalCachePromptTokens = 0
+  let hasCacheStats = false
 
   const getTokenSpeed = (): number => {
     const totalGenerationSec = totalGenerationTimeMs / 1000
     return totalGenerationSec > 0
       ? Number((totalGeneratedTokens / totalGenerationSec).toFixed(1))
       : 0
+  }
+
+  const addPromptCacheStats = (stats: PromptCacheStats | undefined): void => {
+    if (!stats) return
+    hasCacheStats = true
+    totalCacheHitTokens += stats.cacheHitTokens
+    if (stats.cacheMissTokens !== undefined) {
+      totalCacheMissTokens += stats.cacheMissTokens
+    } else if (stats.promptTokens !== undefined) {
+      totalCacheMissTokens += Math.max(0, stats.promptTokens - stats.cacheHitTokens)
+    }
+    if (stats.promptTokens !== undefined) {
+      totalCachePromptTokens += stats.promptTokens
+    }
+  }
+
+  const getAggregatedCacheStats = (): PromptCacheStats | undefined => {
+    if (!hasCacheStats) return undefined
+    const denominator =
+      totalCacheHitTokens + totalCacheMissTokens > 0
+        ? totalCacheHitTokens + totalCacheMissTokens
+        : totalCachePromptTokens
+    if (!denominator || denominator <= 0) return undefined
+    return {
+      promptTokens: totalCachePromptTokens > 0 ? totalCachePromptTokens : undefined,
+      cacheHitTokens: totalCacheHitTokens,
+      cacheMissTokens: totalCacheMissTokens,
+      hitRate: Number(((totalCacheHitTokens / denominator) * 100).toFixed(1))
+    }
+  }
+
+  const buildDoneChunk = (extra: Record<string, unknown> = {}): Record<string, unknown> => {
+    const cacheStats = getAggregatedCacheStats()
+    return {
+      reqId,
+      ...extra,
+      done: true,
+      tokenSpeed: getTokenSpeed(),
+      ...(cacheStats ? { cacheStats } : {})
+    }
   }
 
   // Behavioural guardrails (repeated-call blocking + consecutive-failure halt) that
@@ -420,6 +474,7 @@ export const runAgentLoop = async (
         typeof assistantMessage.content === 'string' ? assistantMessage.content : ''
       totalGeneratedTokens += estimateTokens(reasoningText) + estimateTokens(contentText)
       totalGenerationTimeMs += modelElapsed
+      addPromptCacheStats(getPromptCacheStats(assistantMessage))
 
       messages.push(assistantMessage)
       SessionLogger.logModelResponse(conversationId, assistantMessage)
@@ -604,7 +659,13 @@ export const runAgentLoop = async (
               throw new Error('Agent execution aborted by user.')
             }
             const { resultForModel, resultForUi } = await withRetry(
-              () => toolDef.execute(toolArgs, { reqId, signal, mainWindow }),
+              () =>
+                toolDef.execute(toolArgs, {
+                  reqId,
+                  signal,
+                  mainWindow,
+                  resources: options.resources
+                }),
               DEFAULT_RETRY_POLICY,
               signal
             )
@@ -827,11 +888,7 @@ export const runAgentLoop = async (
           sendEvent(mainWindow, reqId, { type: 'final', content: finalText, step, stepId })
         }
         setRunEnd('completed')
-        mainWindow.webContents.send('chat-chunk', {
-          reqId,
-          done: true,
-          tokenSpeed: getTokenSpeed()
-        })
+        mainWindow.webContents.send('chat-chunk', buildDoneChunk())
         return
       }
     }
@@ -884,6 +941,7 @@ export const runAgentLoop = async (
       typeof forcedFinalMessage.content === 'string' ? forcedFinalMessage.content : ''
     totalGeneratedTokens += estimateTokens(finalReasoningText) + estimateTokens(finalContentText)
     totalGenerationTimeMs += finalModelElapsed
+    addPromptCacheStats(getPromptCacheStats(forcedFinalMessage))
 
     const forcedFinalText = getAssistantText(forcedFinalMessage.content)
     if (!forcedFinalEmitted && forcedFinalText) {
@@ -891,7 +949,7 @@ export const runAgentLoop = async (
     }
 
     setRunEnd('max_steps')
-    mainWindow.webContents.send('chat-chunk', { reqId, done: true, tokenSpeed: getTokenSpeed() })
+    mainWindow.webContents.send('chat-chunk', buildDoneChunk())
   } catch (error) {
     const err = error as Error
     console.error('Agent Loop error:', err)
@@ -899,19 +957,14 @@ export const runAgentLoop = async (
       signal.aborted || err.message?.includes('aborted') || err.name === 'AbortError'
     if (isAborted) {
       setRunEnd('cancelled')
-      mainWindow.webContents.send('chat-chunk', {
-        reqId,
-        cancelled: true,
-        done: true,
-        tokenSpeed: getTokenSpeed()
-      })
+      mainWindow.webContents.send('chat-chunk', buildDoneChunk({ cancelled: true }))
     } else {
       setRunEnd('failed', err.message || 'Agent Loop failed')
       mainWindow.webContents.send('chat-chunk', {
         reqId,
         error: err.message || 'Agent Loop failed'
       })
-      mainWindow.webContents.send('chat-chunk', { reqId, done: true, tokenSpeed: getTokenSpeed() })
+      mainWindow.webContents.send('chat-chunk', buildDoneChunk())
     }
   } finally {
     actionLog.save()

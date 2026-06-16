@@ -25,7 +25,7 @@ describe('estimateMessagesTokens', () => {
     expect(tokens).toBe(5)
   })
 
-  it('includes tool_calls and reasoning_content in the estimate', () => {
+  it('includes tool_calls but excludes reasoning_content from the prompt estimate', () => {
     const withTools = estimateMessagesTokens([
       {
         role: 'assistant',
@@ -36,8 +36,12 @@ describe('estimateMessagesTokens', () => {
         ]
       }
     ])
+    const withReasoningOnly = estimateMessagesTokens([
+      { role: 'assistant', content: '', reasoning_content: 'aaaa' }
+    ])
     const bare = estimateMessagesTokens([{ role: 'assistant', content: '' }])
     expect(withTools).toBeGreaterThan(bare)
+    expect(withReasoningOnly).toBe(bare)
   })
 
   it('handles array (multimodal) content by counting only text parts', () => {

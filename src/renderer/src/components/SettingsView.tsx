@@ -1,11 +1,15 @@
 import React, { useMemo, useState } from 'react'
-import { ApiProvider, Skill, SkillInstallPayload, WebSearchProviderType } from '../../../shared/types'
+import {
+  ApiProvider,
+  Skill,
+  SkillInstallPayload,
+  WebSearchProviderType
+} from '../../../shared/types'
 import { ProviderList } from './ProviderList'
 import { ProviderEditor } from './ProviderEditor'
 import { SkillManager } from './SkillManager'
 import { MemoryManager } from './MemoryManager'
 import { McpManagerView } from './McpManagerView'
-
 
 interface SettingsViewProps {
   isEditingProviderDetail: boolean
@@ -79,6 +83,7 @@ const agentTools: Array<{
 }> = [
   { name: 'fetch_url', label: '抓取网页', risk: 'low' },
   { name: 'read_cached_resource', label: '读取资源缓存', risk: 'low' },
+  { name: 'list_cached_resources', label: '列出资源缓存', risk: 'low' },
   { name: 'search_cached_resource', label: '检索资源缓存', risk: 'low' },
   { name: 'web_search', label: '网络搜索', risk: 'low' },
   { name: 'workspace_list_files', label: '列出工作区文件', risk: 'low' },
@@ -313,7 +318,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="websearch-config">
                 <div className="websearch-config-header">
                   <h3>网络搜索引擎</h3>
-                  <p>选择搜索后端。配置 API 后可获得更稳定的结果与直接答案；无 Key 时自动回退到内置抓取。</p>
+                  <p>
+                    选择搜索后端。配置 API 后可获得更稳定的结果与直接答案；无 Key
+                    时自动回退到内置抓取。
+                  </p>
                 </div>
                 <div className="websearch-config-row">
                   <label>搜索提供商</label>
@@ -393,7 +401,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           )}
 
           {activeSection === 'memory' && (
-            <section className="control-section" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <section
+              className="control-section"
+              style={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden'
+              }}
+            >
               <header className="control-section-header" style={{ flexShrink: 0 }}>
                 <div>
                   <h2>记忆管理</h2>
@@ -407,7 +423,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           )}
 
           {activeSection === 'mcp' && (
-            <section className="control-section" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <section
+              className="control-section"
+              style={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden'
+              }}
+            >
               <header className="control-section-header" style={{ flexShrink: 0 }}>
                 <div>
                   <h2>MCP 外部工具</h2>

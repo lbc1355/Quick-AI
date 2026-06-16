@@ -375,6 +375,7 @@ export interface ParsedAgentStep {
 export interface ParsedAgentRun {
   steps: ParsedAgentStep[]
   finalAnswer: string
+  finalReasoning: string
   status: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps'
   totalToolsCount: number
   failedToolsCount: number
@@ -387,6 +388,7 @@ export const parseAgentSteps = (
   const run: ParsedAgentRun = {
     steps: [],
     finalAnswer: '',
+    finalReasoning: '',
     status: 'idle',
     totalToolsCount: 0,
     failedToolsCount: 0
@@ -495,6 +497,11 @@ export const parseAgentSteps = (
         }
 
         if (event.type === 'reasoning') {
+          const meta = getStepMeta(event)
+          if (!meta.stepId && meta.step === undefined) {
+            run.finalReasoning += event.content
+            return
+          }
           const g = getGroupForEvent(event)
           g.reasoningTexts.push(event.content)
           return
@@ -560,6 +567,7 @@ export const parseAgentSteps = (
             !g.hasAgentStep && toolCallsList.length === 0 && streamedMessage.length > 0
 
           if (isUnclassifiedModelMessage) {
+            run.finalReasoning += g.reasoningTexts.join('')
             if (!finalizedMessageStepIds.has(g.id) && !run.finalAnswer) {
               run.finalAnswer = streamedMessage
             }
@@ -602,144 +610,151 @@ export const parseAgentSteps = (
         )
       }
     } else {
-    interface RawGroup {
-      stepNumber: number
-      finalTexts: string[]
-      reasoningTexts: string[]
-      toolCalls: Map<string, ParsedToolCall>
-    }
-
-    const groups: RawGroup[] = []
-
-    const getOrCreateGroup = (stepNum: number): RawGroup => {
-      let g = groups.find((x) => x.stepNumber === stepNum)
-      if (!g) {
-        g = {
-          stepNumber: stepNum,
-          finalTexts: [],
-          reasoningTexts: [],
-          toolCalls: new Map()
-        }
-        groups.push(g)
+      interface RawGroup {
+        stepNumber: number
+        finalTexts: string[]
+        reasoningTexts: string[]
+        toolCalls: Map<string, ParsedToolCall>
       }
-      return g
-    }
 
-    // Fallback counter for legacy events
-    let legacyStepCounter = 1
-    let legacyHasToolCallInCurrentStep = false
+      const groups: RawGroup[] = []
 
-    events.forEach((event) => {
-      let stepNum = (event as any).step
-
-      if (stepNum === undefined || stepNum === null) {
-        if (event.type === 'final') {
-          if (legacyHasToolCallInCurrentStep) {
-            legacyStepCounter++
-            legacyHasToolCallInCurrentStep = false
+      const getOrCreateGroup = (stepNum: number): RawGroup => {
+        let g = groups.find((x) => x.stepNumber === stepNum)
+        if (!g) {
+          g = {
+            stepNumber: stepNum,
+            finalTexts: [],
+            reasoningTexts: [],
+            toolCalls: new Map()
           }
-          stepNum = legacyStepCounter
+          groups.push(g)
+        }
+        return g
+      }
+
+      // Fallback counter for legacy events
+      let legacyStepCounter = 1
+      let legacyHasToolCallInCurrentStep = false
+
+      events.forEach((event) => {
+        let stepNum = (event as any).step
+
+        if (stepNum === undefined || stepNum === null) {
+          if (event.type === 'final') {
+            if (legacyHasToolCallInCurrentStep) {
+              legacyStepCounter++
+              legacyHasToolCallInCurrentStep = false
+            }
+            stepNum = legacyStepCounter
+          } else if (event.type === 'tool_call') {
+            legacyHasToolCallInCurrentStep = true
+            stepNum = legacyStepCounter
+          } else if (
+            event.type === 'tool_result' ||
+            event.type === 'tool_error' ||
+            event.type === 'reasoning'
+          ) {
+            stepNum = legacyStepCounter
+          }
+        } else {
+          legacyStepCounter = stepNum
+        }
+
+        if (event.type === 'agent_end') {
+          run.status = event.status
+        }
+
+        if (stepNum === undefined) {
+          return
+        }
+
+        const g = getOrCreateGroup(stepNum)
+
+        if (event.type === 'reasoning') {
+          g.reasoningTexts.push(event.content)
+        } else if (event.type === 'final') {
+          g.finalTexts.push(event.content)
         } else if (event.type === 'tool_call') {
-          legacyHasToolCallInCurrentStep = true
-          stepNum = legacyStepCounter
-        } else if (event.type === 'tool_result' || event.type === 'tool_error' || event.type === 'reasoning') {
-          stepNum = legacyStepCounter
+          run.totalToolsCount++
+          let status: ParsedToolCall['status'] = 'running'
+          if (event.permissionState === 'pending') status = 'pending'
+          else if (event.permissionState === 'denied') status = 'denied'
+          else if (event.permissionState === 'approved') status = 'running'
+
+          g.toolCalls.set(event.callId, {
+            callId: event.callId,
+            toolName: event.toolName,
+            args: event.args,
+            purpose: event.purpose,
+            permissionState: event.permissionState,
+            status
+          })
+        } else if (event.type === 'tool_result') {
+          const tc = g.toolCalls.get(event.callId)
+          if (tc) {
+            tc.result = event.result
+            tc.status = 'completed'
+          } else {
+            for (const otherG of groups) {
+              const otherTc = otherG.toolCalls.get(event.callId)
+              if (otherTc) {
+                otherTc.result = event.result
+                otherTc.status = 'completed'
+                break
+              }
+            }
+          }
+        } else if (event.type === 'tool_error') {
+          run.failedToolsCount++
+          const tc = g.toolCalls.get(event.callId)
+          if (tc) {
+            tc.error = event.error
+            tc.status = 'failed'
+          } else {
+            for (const otherG of groups) {
+              const otherTc = otherG.toolCalls.get(event.callId)
+              if (otherTc) {
+                otherTc.error = event.error
+                otherTc.status = 'failed'
+                break
+              }
+            }
+          }
         }
-      } else {
-        legacyStepCounter = stepNum
-      }
+      })
 
-      if (event.type === 'agent_end') {
-        run.status = event.status
-      }
+      const steps: ParsedAgentStep[] = groups
+        .map((g) => {
+          const toolCallsList = Array.from(g.toolCalls.values())
+          let stepStatus: ParsedAgentStep['status'] = 'completed'
+          if (toolCallsList.some((tc) => tc.status === 'running' || tc.status === 'pending')) {
+            stepStatus = 'running'
+          } else if (toolCallsList.some((tc) => tc.status === 'failed' || tc.status === 'denied')) {
+            stepStatus = 'failed'
+          }
 
-      if (stepNum === undefined) {
-        return
-      }
-
-      const g = getOrCreateGroup(stepNum)
-
-      if (event.type === 'reasoning') {
-        g.reasoningTexts.push(event.content)
-      } else if (event.type === 'final') {
-        g.finalTexts.push(event.content)
-      } else if (event.type === 'tool_call') {
-        run.totalToolsCount++
-        let status: ParsedToolCall['status'] = 'running'
-        if (event.permissionState === 'pending') status = 'pending'
-        else if (event.permissionState === 'denied') status = 'denied'
-        else if (event.permissionState === 'approved') status = 'running'
-
-        g.toolCalls.set(event.callId, {
-          callId: event.callId,
-          toolName: event.toolName,
-          args: event.args,
-          purpose: event.purpose,
-          permissionState: event.permissionState,
-          status
+          return {
+            id: `step-${g.stepNumber}`,
+            stepNumber: g.stepNumber,
+            status: stepStatus,
+            progressMessage: g.finalTexts.join(''),
+            toolCalls: toolCallsList,
+            reasoning: g.reasoningTexts.join('')
+          }
         })
-      } else if (event.type === 'tool_result') {
-        const tc = g.toolCalls.get(event.callId)
-        if (tc) {
-          tc.result = event.result
-          tc.status = 'completed'
-        } else {
-          for (const otherG of groups) {
-            const otherTc = otherG.toolCalls.get(event.callId)
-            if (otherTc) {
-              otherTc.result = event.result
-              otherTc.status = 'completed'
-              break
-            }
-          }
-        }
-      } else if (event.type === 'tool_error') {
-        run.failedToolsCount++
-        const tc = g.toolCalls.get(event.callId)
-        if (tc) {
-          tc.error = event.error
-          tc.status = 'failed'
-        } else {
-          for (const otherG of groups) {
-            const otherTc = otherG.toolCalls.get(event.callId)
-            if (otherTc) {
-              otherTc.error = event.error
-              otherTc.status = 'failed'
-              break
-            }
-          }
+        .sort((a, b) => a.stepNumber - b.stepNumber)
+
+      if (steps.length > 0) {
+        const lastStep = steps[steps.length - 1]
+        if (lastStep.toolCalls.length === 0) {
+          run.finalAnswer = lastStep.progressMessage
+          run.finalReasoning = lastStep.reasoning
+          steps.pop()
         }
       }
-    })
 
-    const steps: ParsedAgentStep[] = groups.map((g) => {
-      const toolCallsList = Array.from(g.toolCalls.values())
-      let stepStatus: ParsedAgentStep['status'] = 'completed'
-      if (toolCallsList.some(tc => tc.status === 'running' || tc.status === 'pending')) {
-        stepStatus = 'running'
-      } else if (toolCallsList.some(tc => tc.status === 'failed' || tc.status === 'denied')) {
-        stepStatus = 'failed'
-      }
-
-      return {
-        id: `step-${g.stepNumber}`,
-        stepNumber: g.stepNumber,
-        status: stepStatus,
-        progressMessage: g.finalTexts.join(''),
-        toolCalls: toolCallsList,
-        reasoning: g.reasoningTexts.join('')
-      }
-    }).sort((a, b) => a.stepNumber - b.stepNumber)
-
-    if (steps.length > 0) {
-      const lastStep = steps[steps.length - 1]
-      if (lastStep.toolCalls.length === 0) {
-        run.finalAnswer = lastStep.progressMessage
-        steps.pop()
-      }
-    }
-
-    run.steps = steps
+      run.steps = steps
     }
   } else if (legacyContent) {
     const parsed = parseAgentLogs(legacyContent)
@@ -794,23 +809,25 @@ export const parseAgentSteps = (
       }
     })
 
-    run.steps = groups.map((g) => {
-      const toolCallsList = Array.from(g.toolCalls.values())
-      let stepStatus: ParsedAgentStep['status'] = 'completed'
-      if (toolCallsList.some(tc => tc.status === 'running' || tc.status === 'pending')) {
-        stepStatus = 'running'
-      } else if (toolCallsList.some(tc => tc.status === 'failed' || tc.status === 'denied')) {
-        stepStatus = 'failed'
-      }
-      return {
-        id: `legacy-step-${g.stepNumber}`,
-        stepNumber: g.stepNumber,
-        status: stepStatus,
-        progressMessage: g.thoughtText,
-        toolCalls: toolCallsList,
-        reasoning: ''
-      }
-    }).sort((a, b) => a.stepNumber - b.stepNumber)
+    run.steps = groups
+      .map((g) => {
+        const toolCallsList = Array.from(g.toolCalls.values())
+        let stepStatus: ParsedAgentStep['status'] = 'completed'
+        if (toolCallsList.some((tc) => tc.status === 'running' || tc.status === 'pending')) {
+          stepStatus = 'running'
+        } else if (toolCallsList.some((tc) => tc.status === 'failed' || tc.status === 'denied')) {
+          stepStatus = 'failed'
+        }
+        return {
+          id: `legacy-step-${g.stepNumber}`,
+          stepNumber: g.stepNumber,
+          status: stepStatus,
+          progressMessage: g.thoughtText,
+          toolCalls: toolCallsList,
+          reasoning: ''
+        }
+      })
+      .sort((a, b) => a.stepNumber - b.stepNumber)
   }
 
   return run
