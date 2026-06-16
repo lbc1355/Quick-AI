@@ -1248,7 +1248,8 @@ describe('runAgentLoop', () => {
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-abort-event',
       cancelled: true,
-      done: true
+      done: true,
+      tokenSpeed: expect.any(Number)
     })
 
     permPromise.mockRestore()

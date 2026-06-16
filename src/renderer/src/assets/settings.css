@@ -813,6 +813,45 @@
   gap: 5px;
 }
 
+.websearch-config {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.websearch-config-header h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.websearch-config-header p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.websearch-config-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.websearch-config-row label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.websearch-config-row .settings-select,
+.websearch-config-row .settings-input {
+  width: 100%;
+}
+
 .permission-row {
   min-height: 42px;
   padding: 7px 9px;

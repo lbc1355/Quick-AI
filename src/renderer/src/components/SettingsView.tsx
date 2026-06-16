@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { ApiProvider, Skill, SkillInstallPayload } from '../../../shared/types'
+import { ApiProvider, Skill, SkillInstallPayload, WebSearchProviderType } from '../../../shared/types'
 import { ProviderList } from './ProviderList'
 import { ProviderEditor } from './ProviderEditor'
 import { SkillManager } from './SkillManager'
@@ -55,6 +55,10 @@ interface SettingsViewProps {
   onChangeEditingProviderApiUrl: (url: string) => void
   permissions: Record<string, 'allow' | 'ask' | 'deny'>
   onChangeToolPermission: (toolName: string, policy: 'allow' | 'ask' | 'deny') => void
+  webSearchProvider: WebSearchProviderType
+  setWebSearchProvider: (val: WebSearchProviderType) => void
+  webSearchApiKey: string
+  setWebSearchApiKey: (val: string) => void
 }
 
 type SettingsSection = 'providers' | 'general' | 'agent' | 'skills' | 'memory' | 'mcp'
@@ -137,7 +141,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onChangeEditingProviderName,
   onChangeEditingProviderApiUrl,
   permissions,
-  onChangeToolPermission
+  onChangeToolPermission,
+  webSearchProvider,
+  setWebSearchProvider,
+  webSearchApiKey,
+  setWebSearchApiKey
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>('providers')
   const currentEditingProvider = providers.find((p) => p.id === editingProviderId)
@@ -301,6 +309,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <p>Allow / Ask / Deny</p>
                 </div>
               </header>
+
+              <div className="websearch-config">
+                <div className="websearch-config-header">
+                  <h3>网络搜索引擎</h3>
+                  <p>选择搜索后端。配置 API 后可获得更稳定的结果与直接答案；无 Key 时自动回退到内置抓取。</p>
+                </div>
+                <div className="websearch-config-row">
+                  <label>搜索提供商</label>
+                  <select
+                    className="settings-select"
+                    value={webSearchProvider}
+                    onChange={(e) => setWebSearchProvider(e.target.value as WebSearchProviderType)}
+                  >
+                    <option value="auto">自动（有 Key 用 API，否则内置抓取）</option>
+                    <option value="html">内置抓取（Bing / Sogou / DuckDuckGo）</option>
+                    <option value="tavily">Tavily API</option>
+                    <option value="brave">Brave Search API</option>
+                  </select>
+                </div>
+                {webSearchProvider !== 'html' && (
+                  <div className="websearch-config-row">
+                    <label>API Key</label>
+                    <input
+                      type="password"
+                      className="settings-input"
+                      placeholder={
+                        webSearchProvider === 'brave'
+                          ? 'Brave Search 订阅令牌'
+                          : webSearchProvider === 'tavily'
+                            ? 'tvly-...'
+                            : 'API Key（auto 模式下默认使用 Tavily）'
+                      }
+                      value={webSearchApiKey}
+                      onChange={(e) => setWebSearchApiKey(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
 
               <div className="permission-table">
                 {agentTools.map((tool) => (

@@ -90,32 +90,32 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
       </div>
 
       <div className="session-list">
-        <div className="sidebar-section project-section">
-          <div className="sidebar-section-header">
-            <span>项目</span>
-            <span>{visibleSessionFamilyInfo ? '派生视图' : '当前'}</span>
+        {visibleSessionFamilyInfo && (
+          <div className="sidebar-section project-section">
+            <div className="sidebar-section-header">
+              <span>项目</span>
+              <span>派生视图</span>
+            </div>
+            <button
+              type="button"
+              className="project-row active"
+              onClick={() => {
+                setSessionFamilyRootId(null)
+                setDismissedSessionFamilyViewForId(null)
+              }}
+              title={visibleSessionFamilyInfo.rootTitle}
+            >
+              <Folder size={13} />
+              <span className="project-row-title">{visibleSessionFamilyInfo.rootTitle}</span>
+              <span className="project-row-count">{visibleSessionEntries.length}</span>
+            </button>
           </div>
-          <button
-            type="button"
-            className="project-row active"
-            onClick={() => {
-              setSessionFamilyRootId(null)
-              setDismissedSessionFamilyViewForId(null)
-            }}
-            title={visibleSessionFamilyInfo?.rootTitle || 'Quick Ai'}
-          >
-            <Folder size={13} />
-            <span className="project-row-title">
-              {visibleSessionFamilyInfo?.rootTitle || 'Quick Ai'}
-            </span>
-            <span className="project-row-count">{visibleSessionEntries.length}</span>
-          </button>
-        </div>
+        )}
 
         <div className="sidebar-section conversation-section">
           <div className="sidebar-section-header">
             <span>对话</span>
-            <span>{visibleSessionFamilyInfo ? '派生' : '全部'}</span>
+            {visibleSessionFamilyInfo && <span>派生</span>}
           </div>
 
           {!visibleSessionFamilyInfo && (

@@ -14,6 +14,7 @@ import {
   TOOL_OUTPUT_SPILLOVER_THRESHOLD
 } from './contextManager'
 import { callModel } from './callModel'
+import { estimateTokens } from './tokenEstimator'
 import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy'
@@ -250,6 +251,13 @@ export const runAgentLoop = async (
 
   let fetchUrlsCount = 0
   const MAX_FETCH_URLS_PER_RUN = 10
+  let totalGeneratedTokens = 0
+  let totalGenerationTimeMs = 0
+
+  const getTokenSpeed = (): number => {
+    const totalGenerationSec = totalGenerationTimeMs / 1000
+    return totalGenerationSec > 0 ? Number((totalGeneratedTokens / totalGenerationSec).toFixed(1)) : 0
+  }
 
   // Behavioural guardrails (repeated-call blocking + consecutive-failure halt) that
   // complement the hard maxSteps ceiling. Scoped to this run.
@@ -373,6 +381,7 @@ export const runAgentLoop = async (
       // model turn becomes a tool step or the final answer. Some providers emit content
       // before tool_call deltas, so the final/step classification has to happen after the turn.
       let assistantTextBuffer = ''
+      const modelStartTime = Date.now()
       const assistantMessage = await callModel(
         {
           apiUrl: options.apiUrl,
@@ -397,6 +406,11 @@ export const runAgentLoop = async (
           }
         }
       )
+      const modelElapsed = Date.now() - modelStartTime
+      const reasoningText = assistantMessage.reasoning_content || ''
+      const contentText = typeof assistantMessage.content === 'string' ? assistantMessage.content : ''
+      totalGeneratedTokens += estimateTokens(reasoningText) + estimateTokens(contentText)
+      totalGenerationTimeMs += modelElapsed
 
       messages.push(assistantMessage)
       SessionLogger.logModelResponse(conversationId, assistantMessage)
@@ -803,7 +817,7 @@ export const runAgentLoop = async (
           sendEvent(mainWindow, reqId, { type: 'final', content: finalText, step, stepId })
         }
         setRunEnd('completed')
-        mainWindow.webContents.send('chat-chunk', { reqId, done: true })
+        mainWindow.webContents.send('chat-chunk', { reqId, done: true, tokenSpeed: getTokenSpeed() })
         return
       }
     }
@@ -830,6 +844,7 @@ export const runAgentLoop = async (
     })
 
     let forcedFinalEmitted = false
+    const finalModelStartTime = Date.now()
     const forcedFinalMessage = await callModel(
       {
         apiUrl: options.apiUrl,
@@ -849,13 +864,19 @@ export const runAgentLoop = async (
         }
       }
     )
+    const finalModelElapsed = Date.now() - finalModelStartTime
+    const finalReasoningText = forcedFinalMessage.reasoning_content || ''
+    const finalContentText = typeof forcedFinalMessage.content === 'string' ? forcedFinalMessage.content : ''
+    totalGeneratedTokens += estimateTokens(finalReasoningText) + estimateTokens(finalContentText)
+    totalGenerationTimeMs += finalModelElapsed
+
     const forcedFinalText = getAssistantText(forcedFinalMessage.content)
     if (!forcedFinalEmitted && forcedFinalText) {
       sendEvent(mainWindow, reqId, { type: 'final', content: forcedFinalText })
     }
 
     setRunEnd('max_steps')
-    mainWindow.webContents.send('chat-chunk', { reqId, done: true })
+    mainWindow.webContents.send('chat-chunk', { reqId, done: true, tokenSpeed: getTokenSpeed() })
   } catch (error) {
     const err = error as Error
     console.error('Agent Loop error:', err)
@@ -863,14 +884,14 @@ export const runAgentLoop = async (
       signal.aborted || err.message?.includes('aborted') || err.name === 'AbortError'
     if (isAborted) {
       setRunEnd('cancelled')
-      mainWindow.webContents.send('chat-chunk', { reqId, cancelled: true, done: true })
+      mainWindow.webContents.send('chat-chunk', { reqId, cancelled: true, done: true, tokenSpeed: getTokenSpeed() })
     } else {
       setRunEnd('failed', err.message || 'Agent Loop failed')
       mainWindow.webContents.send('chat-chunk', {
         reqId,
         error: err.message || 'Agent Loop failed'
       })
-      mainWindow.webContents.send('chat-chunk', { reqId, done: true })
+      mainWindow.webContents.send('chat-chunk', { reqId, done: true, tokenSpeed: getTokenSpeed() })
     }
   } finally {
     actionLog.save()

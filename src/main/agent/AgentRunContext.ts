@@ -50,6 +50,12 @@ export class AgentRunContext {
   private toolOutputsBytes = 0
   private static readonly MAX_TOOL_OUTPUT_BYTES = 5 * 1024 * 1024
 
+  // Files the model has observed during this run (normalized real paths). Surgical edit tools
+  // (file_edit, multi_edit) require a file to have been read first so the model never mutates a
+  // file blindly from stale assumptions. Reading a file or writing/editing it (which establishes
+  // known content) both mark it as seen. In-memory only; scoped to the run.
+  private readonly seenFiles = new Set<string>()
+
   /** Per-conversation action log (persisted to disk). Shared across runs of the same session. */
   readonly actionLog: ActionLog
 
@@ -208,6 +214,21 @@ export class AgentRunContext {
 
   getToolOutput(callId: string): string | undefined {
     return this.toolOutputs.get(callId)
+  }
+
+  /** Record that the model has observed a file's content (via read or a successful write/edit). */
+  markFileSeen(realPath: string): void {
+    this.seenFiles.add(AgentRunContext.normalizeSeenPath(realPath))
+  }
+
+  /** Whether the model has observed this file's content earlier in the run. */
+  hasSeenFile(realPath: string): boolean {
+    return this.seenFiles.has(AgentRunContext.normalizeSeenPath(realPath))
+  }
+
+  private static normalizeSeenPath(p: string): string {
+    const normalized = p.replace(/\\/g, '/')
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized
   }
 }
 

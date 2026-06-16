@@ -8,7 +8,7 @@ import { saveResourceChunk, getResourceId } from '../resourceCache'
 export async function fetchCacheAndFormat(
   url: string,
   ctx: ToolExecutionContext,
-  opts: { offset?: number; maxChars?: number }
+  opts: { offset?: number; maxChars?: number; render?: boolean }
 ): Promise<{
   resultForModel: string
   resultForUi: { title?: string; url?: string; summary: string }
@@ -79,6 +79,7 @@ export async function fetchCacheAndFormat(
     `URL: ${result.finalUrl}`,
     `Resource ID: ${resourceId}`,
     result.title ? `Title: ${result.title}` : '',
+    result.rendered ? 'Rendered: page content was produced via headless JS rendering.' : '',
     `Content window: characters ${result.offset}-${result.endOffset} of ${result.totalChars}`,
     cacheCoverage,
     result.responseTruncated

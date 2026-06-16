@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ApiProvider, AppSettings } from '../../../shared/types'
+import { ApiProvider, AppSettings, WebSearchProviderType } from '../../../shared/types'
 import { PROVIDER_PRESETS } from '../utils/providerPresets'
 
 export interface UseProvidersReturn {
@@ -56,6 +56,10 @@ export interface UseProvidersReturn {
   resetLocalSettings: () => void
   permissions: Record<string, 'allow' | 'ask' | 'deny'>
   onChangeToolPermission: (toolName: string, policy: 'allow' | 'ask' | 'deny') => void
+  webSearchProvider: WebSearchProviderType
+  setWebSearchProvider: React.Dispatch<React.SetStateAction<WebSearchProviderType>>
+  webSearchApiKey: string
+  setWebSearchApiKey: React.Dispatch<React.SetStateAction<string>>
 }
 
 export const useProviders = (): UseProvidersReturn => {
@@ -70,6 +74,8 @@ export const useProviders = (): UseProvidersReturn => {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
   const [permissions, setPermissions] = useState<Record<string, 'allow' | 'ask' | 'deny'>>({})
+  const [webSearchProvider, setWebSearchProvider] = useState<WebSearchProviderType>('auto')
+  const [webSearchApiKey, setWebSearchApiKey] = useState('')
 
   // Providers list state
   const [providers, setProviders] = useState<ApiProvider[]>([])
@@ -115,6 +121,8 @@ export const useProviders = (): UseProvidersReturn => {
         setSystemPrompt(savedSettings.systemPrompt || '')
         setAutoHideOnBlur(savedSettings.autoHideOnBlur !== false)
         setTheme(savedSettings.theme || 'dark')
+        setWebSearchProvider(savedSettings.webSearch?.provider || 'auto')
+        setWebSearchApiKey(savedSettings.webSearch?.apiKey || '')
         setPermissions(
           savedSettings.permissions || {
             fetch_url: 'allow',
@@ -165,6 +173,10 @@ export const useProviders = (): UseProvidersReturn => {
       savedSettings.autoHideOnBlur = autoHideOnBlur
       savedSettings.theme = theme
       savedSettings.permissions = permissions
+      savedSettings.webSearch = {
+        provider: webSearchProvider,
+        apiKey: webSearchApiKey.trim()
+      }
       await window.api.storeSet('settings', savedSettings)
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
@@ -418,6 +430,10 @@ export const useProviders = (): UseProvidersReturn => {
     handleToggleModelSelection,
     resetLocalSettings,
     permissions,
-    onChangeToolPermission
+    onChangeToolPermission,
+    webSearchProvider,
+    setWebSearchProvider,
+    webSearchApiKey,
+    setWebSearchApiKey
   }
 }

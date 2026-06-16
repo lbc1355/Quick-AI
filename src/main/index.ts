@@ -24,6 +24,7 @@ import {
 } from './memory/memoryStore'
 import { logger } from './logger'
 import { McpManager } from './mcpManager'
+import { registerHtmlRenderer } from './webRenderer'
 import { ensureSystemSkills, watchSkillFolders } from './skillManager'
 
 let mainWindow: BrowserWindow | null = null
@@ -366,6 +367,9 @@ app.whenReady().then(() => {
   logger.info('System', 'QuickAI App initializing...')
   // Initialize storage
   store = new FileStore()
+
+  // Wire the headless JS-page renderer into the web tools (enables fetch_url JS rendering).
+  registerHtmlRenderer()
 
   ensureSystemSkills()
 

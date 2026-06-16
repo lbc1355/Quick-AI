@@ -95,7 +95,11 @@ function App(): React.JSX.Element {
     handleToggleModelSelection,
     resetLocalSettings,
     permissions,
-    onChangeToolPermission
+    onChangeToolPermission,
+    webSearchProvider,
+    setWebSearchProvider,
+    webSearchApiKey,
+    setWebSearchApiKey
   } = useProviders()
 
   // Close settings panel and restore local editor states
@@ -743,6 +747,10 @@ function App(): React.JSX.Element {
           onChangeEditingProviderApiUrl={handleApiUrlChange}
           permissions={permissions}
           onChangeToolPermission={onChangeToolPermission}
+          webSearchProvider={webSearchProvider}
+          setWebSearchProvider={setWebSearchProvider}
+          webSearchApiKey={webSearchApiKey}
+          setWebSearchApiKey={setWebSearchApiKey}
         />
       ) : (
         <div className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>

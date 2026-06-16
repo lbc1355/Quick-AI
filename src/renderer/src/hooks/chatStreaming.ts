@@ -76,6 +76,14 @@ export const startStreamingRun = ({
     }
 
     if (data.done) {
+      if (data.tokenSpeed !== undefined) {
+        updateMessageById(
+          assistantMsgId,
+          (m) => ({ ...m, tokenSpeed: data.tokenSpeed }),
+          true,
+          sessionId
+        )
+      }
       cleanup()
       return
     }

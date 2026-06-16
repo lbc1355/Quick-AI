@@ -252,6 +252,39 @@ const StepToolEvents: React.FC<{
   )
 }
 
+const getSystemGeneratedProgressText = (message: string): string | null => {
+  const clean = message.trim()
+  const match = clean.match(/^准备(?:调用|执行)\s+\d+\s*个工具[：:]\s*(.+?)[。.]?$/)
+  if (!match) return null
+  return `即将调用工具：${match[1].trim()}`
+}
+
+const StepProgressMessage: React.FC<{ message: string }> = ({ message }) => {
+  const systemText = getSystemGeneratedProgressText(message)
+
+  if (systemText) {
+    return (
+      <div className="agent-step-progress-message system-generated">
+        <span className="system-progress-label">系统进度</span>
+        <span>{systemText}</span>
+      </div>
+    )
+  }
+
+  return <div className="agent-step-progress-message">{renderMessageContent(message)}</div>
+}
+
+const StepReasoningBlock: React.FC<{ reasoning: string }> = ({ reasoning }) => {
+  if (!reasoning.trim()) return null
+
+  return (
+    <details className="agent-step-reasoning">
+      <summary>思考</summary>
+      <div className="agent-step-reasoning-content">{reasoning}</div>
+    </details>
+  )
+}
+
 interface MessageBubbleProps {
   msg: Message
   idx: number
@@ -672,10 +705,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                             return (
                               <div key={step.id} className={`agent-step-block ${step.status}`}>
                                 {step.progressMessage && (
-                                  <div className="agent-step-progress-message">
-                                    {renderMessageContent(step.progressMessage)}
-                                  </div>
+                                  <StepProgressMessage message={step.progressMessage} />
                                 )}
+                                <StepReasoningBlock reasoning={step.reasoning} />
                                 <StepToolEvents
                                   step={step}
                                   onOpenToolDetail={setSelectedToolCall}
@@ -690,7 +722,10 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                               className={`agent-steps-simple-toggle ${isStepsExpanded ? 'expanded' : ''}`}
                               onClick={() => setIsStepsExpanded(!isStepsExpanded)}
                             >
-                              <span>{formatWorkedDuration(elapsed, parsedRun.steps.length)}</span>
+                              <span>
+                                {formatWorkedDuration(elapsed, parsedRun.steps.length)}
+                                {msg.tokenSpeed ? ` · ${msg.tokenSpeed} token/s` : ''}
+                              </span>
                               <ChevronRight
                                 size={12}
                                 className="toggle-icon"
@@ -709,10 +744,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                       className={`agent-step-block ${step.status}`}
                                     >
                                       {step.progressMessage && (
-                                        <div className="agent-step-progress-message">
-                                          {renderMessageContent(step.progressMessage)}
-                                        </div>
+                                        <StepProgressMessage message={step.progressMessage} />
                                       )}
+                                      <StepReasoningBlock reasoning={step.reasoning} />
                                       <StepToolEvents
                                         step={step}
                                         onOpenToolDetail={setSelectedToolCall}
@@ -726,7 +760,26 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                         ) : null}
 
                         {parsedRun.finalAnswer && (
-                          <div className="agent-event-final-text">{renderedFinalAnswer}</div>
+                          <div className="agent-event-final-text">
+                            {renderedFinalAnswer}
+                            {parsedRun.steps.length === 0 && msg.tokenSpeed !== undefined && (
+                              <div
+                                className="msg-generation-stats"
+                                style={{
+                                  fontSize: '11px',
+                                  color: 'var(--color-text-muted)',
+                                  marginTop: '8px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  opacity: 0.7
+                                }}
+                              >
+                                <Sparkles size={10} style={{ color: '#10b981' }} />
+                                <span>{msg.tokenSpeed} token/s</span>
+                              </div>
+                            )}
+                          </div>
                         )}
                         {isGenerating && parsedRun.steps.length === 0 && !parsedRun.finalAnswer && (
                           <span style={{ opacity: 0.5, fontSize: '13px', fontStyle: 'italic' }}>
@@ -739,7 +792,26 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       msg.role === 'user' ? (
                         cleanContent
                       ) : (
-                        renderedCleanContent
+                        <>
+                          {renderedCleanContent}
+                          {msg.tokenSpeed !== undefined && (
+                            <div
+                              className="msg-generation-stats"
+                              style={{
+                                fontSize: '11px',
+                                color: 'var(--color-text-muted)',
+                                marginTop: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                opacity: 0.7
+                              }}
+                            >
+                              <Sparkles size={10} style={{ color: '#10b981' }} />
+                              <span>{msg.tokenSpeed} token/s</span>
+                            </div>
+                          )}
+                        </>
                       )
                     ) : (
                       isGenerating &&

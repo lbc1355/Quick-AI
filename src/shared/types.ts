@@ -90,6 +90,7 @@ export interface Message {
   isBranchFork?: boolean
   /** Source session/message when a branch-like session was forked from history. */
   forkedFrom?: { sessionId: string; messageId: string; runId?: string }
+  tokenSpeed?: number
 }
 
 export interface ChatCompletionMessage {
@@ -175,6 +176,16 @@ export interface AppSettings {
   permissions?: {
     [toolName: string]: 'allow' | 'ask' | 'deny'
   }
+  webSearch?: WebSearchConfig
+}
+
+/** Which web search backend to use. 'auto' picks an API provider when an apiKey is configured,
+ *  otherwise falls back to the built-in HTML scraping engines (Bing/Sogou/DuckDuckGo). */
+export type WebSearchProviderType = 'auto' | 'html' | 'tavily' | 'brave'
+
+export interface WebSearchConfig {
+  provider: WebSearchProviderType
+  apiKey?: string
 }
 
 export type WindowMode = 'floating' | 'window'
@@ -283,6 +294,7 @@ export interface ChatChunkData {
   cancelled?: boolean
   error?: string
   event?: AgentEvent
+  tokenSpeed?: number
 }
 
 export interface ClearSessionCachesPayload {

@@ -3,6 +3,7 @@ import { ChatCompletionMessage } from '../shared/types'
 import { callModel } from './agent/callModel'
 import { loadMemoryContextPrompt } from './agent/memoryContext'
 import { injectMemoryContext } from './agent/memoryPrompts'
+import { estimateTokens } from './agent/tokenEstimator'
 
 interface ModelItem {
   id?: string
@@ -47,7 +48,8 @@ export async function handleChatCompletion(
     // Plain chat is a single model call with no tools. Reuse the agent's SSE parser
     // (callModel) as the single source of truth — it also splits local <think> tags
     // into reasoning, which the previous inline parser ignored.
-    await callModel({ apiUrl, apiKey, model }, messagesWithMemory, undefined, controller.signal, {
+    const startTime = Date.now()
+    const assistantMessage = await callModel({ apiUrl, apiKey, model }, messagesWithMemory, undefined, controller.signal, {
       onReasoning: (reasoningContent) => {
         mainWindow.webContents.send('chat-chunk', { reqId, reasoningContent })
       },
@@ -55,7 +57,13 @@ export async function handleChatCompletion(
         mainWindow.webContents.send('chat-chunk', { reqId, content })
       }
     })
-    mainWindow.webContents.send('chat-chunk', { reqId, done: true })
+    const durationSec = (Date.now() - startTime) / 1000
+    const reasoningText = assistantMessage.reasoning_content || ''
+    const contentText = typeof assistantMessage.content === 'string' ? assistantMessage.content : ''
+    const tokens = estimateTokens(reasoningText) + estimateTokens(contentText)
+    const tokenSpeed = durationSec > 0 ? Number((tokens / durationSec).toFixed(1)) : 0
+
+    mainWindow.webContents.send('chat-chunk', { reqId, done: true, tokenSpeed })
   } catch (error) {
     const err = error as Error
     const isAborted = controller.signal.aborted || err.name === 'AbortError'

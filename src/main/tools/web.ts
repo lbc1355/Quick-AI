@@ -1,8 +1,9 @@
-import { webSearch, formatSearchResultsForModel } from '../webTools'
+import { webSearchDetailed, formatSearchResultsForModel } from '../webTools'
 import { ToolArgs } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { fetchCacheAndFormat } from './shared'
 import { getCachedLink, findInResource } from '../resourceCache'
+import { loadSettings } from '../database'
 
 export const webTools: Record<string, ToolDefinition> = {
   fetch_url: {
@@ -31,6 +32,11 @@ export const webTools: Record<string, ToolDefinition> = {
           type: 'number',
           description:
             'Optional maximum characters to return for this page window. Clamped between 1000 and 16000.'
+        },
+        render: {
+          type: 'boolean',
+          description:
+            'Set true to render the page in a headless browser (executes JavaScript). Use for SPAs / dynamic pages that return little or no text with a normal fetch. Slower; only use when a plain fetch comes back near-empty.'
         }
       },
       required: ['url']
@@ -42,7 +48,8 @@ export const webTools: Record<string, ToolDefinition> = {
       }
       const offset = typeof args.offset === 'number' ? args.offset : undefined
       const maxChars = typeof args.maxChars === 'number' ? args.maxChars : undefined
-      return fetchCacheAndFormat(url, ctx, { offset, maxChars })
+      const render = args.render === true
+      return fetchCacheAndFormat(url, ctx, { offset, maxChars, render })
     }
   },
   click_link: {
@@ -178,8 +185,20 @@ export const webTools: Record<string, ToolDefinition> = {
     name: 'web_search',
     title: 'Web Search',
     description:
-      'Search the web using Bing, Sogou, or DuckDuckGo fallback to find web pages matching a query.',
-    tags: ['web', 'search', 'query', 'bing', 'sogou', 'duckduckgo', '搜索', '网页', '查找'],
+      'Search the web for pages matching a query. Uses a configured search API (Tavily or Brave) when available, otherwise falls back to built-in Bing/Sogou/DuckDuckGo scraping. Supports limiting result count, filtering by recency, and language hints. When an API provider returns a direct answer, it is included at the top.',
+    tags: [
+      'web',
+      'search',
+      'query',
+      'bing',
+      'sogou',
+      'duckduckgo',
+      'tavily',
+      'brave',
+      '搜索',
+      '网页',
+      '查找'
+    ],
     dependencies: ['fetch_url'],
     category: 'web',
     risk: 'low',
@@ -188,7 +207,22 @@ export const webTools: Record<string, ToolDefinition> = {
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'The search keywords or query.' }
+        query: { type: 'string', description: 'The search keywords or query.' },
+        count: {
+          type: 'number',
+          description: 'Maximum number of results to return (1-20, default 8).'
+        },
+        freshness: {
+          type: 'string',
+          description:
+            'Restrict results by recency. Use for time-sensitive queries (news, latest versions). Default "all".',
+          enum: ['day', 'week', 'month', 'year', 'all']
+        },
+        lang: {
+          type: 'string',
+          description:
+            'Preferred result language/region as a BCP-47 code, e.g. "en-US" or "zh-CN". Optional.'
+        }
       },
       required: ['query']
     },
@@ -197,15 +231,45 @@ export const webTools: Record<string, ToolDefinition> = {
       if (typeof query !== 'string' || !query) {
         throw new Error('Missing or invalid query parameter')
       }
-      const results = await webSearch(query, ctx.signal)
-      const formatted = formatSearchResultsForModel(results)
-      const resultForModel = `${formatted}\n\nInstruction: Pick 1 to 3 relevant URLs and call fetch_url before final answer when current page content matters.`
+
+      const count = typeof args.count === 'number' ? args.count : undefined
+      const freshness = typeof args.freshness === 'string' ? args.freshness : undefined
+      const lang = typeof args.lang === 'string' ? args.lang : undefined
+
+      // Resolve the configured search provider from settings (API key, provider type). Reading
+      // here keeps webTools.ts free of any database dependency so it stays unit-testable.
+      let config: { provider: 'auto' | 'html' | 'tavily' | 'brave'; apiKey?: string } | undefined
+      try {
+        const settings = loadSettings()
+        if (settings.webSearch) {
+          config = {
+            provider: settings.webSearch.provider || 'auto',
+            apiKey: settings.webSearch.apiKey
+          }
+        }
+      } catch {
+        // No settings available (e.g. in tests) — fall back to default HTML scraping.
+      }
+
+      const detailed = await webSearchDetailed(query, ctx.signal, {
+        count,
+        freshness: freshness as 'day' | 'week' | 'month' | 'year' | 'all' | undefined,
+        lang,
+        config
+      })
+
+      const formatted = formatSearchResultsForModel(detailed.results)
+      const answerBlock = detailed.answer ? `Answer: ${detailed.answer}\n\n` : ''
+      const resultForModel =
+        `${answerBlock}${formatted}\n\n` +
+        'Instruction: Pick 1 to 3 relevant URLs and call fetch_url before final answer when current page content matters.'
+
       return {
         resultForModel,
         resultForUi: {
           title: `Search: ${query}`,
-          summary: `Found ${results.length} results`,
-          items: results
+          summary: `Found ${detailed.results.length} results via ${detailed.provider}`,
+          items: detailed.results
         }
       }
     }

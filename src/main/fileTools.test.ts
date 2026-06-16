@@ -555,6 +555,8 @@ describe('File Safety & Search Tools', () => {
       await fs.writeFile(outsidePath, 'original outside data')
 
       try {
+        // Read first to satisfy the read-before-edit constraint.
+        await ToolRegistry.file_read.execute({ path: outsidePath }, context)
         const res = await ToolRegistry.file_edit.execute(
           {
             path: outsidePath,
@@ -570,6 +572,222 @@ describe('File Safety & Search Tools', () => {
       } finally {
         destroyRun(reqId)
         await fs.unlink(outsidePath).catch(() => {})
+      }
+    })
+  })
+
+  describe('read-before-edit constraint', () => {
+    it('blocks file_edit when the file was not read earlier in the run', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+
+      const reqId = 'test-req-unseen-edit'
+      createRun(reqId, [], 'all', new ActionLog())
+      const context = { reqId, signal: new AbortController().signal }
+      const filePath = join(testDir, 'unseen-edit.txt')
+      await fs.writeFile(filePath, 'alpha beta gamma')
+
+      try {
+        await expect(
+          ToolRegistry.file_edit.execute(
+            { path: filePath, old_string: 'beta', new_string: 'BETA' },
+            context
+          )
+        ).rejects.toThrow('must read this file before editing')
+        // Unchanged on disk
+        expect(await fs.readFile(filePath, 'utf-8')).toBe('alpha beta gamma')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(filePath).catch(() => {})
+      }
+    })
+
+    it('allows file_edit after the file was read in the same run', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+
+      const reqId = 'test-req-seen-edit'
+      createRun(reqId, [], 'all', new ActionLog())
+      const context = { reqId, signal: new AbortController().signal }
+      const filePath = join(testDir, 'seen-edit.txt')
+      await fs.writeFile(filePath, 'alpha beta gamma')
+
+      try {
+        await ToolRegistry.file_read.execute({ path: filePath }, context)
+        const res = await ToolRegistry.file_edit.execute(
+          { path: filePath, old_string: 'beta', new_string: 'BETA' },
+          context
+        )
+        expect(res.resultForUi.summary).toContain('Replaced 1 occurrence')
+        expect(await fs.readFile(filePath, 'utf-8')).toBe('alpha BETA gamma')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(filePath).catch(() => {})
+      }
+    })
+
+    it('skips the constraint when there is no active run context', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const filePath = join(testDir, 'no-run-edit.txt')
+      await fs.writeFile(filePath, 'alpha beta gamma')
+
+      try {
+        const res = await ToolRegistry.file_edit.execute(
+          { path: filePath, old_string: 'beta', new_string: 'BETA' },
+          context
+        )
+        expect(res.resultForUi.summary).toContain('Replaced 1 occurrence')
+      } finally {
+        await fs.unlink(filePath).catch(() => {})
+      }
+    })
+  })
+
+  describe('multi_edit tool', () => {
+    it('applies multiple sequential edits atomically', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+
+      const reqId = 'test-req-multi-edit'
+      createRun(reqId, [], 'all', new ActionLog())
+      const context = { reqId, signal: new AbortController().signal }
+      const filePath = join(testDir, 'multi-edit.txt')
+      await fs.writeFile(filePath, 'one two three four')
+
+      try {
+        await ToolRegistry.file_read.execute({ path: filePath }, context)
+        const res = await ToolRegistry.multi_edit.execute(
+          {
+            path: filePath,
+            edits: [
+              { old_string: 'one', new_string: '1' },
+              { old_string: 'three', new_string: '3' }
+            ]
+          },
+          context
+        )
+        expect(res.resultForUi.summary).toContain('Applied 2 edit(s)')
+        expect(await fs.readFile(filePath, 'utf-8')).toBe('1 two 3 four')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(filePath).catch(() => {})
+      }
+    })
+
+    it('lets a later edit operate on the result of an earlier edit', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+
+      const reqId = 'test-req-multi-chain'
+      createRun(reqId, [], 'all', new ActionLog())
+      const context = { reqId, signal: new AbortController().signal }
+      const filePath = join(testDir, 'multi-chain.txt')
+      await fs.writeFile(filePath, 'foo')
+
+      try {
+        await ToolRegistry.file_read.execute({ path: filePath }, context)
+        const res = await ToolRegistry.multi_edit.execute(
+          {
+            path: filePath,
+            edits: [
+              { old_string: 'foo', new_string: 'bar' },
+              { old_string: 'bar', new_string: 'baz' }
+            ]
+          },
+          context
+        )
+        expect(res.resultForModel).toContain('2 total replacement')
+        expect(await fs.readFile(filePath, 'utf-8')).toBe('baz')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(filePath).catch(() => {})
+      }
+    })
+
+    it('writes nothing when any edit in the batch fails', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+
+      const reqId = 'test-req-multi-atomic'
+      createRun(reqId, [], 'all', new ActionLog())
+      const context = { reqId, signal: new AbortController().signal }
+      const filePath = join(testDir, 'multi-atomic.txt')
+      await fs.writeFile(filePath, 'alpha beta gamma')
+
+      try {
+        await ToolRegistry.file_read.execute({ path: filePath }, context)
+        await expect(
+          ToolRegistry.multi_edit.execute(
+            {
+              path: filePath,
+              edits: [
+                { old_string: 'alpha', new_string: 'ALPHA' },
+                { old_string: 'NOT_PRESENT', new_string: 'x' }
+              ]
+            },
+            context
+          )
+        ).rejects.toThrow('old_string not found')
+        // First edit must NOT have been persisted
+        expect(await fs.readFile(filePath, 'utf-8')).toBe('alpha beta gamma')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(filePath).catch(() => {})
+      }
+    })
+
+    it('rejects ambiguous old_string unless replace_all is set', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+
+      const reqId = 'test-req-multi-ambiguous'
+      createRun(reqId, [], 'all', new ActionLog())
+      const context = { reqId, signal: new AbortController().signal }
+      const filePath = join(testDir, 'multi-ambiguous.txt')
+      await fs.writeFile(filePath, 'x x x')
+
+      try {
+        await ToolRegistry.file_read.execute({ path: filePath }, context)
+        await expect(
+          ToolRegistry.multi_edit.execute(
+            { path: filePath, edits: [{ old_string: 'x', new_string: 'y' }] },
+            context
+          )
+        ).rejects.toThrow('matched 3 locations')
+
+        const res = await ToolRegistry.multi_edit.execute(
+          { path: filePath, edits: [{ old_string: 'x', new_string: 'y', replace_all: true }] },
+          context
+        )
+        expect(res.resultForModel).toContain('3 total replacement')
+        expect(await fs.readFile(filePath, 'utf-8')).toBe('y y y')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(filePath).catch(() => {})
+      }
+    })
+
+    it('enforces read-before-edit', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+
+      const reqId = 'test-req-multi-unseen'
+      createRun(reqId, [], 'all', new ActionLog())
+      const context = { reqId, signal: new AbortController().signal }
+      const filePath = join(testDir, 'multi-unseen.txt')
+      await fs.writeFile(filePath, 'alpha beta')
+
+      try {
+        await expect(
+          ToolRegistry.multi_edit.execute(
+            { path: filePath, edits: [{ old_string: 'alpha', new_string: 'ALPHA' }] },
+            context
+          )
+        ).rejects.toThrow('must read this file before editing')
+        expect(await fs.readFile(filePath, 'utf-8')).toBe('alpha beta')
+      } finally {
+        destroyRun(reqId)
+        await fs.unlink(filePath).catch(() => {})
       }
     })
   })

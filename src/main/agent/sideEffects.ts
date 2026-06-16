@@ -7,6 +7,7 @@ export const SIDE_EFFECTING_TOOLS = new Set([
   'shell',
   'file_write',
   'file_edit',
+  'multi_edit',
   'file_move',
   'file_copy',
   'file_delete',
@@ -67,6 +68,7 @@ export const buildSideEffectEntry = (
   } else if (
     toolName === 'file_write' ||
     toolName === 'file_edit' ||
+    toolName === 'multi_edit' ||
     toolName === 'file_move' ||
     toolName === 'file_copy' ||
     toolName === 'file_delete' ||

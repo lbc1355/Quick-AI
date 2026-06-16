@@ -35,7 +35,6 @@
   --color-code-block-border: rgba(255, 255, 255, 0.06);
   --color-code-block-header-bg: rgba(255, 255, 255, 0.03);
   --color-code-block-header-text: #9ca3af;
-  --color-task-panel-bg: rgba(22, 23, 26, 0.86);
 }
 
 .app-container.theme-light {
@@ -59,7 +58,6 @@
   --color-code-block-border: rgba(0, 0, 0, 0.06);
   --color-code-block-header-bg: rgba(0, 0, 0, 0.03);
   --color-code-block-header-text: #4b5563;
-  --color-task-panel-bg: rgba(243, 244, 246, 0.86);
 }
 
 html,
@@ -127,7 +125,6 @@ select {
   --color-code-block-border: rgba(255, 255, 255, 0.08);
   --color-code-block-header-bg: rgba(255, 255, 255, 0.045);
   --color-code-block-header-text: #a4acb8;
-  --color-task-panel-bg: rgba(22, 23, 26, 0.86);
 }
 
 .app-container.theme-light {
@@ -160,7 +157,6 @@ select {
   --color-code-block-border: rgba(15, 23, 42, 0.1);
   --color-code-block-header-bg: rgba(15, 23, 42, 0.04);
   --color-code-block-header-text: #526071;
-  --color-task-panel-bg: rgba(243, 244, 246, 0.86);
 }
 
 .app-container,
@@ -926,14 +922,6 @@ select {
   grid-template-columns: 50px minmax(0, 1fr) 0px;
 }
 
-.chat-area.task-panel-open {
-  grid-template-columns: 168px minmax(0, 1fr) 0px;
-}
-
-.chat-area.sidebar-collapsed.task-panel-open {
-  grid-template-columns: 50px minmax(0, 1fr) 0px;
-}
-
 .session-sidebar {
   background: var(--color-panel);
 }
@@ -1354,37 +1342,6 @@ select {
 .header-action-btn.active:hover {
   background: rgba(52, 120, 246, 0.2);
   color: var(--color-primary);
-}
-
-.new-session-item {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--color-panel);
-}
-
-.new-session-item .session-main-btn {
-  border-color: var(--color-border);
-  color: var(--color-text-title);
-}
-
-.new-session-item .session-main-btn:hover {
-  border-color: rgba(52, 120, 246, 0.34);
-  background: rgba(52, 120, 246, 0.1);
-}
-
-.new-session-item .session-title {
-  color: var(--color-primary);
-}
-
-.sidebar-collapsed .new-session-item .session-main-btn {
-  border-color: var(--color-border);
-}
-
-.sidebar-collapsed .new-session-item .session-initial {
-  color: var(--color-primary);
-  font-size: 16px;
-  line-height: 1;
 }
 
 .skills-menu {
