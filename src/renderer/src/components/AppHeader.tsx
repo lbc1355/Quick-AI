@@ -1,6 +1,8 @@
 import React from 'react'
 import {
   AppWindow,
+  ArrowLeft,
+  ArrowRight,
   Minimize2,
   Minus,
   Settings,
@@ -59,30 +61,45 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   selectedModel
 }) => {
   const isWindowMode = windowMode === 'window'
+  const activeProviderName =
+    providers.find((provider) => provider.id === activeProviderId)?.name || '未选择服务商'
 
   return (
     <div className="drag-header">
       <div className="drag-header-left">
-        <Sparkles className="logo-icon" size={16} />
+        <span className="logo-icon" aria-hidden="true" />
+        <button type="button" className="header-nav-btn" title="后退">
+          <ArrowLeft size={14} />
+        </button>
+        <button type="button" className="header-nav-btn" title="前进">
+          <ArrowRight size={14} />
+        </button>
+      </div>
+
+      <div className="header-command-center">
+        <Sparkles size={13} />
         <span className="logo-text">QuickAI</span>
-        <div className="chat-model-info" style={{ marginLeft: '12px' }}>
+        <span className="header-command-separator">·</span>
+        <div className="chat-model-info">
           <div className={`status-dot ${isGenerating ? 'loading' : ''}`} />
-          <span className="model-name" style={{ fontSize: '12px', color: '#9ca3af' }}>
-            {providers.find((p) => p.id === activeProviderId)?.name || '未选服务商'}:{' '}
-            {selectedModel}
+          <span className="model-name">
+            {activeProviderName}: {selectedModel}
           </span>
         </div>
       </div>
+
       <div className="drag-header-right">
         <button
+          type="button"
           className="header-action-btn"
           onClick={toggleTheme}
-          title={theme === 'dark' ? '切换到白天模式' : '切换到黑夜模式'}
+          title={theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
         >
           {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
         </button>
         {!isWindowMode && (
           <button
+            type="button"
             className={`header-action-btn ${isPanelPinned ? 'active' : ''}`}
             onClick={() => setIsPanelPinned((value) => !value)}
             title={isPanelPinned ? '取消固定' : '固定窗口'}
@@ -91,6 +108,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           </button>
         )}
         <button
+          type="button"
           className={`header-action-btn ${isWindowMode ? 'active' : ''}`}
           onClick={onToggleWindowMode}
           title={isWindowMode ? '切换到浮窗模式' : '切换到窗口模式'}
@@ -98,12 +116,18 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           <AppWindow size={14} />
         </button>
         {showSettings ? (
-          <button className="header-action-btn" onClick={handleCloseSettings} title="返回聊天">
+          <button
+            type="button"
+            className="header-action-btn"
+            onClick={handleCloseSettings}
+            title="返回聊天"
+          >
             <Undo2 size={14} />
           </button>
         ) : (
           <>
             <button
+              type="button"
               className="header-action-btn"
               onClick={handleClearCurrentSession}
               title="清空历史"
@@ -111,6 +135,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <Trash2 size={14} />
             </button>
             <button
+              type="button"
               className="header-action-btn"
               onClick={() => window.api.toggleDevTools()}
               title="开发者工具"
@@ -118,6 +143,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <Terminal size={14} />
             </button>
             <button
+              type="button"
               className="header-action-btn"
               onClick={() => setShowSettings(true)}
               title="应用设置"
@@ -129,6 +155,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         {isWindowMode && (
           <div className="window-control-group" aria-label="窗口控制">
             <button
+              type="button"
               className="header-action-btn window-control-btn"
               onClick={onMinimizeWindow}
               title="最小化"
@@ -136,6 +163,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <Minus size={15} />
             </button>
             <button
+              type="button"
               className="header-action-btn window-control-btn"
               onClick={onToggleWindowMaximized}
               title={isWindowMaximized ? '还原' : '最大化'}
@@ -143,6 +171,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               {isWindowMaximized ? <Minimize2 size={14} /> : <Square size={13} />}
             </button>
             <button
+              type="button"
               className="header-action-btn window-control-btn close"
               onClick={onCloseWindow}
               title="隐藏到托盘"

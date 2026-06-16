@@ -766,26 +766,34 @@ function App(): React.JSX.Element {
           />
 
           <section className="conversation-panel">
-            {activeBranchInfo && (
-              <div className="branch-context-banner">
-                <div className="branch-context-main">
-                  <GitBranch size={14} />
-                  <span className="branch-context-label">分支会话</span>
-                  <span className="branch-context-source">源自 {activeBranchInfo.sourceLabel}</span>
+            <div className="conversation-titlebar">
+              <div className="conversation-title-main">
+                <div className="conversation-title-line">
+                  <span className="conversation-title-dot">•</span>
+                  <h1>{activeSession?.title || 'New chat'}</h1>
                 </div>
-                <button
-                  type="button"
-                  className="branch-context-link"
-                  onClick={() => {
-                    openSession(activeBranchInfo.sourceSessionId, activeBranchInfo.sourceMessageId)
-                  }}
-                  disabled={!activeBranchInfo.sourceExists}
-                  title={activeBranchInfo.sourceExists ? '打开源会话' : '源会话已不存在'}
-                >
-                  打开源会话
-                </button>
+                <div className="conversation-title-meta">
+                  <span>{activeProviderName}</span>
+                  {activeBranchInfo && (
+                    <button
+                      type="button"
+                      className="conversation-source-link"
+                      onClick={() => {
+                        openSession(
+                          activeBranchInfo.sourceSessionId,
+                          activeBranchInfo.sourceMessageId
+                        )
+                      }}
+                      disabled={!activeBranchInfo.sourceExists}
+                      title={activeBranchInfo.sourceExists ? '打开源对话' : '源对话已不存在'}
+                    >
+                      <GitBranch size={12} />
+                      <span>派生自 {activeBranchInfo.sourceLabel}</span>
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
             {isNewSessionEmpty ? (
               /* Claude Code Style clean watermark interface */
               <div className="empty-state">

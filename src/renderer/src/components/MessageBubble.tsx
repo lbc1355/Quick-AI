@@ -9,7 +9,6 @@ import {
   Play,
   Copy,
   Check,
-  ChevronDown,
   ChevronRight,
   AlertCircle,
   GitBranch,
@@ -205,74 +204,50 @@ const ToolDetailModal: React.FC<{
   )
 }
 
-const StepToolGroup: React.FC<{
+const getToolEventVerb = (toolCall: ParsedToolCall): string => {
+  if (toolCall.status === 'failed') return 'Failed'
+  if (toolCall.status === 'denied') return 'Denied'
+  if (toolCall.status === 'pending') return 'Waiting'
+  if (toolCall.status === 'running') return 'Running'
+
+  const name = toolCall.toolName.toLowerCase()
+  if (name.includes('search')) return 'Searched'
+  if (name.includes('read') || name.includes('fetch') || name.includes('open')) return 'Read'
+  if (name.includes('write') || name.includes('edit') || name.includes('patch')) return 'Edited'
+  if (name.includes('list')) return 'Listed'
+  if (name.includes('shell') || name.includes('command') || name.includes('run')) return 'Ran'
+  return 'Used'
+}
+
+const getToolChipText = (toolCall: ParsedToolCall): string => {
+  return (
+    toolCall.purpose || formatToolArgsSummary(toolCall.toolName, toolCall.args) || toolCall.toolName
+  )
+}
+
+const StepToolEvents: React.FC<{
   step: ParsedAgentStep
-  isLatest: boolean
-  isGenerating: boolean
   onOpenToolDetail: (toolCall: ParsedToolCall) => void
-}> = ({ step, isLatest, isGenerating, onOpenToolDetail }) => {
-  const [userExpandedOverride, setUserExpandedOverride] = useState<boolean | null>(null)
-
-  const toolCalls = step.toolCalls
-  const failedCount = toolCalls.filter(
-    (tc) => tc.status === 'failed' || tc.status === 'denied'
-  ).length
-
-  const defaultExpanded = (isLatest && isGenerating) || failedCount > 0
-  const isExpanded = userExpandedOverride !== null ? userExpandedOverride : defaultExpanded
-
-  if (toolCalls.length === 0) return null
-
-  const summaryText = `已运行 ${toolCalls.length} 个工具${failedCount > 0 ? ` · ${failedCount} 个失败` : ''}`
+}> = ({ step, onOpenToolDetail }) => {
+  if (step.toolCalls.length === 0) return null
 
   return (
-    <div className="agent-step-tool-group">
-      <button
-        type="button"
-        className={`agent-step-tool-group-header ${isExpanded ? 'expanded' : ''}`}
-        onClick={() => setUserExpandedOverride(!isExpanded)}
-      >
-        <span
-          className="header-status-dot"
-          style={{
-            background: failedCount > 0 ? 'var(--color-danger)' : 'var(--color-text-muted)'
-          }}
-        />
-        <span className="header-text">{summaryText}</span>
-        <span className="header-chevron">
-          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </span>
-      </button>
-
-      {isExpanded && (
-        <div className="agent-step-tools-list">
-          {toolCalls.map((tc) => {
-            const isToolFailed = tc.status === 'failed' || tc.status === 'denied'
-            const toolSummary = tc.purpose || formatToolArgsSummary(tc.toolName, tc.args)
-            return (
-              <div key={tc.callId} className={`agent-step-tool-row ${tc.status}`}>
-                <button
-                  type="button"
-                  className="tool-row-header"
-                  onClick={() => onOpenToolDetail(tc)}
-                  title="查看工具详情"
-                >
-                  {tc.status === 'running' ? (
-                    <Loader2 size={12} className="animate-spin tool-status-icon" />
-                  ) : isToolFailed ? (
-                    <AlertCircle size={12} className="tool-status-icon error" />
-                  ) : (
-                    <Check size={12} className="tool-status-icon success" />
-                  )}
-                  <span className="tool-name">{tc.toolName}</span>
-                  {toolSummary && <span className="tool-purpose">{toolSummary}</span>}
-                </button>
-                {isToolFailed && tc.error && <div className="tool-error-text">{tc.error}</div>}
-              </div>
-            )
-          })}
-        </div>
-      )}
+    <div className="agent-tool-events">
+      {step.toolCalls.map((tc) => {
+        const isFocused = tc.status === 'running' || tc.status === 'pending'
+        return (
+          <button
+            key={tc.callId}
+            type="button"
+            className={`agent-tool-event ${tc.status} ${isFocused ? 'focused' : ''}`}
+            onClick={() => onOpenToolDetail(tc)}
+            title="查看工具详情"
+          >
+            <span className="agent-tool-verb">{getToolEventVerb(tc)}</span>
+            <span className="agent-tool-chip">{getToolChipText(tc)}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -323,7 +298,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     )
 
     const [copied, setCopied] = useState(false)
-    const [isStepsExpanded, setIsStepsExpanded] = useState(false)
+    const [isStepsExpanded, setIsStepsExpanded] = useState(true)
     const [selectedToolCall, setSelectedToolCall] = useState<ParsedToolCall | null>(null)
     const isEditing = editingMessageId === msg.id
     const isBranchForkMessage = Boolean(msg.isBranchFork || msg.forkedFrom)
@@ -693,8 +668,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                     {hasStructuredEvents || parsedRun.steps.length > 0 ? (
                       <div className="agent-structured-steps-area">
                         {isGenerating ? (
-                          parsedRun.steps.map((step, stepIdx) => {
-                            const isLatest = stepIdx === parsedRun.steps.length - 1
+                          parsedRun.steps.map((step) => {
                             return (
                               <div key={step.id} className={`agent-step-block ${step.status}`}>
                                 {step.progressMessage && (
@@ -702,10 +676,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                     {renderMessageContent(step.progressMessage)}
                                   </div>
                                 )}
-                                <StepToolGroup
+                                <StepToolEvents
                                   step={step}
-                                  isLatest={isLatest}
-                                  isGenerating={isGenerating}
                                   onOpenToolDetail={setSelectedToolCall}
                                 />
                               </div>
@@ -730,8 +702,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                             </button>
                             {isStepsExpanded && (
                               <div className="agent-steps-simple-collapsed-content">
-                                {parsedRun.steps.map((step, stepIdx) => {
-                                  const isLatest = stepIdx === parsedRun.steps.length - 1
+                                {parsedRun.steps.map((step) => {
                                   return (
                                     <div
                                       key={step.id}
@@ -742,10 +713,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                           {renderMessageContent(step.progressMessage)}
                                         </div>
                                       )}
-                                      <StepToolGroup
+                                      <StepToolEvents
                                         step={step}
-                                        isLatest={isLatest}
-                                        isGenerating={isGenerating}
                                         onOpenToolDetail={setSelectedToolCall}
                                       />
                                     </div>
