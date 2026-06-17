@@ -714,6 +714,7 @@ body {
 
 .conversation-panel {
   min-width: 0;
+  position: relative;
   background: #1b1b1b;
 }
 
@@ -802,6 +803,131 @@ body {
 .messages-inner-wrapper {
   max-width: 960px;
   margin: 0 auto;
+}
+
+.scroll-to-bottom-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 116px;
+  z-index: 20;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #343434;
+  border-radius: 999px;
+  background: #242424;
+  color: #b7c1cd;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+.scroll-to-bottom-btn:hover {
+  border-color: #4a5565;
+  background: #2b313a;
+  color: #e5edf7;
+}
+
+.message-minimap {
+  position: absolute;
+  top: 86px;
+  right: 8px;
+  bottom: 134px;
+  z-index: 15;
+  width: 260px;
+  padding: 7px 9px 7px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  overflow-y: auto;
+  pointer-events: none;
+  scrollbar-width: none;
+}
+
+.message-minimap::-webkit-scrollbar {
+  display: none;
+}
+
+.message-minimap-item {
+  position: relative;
+  width: 24px;
+  height: 9px;
+  flex: 0 0 auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.message-minimap-item::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 17px;
+  height: 3px;
+  border-radius: 999px;
+  background: #7b8491;
+  opacity: 0.45;
+  transform: translateY(-50%);
+  transition:
+    width 0.12s ease,
+    height 0.12s ease,
+    opacity 0.12s ease,
+    background 0.12s ease;
+}
+
+.message-minimap-item::after {
+  content: attr(data-label) '\A' attr(data-preview);
+  position: absolute;
+  right: 34px;
+  top: 50%;
+  width: max-content;
+  max-width: 220px;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border: 1px solid #343434;
+  border-radius: 6px;
+  background: #242424;
+  color: #d5dde7;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: left;
+  white-space: pre-wrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(4px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+  visibility: hidden;
+}
+
+.message-minimap-item.user::before {
+  background: #5b8def;
+}
+
+.message-minimap-item.assistant::before {
+  background: #52b69a;
+}
+
+.message-minimap-item:hover::before,
+.message-minimap-item.active::before {
+  width: 23px;
+  height: 4px;
+  opacity: 0.95;
+}
+
+.message-minimap-item:hover::after,
+.message-minimap-item:focus-visible::after {
+  opacity: 1;
+  transform: translateY(-50%);
+  visibility: visible;
 }
 
 .message-row-shell {
@@ -1028,6 +1154,13 @@ body {
   cursor: pointer;
 }
 
+.agent-tool-event-line {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .agent-tool-group {
   width: fit-content;
   max-width: min(720px, 100%);
@@ -1076,7 +1209,50 @@ body {
 .agent-tool-event.failed,
 .agent-tool-event.denied,
 .agent-tool-group-toggle.failed {
+  border-color: rgba(239, 68, 68, 0.36);
+  background: rgba(239, 68, 68, 0.07);
+  color: #f1a4a4;
+}
+
+.agent-tool-event.has-failure {
+  padding: 5px 7px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.agent-tool-event.failed .agent-tool-chip,
+.agent-tool-event.denied .agent-tool-chip {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.1);
+  color: #f3c6c6;
+}
+
+.agent-tool-failure-icon {
+  flex: 0 0 auto;
   color: var(--color-danger);
+}
+
+.agent-tool-failure-preview {
+  max-width: 560px;
+  overflow: hidden;
+  color: #d98f8f;
+  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-tool-group-failure {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #e7a2a2;
+  font-size: 10.5px;
+  line-height: 1.25;
 }
 
 .agent-tool-group-caret {
@@ -1509,6 +1685,34 @@ body {
   background: #ffffff;
 }
 
+.app-container.theme-light .scroll-to-bottom-btn {
+  border-color: #d9dee7;
+  background: #ffffff;
+  color: #526071;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+}
+
+.app-container.theme-light .scroll-to-bottom-btn:hover {
+  border-color: #c9d1dc;
+  background: #f0f3f7;
+  color: #111827;
+}
+
+.app-container.theme-light .message-minimap-item.user::before {
+  background: #2563eb;
+}
+
+.app-container.theme-light .message-minimap-item.assistant::before {
+  background: #0f8f78;
+}
+
+.app-container.theme-light .message-minimap-item::after {
+  border-color: #d9dee7;
+  background: #ffffff;
+  color: #243042;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
+}
+
 .app-container.theme-light .session-sidebar {
   background: #f4f5f7;
   border-right-color: #d9dee7;
@@ -1668,6 +1872,31 @@ body {
   background: #eef5ff;
 }
 
+.app-container.theme-light .agent-tool-event.failed,
+.app-container.theme-light .agent-tool-event.denied,
+.app-container.theme-light .agent-tool-group-toggle.failed {
+  border-color: #f2b8b8;
+  background: #fff1f1;
+  color: #9f2d2d;
+}
+
+.app-container.theme-light .agent-tool-event.failed .agent-tool-chip,
+.app-container.theme-light .agent-tool-event.denied .agent-tool-chip {
+  border-color: #efc7c7;
+  background: #ffe7e7;
+  color: #7f1d1d;
+}
+
+.app-container.theme-light .agent-tool-failure-preview {
+  color: #9f3b3b;
+}
+
+.app-container.theme-light .agent-tool-group-failure {
+  border-color: #efc7c7;
+  background: #ffe7e7;
+  color: #9f2d2d;
+}
+
 .app-container.theme-light .agent-tool-verb {
   color: #5f6c7b;
 }
@@ -1763,6 +1992,35 @@ body {
   .chat-input-section {
     padding-left: 20px;
     padding-right: 20px;
+  }
+
+  .scroll-to-bottom-btn {
+    bottom: 104px;
+  }
+
+  .message-minimap {
+    top: 78px;
+    right: 0;
+    bottom: 118px;
+    width: 210px;
+  }
+
+  .message-minimap-item {
+    width: 20px;
+  }
+
+  .message-minimap-item::before {
+    width: 13px;
+  }
+
+  .message-minimap-item::after {
+    right: 28px;
+    max-width: 170px;
+  }
+
+  .message-minimap-item:hover::before,
+  .message-minimap-item.active::before {
+    width: 18px;
   }
 
   .message-bubble.user .message-text {

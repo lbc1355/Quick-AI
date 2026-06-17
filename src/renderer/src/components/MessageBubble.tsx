@@ -37,6 +37,14 @@ const formatWorkedDuration = (seconds: number, stepsCount: number): string => {
   return `Worked for ${stepsCount} step${stepsCount === 1 ? '' : 's'}`
 }
 
+const formatElapsedDuration = (seconds: number): string => {
+  const safeSeconds = Math.max(0, Math.round(seconds))
+  const mins = Math.floor(safeSeconds / 60)
+  const secs = safeSeconds % 60
+  if (mins > 0) return `${mins}m${secs > 0 ? ` ${secs}s` : ''}`
+  return `${secs}s`
+}
+
 const formatToolArgsSummary = (toolName: string, args: any): string => {
   if (!args || typeof args !== 'object') return ''
   const name = toolName.toLowerCase()
@@ -67,6 +75,14 @@ const formatToolArgsSummary = (toolName: string, args: any): string => {
     .join(', ')
   if (!keyVal) return ''
   return keyVal.length > 50 ? `{${keyVal.substring(0, 50)}...}` : `{${keyVal}}`
+}
+
+const getShellCommandArg = (toolName: string, args: any): string => {
+  if (!args || typeof args !== 'object') return ''
+  const name = toolName.toLowerCase()
+  if (!name.includes('command') && !name.includes('shell') && !name.includes('run')) return ''
+  const cmd = args.CommandLine || args.command || args.cmd
+  return typeof cmd === 'string' ? cmd : ''
 }
 
 const formatToolDisplayText = (toolName: string, args: any, purpose?: string): string => {
@@ -106,7 +122,8 @@ const ToolDetailModal: React.FC<{
   toolCall: ParsedToolCall
   onClose: () => void
 }> = ({ toolCall, onClose }) => {
-  const argsJson = getToolArgsJson(toolCall.args)
+  const shellCommand = getShellCommandArg(toolCall.toolName, toolCall.args)
+  const argsJson = shellCommand ? '' : getToolArgsJson(toolCall.args)
   const result = toolCall.result
 
   return (
@@ -135,6 +152,15 @@ const ToolDetailModal: React.FC<{
             <section className="tool-detail-section">
               <h4>说明</h4>
               <p>{toolCall.purpose}</p>
+            </section>
+          )}
+
+          {shellCommand && (
+            <section className="tool-detail-section">
+              <h4>Command</h4>
+              <pre className="tool-detail-code command">
+                <code>{shellCommand}</code>
+              </pre>
             </section>
           )}
 
@@ -230,6 +256,13 @@ const getToolChipText = (toolCall: ParsedToolCall): string => {
   )
 }
 
+const getToolFailurePreview = (toolCall: ParsedToolCall): string => {
+  if (toolCall.status !== 'failed' && toolCall.status !== 'denied') return ''
+  const fallback = toolCall.status === 'denied' ? 'Permission denied' : 'Tool failed'
+  const text = (toolCall.error || fallback).replace(/\s+/g, ' ').trim()
+  return text.length > 120 ? text.substring(0, 117) + '...' : text
+}
+
 interface ToolEventGroup {
   id: string
   verb: string
@@ -276,16 +309,22 @@ const StepToolEvents: React.FC<{
 
   const renderToolEvent = (tc: ParsedToolCall): React.ReactNode => {
     const isFocused = tc.status === 'running' || tc.status === 'pending'
+    const failurePreview = getToolFailurePreview(tc)
+    const hasFailure = Boolean(failurePreview)
     return (
       <button
         key={tc.callId}
         type="button"
-        className={`agent-tool-event ${tc.status} ${isFocused ? 'focused' : ''}`}
+        className={`agent-tool-event ${tc.status} ${isFocused ? 'focused' : ''} ${hasFailure ? 'has-failure' : ''}`}
         onClick={() => onOpenToolDetail(tc)}
         title="查看工具详情"
       >
-        <span className="agent-tool-verb">{getToolEventVerb(tc)}</span>
-        <span className="agent-tool-chip">{getToolChipText(tc)}</span>
+        <span className="agent-tool-event-line">
+          {hasFailure && <AlertCircle size={12} className="agent-tool-failure-icon" />}
+          <span className="agent-tool-verb">{getToolEventVerb(tc)}</span>
+          <span className="agent-tool-chip">{getToolChipText(tc)}</span>
+        </span>
+        {failurePreview && <span className="agent-tool-failure-preview">{failurePreview}</span>}
       </button>
     )
   }
@@ -304,6 +343,9 @@ const StepToolEvents: React.FC<{
         const groupStatus = hasFailure ? 'failed' : isFocused ? 'running' : 'completed'
         const isExpanded = expandedGroups[group.id] ?? isFocused
         const previewCalls = group.calls.slice(0, 3)
+        const failedCallsCount = group.calls.filter(
+          (tc) => tc.status === 'failed' || tc.status === 'denied'
+        ).length
 
         return (
           <div key={group.id} className="agent-tool-group">
@@ -314,8 +356,12 @@ const StepToolEvents: React.FC<{
               title={isExpanded ? 'Collapse tool group' : 'Expand tool group'}
             >
               <ChevronRight size={12} className="agent-tool-group-caret" />
+              {hasFailure && <AlertCircle size={12} className="agent-tool-failure-icon" />}
               <span className="agent-tool-verb">{group.verb}</span>
               <span className="agent-tool-group-count">{group.calls.length}</span>
+              {failedCallsCount > 0 && (
+                <span className="agent-tool-group-failure">{failedCallsCount} failed</span>
+              )}
               <span className="agent-tool-group-preview">
                 {previewCalls.map((tc) => (
                   <span key={tc.callId} className="agent-tool-chip compact">
@@ -431,15 +477,16 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     const hasLogs = hasStructuredEvents || (msg.content && msg.content.includes('[tool '))
 
     useEffect(() => {
-      if (isGenerating && !cleanContent && hasLogs) {
+      if (isGenerating && msg.role === 'assistant') {
         const startTime = parseInt(msg.id) || Date.now()
+        setElapsed(Math.round((Date.now() - startTime) / 1000))
         const timer = setInterval(() => {
           setElapsed(Math.round((Date.now() - startTime) / 1000))
         }, 500)
         return () => clearInterval(timer)
       }
       return undefined
-    }, [isGenerating, cleanContent, hasLogs, msg.id])
+    }, [isGenerating, msg.id, msg.role])
 
     useEffect(() => {
       if (!selectedToolCall) return undefined
@@ -523,6 +570,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     const totalToolsCount = parsedRun.totalToolsCount
     const failedToolsCount = parsedRun.failedToolsCount
     const cacheHitRateText = formatCacheHitRate(msg.cacheStats)
+    const generationDurationText = elapsed > 0 ? `耗时 ${formatElapsedDuration(elapsed)}` : null
 
     const activeParsedStep =
       [...parsedRun.steps]
@@ -862,7 +910,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           <div className="agent-event-final-text">
                             <StepReasoningBlock reasoning={parsedRun.finalReasoning} />
                             {renderedFinalAnswer}
-                            {(msg.tokenSpeed !== undefined || cacheHitRateText) && (
+                            {(generationDurationText ||
+                              msg.tokenSpeed !== undefined ||
+                              cacheHitRateText) && (
                               <div
                                 className="msg-generation-stats"
                                 style={{
@@ -876,12 +926,18 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                 }}
                               >
                                 <Sparkles size={10} style={{ color: '#10b981' }} />
+                                {generationDurationText && <span>{generationDurationText}</span>}
                                 {msg.tokenSpeed !== undefined && (
-                                  <span>{msg.tokenSpeed} token/s</span>
+                                  <>
+                                    {generationDurationText && <span>·</span>}
+                                    <span>{msg.tokenSpeed} token/s</span>
+                                  </>
                                 )}
                                 {cacheHitRateText && (
                                   <>
-                                    {msg.tokenSpeed !== undefined && <span>·</span>}
+                                    {(generationDurationText || msg.tokenSpeed !== undefined) && (
+                                      <span>·</span>
+                                    )}
                                     <span>{cacheHitRateText}</span>
                                   </>
                                 )}
@@ -902,7 +958,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       ) : (
                         <>
                           {renderedCleanContent}
-                          {(msg.tokenSpeed !== undefined || cacheHitRateText) && (
+                          {(generationDurationText ||
+                            msg.tokenSpeed !== undefined ||
+                            cacheHitRateText) && (
                             <div
                               className="msg-generation-stats"
                               style={{
@@ -916,12 +974,18 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                               }}
                             >
                               <Sparkles size={10} style={{ color: '#10b981' }} />
+                              {generationDurationText && <span>{generationDurationText}</span>}
                               {msg.tokenSpeed !== undefined && (
-                                <span>{msg.tokenSpeed} token/s</span>
+                                <>
+                                  {generationDurationText && <span>·</span>}
+                                  <span>{msg.tokenSpeed} token/s</span>
+                                </>
                               )}
                               {cacheHitRateText && (
                                 <>
-                                  {msg.tokenSpeed !== undefined && <span>·</span>}
+                                  {(generationDurationText || msg.tokenSpeed !== undefined) && (
+                                    <span>·</span>
+                                  )}
                                   <span>{cacheHitRateText}</span>
                                 </>
                               )}

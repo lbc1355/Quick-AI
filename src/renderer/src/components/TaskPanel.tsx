@@ -279,8 +279,17 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
     }
   }
 
-  const renderArgs = (args: any) => {
+  const getShellCommandArg = (toolName: string, args: any): string => {
+    if (!args || typeof args !== 'object') return ''
+    const name = toolName.toLowerCase()
+    if (!name.includes('command') && !name.includes('shell') && !name.includes('run')) return ''
+    const cmd = args.CommandLine || args.command || args.cmd
+    return typeof cmd === 'string' ? cmd : ''
+  }
+
+  const renderArgs = (toolName: string, args: any) => {
     if (!args || typeof args !== 'object') return null
+    const shellCommand = getShellCommandArg(toolName, args)
     return (
       <div className="timeline-args-section">
         <span className="timeline-section-title">
@@ -288,7 +297,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
           调用参数
         </span>
         <pre className="timeline-pre-code">
-          <code>{JSON.stringify(args, null, 2)}</code>
+          <code>{shellCommand || JSON.stringify(args, null, 2)}</code>
         </pre>
       </div>
     )
@@ -629,7 +638,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
                                             padding: '6px 0 8px 10px'
                                           }}
                                         >
-                                          {renderArgs(tc.args)}
+                                          {renderArgs(tc.toolName, tc.args)}
                                           {renderResult(tc)}
                                         </div>
                                       )}

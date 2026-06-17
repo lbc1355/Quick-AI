@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Sparkles, GitBranch, Paperclip } from 'lucide-react'
+import { Sparkles, GitBranch, Paperclip, ArrowDown } from 'lucide-react'
 
 import { AutocompleteItem, AppSettings, Project, WindowState } from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
@@ -38,6 +38,32 @@ interface PendingPermission {
   callId: string
   toolName: string
   args: unknown
+}
+
+const buildMessageNavPreview = (
+  content: string,
+  files?: Array<{ name: string; content: string; type: string }>
+): string => {
+  const text = content
+    .replace(/<think>[\s\S]*?<\/think>/gi, ' ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
+    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+    .replace(/^\s*\[[^\]]+\]\s*/gm, ' ')
+    .replace(/[`*_>#-]/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (text) return text.length > 88 ? `${text.slice(0, 85)}...` : text
+
+  const fileNames = files?.map((file) => file.name).filter(Boolean) || []
+  if (fileNames.length > 0) {
+    const shown = fileNames.slice(0, 2).join(', ')
+    return fileNames.length > 2 ? `附件：${shown} 等 ${fileNames.length} 个文件` : `附件：${shown}`
+  }
+
+  return '空消息'
 }
 
 function App(): React.JSX.Element {
@@ -270,6 +296,8 @@ function App(): React.JSX.Element {
   const messagesInnerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
   const isProgrammaticScrollRef = useRef(false)
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const [activeMessageNavId, setActiveMessageNavId] = useState<string | null>(null)
   const [pendingScrollMessageId, setPendingScrollMessageId] = useState<string | null>(null)
 
   // 3. Attachments hook
@@ -350,6 +378,12 @@ function App(): React.JSX.Element {
   if (activeSessionId !== prevSessionId) {
     setPrevSessionId(activeSessionId)
   }
+
+  useEffect(() => {
+    shouldAutoScrollRef.current = true
+    setShowScrollToBottom(false)
+    setActiveMessageNavId(null)
+  }, [activeSessionId])
 
   const isSessionFamilyViewDismissed = dismissedSessionFamilyViewForId === activeSessionId
 
@@ -448,14 +482,93 @@ function App(): React.JSX.Element {
   useEffect(() => {
     if (isCurrentSessionGenerating) {
       shouldAutoScrollRef.current = true
+      setShowScrollToBottom(false)
     }
   }, [isCurrentSessionGenerating])
+
+  const updateMessageNavigationState = useCallback((container: HTMLDivElement): void => {
+    const messageNodes = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-message-id]')
+    )
+    if (messageNodes.length === 0) {
+      setActiveMessageNavId(null)
+      return
+    }
+
+    const threshold = 60
+    const isAtBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight <= threshold
+
+    if (isAtBottom) {
+      setActiveMessageNavId(messageNodes[messageNodes.length - 1].dataset.messageId || null)
+      return
+    }
+
+    const containerTop = container.getBoundingClientRect().top
+    const targetY = containerTop + Math.min(Math.max(container.clientHeight * 0.28, 120), 240)
+    const activeNode =
+      messageNodes.find((node) => node.getBoundingClientRect().bottom >= targetY) ||
+      messageNodes[0]
+
+    setActiveMessageNavId(activeNode.dataset.messageId || null)
+  }, [])
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth'): void => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    shouldAutoScrollRef.current = true
+    setShowScrollToBottom(false)
+    const lastMessage = activeSession?.messages[activeSession.messages.length - 1]
+    setActiveMessageNavId(lastMessage?.id || null)
+    isProgrammaticScrollRef.current = true
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior
+    })
+
+    const resetDelay = behavior === 'smooth' ? 500 : 60
+    window.setTimeout(() => {
+      isProgrammaticScrollRef.current = false
+    }, resetDelay)
+  }, [activeSession?.messages])
+
+  const scrollToMessage = useCallback(
+    (messageId: string, isLastMessage: boolean): void => {
+      if (isLastMessage) {
+        scrollToBottom('smooth')
+        return
+      }
+
+      const container = messagesContainerRef.current
+      if (!container) return
+
+      const target = Array.from(
+        container.querySelectorAll<HTMLElement>('[data-message-id]')
+      ).find((node) => node.dataset.messageId === messageId)
+      if (!target) return
+
+      shouldAutoScrollRef.current = false
+      setShowScrollToBottom(true)
+      setActiveMessageNavId(messageId)
+      isProgrammaticScrollRef.current = true
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+
+      window.setTimeout(() => {
+        isProgrammaticScrollRef.current = false
+        updateMessageNavigationState(container)
+      }, 500)
+    },
+    [scrollToBottom, updateMessageNavigationState]
+  )
 
   // Auto-scroll when messages update
   useEffect(() => {
     if (shouldAutoScrollRef.current) {
       const container = messagesContainerRef.current
       if (container) {
+        const lastMessage = activeSession?.messages[activeSession.messages.length - 1]
+        setActiveMessageNavId(lastMessage?.id || null)
         const behavior = isCurrentSessionGenerating ? 'auto' : 'smooth'
         if (behavior === 'smooth') {
           isProgrammaticScrollRef.current = true
@@ -466,9 +579,11 @@ function App(): React.JSX.Element {
           const timeoutId = setTimeout(() => {
             isProgrammaticScrollRef.current = false
           }, 500)
+          setShowScrollToBottom(false)
           return () => clearTimeout(timeoutId)
         } else {
           container.scrollTop = container.scrollHeight
+          setShowScrollToBottom(false)
         }
       }
     }
@@ -485,6 +600,7 @@ function App(): React.JSX.Element {
     if (!target) return
 
     shouldAutoScrollRef.current = false
+    setActiveMessageNavId(pendingScrollMessageId)
     isProgrammaticScrollRef.current = true
     target.scrollIntoView({ block: 'center', behavior: 'smooth' })
 
@@ -505,6 +621,10 @@ function App(): React.JSX.Element {
       if (shouldAutoScrollRef.current && isCurrentSessionGenerating) {
         isProgrammaticScrollRef.current = true
         container.scrollTop = container.scrollHeight
+        const messageNodes = Array.from(
+          container.querySelectorAll<HTMLElement>('[data-message-id]')
+        )
+        setActiveMessageNavId(messageNodes[messageNodes.length - 1]?.dataset.messageId || null)
         setTimeout(() => {
           isProgrammaticScrollRef.current = false
         }, 60)
@@ -529,9 +649,13 @@ function App(): React.JSX.Element {
 
     if (isAtBottom) {
       shouldAutoScrollRef.current = true
+      setShowScrollToBottom(false)
     } else {
       shouldAutoScrollRef.current = false
+      setShowScrollToBottom(true)
     }
+
+    updateMessageNavigationState(container)
   }
 
   // Focus textarea when UI toggles
@@ -1043,6 +1167,43 @@ function App(): React.JSX.Element {
                   <div ref={messagesEndRef} />
                 </div>
               </div>
+            )}
+
+            {!isNewSessionEmpty && activeSession?.messages.length ? (
+              <nav className="message-minimap" aria-label="消息导航">
+                {activeSession.messages.map((msg, idx) => {
+                  const isLastMessage = idx === activeSession.messages.length - 1
+                  const isActive = activeMessageNavId === msg.id
+                  const roleLabel = msg.role === 'user' ? '用户' : '助手'
+                  const preview = buildMessageNavPreview(msg.content, msg.files)
+                  const tooltipLabel = `${roleLabel} #${idx + 1}`
+
+                  return (
+                    <button
+                      key={msg.id}
+                      type="button"
+                      className={`message-minimap-item ${msg.role} ${isActive ? 'active' : ''}`}
+                      data-label={tooltipLabel}
+                      data-preview={preview}
+                      onClick={() => scrollToMessage(msg.id, isLastMessage)}
+                      title={`${tooltipLabel}：${preview}`}
+                      aria-label={`${tooltipLabel}：${preview}`}
+                    />
+                  )
+                })}
+              </nav>
+            ) : null}
+
+            {!isNewSessionEmpty && showScrollToBottom && (
+              <button
+                type="button"
+                className="scroll-to-bottom-btn"
+                onClick={() => scrollToBottom('smooth')}
+                title="滑到底部"
+                aria-label="滑到底部"
+              >
+                <ArrowDown size={15} />
+              </button>
             )}
 
             <ChatInputArea
