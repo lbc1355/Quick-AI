@@ -85,6 +85,7 @@ const agentTools: Array<{
   { name: 'read_cached_resource', label: '读取资源缓存', risk: 'low' },
   { name: 'list_cached_resources', label: '列出资源缓存', risk: 'low' },
   { name: 'search_cached_resource', label: '检索资源缓存', risk: 'low' },
+  { name: 'ask_user_choice', label: '询问用户选择', risk: 'low' },
   { name: 'web_search', label: '网络搜索', risk: 'low' },
   { name: 'workspace_list_files', label: '列出工作区文件', risk: 'low' },
   { name: 'workspace_search', label: '搜索工作区', risk: 'low' },

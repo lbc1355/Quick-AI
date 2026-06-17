@@ -11,6 +11,8 @@ import {
   McpServerStatus,
   Project,
   Skill,
+  UserChoiceRequest,
+  UserChoiceResponse,
   WindowMode,
   WindowState
 } from '../shared/types'
@@ -53,6 +55,11 @@ const api = {
           tool?: string
         }
   ): void => ipcRenderer.send('respond-tool-permission', reqId, callId, approved),
+  respondUserChoice: (
+    reqId: string,
+    requestId: string,
+    response: UserChoiceResponse
+  ): void => ipcRenderer.send('respond-user-choice', reqId, requestId, response),
   abortGeneration: (reqId: string): void => ipcRenderer.send('abort-generation', reqId),
   clearSessionCaches: (payload: ClearSessionCachesPayload): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('clear-session-caches', payload),
@@ -79,6 +86,14 @@ const api = {
     ipcRenderer.on('window-state-changed', listener)
     return (): void => {
       ipcRenderer.removeListener('window-state-changed', listener)
+    }
+  },
+  onUserChoiceRequest: (callback: (request: UserChoiceRequest) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, request: UserChoiceRequest): void =>
+      callback(request)
+    ipcRenderer.on('user-choice-request', listener)
+    return (): void => {
+      ipcRenderer.removeListener('user-choice-request', listener)
     }
   },
   showNotification: (title: string, body: string): void =>

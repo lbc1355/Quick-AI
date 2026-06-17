@@ -16,7 +16,13 @@ import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
 import type { StorageSchema, WindowMode, WindowState } from '../shared/types'
 import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClient'
-import { runAgentSkill, runGeneralAgent, resolveToolPermission, abortAgentSkill } from './agent'
+import {
+  runAgentSkill,
+  runGeneralAgent,
+  resolveToolPermission,
+  resolveUserChoice,
+  abortAgentSkill
+} from './agent'
 import { deleteActionLog, ActionLog, getActionLogPath } from './agent/actionLog'
 import {
   copyRunCheckpointsForRuns,
@@ -651,6 +657,10 @@ app.whenReady().then(() => {
 
   ipcMain.on('respond-tool-permission', (_event, reqId, callId, approved) => {
     resolveToolPermission(reqId, callId, approved)
+  })
+
+  ipcMain.on('respond-user-choice', (_event, reqId, requestId, response) => {
+    resolveUserChoice(String(reqId || ''), String(requestId || ''), response || {})
   })
 
   ipcMain.on('abort-generation', (_event, reqId) => {

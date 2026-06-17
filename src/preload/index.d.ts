@@ -10,6 +10,8 @@ import {
   McpServerStatus,
   Project,
   Skill,
+  UserChoiceRequest,
+  UserChoiceResponse,
   WindowMode,
   WindowState
 } from '../shared/types'
@@ -46,6 +48,11 @@ declare global {
               tool?: string
             }
       ) => void
+      respondUserChoice: (
+        reqId: string,
+        requestId: string,
+        response: UserChoiceResponse
+      ) => void
       abortGeneration: (reqId: string) => void
       clearSessionCaches: (payload: ClearSessionCachesPayload) => Promise<{ ok: boolean }>
       forkSessionCaches: (
@@ -55,6 +62,7 @@ declare global {
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       onSkillsUpdated: (callback: (skills: Skill[]) => void) => () => void
       onWindowStateChanged: (callback: (state: WindowState) => void) => () => void
+      onUserChoiceRequest: (callback: (request: UserChoiceRequest) => void) => () => void
       fetchModels: (fetchUrl: string, apiKey: string) => Promise<string[]>
       listMemoryEntries: () => Promise<Array<{ id: string; label: string; kind: string }>>
       readMemoryEntry: (id: string) => Promise<string>

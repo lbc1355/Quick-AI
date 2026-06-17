@@ -10,6 +10,31 @@ export interface ToolResultUi {
   }>
 }
 
+export interface UserChoiceOption {
+  id: string
+  label: string
+  value?: string
+  description?: string
+}
+
+export interface UserChoiceRequest {
+  reqId: string
+  requestId: string
+  title?: string
+  question: string
+  options: UserChoiceOption[]
+  allowCustom?: boolean
+  placeholder?: string
+}
+
+export interface UserChoiceResponse {
+  selectedOptionId?: string
+  selectedLabel?: string
+  selectedValue?: string
+  customValue?: string
+  cancelled?: boolean
+}
+
 export interface PromptCacheStats {
   promptTokens?: number
   cacheHitTokens: number

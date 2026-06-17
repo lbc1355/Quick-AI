@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { systemTools } from './system'
+import { globalUserChoiceManager } from '../agent/userChoiceManager'
 import { clearPendingRemindersForTests, setReminderNotificationSenderForTests } from './reminders'
 import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
 import { createRun, destroyRun } from '../agent/AgentRunContext'
 import { ActionLog } from '../agent/actionLog'
 import { getSkillRoot, getWorkspaceRoot } from '../paths'
+import { ToolExecutionContext } from './types'
 
 const testDir = join(__dirname, '../../../temp-system-tools-test')
 
@@ -416,6 +418,95 @@ describe('systemTools.task', () => {
         executionContext(reqId)
       )
     ).rejects.toThrow('No valid task items found')
+  })
+})
+
+describe('systemTools.ask_user_choice', () => {
+  const reqId = 'choice-req'
+
+  afterEach(() => {
+    globalUserChoiceManager.cleanupForRun(reqId)
+  })
+
+  it('sends a choice request and returns the selected option to the model', async () => {
+    const send = vi.fn()
+    const executionContext: ToolExecutionContext = {
+      reqId,
+      signal: new AbortController().signal,
+      mainWindow: {
+        isDestroyed: () => false,
+        webContents: { send }
+      } as unknown as ToolExecutionContext['mainWindow']
+    }
+
+    const resultPromise = systemTools.ask_user_choice.execute(
+      {
+        question: 'Which database should I install?',
+        options: [
+          { label: 'SQLite', value: 'sqlite', description: 'Single-file local database' },
+          { label: 'PostgreSQL', value: 'postgres', description: 'Server database' }
+        ]
+      },
+      executionContext
+    )
+
+    await Promise.resolve()
+
+    expect(send).toHaveBeenCalledWith(
+      'user-choice-request',
+      expect.objectContaining({
+        reqId,
+        question: 'Which database should I install?',
+        options: expect.arrayContaining([
+          expect.objectContaining({ id: 'option-1', label: 'SQLite', value: 'sqlite' }),
+          expect.objectContaining({ id: 'option-2', label: 'PostgreSQL', value: 'postgres' })
+        ])
+      })
+    )
+
+    const request = send.mock.calls[0][1]
+    globalUserChoiceManager.resolve(reqId, request.requestId, {
+      selectedOptionId: 'option-2',
+      selectedLabel: 'PostgreSQL',
+      selectedValue: 'postgres'
+    })
+
+    const result = await resultPromise
+    expect(result.resultForModel).toContain('User made a choice.')
+    expect(result.resultForModel).toContain('Selected label: PostgreSQL')
+    expect(result.resultForModel).toContain('Selected value: postgres')
+    expect(result.resultForUi.summary).toBe('PostgreSQL')
+  })
+
+  it('accepts string options and reports cancellation', async () => {
+    const send = vi.fn()
+    const executionContext: ToolExecutionContext = {
+      reqId,
+      signal: new AbortController().signal,
+      mainWindow: {
+        isDestroyed: () => false,
+        webContents: { send }
+      } as unknown as ToolExecutionContext['mainWindow']
+    }
+
+    const resultPromise = systemTools.ask_user_choice.execute(
+      {
+        question: 'Pick one',
+        options: ['A', 'B']
+      },
+      executionContext
+    )
+
+    await Promise.resolve()
+
+    const request = send.mock.calls[0][1]
+    expect(request.options[0]).toEqual({ id: 'option-1', label: 'A', value: 'A' })
+
+    globalUserChoiceManager.resolve(reqId, request.requestId, { cancelled: true })
+    const result = await resultPromise
+
+    expect(result.resultForModel).toContain('User cancelled')
+    expect(result.resultForUi.summary).toBe('Cancelled')
   })
 })
 

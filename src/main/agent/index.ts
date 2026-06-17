@@ -1,7 +1,8 @@
 import { BrowserWindow } from 'electron'
-import { AgentSkillRunOptions, ChatRunOptions } from '../../shared/types'
+import { AgentSkillRunOptions, ChatRunOptions, UserChoiceResponse } from '../../shared/types'
 import { runAgentLoop } from './agentLoop'
 import { globalPermissionManager } from './permissionManager'
+import { globalUserChoiceManager } from './userChoiceManager'
 import { abortRun, getRun } from './AgentRunContext'
 
 export const runAgentSkill = async (
@@ -62,6 +63,15 @@ export const resolveToolPermission = (
   globalPermissionManager.resolve(reqId, callId, isApproved)
 }
 
+export const resolveUserChoice = (
+  reqId: string,
+  requestId: string,
+  response: UserChoiceResponse
+): void => {
+  globalUserChoiceManager.resolve(reqId, requestId, response)
+}
+
 export const abortAgentSkill = (reqId: string): void => {
   abortRun(reqId)
+  globalUserChoiceManager.cleanupForRun(reqId)
 }

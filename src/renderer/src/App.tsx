@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Sparkles, GitBranch, Paperclip, ArrowDown } from 'lucide-react'
 
-import { AutocompleteItem, AppSettings, Project, WindowState } from '../../shared/types'
+import {
+  AutocompleteItem,
+  AppSettings,
+  Project,
+  UserChoiceRequest,
+  UserChoiceResponse,
+  WindowState
+} from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
 import { SettingsView } from './components/SettingsView'
@@ -30,6 +37,7 @@ import {
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
 import { ChatInputArea } from './components/ChatInputArea'
+import { UserChoicePopup } from './components/UserChoicePopup'
 import { getPopupOptions, groupAutocompleteItems } from './utils/autocompleteHelpers'
 
 interface PendingPermission {
@@ -298,6 +306,7 @@ function App(): React.JSX.Element {
   const isProgrammaticScrollRef = useRef(false)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [activeMessageNavId, setActiveMessageNavId] = useState<string | null>(null)
+  const [pendingUserChoice, setPendingUserChoice] = useState<UserChoiceRequest | null>(null)
   const [pendingScrollMessageId, setPendingScrollMessageId] = useState<string | null>(null)
 
   // 3. Attachments hook
@@ -462,6 +471,24 @@ function App(): React.JSX.Element {
       unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    return window.api.onUserChoiceRequest((request) => {
+      setPendingUserChoice(request)
+      setTimeout(() => {
+        textareaRef.current?.blur()
+      }, 0)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (isGenerating || !pendingUserChoice) return undefined
+
+    const timeoutId = window.setTimeout(() => {
+      setPendingUserChoice(null)
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [isGenerating, pendingUserChoice])
 
   const handleToggleWindowMode = useCallback(async (): Promise<void> => {
     const nextMode = windowState.mode === 'window' ? 'floating' : 'window'
@@ -849,6 +876,16 @@ function App(): React.JSX.Element {
     }
   }
 
+  const handleUserChoiceResponse = (response: UserChoiceResponse): void => {
+    const pending = pendingUserChoice
+    if (!pending) return
+    window.api.respondUserChoice(pending.reqId, pending.requestId, response)
+    setPendingUserChoice(null)
+    setTimeout(() => {
+      textareaRef.current?.focus()
+    }, 50)
+  }
+
   // Reset selected option and manage keyboard shortcuts for pending tool execution permissions
   const pendingPermission = getPendingPermission()
   const pendingCallId = pendingPermission?.callId || null
@@ -1204,6 +1241,10 @@ function App(): React.JSX.Element {
               >
                 <ArrowDown size={15} />
               </button>
+            )}
+
+            {pendingUserChoice && (
+              <UserChoicePopup request={pendingUserChoice} onRespond={handleUserChoiceResponse} />
             )}
 
             <ChatInputArea

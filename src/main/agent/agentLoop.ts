@@ -834,9 +834,37 @@ export const runAgentLoop = async (
           throw new Error('Agent execution aborted by user.')
         }
 
-        // 2. Process directCalls concurrently (validated and allowed)
+        const interactiveDirectCalls = directCalls.filter(
+          (prep) => prep.toolName === 'ask_user_choice'
+        )
+        const nonInteractiveDirectCalls = directCalls.filter(
+          (prep) => prep.toolName !== 'ask_user_choice'
+        )
+
+        // 2. Process interactive direct calls sequentially so only one user-choice dialog is open.
+        for (const prep of interactiveDirectCalls) {
+          if (signal.aborted) break
+          sendEvent(mainWindow, reqId, {
+            type: 'tool_call',
+            callId: prep.callId,
+            toolName: prep.toolName,
+            args: prep.args,
+            purpose: prep.purpose,
+            permissionState: 'approved',
+            step,
+            stepId
+          })
+
+          toolResponses[prep.index] = await executeTool(prep, true)
+        }
+
+        if (signal.aborted) {
+          throw new Error('Agent execution aborted by user.')
+        }
+
+        // 3. Process directCalls concurrently (validated and allowed)
         await Promise.all(
-          directCalls.map(async (prep) => {
+          nonInteractiveDirectCalls.map(async (prep) => {
             // Emit tool_call event
             sendEvent(mainWindow, reqId, {
               type: 'tool_call',
@@ -853,14 +881,14 @@ export const runAgentLoop = async (
           })
         )
 
-        // 3. Process blockedCalls concurrently (no permission request, immediately run executeTool which blocks/denies it)
+        // 4. Process blockedCalls concurrently (no permission request, immediately run executeTool which blocks/denies it)
         await Promise.all(
           blockedCalls.map(async (prep) => {
             toolResponses[prep.index] = await executeTool(prep, false)
           })
         )
 
-        // 4. Append all responses in correct index order to messages array
+        // 5. Append all responses in correct index order to messages array
         for (const response of toolResponses) {
           if (response) {
             messages.push(response)
