@@ -209,7 +209,7 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
         return prev
       })
     } else {
-      setAutocompleteItems([])
+      setAutocompleteItems((prev) => (prev.length === 0 ? prev : []))
     }
   }
 

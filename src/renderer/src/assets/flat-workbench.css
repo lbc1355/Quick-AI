@@ -1336,6 +1336,16 @@ body {
   align-self: center;
 }
 
+.input-context-meter {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: start;
+  align-self: center;
+  color: #7f8792;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
 .run-mode-btn {
   height: 24px;
   padding: 0 7px;
@@ -1613,6 +1623,10 @@ body {
 
 .app-container.theme-light .conversation-project-context {
   color: #5f6c7b;
+}
+
+.app-container.theme-light .input-context-meter {
+  color: #6b7788;
 }
 
 .app-container.theme-light .message-bubble.user .message-text {

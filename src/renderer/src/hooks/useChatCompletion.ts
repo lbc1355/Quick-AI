@@ -49,7 +49,7 @@ export interface UseChatCompletionReturn {
     customPrompt?: string,
     customMsgId?: string,
     options?: SendMessageOptions
-  ) => Promise<void>
+  ) => Promise<boolean>
   handleRunAgentSkill: (skill: Skill, userInput: string) => Promise<void>
   handleStartEdit: (msg: Message) => void
   handleSaveEdit: (msgId: string) => void
@@ -293,18 +293,18 @@ export const useChatCompletion = ({
     customPrompt?: string,
     customMsgId?: string,
     options: SendMessageOptions = {}
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     const requestConfig = latestRequestConfigRef.current
     const promptToSend = customPrompt !== undefined ? customPrompt : inputVal
-    if (!promptToSend.trim() && attachedFiles.length === 0 && !customPrompt) return
-    if (isGeneratingRef.current) return
+    if (!promptToSend.trim() && attachedFiles.length === 0 && !customPrompt) return false
+    if (isGeneratingRef.current) return false
     const effectiveRunMode: RunMode = /^\s*@\S+/.test(promptToSend) ? 'agent' : runModeRef.current
 
     // Verify key
     if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
       alert('请先在设置中填写 DeepSeek API Key！')
       setShowSettings(true)
-      return
+      return false
     }
 
     setIsGeneratingLive(true)
@@ -327,7 +327,7 @@ export const useChatCompletion = ({
       const idx = currentSession.messages.findIndex((m) => m.id === customMsgId)
       if (idx === -1) {
         setIsGeneratingLive(false)
-        return
+        return false
       }
 
       const shouldFork = options.forceBranch ?? idx < currentSession.messages.length - 1
@@ -501,6 +501,7 @@ export const useChatCompletion = ({
         }),
       (msg) => `出错了：${msg || '网络连接失败'}`
     )
+    return true
   }
 
   const handleRunAgentSkill = async (skill: Skill, userInput: string): Promise<void> => {

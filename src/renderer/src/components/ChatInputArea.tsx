@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Paperclip, Sparkles, Square, Send } from 'lucide-react'
 import { AutocompleteItem, RunMode } from '../../../shared/types'
 import { FilePreviewList } from './FilePreviewList'
 import { PermissionPopup } from './PermissionPopup'
+import { estimateDraftContextTokens, formatContextTokenCount } from '../utils/contextLength'
 import {
   getAutocompleteTitle,
   getAutocompleteDescription,
@@ -51,11 +52,14 @@ interface ChatInputAreaProps {
   handleRemoveFile: (index: number) => void
   fileInputRef: React.RefObject<HTMLInputElement | null>
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  contextBaseTokenEstimate: number
+  contextLengthLabel: string
+  contextLengthTitle: string
 
   // Input
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   inputVal: string
-  handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+  handleInputChange: (value: string) => void
   handleInputKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
   handlePaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void
 
@@ -65,7 +69,7 @@ interface ChatInputAreaProps {
   isCurrentSessionGenerating: boolean
   isOtherSessionGenerating: boolean
   handleAbortGeneration: () => void
-  handleSendMessage: () => void
+  handleSendMessage: (promptOverride?: string) => Promise<boolean>
 }
 
 export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
@@ -81,6 +85,8 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   handleRemoveFile,
   fileInputRef,
   handleFileChange,
+  contextBaseTokenEstimate,
+  contextLengthLabel,
   textareaRef,
   inputVal,
   handleInputChange,
@@ -93,6 +99,105 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   handleAbortGeneration,
   handleSendMessage
 }) => {
+  const draftValueRef = useRef(inputVal)
+  const contextBaseTokenEstimateRef = useRef(contextBaseTokenEstimate)
+  const contextMeterTimerRef = useRef<number | null>(null)
+  const [hasDraftContent, setHasDraftContent] = useState(() => inputVal.trim().length > 0)
+  const [contextTokenEstimate, setContextTokenEstimate] = useState(
+    () => contextBaseTokenEstimate + estimateDraftContextTokens({ input: inputVal })
+  )
+
+  useEffect(() => {
+    draftValueRef.current = inputVal
+    setHasDraftContent(inputVal.trim().length > 0)
+    setContextTokenEstimate(
+      contextBaseTokenEstimateRef.current + estimateDraftContextTokens({ input: inputVal })
+    )
+    if (textareaRef.current && textareaRef.current.value !== inputVal) {
+      textareaRef.current.value = inputVal
+    }
+  }, [inputVal, textareaRef])
+
+  useEffect(() => {
+    contextBaseTokenEstimateRef.current = contextBaseTokenEstimate
+    setContextTokenEstimate(
+      contextBaseTokenEstimate + estimateDraftContextTokens({ input: draftValueRef.current })
+    )
+  }, [contextBaseTokenEstimate])
+
+  useEffect(() => {
+    return () => {
+      if (contextMeterTimerRef.current !== null) {
+        window.clearTimeout(contextMeterTimerRef.current)
+      }
+    }
+  }, [])
+
+  const updateHasDraftContent = useCallback((value: string) => {
+    const next = value.trim().length > 0
+    setHasDraftContent((prev) => (prev === next ? prev : next))
+  }, [])
+
+  const scheduleContextMeterUpdate = useCallback(() => {
+    if (contextMeterTimerRef.current !== null) {
+      window.clearTimeout(contextMeterTimerRef.current)
+    }
+    contextMeterTimerRef.current = window.setTimeout(() => {
+      contextMeterTimerRef.current = null
+      setContextTokenEstimate(
+        contextBaseTokenEstimate + estimateDraftContextTokens({ input: draftValueRef.current })
+      )
+    }, 250)
+  }, [contextBaseTokenEstimate])
+
+  const setDraftDomValue = useCallback(
+    (value: string) => {
+      draftValueRef.current = value
+      if (textareaRef.current && textareaRef.current.value !== value) {
+        textareaRef.current.value = value
+      }
+      updateHasDraftContent(value)
+      setContextTokenEstimate(
+        contextBaseTokenEstimate + estimateDraftContextTokens({ input: value })
+      )
+      handleInputChange(value)
+    },
+    [contextBaseTokenEstimate, handleInputChange, textareaRef, updateHasDraftContent]
+  )
+  const effectiveContextLengthLabel = `上下文 ≈ ${formatContextTokenCount(contextTokenEstimate)}`
+  const effectiveContextLengthTitle = `估算当前对话文本上下文长度：${contextTokenEstimate.toLocaleString()} tokens。包含系统提示、项目/资源摘要、历史消息、当前输入和文本附件；图片附件不按视觉 token 估算。`
+
+  const updateDraftValue = useCallback(
+    (value: string) => {
+      draftValueRef.current = value
+      updateHasDraftContent(value)
+      scheduleContextMeterUpdate()
+      handleInputChange(value)
+    },
+    [handleInputChange, scheduleContextMeterUpdate, updateHasDraftContent]
+  )
+
+  const submitDraft = useCallback(() => {
+    const promise = handleSendMessage(draftValueRef.current)
+    promise
+      .then((sent) => {
+        if (!sent) return
+        setDraftDomValue('')
+      })
+      .catch(console.error)
+  }, [handleSendMessage, setDraftDomValue])
+
+  const handleLocalKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    handleInputKeyDown(e)
+    if (e.defaultPrevented) return
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      submitDraft()
+    }
+  }
+
+  const canSend = hasDraftContent || attachedFiles.length > 0
+
   return (
     <>
       <FilePreviewList attachedFiles={attachedFiles} onRemoveFile={handleRemoveFile} />
@@ -156,6 +261,9 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
               onClick={() => window.api.setFilePickerActive(true)}
             />
           </label>
+          <span className="input-context-meter" title={effectiveContextLengthTitle}>
+            {effectiveContextLengthLabel || contextLengthLabel}
+          </span>
           <textarea
             ref={textareaRef}
             className="chat-input"
@@ -164,9 +272,9 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                 ? '请先响应上方的工具执行权限请求...'
                 : '输入您的问题... (Esc 隐藏, Shift+Enter 换行, / 命令快捷词)'
             }
-            value={pendingPermission ? '' : inputVal}
-            onChange={handleInputChange}
-            onKeyDown={handleInputKeyDown}
+            defaultValue={pendingPermission ? '' : inputVal}
+            onChange={(e) => updateDraftValue(e.target.value)}
+            onKeyDown={handleLocalKeyDown}
             onPaste={handlePaste}
             rows={1}
             disabled={!!pendingPermission}
@@ -197,10 +305,8 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
             ) : (
               <button
                 className="input-action-btn send"
-                onClick={() => handleSendMessage()}
-                disabled={
-                  isOtherSessionGenerating || (!inputVal.trim() && attachedFiles.length === 0)
-                }
+                onClick={submitDraft}
+                disabled={isOtherSessionGenerating || !canSend}
                 title={isOtherSessionGenerating ? '另一个会话正在生成' : '发送消息'}
               >
                 <Send size={14} />

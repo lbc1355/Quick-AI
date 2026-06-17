@@ -21,6 +21,11 @@ import {
   getBranchSourceKey
 } from './utils/branchDisplay'
 import { getSessionGenerationState } from './utils/generationState'
+import {
+  estimateBaseConversationContextTokens,
+  estimateDraftContextTokens,
+  formatContextTokenCount
+} from './utils/contextLength'
 
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
@@ -259,6 +264,7 @@ function App(): React.JSX.Element {
 
   // Refs for scrolling and textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const inputDraftRef = useRef('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesInnerRef = useRef<HTMLDivElement>(null)
@@ -535,18 +541,6 @@ function App(): React.JSX.Element {
     }
   }, [showSettings, activeSessionId])
 
-  // Auto-resize main input textarea height based on content
-  useEffect(() => {
-    const textarea = textareaRef.current
-    if (textarea) {
-      textarea.style.height = '24px' // Reset to default line height
-      const scrollHeight = textarea.scrollHeight
-      if (scrollHeight > 24) {
-        textarea.style.height = `${scrollHeight}px`
-      }
-    }
-  }, [inputVal])
-
   // Trigger escape key listener for hierarchy back navigation or window hiding
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
@@ -586,14 +580,16 @@ function App(): React.JSX.Element {
   ])
 
   // Autocomplete change
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
-    const val = e.target.value
-    setInputVal(val)
-    updateAutocompleteItems(val, modelsList, sessions, activeSessionId, providers, skills)
+  const handleInputChange = (val: string): void => {
+    inputDraftRef.current = val
+    if (val.startsWith('@') || val.startsWith('/') || autocompleteItems.length > 0) {
+      setInputVal(val)
+      updateAutocompleteItems(val, modelsList, sessions, activeSessionId, providers, skills)
+    }
   }
 
   const getSkillInputTail = (item: AutocompleteItem): string => {
-    const currentValue = inputVal.trimStart()
+    const currentValue = inputDraftRef.current.trimStart()
     if (item.type === 'skill' && currentValue.startsWith('@')) {
       const firstSpace = currentValue.search(/\s/)
       return firstSpace === -1 ? '' : currentValue.slice(firstSpace).trim()
@@ -621,10 +617,12 @@ function App(): React.JSX.Element {
         window.api.hideWindow()
       }
       setAutocompleteItems([])
+      inputDraftRef.current = ''
       setInputVal('')
     } else if (item.type === 'delete-session') {
       await handleDeleteSession(item.sessionId || '')
       setAutocompleteItems([])
+      inputDraftRef.current = ''
       setInputVal('')
     } else if (item.type === 'session') {
       // Switch conversation session
@@ -632,6 +630,7 @@ function App(): React.JSX.Element {
       setActiveSessionId(item.id)
       handleCloseSettings()
       setAutocompleteItems([])
+      inputDraftRef.current = ''
       setInputVal('')
     } else if (item.type === 'model') {
       // Switch active model instantly
@@ -653,17 +652,21 @@ function App(): React.JSX.Element {
         setProviders(currentSettings.providers)
       }
       setAutocompleteItems([])
+      inputDraftRef.current = ''
       setInputVal('')
     } else if (item.type === 'provider') {
       // Switch active provider instantly
       await handleSetActiveProvider(item.providerId || '')
       setAutocompleteItems([])
+      inputDraftRef.current = ''
       setInputVal('')
     } else {
       // Select a skill mention. The general agent will load the Skill via load_skill.
       setAutocompleteItems([])
       const inputTail = getSkillInputTail(item)
-      setInputVal(inputTail ? `${item.trigger} ${inputTail}` : `${item.trigger} `)
+      const nextInput = inputTail ? `${item.trigger} ${inputTail}` : `${item.trigger} `
+      inputDraftRef.current = nextInput
+      setInputVal(nextInput)
     }
     textareaRef.current?.focus()
   }
@@ -671,16 +674,12 @@ function App(): React.JSX.Element {
   // Keyboard navigation inside prompt input
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     const handled = autocompleteKeyDown(e, triggerAutocompleteItem, (item) => {
-      setInputVal(`${item.trigger} `)
+      const nextInput = `${item.trigger} `
+      inputDraftRef.current = nextInput
+      setInputVal(nextInput)
       setAutocompleteItems([])
     })
     if (handled) return
-
-    // Submit prompt on Enter (without Shift)
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage()
-    }
   }
 
   // Find pending permission request in the active session
@@ -780,6 +779,24 @@ function App(): React.JSX.Element {
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
   const activeProviderName = providers.find((p) => p.id === activeProviderId)?.name || 'No provider'
   const activeModelName = selectedModel || 'No model'
+  const baseContextTokenEstimate = useMemo(
+    () =>
+      estimateBaseConversationContextTokens({
+        messages: activeSession?.messages || [],
+        systemPrompt,
+        project: activeProject,
+        resources: activeSession?.resources
+      }),
+    [activeProject, activeSession?.messages, activeSession?.resources, systemPrompt]
+  )
+  const draftAttachmentTokenEstimate = useMemo(
+    () => estimateDraftContextTokens({ attachedFiles }),
+    [attachedFiles]
+  )
+  const contextBaseTokenEstimate = baseContextTokenEstimate + draftAttachmentTokenEstimate
+  const contextTokenEstimate = contextBaseTokenEstimate
+  const contextLengthLabel = `上下文 ≈ ${formatContextTokenCount(contextTokenEstimate)}`
+  const contextLengthTitle = `估算当前对话文本上下文长度：${contextTokenEstimate.toLocaleString()} tokens。包含系统提示、项目/资源摘要、历史消息、当前输入和文本附件；图片附件不按视觉 token 估算。`
   const orderedSessions = [...sessions].sort((a, b) => {
     const aTime = a.lastActiveTime || Number(a.id)
     const bTime = b.lastActiveTime || Number(b.id)
@@ -1041,6 +1058,9 @@ function App(): React.JSX.Element {
               handleRemoveFile={handleRemoveFile}
               fileInputRef={fileInputRef}
               handleFileChange={handleFileChange}
+              contextBaseTokenEstimate={contextBaseTokenEstimate}
+              contextLengthLabel={contextLengthLabel}
+              contextLengthTitle={contextLengthTitle}
               textareaRef={textareaRef}
               inputVal={inputVal}
               handleInputChange={handleInputChange}

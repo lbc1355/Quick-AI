@@ -40,6 +40,8 @@
   display: flex;
   gap: 12px;
   max-width: 88%;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
 }
 
 @keyframes fade-in {
@@ -388,6 +390,17 @@
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.input-context-meter {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
 }
 
 .input-action-btn {
