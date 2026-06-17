@@ -88,6 +88,7 @@ const agentTools: Array<{
   { name: 'web_search', label: '网络搜索', risk: 'low' },
   { name: 'workspace_list_files', label: '列出工作区文件', risk: 'low' },
   { name: 'workspace_search', label: '搜索工作区', risk: 'low' },
+  { name: 'code_symbol_read', label: '定位代码符号', risk: 'low' },
   { name: 'file_read', label: '读取本地文件', risk: 'low' },
   { name: 'file_write', label: '写入本地文件', risk: 'medium' },
   { name: 'shell', label: '执行系统命令', risk: 'high' }
