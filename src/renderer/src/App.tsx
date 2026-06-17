@@ -5,8 +5,6 @@ import {
   AutocompleteItem,
   AppSettings,
   Project,
-  UserChoiceRequest,
-  UserChoiceResponse,
   WindowState
 } from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
@@ -19,6 +17,7 @@ import { useAttachments } from './hooks/useAttachments'
 import { useAutocomplete } from './hooks/useAutocomplete'
 import { useChatCompletion } from './hooks/useChatCompletion'
 import { useSkills } from './hooks/useSkills'
+import { useUserChoiceRequest } from './hooks/useUserChoiceRequest'
 
 import {
   buildBranchFamilyInfo,
@@ -306,7 +305,6 @@ function App(): React.JSX.Element {
   const isProgrammaticScrollRef = useRef(false)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const [activeMessageNavId, setActiveMessageNavId] = useState<string | null>(null)
-  const [pendingUserChoice, setPendingUserChoice] = useState<UserChoiceRequest | null>(null)
   const [pendingScrollMessageId, setPendingScrollMessageId] = useState<string | null>(null)
 
   // 3. Attachments hook
@@ -354,6 +352,11 @@ function App(): React.JSX.Element {
     setShowSettings: setShowSettings,
     attachedFiles,
     setAttachedFiles
+  })
+
+  const { pendingUserChoice, handleUserChoiceResponse } = useUserChoiceRequest({
+    isGenerating,
+    textareaRef
   })
 
   const { isCurrentSessionGenerating, isOtherSessionGenerating } = getSessionGenerationState(
@@ -471,24 +474,6 @@ function App(): React.JSX.Element {
       unsubscribe()
     }
   }, [])
-
-  useEffect(() => {
-    return window.api.onUserChoiceRequest((request) => {
-      setPendingUserChoice(request)
-      setTimeout(() => {
-        textareaRef.current?.blur()
-      }, 0)
-    })
-  }, [])
-
-  useEffect(() => {
-    if (isGenerating || !pendingUserChoice) return undefined
-
-    const timeoutId = window.setTimeout(() => {
-      setPendingUserChoice(null)
-    }, 0)
-    return () => window.clearTimeout(timeoutId)
-  }, [isGenerating, pendingUserChoice])
 
   const handleToggleWindowMode = useCallback(async (): Promise<void> => {
     const nextMode = windowState.mode === 'window' ? 'floating' : 'window'
@@ -874,16 +859,6 @@ function App(): React.JSX.Element {
         textareaRef.current?.focus()
       }, 50)
     }
-  }
-
-  const handleUserChoiceResponse = (response: UserChoiceResponse): void => {
-    const pending = pendingUserChoice
-    if (!pending) return
-    window.api.respondUserChoice(pending.reqId, pending.requestId, response)
-    setPendingUserChoice(null)
-    setTimeout(() => {
-      textareaRef.current?.focus()
-    }, 50)
   }
 
   // Reset selected option and manage keyboard shortcuts for pending tool execution permissions
