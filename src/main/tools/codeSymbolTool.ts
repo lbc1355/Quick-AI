@@ -37,6 +37,38 @@ const CODE_SYMBOL_EXTENSIONS = new Set([
   '.swift'
 ])
 
+const CODE_SYMBOL_IGNORE_DIRS = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  'out',
+  'build',
+  '.next',
+  '.turbo',
+  'coverage',
+  'target',
+  'vendor',
+  '.venv',
+  'venv',
+  '__pycache__',
+  'Library',
+  'Temp',
+  'Logs',
+  'obj',
+  'bin',
+  '.gradle'
+])
+
+const yieldToEventLoop = (): Promise<void> =>
+  new Promise((resolve) => {
+    setImmediate(resolve)
+  })
+
+const MAX_SYMBOL_MATCH_LINE_CHARS = 2000
+const MAX_BLOCK_SCAN_LINE_CHARS = 8000
+const MAX_SYMBOL_BLOCK_CHARS = 60000
+const MAX_SYMBOL_BLOCK_LINE_CHARS = 1200
+
 interface SymbolMatch {
   realPath: string
   relPath: string
@@ -86,23 +118,35 @@ function buildSymbolDefinitionPatterns(symbol: string): Array<{ kind: string; re
     {
       kind: 'c_like_function',
       regex: new RegExp(
-        `^\\s*(?:[\\w:<>,~*&\\[\\]\\s]+\\s+)+${s}\\s*\\([^;]*\\)\\s*(?:const\\s*)?(?:\\{|$)`
+        `^\\s*[\\w:<>,~*&\\[\\]\\s]{1,180}\\b${s}\\s*\\([^;]{0,300}\\)\\s*(?:const\\s*)?(?:\\{|$)`
       )
     }
   ]
 }
 
+function lineMayContainSymbol(line: string, symbol: string): boolean {
+  const index = line.indexOf(symbol)
+  if (index === -1) return false
+
+  const before = index > 0 ? line[index - 1] : ''
+  const after = index + symbol.length < line.length ? line[index + symbol.length] : ''
+  const isIdentifierChar = (ch: string): boolean => /[\w$]/.test(ch)
+  return !isIdentifierChar(before) && !isIdentifierChar(after)
+}
+
 function findSymbolMatchesInContent(
   content: string,
   symbol: string,
-  target: Pick<SymbolMatch, 'realPath' | 'relPath' | 'root' | 'rootKind'>
+  target: Pick<SymbolMatch, 'realPath' | 'relPath' | 'root' | 'rootKind'>,
+  patterns = buildSymbolDefinitionPatterns(symbol)
 ): SymbolMatch[] {
-  const patterns = buildSymbolDefinitionPatterns(symbol)
   const lines = content.split(/\r?\n/)
   const matches: SymbolMatch[] = []
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
+    if (line.length > MAX_SYMBOL_MATCH_LINE_CHARS) continue
+    if (!lineMayContainSymbol(line, symbol)) continue
     const pattern = patterns.find((p) => p.regex.test(line))
     if (!pattern) continue
     matches.push({
@@ -138,7 +182,9 @@ function includeLeadingDecorators(lines: string[], start: number): number {
 }
 
 function stripQuotedText(line: string): string {
-  return line
+  const bounded =
+    line.length > MAX_BLOCK_SCAN_LINE_CHARS ? line.slice(0, MAX_BLOCK_SCAN_LINE_CHARS) : line
+  return bounded
     .replace(/"(?:\\.|[^"\\])*"/g, '""')
     .replace(/'(?:\\.|[^'\\])*'/g, "''")
     .replace(/`(?:\\.|[^`\\])*`/g, '``')
@@ -195,6 +241,31 @@ function inferSymbolBlockRange(
   return { startIndex: blockStart, endIndex: blockEnd, truncated }
 }
 
+function buildBoundedSymbolBlock(lines: string[]): { block: string; truncated: boolean } {
+  const out: string[] = []
+  let totalChars = 0
+  let truncated = false
+
+  for (const rawLine of lines) {
+    const line =
+      rawLine.length > MAX_SYMBOL_BLOCK_LINE_CHARS
+        ? `${rawLine.slice(0, MAX_SYMBOL_BLOCK_LINE_CHARS)}...[line truncated]`
+        : rawLine
+    const nextTotal = totalChars + line.length + 1
+    if (nextTotal > MAX_SYMBOL_BLOCK_CHARS) {
+      truncated = true
+      break
+    }
+    out.push(line)
+    totalChars = nextTotal
+    if (rawLine.length > MAX_SYMBOL_BLOCK_LINE_CHARS) {
+      truncated = true
+    }
+  }
+
+  return { block: out.join('\n'), truncated }
+}
+
 async function scanWorkspaceForSymbol(
   symbol: string,
   ctx: ToolExecutionContext,
@@ -203,16 +274,32 @@ async function scanWorkspaceForSymbol(
   const rootInfo = chooseBaseRoot('.', ctx, requestedRoot)
   const root = rootInfo.root
   const matches: SymbolMatch[] = []
+  const patterns = buildSymbolDefinitionPatterns(symbol)
   const startTime = Date.now()
   const MAX_FILES = 2500
   const MAX_DIRS = 1200
   const SEARCH_TIMEOUT_MS = 10000
+  const YIELD_EVERY_ENTRIES = 60
+  const MAX_BLOCKING_MS = 24
   let filesScanned = 0
   let dirsScanned = 0
+  let entriesSinceYield = 0
+  let lastYieldAt = Date.now()
   let truncatedReason: string | undefined
+
+  const yieldIfNeeded = async (): Promise<void> => {
+    entriesSinceYield++
+    if (entriesSinceYield < YIELD_EVERY_ENTRIES && Date.now() - lastYieldAt < MAX_BLOCKING_MS) {
+      return
+    }
+    entriesSinceYield = 0
+    lastYieldAt = Date.now()
+    await yieldToEventLoop()
+  }
 
   const walk = async (dir: string): Promise<void> => {
     if (truncatedReason || ctx.signal.aborted) return
+    await yieldIfNeeded()
     if (Date.now() - startTime > SEARCH_TIMEOUT_MS) {
       truncatedReason = 'Time limit exceeded'
       return
@@ -232,9 +319,10 @@ async function scanWorkspaceForSymbol(
 
     for (const dirent of dirents) {
       if (truncatedReason || ctx.signal.aborted) break
+      await yieldIfNeeded()
       const candidatePath = join(dir, dirent.name)
       if (dirent.isDirectory()) {
-        if (['.git', 'node_modules', 'dist', 'out', 'build', '.next'].includes(dirent.name)) {
+        if (CODE_SYMBOL_IGNORE_DIRS.has(dirent.name)) {
           continue
         }
         await walk(candidatePath)
@@ -242,27 +330,33 @@ async function scanWorkspaceForSymbol(
       }
 
       if (!dirent.isFile() || dirent.isSymbolicLink()) continue
+      const ext = extname(dirent.name).toLowerCase()
+      if (!CODE_SYMBOL_EXTENSIONS.has(ext)) continue
+      if (!isPathInsideRoot(candidatePath, root) || isSensitiveFile(candidatePath)) continue
+
       filesScanned++
       if (filesScanned > MAX_FILES) {
         truncatedReason = 'Maximum file scan limit reached'
         break
       }
 
-      const ext = extname(dirent.name).toLowerCase()
-      if (!CODE_SYMBOL_EXTENSIONS.has(ext)) continue
-      if (!isPathInsideRoot(candidatePath, root) || isSensitiveFile(candidatePath)) continue
-
       try {
         const stats = await fs.stat(candidatePath)
         if (stats.size > 512 * 1024) continue
         const content = await fs.readFile(candidatePath, 'utf-8')
+        if (!content.includes(symbol)) continue
         matches.push(
-          ...findSymbolMatchesInContent(content, symbol, {
-            realPath: candidatePath,
-            relPath: relative(root, candidatePath).replace(/\\/g, '/'),
-            root,
-            rootKind: rootInfo.rootKind
-          })
+          ...findSymbolMatchesInContent(
+            content,
+            symbol,
+            {
+              realPath: candidatePath,
+              relPath: relative(root, candidatePath).replace(/\\/g, '/'),
+              root,
+              rootKind: rootInfo.rootKind
+            },
+            patterns
+          )
         )
         if (matches.length >= 50) {
           truncatedReason = 'Maximum symbol match limit reached'
@@ -378,7 +472,7 @@ export const codeSymbolTool: ToolDefinition = {
     const content = await fs.readFile(best.realPath, 'utf-8')
     const lines = content.split(/\r?\n/)
     const range = inferSymbolBlockRange(lines, best.lineIndex, maxLines, contextLines)
-    const block = lines.slice(range.startIndex, range.endIndex + 1).join('\n')
+    const blockResult = buildBoundedSymbolBlock(lines.slice(range.startIndex, range.endIndex + 1))
     const candidateLines = matches.slice(0, 10).map((match, index) => {
       const selected = match === best ? ' selected' : ''
       return `${index + 1}. ${match.relPath}:${match.lineNumber} (${match.kind})${selected} - ${match.lineText.slice(0, 140)}`
@@ -396,7 +490,10 @@ export const codeSymbolTool: ToolDefinition = {
       matches.length > 1 ? `Candidates:\n${candidateLines.join('\n')}` : '',
       truncatedReason ? `Warning: Symbol search was truncated. Reason: ${truncatedReason}` : '',
       range.truncated ? 'Warning: Symbol block was truncated by maxLines.' : '',
-      `Content:\n${block}`
+      blockResult.truncated
+        ? `Warning: Symbol block output was truncated to keep the UI responsive.`
+        : '',
+      `Content:\n${blockResult.block}`
     ]
       .filter(Boolean)
       .join('\n\n')

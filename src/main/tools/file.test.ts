@@ -16,8 +16,7 @@ vi.mock('electron', () => ({
 
 const executionContext = {
   reqId: 'file-tool-test',
-  signal: new AbortController().signal,
-  mainWindow: null as any
+  signal: new AbortController().signal
 }
 
 describe('fileTools', () => {
@@ -142,6 +141,45 @@ describe('fileTools', () => {
     expect(result.resultForModel).not.toContain('return "helper"')
   })
 
+  it('does not run expensive symbol regexes on long non-definition lines', async () => {
+    const longLine = `const noisy = "${'targetFunction '.repeat(500)}"`
+    await fs.writeFile(
+      join(testDir, 'workspace', 'src', 'long-lines.ts'),
+      [longLine, 'export function targetFunction() {', '  return 1', '}'].join('\n'),
+      'utf-8'
+    )
+
+    const result = await fileTools.code_symbol_read.execute(
+      { path: 'src/long-lines.ts', root: 'workspace', symbol: 'targetFunction', contextLines: 0 },
+      executionContext
+    )
+
+    expect(result.resultForModel).toContain('Definition Line: 2 of 4')
+    expect(result.resultForModel).toContain('export function targetFunction()')
+  })
+
+  it('truncates very long symbol block output', async () => {
+    await fs.writeFile(
+      join(testDir, 'workspace', 'src', 'long-block.ts'),
+      [
+        'export function targetFunction() {',
+        `  const payload = "${'x'.repeat(8000)}"`,
+        '  return payload',
+        '}'
+      ].join('\n'),
+      'utf-8'
+    )
+
+    const result = await fileTools.code_symbol_read.execute(
+      { path: 'src/long-block.ts', root: 'workspace', symbol: 'targetFunction', contextLines: 0 },
+      executionContext
+    )
+
+    expect(result.resultForModel).toContain('Symbol block output was truncated')
+    expect(result.resultForModel).toContain('[line truncated]')
+    expect(result.resultForModel.length).toBeLessThan(70000)
+  })
+
   it('locates a symbol by scanning the workspace when no path is provided', async () => {
     await fs.writeFile(
       join(testDir, 'workspace', 'src', 'service.py'),
@@ -158,6 +196,23 @@ describe('fileTools', () => {
     expect(result.resultForModel).toContain('Kind: python_function')
     expect(result.resultForModel).toContain('def run(self):')
     expect(result.resultForModel).toContain('return True')
+  })
+
+  it('skips dependency directories during symbol scans', async () => {
+    await fs.mkdir(join(testDir, 'workspace', 'node_modules', 'pkg'), { recursive: true })
+    await fs.writeFile(
+      join(testDir, 'workspace', 'node_modules', 'pkg', 'ignored.ts'),
+      ['export function ignoredOnly() {', '  return true', '}'].join('\n'),
+      'utf-8'
+    )
+
+    const result = await fileTools.code_symbol_read.execute(
+      { root: 'workspace', symbol: 'ignoredOnly', contextLines: 0 },
+      executionContext
+    )
+
+    expect(result.resultForModel).toContain('No definition-like symbol match found')
+    expect(result.resultForModel).not.toContain('node_modules/pkg/ignored.ts')
   })
 
   it('returns a short diff after file_edit succeeds', async () => {
