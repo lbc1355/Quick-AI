@@ -1,0 +1,110 @@
+import { describe, expect, it } from 'vitest'
+import {
+  buildContextDiagnosticsTitle,
+  buildContextUsageBreakdown,
+  formatUsagePercent,
+  getContextUsagePercent,
+  summarizePromptCacheStats
+} from './contextDiagnostics'
+import { Message } from '../../../shared/types'
+
+const baseDiagnostics = {
+  cache: {
+    latestHitRate: 75,
+    averageHitRate: 80,
+    hitTokens: 800,
+    missTokens: 200,
+    promptTokens: 1000,
+    sampleCount: 2
+  },
+  messageCount: 6,
+  resourceCount: 2,
+  hasSystemPrompt: true,
+  modelName: 'test-model-10k',
+  projectLabel: 'Quick Ai',
+  customPermissionCount: 1,
+  skillCount: 3,
+  contextWindowTokens: 10_000,
+  conversationBaseTokens: 2_000,
+  steeringTokens: 500,
+  mcpToolTokens: 300
+}
+
+describe('contextDiagnostics', () => {
+  it('summarizes latest and weighted average cache hit rates', () => {
+    const messages: Message[] = [
+      { id: 'u1', role: 'user', content: 'hello' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'hi',
+        cacheStats: {
+          promptTokens: 100,
+          cacheHitTokens: 70,
+          cacheMissTokens: 30,
+          hitRate: 70
+        }
+      },
+      {
+        id: 'a2',
+        role: 'assistant',
+        content: 'again',
+        cacheStats: {
+          promptTokens: 300,
+          cacheHitTokens: 270,
+          cacheMissTokens: 30,
+          hitRate: 90
+        }
+      }
+    ]
+
+    expect(summarizePromptCacheStats(messages)).toMatchObject({
+      latestHitRate: 90,
+      averageHitRate: 85,
+      hitTokens: 340,
+      missTokens: 60,
+      promptTokens: 400,
+      sampleCount: 2
+    })
+  })
+
+  it('builds context usage percentages for the circular meter', () => {
+    const usage = buildContextUsageBreakdown({
+      draftTokens: 700,
+      diagnostics: baseDiagnostics
+    })
+
+    expect(usage).toMatchObject({
+      conversationTokens: 2700,
+      mcpToolTokens: 300,
+      steeringTokens: 500,
+      totalTokens: 3500,
+      conversationPercent: 27,
+      mcpToolPercent: 3,
+      steeringPercent: 5,
+      totalPercent: 35
+    })
+  })
+
+  it('clamps and formats percentages', () => {
+    expect(getContextUsagePercent(12_000, 10_000)).toBe(100)
+    expect(getContextUsagePercent(333, 10_000)).toBe(3.3)
+    expect(formatUsagePercent(3)).toBe('3%')
+    expect(formatUsagePercent(3.3)).toBe('3.3%')
+  })
+
+  it('includes cache and usage factors in the title', () => {
+    const title = buildContextDiagnosticsTitle({
+      draftTokens: 700,
+      diagnostics: baseDiagnostics
+    })
+
+    expect(title).toContain('3,500 / 10,000 tokens (35%)')
+    expect(title).toContain('Model: test-model-10k')
+    expect(title).toContain('Conversation')
+    expect(title).toContain('MCP/tools')
+    expect(title).toContain('Steering files')
+    expect(title).toContain('本轮 75%')
+    expect(title).toContain('Quick Ai')
+  })
+})

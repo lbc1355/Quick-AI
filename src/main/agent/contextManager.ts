@@ -1,5 +1,10 @@
 import { ChatCompletionMessage } from '../../shared/types'
 import { estimateMessagesTokens, estimateTokens } from './tokenEstimator'
+export {
+  DEFAULT_CONTEXT_SIZE,
+  getContextWindowSize,
+  MODEL_CONTEXT_SIZES
+} from '../../shared/modelContext'
 
 export interface ContextManagerOptions {
   maxTokens: number
@@ -7,46 +12,12 @@ export interface ContextManagerOptions {
   strategy?: 'truncate-oldest-tool' | 'summarize'
 }
 
-export const MODEL_CONTEXT_SIZES: Record<string, number> = {
-  'deepseek-chat': 64000,
-  'deepseek-reasoner': 64000,
-  'moonshot-v1-8k': 8000,
-  'moonshot-v1-32k': 32000,
-  'moonshot-v1-128k': 128000,
-  'gpt-4o': 128000,
-  'gpt-4o-mini': 128000
-}
-
-const DEFAULT_CONTEXT_SIZE = 16000
-
 /**
  * Tool outputs at least this large are preserved in the run's tool-output store when produced,
  * so that if the context manager later truncates them it can leave a retrievable pointer
  * (read_tool_output) instead of silently discarding the content. Shared with the agent loop.
  */
 export const TOOL_OUTPUT_SPILLOVER_THRESHOLD = 2000
-
-export function getContextWindowSize(modelName: string): number {
-  if (!modelName) return DEFAULT_CONTEXT_SIZE
-  const lower = modelName.toLowerCase()
-
-  if (MODEL_CONTEXT_SIZES[lower]) {
-    return MODEL_CONTEXT_SIZES[lower]
-  }
-
-  // Dynamic inference from model name suffixes (e.g. "xxx-128k", "xxx_32k", "xxx-1m")
-  const sizeMatch = lower.match(/[-_](\d+)(k|m)\b/)
-  if (sizeMatch) {
-    const num = parseInt(sizeMatch[1], 10)
-    const unit = sizeMatch[2]
-    const tokens = unit === 'm' ? num * 1000000 : num * 1000
-    if (tokens >= 2000 && tokens <= 10000000) {
-      return tokens
-    }
-  }
-
-  return DEFAULT_CONTEXT_SIZE
-}
 
 export function trimMessagesToFit(
   messages: ChatCompletionMessage[],

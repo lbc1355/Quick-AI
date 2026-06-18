@@ -104,10 +104,55 @@ function buildBaseContextMessages({
   return apiMessages
 }
 
+function buildSteeringContextMessages({
+  systemPrompt,
+  project,
+  resources
+}: Pick<ContextLengthOptions, 'systemPrompt' | 'project' | 'resources'>): ChatCompletionMessage[] {
+  const apiMessages: ChatCompletionMessage[] = []
+
+  if (systemPrompt?.trim()) {
+    apiMessages.push({ role: 'system', content: systemPrompt })
+  }
+
+  const projectContext = buildProjectContext(project)
+  if (projectContext) {
+    apiMessages.push({ role: 'system', content: projectContext })
+  }
+
+  const resourceContext = buildResourceContext(resources)
+  if (resourceContext) {
+    apiMessages.push({ role: 'system', content: resourceContext })
+  }
+
+  return apiMessages
+}
+
+function buildHistoryContextMessages(messages: Message[]): ChatCompletionMessage[] {
+  return messages
+    .filter((message) => !message.isRuntimeError)
+    .map((message) => ({
+      role: message.role,
+      content: buildContentWithFiles(message.content, message.files)
+    }))
+}
+
 export function estimateBaseConversationContextTokens(
   options: Omit<ContextLengthOptions, 'input' | 'attachedFiles'>
 ): number {
   return estimateMessagesTokens(buildBaseContextMessages(options))
+}
+
+export function estimateSteeringContextTokens(
+  options: Pick<ContextLengthOptions, 'systemPrompt' | 'project' | 'resources'>
+): number {
+  const messages = buildSteeringContextMessages(options)
+  return messages.length > 0 ? estimateMessagesTokens(messages) : 0
+}
+
+export function estimateHistoryContextTokens(messages: Message[]): number {
+  const historyMessages = buildHistoryContextMessages(messages)
+  return historyMessages.length > 0 ? estimateMessagesTokens(historyMessages) : 0
 }
 
 export function estimateDraftContextTokens({ input, attachedFiles }: DraftContextOptions): number {

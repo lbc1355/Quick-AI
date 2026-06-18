@@ -3,7 +3,13 @@ import { Paperclip, Sparkles, Square, Send } from 'lucide-react'
 import { AutocompleteItem, RunMode } from '../../../shared/types'
 import { FilePreviewList } from './FilePreviewList'
 import { PermissionPopup } from './PermissionPopup'
-import { estimateDraftContextTokens, formatContextTokenCount } from '../utils/contextLength'
+import { estimateDraftContextTokens } from '../utils/contextLength'
+import {
+  buildContextDiagnosticsTitle,
+  buildContextUsageBreakdown,
+  formatUsagePercent
+} from '../utils/contextDiagnostics'
+import type { ContextDiagnosticsSnapshot } from '../utils/contextDiagnostics'
 import {
   getAutocompleteTitle,
   getAutocompleteDescription,
@@ -53,8 +59,7 @@ interface ChatInputAreaProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void
   contextBaseTokenEstimate: number
-  contextLengthLabel: string
-  contextLengthTitle: string
+  contextDiagnostics: ContextDiagnosticsSnapshot
 
   // Input
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
@@ -86,7 +91,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   fileInputRef,
   handleFileChange,
   contextBaseTokenEstimate,
-  contextLengthLabel,
+  contextDiagnostics,
   textareaRef,
   inputVal,
   handleInputChange,
@@ -164,8 +169,22 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     },
     [contextBaseTokenEstimate, handleInputChange, textareaRef, updateHasDraftContent]
   )
-  const effectiveContextLengthLabel = `上下文 ≈ ${formatContextTokenCount(contextTokenEstimate)}`
-  const effectiveContextLengthTitle = `估算当前对话文本上下文长度：${contextTokenEstimate.toLocaleString()} tokens。包含系统提示、项目/资源摘要、历史消息、当前输入和文本附件；图片附件不按视觉 token 估算。`
+  const draftContextTokenEstimate = Math.max(0, contextTokenEstimate - contextBaseTokenEstimate)
+  const contextUsage = buildContextUsageBreakdown({
+    draftTokens: draftContextTokenEstimate,
+    diagnostics: contextDiagnostics
+  })
+  const effectiveContextLengthTitle = buildContextDiagnosticsTitle({
+    draftTokens: draftContextTokenEstimate,
+    diagnostics: contextDiagnostics
+  })
+  const contextUsageLevel =
+    contextUsage.totalPercent >= 90 ? 'danger' : contextUsage.totalPercent >= 70 ? 'warn' : 'ok'
+  const contextMeterStyle = {
+    '--context-progress-angle': `${contextUsage.totalPercent * 3.6}deg`
+  } as React.CSSProperties
+  const modelContextLabel = contextDiagnostics.modelName || 'Current model'
+  const maxContextLabel = `${contextUsage.contextWindowTokens.toLocaleString()} tokens`
 
   const updateDraftValue = useCallback(
     (value: string) => {
@@ -261,8 +280,49 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
               onClick={() => window.api.setFilePickerActive(true)}
             />
           </label>
-          <span className="input-context-meter" title={effectiveContextLengthTitle}>
-            {effectiveContextLengthLabel || contextLengthLabel}
+          <span
+            className={`input-context-meter ${contextUsageLevel}`}
+            tabIndex={0}
+            aria-label={effectiveContextLengthTitle}
+          >
+            <span className="context-progress-ring" style={contextMeterStyle} aria-hidden="true" />
+            <span className="context-usage-popover" role="tooltip">
+              <span className="context-usage-title">Context usage</span>
+              <span className="context-usage-model">
+                <span>{modelContextLabel}</span>
+                <span>Max {maxContextLabel}</span>
+              </span>
+              <span className="context-usage-row">
+                <span>Conversation</span>
+                <span>
+                  {contextUsage.conversationTokens.toLocaleString()} ·{' '}
+                  {formatUsagePercent(contextUsage.conversationPercent)}
+                </span>
+              </span>
+              <span className="context-usage-row">
+                <span>MCP tools</span>
+                <span>
+                  {contextUsage.mcpToolTokens.toLocaleString()} ·{' '}
+                  {formatUsagePercent(contextUsage.mcpToolPercent)}
+                </span>
+              </span>
+              <span className="context-usage-row">
+                <span>Steering files</span>
+                <span>
+                  {contextUsage.steeringTokens.toLocaleString()} ·{' '}
+                  {formatUsagePercent(contextUsage.steeringPercent)}
+                </span>
+              </span>
+              <span className="context-usage-divider" />
+              <span className="context-usage-row total">
+                <span>Total</span>
+                <span>
+                  {contextUsage.totalTokens.toLocaleString()} /{' '}
+                  {contextUsage.contextWindowTokens.toLocaleString()} ·{' '}
+                  {formatUsagePercent(contextUsage.totalPercent)}
+                </span>
+              </span>
+            </span>
           </span>
           <textarea
             ref={textareaRef}

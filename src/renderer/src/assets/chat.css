@@ -393,14 +393,141 @@
 }
 
 .input-context-meter {
+  position: relative;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
   height: 24px;
+  overflow: visible;
+  border-radius: 6px;
   color: var(--color-text-muted);
-  font-size: 11px;
-  line-height: 1;
-  white-space: nowrap;
+  cursor: default;
   user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.input-context-meter:hover,
+.input-context-meter:focus-visible {
+  background: var(--color-card-bg-hover);
+  outline: none;
+}
+
+.context-progress-ring {
+  --context-progress-angle: 0deg;
+  --context-progress-color: var(--color-text-muted);
+  --context-progress-track: color-mix(in srgb, var(--color-text-muted) 26%, transparent);
+  position: relative;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: conic-gradient(
+    var(--context-progress-color) var(--context-progress-angle),
+    var(--context-progress-track) 0
+  );
+}
+
+.context-progress-ring::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: inherit;
+  background: var(--color-input-container-bg);
+}
+
+.input-context-meter.warn .context-progress-ring {
+  --context-progress-color: var(--color-warning);
+}
+
+.input-context-meter.danger .context-progress-ring {
+  --context-progress-color: var(--color-danger);
+}
+
+.context-usage-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 9px);
+  z-index: 80;
+  width: 350px;
+  padding: 8px 9px;
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 5px;
+  background: var(--color-panel-soft);
+  color: var(--color-text);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+  font-size: 12px;
+  line-height: 1.2;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+.input-context-meter:hover .context-usage-popover,
+.input-context-meter:focus-visible .context-usage-popover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.context-usage-title {
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.context-usage-model {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.context-usage-model span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-usage-model span:last-child {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-usage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.context-usage-row span:first-child {
+  color: var(--color-text);
+}
+
+.context-usage-row span:last-child {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-usage-divider {
+  height: 1px;
+  background: var(--color-border-strong);
+}
+
+.context-usage-row.total {
+  font-weight: 650;
 }
 
 .input-action-btn {

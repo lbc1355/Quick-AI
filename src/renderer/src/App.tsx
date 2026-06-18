@@ -28,10 +28,12 @@ import {
 } from './utils/branchDisplay'
 import { getSessionGenerationState } from './utils/generationState'
 import {
-  estimateBaseConversationContextTokens,
   estimateDraftContextTokens,
-  formatContextTokenCount
+  estimateHistoryContextTokens,
+  estimateSteeringContextTokens
 } from './utils/contextLength'
+import { summarizePromptCacheStats } from './utils/contextDiagnostics'
+import { getContextWindowSize } from '../../shared/modelContext'
 
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
@@ -902,24 +904,58 @@ function App(): React.JSX.Element {
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
   const activeProviderName = providers.find((p) => p.id === activeProviderId)?.name || 'No provider'
   const activeModelName = selectedModel || 'No model'
-  const baseContextTokenEstimate = useMemo(
+  const steeringContextTokenEstimate = useMemo(
     () =>
-      estimateBaseConversationContextTokens({
-        messages: activeSession?.messages || [],
+      estimateSteeringContextTokens({
         systemPrompt,
         project: activeProject,
         resources: activeSession?.resources
       }),
-    [activeProject, activeSession?.messages, activeSession?.resources, systemPrompt]
+    [activeProject, activeSession?.resources, systemPrompt]
+  )
+  const historyContextTokenEstimate = useMemo(
+    () => estimateHistoryContextTokens(activeSession?.messages || []),
+    [activeSession?.messages]
   )
   const draftAttachmentTokenEstimate = useMemo(
     () => estimateDraftContextTokens({ attachedFiles }),
     [attachedFiles]
   )
-  const contextBaseTokenEstimate = baseContextTokenEstimate + draftAttachmentTokenEstimate
-  const contextTokenEstimate = contextBaseTokenEstimate
-  const contextLengthLabel = `上下文 ≈ ${formatContextTokenCount(contextTokenEstimate)}`
-  const contextLengthTitle = `估算当前对话文本上下文长度：${contextTokenEstimate.toLocaleString()} tokens。包含系统提示、项目/资源摘要、历史消息、当前输入和文本附件；图片附件不按视觉 token 估算。`
+  const contextBaseTokenEstimate =
+    steeringContextTokenEstimate + historyContextTokenEstimate + draftAttachmentTokenEstimate
+  const contextWindowTokens = useMemo(() => getContextWindowSize(selectedModel), [selectedModel])
+  const contextDiagnostics = useMemo(
+    () => ({
+      cache: summarizePromptCacheStats(activeSession?.messages || []),
+      messageCount: activeSession?.messages.length || 0,
+      resourceCount: activeSession?.resources?.length || 0,
+      hasSystemPrompt: systemPrompt.trim().length > 0,
+      modelName: selectedModel,
+      projectLabel: activeProject
+        ? `${activeProject.name}${activeProject.path ? ` (${activeProject.path})` : ''}`
+        : undefined,
+      customPermissionCount: Object.values(permissions || {}).filter((value) => value !== 'allow')
+        .length,
+      skillCount: skills.length,
+      contextWindowTokens,
+      conversationBaseTokens: historyContextTokenEstimate + draftAttachmentTokenEstimate,
+      steeringTokens: steeringContextTokenEstimate,
+      mcpToolTokens: 0
+    }),
+    [
+      activeProject,
+      activeSession?.messages,
+      activeSession?.resources,
+      contextWindowTokens,
+      draftAttachmentTokenEstimate,
+      historyContextTokenEstimate,
+      permissions,
+      selectedModel,
+      skills.length,
+      steeringContextTokenEstimate,
+      systemPrompt
+    ]
+  )
   const orderedSessions = [...sessions].sort((a, b) => {
     const aTime = a.lastActiveTime || Number(a.id)
     const bTime = b.lastActiveTime || Number(b.id)
@@ -1223,8 +1259,7 @@ function App(): React.JSX.Element {
               fileInputRef={fileInputRef}
               handleFileChange={handleFileChange}
               contextBaseTokenEstimate={contextBaseTokenEstimate}
-              contextLengthLabel={contextLengthLabel}
-              contextLengthTitle={contextLengthTitle}
+              contextDiagnostics={contextDiagnostics}
               textareaRef={textareaRef}
               inputVal={inputVal}
               handleInputChange={handleInputChange}

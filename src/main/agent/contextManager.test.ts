@@ -14,8 +14,8 @@ describe('getContextWindowSize', () => {
   })
 
   it('falls back to the default for unknown or empty model names', () => {
-    expect(getContextWindowSize('totally-unknown')).toBe(16000)
-    expect(getContextWindowSize('')).toBe(16000)
+    expect(getContextWindowSize('totally-unknown')).toBe(128000)
+    expect(getContextWindowSize('')).toBe(128000)
   })
 })
 

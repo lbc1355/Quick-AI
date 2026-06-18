@@ -1774,9 +1774,29 @@ body {
   grid-row: 2;
   justify-self: start;
   align-self: center;
+  width: 24px;
+  min-width: 24px;
+  overflow: visible;
   color: #7f8792;
-  font-size: 11px;
-  letter-spacing: 0;
+}
+
+.input-context-meter:hover,
+.input-context-meter:focus-visible {
+  background: #2a2a2a;
+}
+
+.context-progress-ring::after {
+  background: #202020;
+}
+
+.context-usage-popover {
+  border-color: #333333;
+  background: #242424;
+  color: #d7dde7;
+}
+
+.context-usage-divider {
+  background: #3a3a3a;
 }
 
 .run-mode-btn {
@@ -2120,6 +2140,26 @@ body {
 
 .app-container.theme-light .input-context-meter {
   color: #6b7788;
+}
+
+.app-container.theme-light .input-context-meter:hover,
+.app-container.theme-light .input-context-meter:focus-visible {
+  background: #e9edf3;
+}
+
+.app-container.theme-light .context-progress-ring::after {
+  background: #ffffff;
+}
+
+.app-container.theme-light .context-usage-popover {
+  border-color: #d9dee7;
+  background: #ffffff;
+  color: #243042;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+}
+
+.app-container.theme-light .context-usage-divider {
+  background: #d9dee7;
 }
 
 .app-container.theme-light .message-bubble.user .message-text {
