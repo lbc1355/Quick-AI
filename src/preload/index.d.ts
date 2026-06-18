@@ -2,6 +2,7 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import {
   StoreKey,
   StoreValue,
+  AgentToolInfo,
   AgentSkillRunOptions,
   ChatChunkData,
   ChatRunOptions,
@@ -23,6 +24,7 @@ declare global {
       storeGet: <K extends StoreKey>(key: K) => Promise<StoreValue<K>>
       storeSet: <K extends StoreKey>(key: K, value: StoreValue<K>) => Promise<boolean>
       getAppInfo: () => Promise<{ storePath: string; version: string }>
+      listAgentTools: () => Promise<AgentToolInfo[]>
       selectProjectDirectory: () => Promise<Pick<Project, 'name' | 'path'> | null>
       hideWindow: () => void
       getWindowState: () => Promise<WindowState>

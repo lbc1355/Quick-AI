@@ -3,6 +3,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 import {
   StoreKey,
   StoreValue,
+  AgentToolInfo,
   AgentSkillRunOptions,
   ChatChunkData,
   ChatRunOptions,
@@ -25,6 +26,7 @@ const api = {
     ipcRenderer.invoke('store-set', key, value),
   getAppInfo: (): Promise<{ storePath: string; version: string }> =>
     ipcRenderer.invoke('get-app-info'),
+  listAgentTools: (): Promise<AgentToolInfo[]> => ipcRenderer.invoke('list-agent-tools'),
   selectProjectDirectory: (): Promise<Pick<Project, 'name' | 'path'> | null> =>
     ipcRenderer.invoke('select-project-directory'),
   hideWindow: (): void => ipcRenderer.send('hide-window'),

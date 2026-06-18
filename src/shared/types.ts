@@ -36,6 +36,14 @@ export interface UserChoiceResponse {
   cancelled?: boolean
 }
 
+export interface AgentToolInfo {
+  name: string
+  title: string
+  description: string
+  category: string
+  risk: 'low' | 'medium' | 'high'
+}
+
 export interface PromptCacheStats {
   hasCacheStats?: boolean
   promptTokens?: number

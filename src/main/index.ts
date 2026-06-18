@@ -43,6 +43,7 @@ import { logger } from './logger'
 import { McpManager } from './mcpManager'
 import { registerHtmlRenderer } from './webRenderer'
 import { ensureSystemSkills, watchSkillFolders } from './skillManager'
+import { getToolRegistry } from './toolRegistry'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -475,6 +476,20 @@ app.whenReady().then(() => {
       storePath: store?.getStorePath() || '',
       version: '1.0.0'
     }
+  })
+
+  ipcMain.handle('list-agent-tools', () => {
+    return getToolRegistry()
+      .list()
+      .filter((tool) => tool.implemented && tool.discoverable)
+      .map((tool) => ({
+        name: tool.name,
+        title: tool.title,
+        description: tool.description,
+        category: tool.category,
+        risk: tool.risk
+      }))
+      .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
   })
 
   ipcMain.handle('select-project-directory', async () => {
