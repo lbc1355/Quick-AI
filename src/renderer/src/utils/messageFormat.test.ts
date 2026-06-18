@@ -139,4 +139,41 @@ describe('parseAgentSteps agent_message_delta', () => {
     expect(run.steps).toHaveLength(1)
     expect(run.steps[0].reasoning).toBe('')
   })
+
+  it('attaches streaming tool output to the matching tool call', () => {
+    const events: AgentEvent[] = [
+      {
+        type: 'agent_step',
+        stepId: 'run-1:step:1',
+        step: 1,
+        maxSteps: 30,
+        title: 'Run shell',
+        message: 'Running command',
+        status: 'running'
+      },
+      {
+        type: 'tool_call',
+        callId: 'tc-shell',
+        toolName: 'shell',
+        args: { command: 'npm test' },
+        permissionState: 'approved',
+        step: 1,
+        stepId: 'run-1:step:1'
+      },
+      {
+        type: 'tool_output_delta',
+        callId: 'tc-shell',
+        stream: 'stdout',
+        content: 'Stdout:\nfirst line',
+        replace: true,
+        step: 1,
+        stepId: 'run-1:step:1'
+      }
+    ]
+
+    const run = parseAgentSteps(events, '')
+
+    expect(run.steps[0].toolCalls[0].output).toContain('first line')
+    expect(run.steps[0].toolCalls[0].status).toBe('running')
+  })
 })

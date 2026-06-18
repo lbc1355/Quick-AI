@@ -662,9 +662,22 @@ export const runAgentLoop = async (
               () =>
                 toolDef.execute(toolArgs, {
                   reqId,
+                  callId,
                   signal,
                   mainWindow,
-                  resources: options.resources
+                  resources: options.resources,
+                  emitOutput: ({ stream, content, replace }) => {
+                    if (!content) return
+                    sendEvent(mainWindow, reqId, {
+                      type: 'tool_output_delta',
+                      callId,
+                      stream,
+                      content,
+                      replace,
+                      step,
+                      stepId
+                    })
+                  }
                 }),
               DEFAULT_RETRY_POLICY,
               signal

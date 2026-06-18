@@ -5,6 +5,7 @@ import {
   PanelLeftOpen,
   GitBranch,
   ArrowLeft,
+  ChevronRight,
   Folder,
   FolderPlus,
   MessageSquarePlus
@@ -71,6 +72,14 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   setDismissedSessionFamilyViewForId,
   setAutocompleteItems
 }) => {
+  const freeSessionCount = sessions.filter((session) => !session.projectId).length
+  const startNewSession = (): void => {
+    setSessionFamilyRootId(null)
+    setDismissedSessionFamilyViewForId(null)
+    void handleNewSession()
+    setAutocompleteItems([])
+  }
+
   return (
     <aside className={`session-sidebar ${visibleSessionFamilyInfo ? 'session-family-view' : ''}`}>
       <div className="session-sidebar-header">
@@ -107,7 +116,10 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
       <div className="session-list">
         <div className="sidebar-section project-section">
           <div className="sidebar-section-header project-section-header">
-            <span>Projects</span>
+            <span className="sidebar-section-label">
+              <span>项目</span>
+              <ChevronRight size={12} />
+            </span>
             <button
               type="button"
               className="sidebar-mini-action"
@@ -117,161 +129,146 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
               <FolderPlus size={12} />
             </button>
           </div>
-          <div className="project-entry">
-            <button
-              type="button"
-              className={`project-row ${activeProjectId ? '' : 'active'}`}
-              onClick={onOpenFreeConversations}
-              title="未绑定项目的自由对话"
-            >
-              <MessageSquarePlus size={13} />
-              <span className="project-row-title">自由对话</span>
-              <span className="project-row-count">
-                {sessions.filter((session) => !session.projectId).length}
-              </span>
-            </button>
+          <div className="project-list">
+            <div className="project-entry">
+              <button
+                type="button"
+                className={`project-row ${activeProjectId ? '' : 'active'}`}
+                onClick={onOpenFreeConversations}
+                title="未绑定项目的自由对话"
+              >
+                <MessageSquarePlus size={13} />
+                <span className="project-row-title">自由对话</span>
+                <span className="project-row-count">{freeSessionCount}</span>
+              </button>
+            </div>
+            {projects.length === 0 ? (
+              <button
+                type="button"
+                className="project-row project-empty-row"
+                onClick={onAddProject}
+              >
+                <FolderPlus size={13} />
+                <span className="project-row-title">添加项目</span>
+                <span className="project-row-count">+</span>
+              </button>
+            ) : (
+              projects.map((project) => (
+                <div key={project.id} className="project-entry">
+                  <button
+                    type="button"
+                    className={`project-row ${activeProjectId === project.id ? 'active' : ''}`}
+                    onClick={() => onOpenProject(project.id)}
+                    title={project.path}
+                  >
+                    <Folder size={13} />
+                    <span className="project-row-title">{project.name}</span>
+                    <span className="project-row-count">
+                      {projectSessionCounts.get(project.id) || 0}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="project-delete-btn"
+                    onClick={() => onDeleteProject(project.id)}
+                    title="移除项目记录"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))
+            )}
           </div>
-          {projects.length === 0 ? (
-            <button type="button" className="project-row project-empty-row" onClick={onAddProject}>
-              <FolderPlus size={13} />
-              <span className="project-row-title">添加项目</span>
-              <span className="project-row-count">+</span>
-            </button>
-          ) : (
-            projects.map((project) => (
-              <div key={project.id} className="project-entry">
-                <button
-                  type="button"
-                  className={`project-row ${activeProjectId === project.id ? 'active' : ''}`}
-                  onClick={() => onOpenProject(project.id)}
-                  title={project.path}
-                >
-                  <Folder size={13} />
-                  <span className="project-row-title">{project.name}</span>
-                  <span className="project-row-count">
-                    {projectSessionCounts.get(project.id) || 0}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="project-delete-btn"
-                  onClick={() => onDeleteProject(project.id)}
-                  title="移除项目记录"
-                >
-                  <Trash2 size={11} />
-                </button>
-              </div>
-            ))
-          )}
         </div>
 
         <div className="sidebar-section conversation-section">
-          <div className="sidebar-section-header">
-            <span>对话</span>
-            <span>{visibleSessionFamilyInfo ? '派生' : activeProjectId ? '当前项目' : '自由'}</span>
+          <div className="sidebar-section-header conversation-section-header">
+            <span className="sidebar-section-label">
+              <span>对话</span>
+              <ChevronRight size={12} />
+            </span>
+            {!visibleSessionFamilyInfo && (
+              <button
+                type="button"
+                className="sidebar-mini-action"
+                onClick={startNewSession}
+                title="新对话"
+              >
+                <MessageSquarePlus size={12} />
+              </button>
+            )}
           </div>
 
-          {!visibleSessionFamilyInfo && (
-            <button
-              type="button"
-              className="project-row new-conversation-row"
-              onClick={() => {
-                setSessionFamilyRootId(null)
-                setDismissedSessionFamilyViewForId(null)
-                void handleNewSession()
-                setAutocompleteItems([])
-              }}
-              title="新对话"
-            >
-              <MessageSquarePlus size={13} />
-              <span className="project-row-title">新对话</span>
-              <span className="project-row-count">Ctrl N</span>
-            </button>
-          )}
-
-          {visibleSessionEntries.map(({ session, familyMember }) => {
-            const isActive = session.id === activeSessionId
-            const messageCount = session.messages.length
-            const branchInfo = getBranchDisplayInfo(session.branchOf, sessions, '源会话')
-            const baseSessionTitle = session.title || 'New chat'
-            const sessionTitle = familyMember
-              ? `${familyMember.isRoot ? 'Root' : `派生 ${familyMember.branchIndex}`} · ${baseSessionTitle}`
-              : baseSessionTitle
-            const isBranchSession = Boolean(
-              (familyMember && !familyMember.isRoot) || (!familyMember && branchInfo)
-            )
-            const familySourceTitle =
-              familyMember?.sourceTitle || visibleSessionFamilyInfo?.rootTitle || '源对话'
-            const familyMeta = familyMember
-              ? familyMember.isRoot
-                ? `${visibleSessionFamilyInfo?.branchCount ?? 0} 个派生`
-                : `派生自 ${familySourceTitle}${familyMember.shortRunId ? ` · run ${familyMember.shortRunId}` : ''}`
-              : null
-            return (
-              <div
-                key={session.id}
-                className={`session-item ${isActive ? 'active' : ''} ${isBranchSession ? 'branch-session-item' : ''} ${familyMember?.isRoot ? 'family-root-session' : ''}`}
-              >
-                <button
-                  type="button"
-                  className="session-main-btn"
-                  onClick={() => {
-                    openSession(session.id)
-                  }}
-                  title={
-                    familyMember
-                      ? sessionTitle
-                      : branchInfo
-                        ? `${sessionTitle} · 派生自 ${branchInfo.sourceLabel}`
-                        : sessionTitle
-                  }
+          <div className="conversation-list">
+            {visibleSessionEntries.map(({ session, familyMember }) => {
+              const isActive = session.id === activeSessionId
+              const sessionStamp = formatSessionStamp(session.lastActiveTime, session.id)
+              const branchInfo = getBranchDisplayInfo(session.branchOf, sessions, '源会话')
+              const baseSessionTitle = session.title || 'New chat'
+              const sessionTitle = familyMember
+                ? `${familyMember.isRoot ? 'Root' : `派生 ${familyMember.branchIndex}`} · ${baseSessionTitle}`
+                : baseSessionTitle
+              const isBranchSession = Boolean(
+                (familyMember && !familyMember.isRoot) || (!familyMember && branchInfo)
+              )
+              const familySourceTitle =
+                familyMember?.sourceTitle || visibleSessionFamilyInfo?.rootTitle || '源对话'
+              const familyMeta = familyMember
+                ? familyMember.isRoot
+                  ? `${visibleSessionFamilyInfo?.branchCount ?? 0} 个派生`
+                  : `派生自 ${familySourceTitle}${familyMember.shortRunId ? ` · run ${familyMember.shortRunId}` : ''}`
+                : null
+              return (
+                <div
+                  key={session.id}
+                  className={`session-item ${isActive ? 'active' : ''} ${isBranchSession ? 'branch-session-item' : ''} ${familyMember?.isRoot ? 'family-root-session' : ''}`}
                 >
-                  <span
-                    className={`session-initial ${isBranchSession ? 'branch-session-initial' : ''}`}
-                    aria-hidden="true"
+                  <button
+                    type="button"
+                    className="session-main-btn"
+                    onClick={() => {
+                      openSession(session.id)
+                    }}
+                    title={
+                      familyMember
+                        ? sessionTitle
+                        : branchInfo
+                          ? `${sessionTitle} · 派生自 ${branchInfo.sourceLabel}`
+                          : sessionTitle
+                    }
                   >
-                    {isBranchSession ? (
-                      <GitBranch size={13} />
-                    ) : (
-                      (session.title || 'N').trim().charAt(0).toUpperCase()
-                    )}
-                  </span>
-                  <span className="session-title">{sessionTitle}</span>
-                  <span
-                    className={`session-meta ${branchInfo || familyMember ? 'session-meta-with-branch' : ''}`}
-                  >
-                    {familyMember ? (
-                      <>
-                        <GitBranch size={10} />
-                        <span className="session-branch-source">{familyMeta}</span>
-                        <span className="session-meta-divider">·</span>
-                      </>
-                    ) : (
-                      branchInfo && (
-                        <>
-                          <GitBranch size={10} />
-                          <span className="session-branch-source">{branchInfo.sourceTitle}</span>
-                          <span className="session-meta-divider">·</span>
-                        </>
-                      )
-                    )}
-                    <span>
-                      {messageCount} msg{messageCount === 1 ? '' : 's'} ·{' '}
-                      {formatSessionStamp(session.lastActiveTime, session.id)}
+                    <span
+                      className={`session-initial ${isBranchSession ? 'branch-session-initial' : ''}`}
+                      aria-hidden="true"
+                    >
+                      {isBranchSession ? (
+                        <GitBranch size={13} />
+                      ) : (
+                        (session.title || 'N').trim().charAt(0).toUpperCase()
+                      )}
                     </span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="session-delete-btn"
-                  onClick={() => void handleDeleteSession(session.id)}
-                  title="删除对话"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            )
-          })}
+                    <span className="session-title">{sessionTitle}</span>
+                    <span
+                      className={`session-meta ${branchInfo || familyMember ? 'session-meta-with-branch' : ''}`}
+                    >
+                      {branchInfo || familyMember ? <GitBranch size={10} /> : null}
+                      <span title={familyMeta || branchInfo?.sourceTitle || undefined}>
+                        {sessionStamp}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="session-delete-btn"
+                    onClick={() => void handleDeleteSession(session.id)}
+                    title="删除对话"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
 

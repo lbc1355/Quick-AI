@@ -143,6 +143,7 @@ const ToolDetailModal: React.FC<{
   const shellCommand = getShellCommandArg(toolCall.toolName, toolCall.args)
   const argsJson = shellCommand ? '' : getToolArgsJson(toolCall.args)
   const result = toolCall.result
+  const outputDetails = result?.details || toolCall.output
 
   return (
     <div className="tool-detail-backdrop" onMouseDown={onClose}>
@@ -218,9 +219,9 @@ const ToolDetailModal: React.FC<{
                     {result.url}
                   </a>
                 )}
-                {result.details && (
+                {outputDetails && (
                   <pre className="tool-detail-code details">
-                    <code>{result.details}</code>
+                    <code>{outputDetails}</code>
                   </pre>
                 )}
                 {result.items && result.items.length > 0 && (
@@ -247,7 +248,16 @@ const ToolDetailModal: React.FC<{
             </section>
           )}
 
-          {!toolCall.purpose && !argsJson && !toolCall.error && !result && (
+          {!result && outputDetails && (
+            <section className="tool-detail-section">
+              <h4>实时输出</h4>
+              <pre className="tool-detail-code details">
+                <code>{outputDetails}</code>
+              </pre>
+            </section>
+          )}
+
+          {!toolCall.purpose && !argsJson && !toolCall.error && !result && !outputDetails && (
             <section className="tool-detail-section">
               <p>这个工具调用没有返回额外详情。</p>
             </section>
@@ -490,7 +500,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
 
     const [copied, setCopied] = useState(false)
     const [isStepsExpanded, setIsStepsExpanded] = useState(true)
-    const [selectedToolCall, setSelectedToolCall] = useState<ParsedToolCall | null>(null)
+    const [selectedToolCallId, setSelectedToolCallId] = useState<string | null>(null)
     const isEditing = editingMessageId === msg.id
     const isBranchForkMessage = Boolean(msg.isBranchFork || msg.forkedFrom)
     const branchRunId = shortBranchRunId(msg.forkedFrom?.runId)
@@ -515,18 +525,18 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     }, [isGenerating, msg.id, msg.role])
 
     useEffect(() => {
-      if (!selectedToolCall) return undefined
+      if (!selectedToolCallId) return undefined
 
       const handleKeyDown = (event: KeyboardEvent): void => {
         if (event.key !== 'Escape') return
         event.preventDefault()
         event.stopPropagation()
-        setSelectedToolCall(null)
+        setSelectedToolCallId(null)
       }
 
       window.addEventListener('keydown', handleKeyDown, true)
       return () => window.removeEventListener('keydown', handleKeyDown, true)
-    }, [selectedToolCall])
+    }, [selectedToolCallId])
 
     // Find agent_end event in the events list
     const agentEndEvent = useMemo(
@@ -565,6 +575,15 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     const parsedRun = useMemo(() => {
       return parseAgentSteps(msg.agentEvents, msg.content)
     }, [msg.agentEvents, msg.content])
+
+    const selectedToolCall = useMemo(() => {
+      if (!selectedToolCallId) return null
+      for (const step of parsedRun.steps) {
+        const match = step.toolCalls.find((toolCall) => toolCall.callId === selectedToolCallId)
+        if (match) return match
+      }
+      return null
+    }, [parsedRun.steps, selectedToolCallId])
 
     // The assistant's final reply text — the last final answer for structured runs, otherwise
     // the cleaned content. This is what the copy button puts on the clipboard.
@@ -883,7 +902,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                 <StepReasoningBlock reasoning={step.reasoning} />
                                 <StepToolEvents
                                   step={step}
-                                  onOpenToolDetail={setSelectedToolCall}
+                                  onOpenToolDetail={(toolCall) =>
+                                    setSelectedToolCallId(toolCall.callId)
+                                  }
                                 />
                               </div>
                             )
@@ -922,7 +943,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                       <StepReasoningBlock reasoning={step.reasoning} />
                                       <StepToolEvents
                                         step={step}
-                                        onOpenToolDetail={setSelectedToolCall}
+                                        onOpenToolDetail={(toolCall) =>
+                                          setSelectedToolCallId(toolCall.callId)
+                                        }
                                       />
                                     </div>
                                   )
@@ -1098,7 +1121,10 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
           </div>
         )}
         {selectedToolCall && (
-          <ToolDetailModal toolCall={selectedToolCall} onClose={() => setSelectedToolCall(null)} />
+          <ToolDetailModal
+            toolCall={selectedToolCall}
+            onClose={() => setSelectedToolCallId(null)}
+          />
         )}
       </div>
     )

@@ -78,6 +78,15 @@ export type AgentEvent =
       step?: number
       stepId?: string
     }
+  | {
+      type: 'tool_output_delta'
+      callId: string
+      stream: 'stdout' | 'stderr'
+      content: string
+      replace?: boolean
+      step?: number
+      stepId?: string
+    }
   | { type: 'tool_error'; callId: string; error: string; step?: number; stepId?: string }
   | { type: 'final'; content: string; step?: number; stepId?: string }
   | {

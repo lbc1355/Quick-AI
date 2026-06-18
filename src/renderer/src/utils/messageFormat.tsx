@@ -354,9 +354,10 @@ export const getTriggerColor = (type: string): string => {
 export interface ParsedToolCall {
   callId: string
   toolName: string
-  args: any
+  args: unknown
   purpose?: string
   permissionState?: 'pending' | 'approved' | 'denied'
+  output?: string
   result?: ToolResultUi
   error?: string
   status: 'pending' | 'running' | 'completed' | 'failed' | 'denied'
@@ -379,6 +380,19 @@ export interface ParsedAgentRun {
   status: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps'
   totalToolsCount: number
   failedToolsCount: number
+}
+
+const MAX_TOOL_OUTPUT_PREVIEW_CHARS = 64 * 1024
+
+const appendToolOutputPreview = (
+  existing: string | undefined,
+  stream: 'stdout' | 'stderr',
+  content: string
+): string => {
+  const prefix = stream === 'stderr' ? 'Stderr' : 'Stdout'
+  const next = `${existing || ''}${existing ? '\n' : ''}${prefix}:\n${content.trimEnd()}`
+  if (next.length <= MAX_TOOL_OUTPUT_PREVIEW_CHARS) return next
+  return `[Output preview truncated to last ${MAX_TOOL_OUTPUT_PREVIEW_CHARS} chars]\n${next.slice(-MAX_TOOL_OUTPUT_PREVIEW_CHARS)}`
 }
 
 export const parseAgentSteps = (
@@ -451,7 +465,7 @@ export const parseAgentSteps = (
       }
 
       const getGroupForCallResult = (
-        event: Extract<AgentEvent, { type: 'tool_result' | 'tool_error' }>
+        event: Extract<AgentEvent, { type: 'tool_result' | 'tool_error' | 'tool_output_delta' }>
       ): ExplicitGroup => {
         const meta = getStepMeta(event)
         if (meta.stepId) return getOrCreateGroup(meta.stepId, meta.step)
@@ -532,6 +546,17 @@ export const parseAgentSteps = (
           if (tc) {
             tc.result = event.result
             tc.status = 'completed'
+          }
+          return
+        }
+
+        if (event.type === 'tool_output_delta') {
+          const g = getGroupForCallResult(event)
+          const tc = g.toolCalls.get(event.callId)
+          if (tc) {
+            tc.output = event.replace
+              ? event.content
+              : appendToolOutputPreview(tc.output, event.stream, event.content)
           }
           return
         }
@@ -638,7 +663,7 @@ export const parseAgentSteps = (
       let legacyHasToolCallInCurrentStep = false
 
       events.forEach((event) => {
-        let stepNum = (event as any).step
+        let stepNum = 'step' in event && typeof event.step === 'number' ? event.step : undefined
 
         if (stepNum === undefined || stepNum === null) {
           if (event.type === 'final') {
@@ -652,6 +677,7 @@ export const parseAgentSteps = (
             stepNum = legacyStepCounter
           } else if (
             event.type === 'tool_result' ||
+            event.type === 'tool_output_delta' ||
             event.type === 'tool_error' ||
             event.type === 'reasoning'
           ) {
@@ -701,6 +727,23 @@ export const parseAgentSteps = (
               if (otherTc) {
                 otherTc.result = event.result
                 otherTc.status = 'completed'
+                break
+              }
+            }
+          }
+        } else if (event.type === 'tool_output_delta') {
+          const tc = g.toolCalls.get(event.callId)
+          if (tc) {
+            tc.output = event.replace
+              ? event.content
+              : appendToolOutputPreview(tc.output, event.stream, event.content)
+          } else {
+            for (const otherG of groups) {
+              const otherTc = otherG.toolCalls.get(event.callId)
+              if (otherTc) {
+                otherTc.output = event.replace
+                  ? event.content
+                  : appendToolOutputPreview(otherTc.output, event.stream, event.content)
                 break
               }
             }

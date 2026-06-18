@@ -3,9 +3,11 @@ import { BrowserWindow } from 'electron'
 
 export interface ToolExecutionContext {
   reqId: string
+  callId?: string
   signal: AbortSignal
   mainWindow?: BrowserWindow
   resources?: SessionResource[]
+  emitOutput?: (chunk: { stream: 'stdout' | 'stderr'; content: string; replace?: boolean }) => void
 }
 
 export interface ToolDefinition {

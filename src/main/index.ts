@@ -52,7 +52,7 @@ let isWindowVisible = false
 let isFilePickerActive = false
 let isQuitting = false
 let isWindowPinned = false
-let windowMode: WindowMode = 'floating'
+let windowMode: WindowMode = 'window'
 const floatingWinWidth = 780
 const floatingWinHeight = 520
 const windowModeDefaultWidth = 1080
@@ -94,32 +94,39 @@ function emitWindowState(): void {
 }
 
 function createWindow(): void {
-  // Position initially off-screen to avoid any visual flicker or animation on start
-  const x = hiddenX
-  const y = hiddenY
+  // Floating mode starts off-screen so shortcut summon can position it without flicker.
+  // Window mode should behave like a regular app window from startup.
+  const initialBounds =
+    windowMode === 'window'
+      ? getCenteredBounds(windowModeDefaultWidth, windowModeDefaultHeight)
+      : { x: hiddenX, y: hiddenY, width: floatingWinWidth, height: floatingWinHeight }
 
   // Create the browser window.
   mainWindow = new BrowserWindow({
-    width: floatingWinWidth,
-    height: floatingWinHeight,
-    x,
-    y,
+    width: initialBounds.width,
+    height: initialBounds.height,
+    x: initialBounds.x,
+    y: initialBounds.y,
     show: false,
     frame: false, // Borderless
     thickFrame: true,
     transparent: true, // Transparent for glassmorphic borders
-    resizable: false,
+    resizable: windowMode === 'window',
     minimizable: true,
     maximizable: true,
-    alwaysOnTop: true, // Always float on top
-    skipTaskbar: true, // Do not display in taskbar
+    alwaysOnTop: windowMode !== 'window', // Floating mode stays above other apps.
+    skipTaskbar: windowMode !== 'window',
     hasShadow: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
     }
   })
-  mainWindow.setOpacity(0)
+  mainWindow.setOpacity(windowMode === 'window' ? 1 : 0)
+  if (windowMode === 'window') {
+    mainWindow.setMinimumSize(floatingWinWidth, floatingWinHeight)
+    windowModeBounds = initialBounds
+  }
 
   // Disable default native menu bar
   mainWindow.setMenuBarVisibility(false)
@@ -184,6 +191,15 @@ function createWindow(): void {
   // Pre-paint the window off-screen so shortcut summon only repositions it.
   // Calling show()/hide() on every toggle triggers the native Windows easing animation.
   mainWindow.once('ready-to-show', () => {
+    if (windowMode === 'window') {
+      isWindowVisible = true
+      mainWindow?.show()
+      mainWindow?.focus()
+      mainWindow?.webContents.send('window-shown')
+      emitWindowState()
+      return
+    }
+
     mainWindow?.setPosition(hiddenX, hiddenY)
     mainWindow?.showInactive()
     emitWindowState()

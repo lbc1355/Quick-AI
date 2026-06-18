@@ -76,6 +76,21 @@ export const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Mess
     } else {
       updatedEvents.push(newEvent)
     }
+  } else if (newEvent.type === 'tool_output_delta') {
+    const lastEvent = updatedEvents[updatedEvents.length - 1]
+    if (
+      lastEvent?.type === 'tool_output_delta' &&
+      lastEvent.callId === newEvent.callId &&
+      lastEvent.stream === newEvent.stream
+    ) {
+      updatedEvents[updatedEvents.length - 1] = {
+        ...lastEvent,
+        content: newEvent.replace ? newEvent.content : lastEvent.content + newEvent.content,
+        replace: newEvent.replace || lastEvent.replace
+      }
+    } else {
+      updatedEvents.push(newEvent)
+    }
   } else if (newEvent.type === 'task_update') {
     // Replace any previous task_update so the list reflects the latest state.
     const withoutTasks: AgentEvent[] = updatedEvents.filter((e) => e.type !== 'task_update')

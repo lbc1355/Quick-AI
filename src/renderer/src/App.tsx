@@ -80,7 +80,7 @@ function App(): React.JSX.Element {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isPanelPinned, setIsPanelPinned] = useState(false)
   const [windowState, setWindowState] = useState<WindowState>({
-    mode: 'floating',
+    mode: 'window',
     isMaximized: false
   })
   const [projects, setProjects] = useState<Project[]>([])
@@ -462,7 +462,7 @@ function App(): React.JSX.Element {
         if (!disposed) setWindowState(state)
       })
       .catch(() => {
-        // Keep the default floating state if the host API is unavailable during early startup.
+        // Keep the default window state if the host API is unavailable during early startup.
       })
 
     const unsubscribe = window.api.onWindowStateChanged((state) => {
