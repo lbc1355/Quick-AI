@@ -33,28 +33,64 @@ function extractPromptCacheStats(usage: unknown): PromptCacheStats | undefined {
     u.input_tokens_details && typeof u.input_tokens_details === 'object'
       ? (u.input_tokens_details as Record<string, unknown>)
       : undefined
+  const completionDetails =
+    u.completion_tokens_details && typeof u.completion_tokens_details === 'object'
+      ? (u.completion_tokens_details as Record<string, unknown>)
+      : undefined
+  const outputDetails =
+    u.output_tokens_details && typeof u.output_tokens_details === 'object'
+      ? (u.output_tokens_details as Record<string, unknown>)
+      : undefined
 
   const promptTokens = asNumber(u.prompt_tokens) ?? asNumber(u.input_tokens)
-  const hitTokens =
+  const completionTokens = asNumber(u.completion_tokens) ?? asNumber(u.output_tokens)
+  const totalTokens = asNumber(u.total_tokens)
+  const reasoningTokens =
+    asNumber(u.reasoning_tokens) ??
+    asNumber(completionDetails?.reasoning_tokens) ??
+    asNumber(outputDetails?.reasoning_tokens)
+  const hitTokensRaw =
     asNumber(u.prompt_cache_hit_tokens) ??
     asNumber(u.cache_hit_tokens) ??
     asNumber(promptDetails?.cached_tokens) ??
     asNumber(inputDetails?.cached_tokens)
   let missTokens = asNumber(u.prompt_cache_miss_tokens) ?? asNumber(u.cache_miss_tokens)
+  const hasCacheStats = hitTokensRaw !== undefined || missTokens !== undefined
 
-  if (hitTokens === undefined) return undefined
-  if (missTokens === undefined && promptTokens !== undefined) {
+  if (
+    !hasCacheStats &&
+    promptTokens === undefined &&
+    completionTokens === undefined &&
+    totalTokens === undefined &&
+    reasoningTokens === undefined
+  ) {
+    return undefined
+  }
+
+  const hitTokens = hitTokensRaw ?? 0
+  if (hasCacheStats && missTokens === undefined && promptTokens !== undefined) {
     missTokens = Math.max(0, promptTokens - hitTokens)
   }
 
   const denominator = missTokens !== undefined ? hitTokens + missTokens : promptTokens
-  if (!denominator || denominator <= 0) return undefined
+  const hitRate =
+    hasCacheStats && denominator && denominator > 0
+      ? Number(((hitTokens / denominator) * 100).toFixed(1))
+      : 0
 
   return {
+    hasCacheStats,
     promptTokens,
+    completionTokens,
+    totalTokens:
+      totalTokens ??
+      (promptTokens !== undefined && completionTokens !== undefined
+        ? promptTokens + completionTokens
+        : undefined),
+    reasoningTokens,
     cacheHitTokens: hitTokens,
     cacheMissTokens: missTokens,
-    hitRate: Number(((hitTokens / denominator) * 100).toFixed(1))
+    hitRate
   }
 }
 

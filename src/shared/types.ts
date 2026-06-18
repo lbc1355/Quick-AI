@@ -37,7 +37,11 @@ export interface UserChoiceResponse {
 }
 
 export interface PromptCacheStats {
+  hasCacheStats?: boolean
   promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  reasoningTokens?: number
   cacheHitTokens: number
   cacheMissTokens?: number
   hitRate: number

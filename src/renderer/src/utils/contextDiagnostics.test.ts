@@ -4,6 +4,7 @@ import {
   buildContextUsageBreakdown,
   formatUsagePercent,
   getContextUsagePercent,
+  summarizeConversationTokenUsage,
   summarizePromptCacheStats
 } from './contextDiagnostics'
 import { Message } from '../../../shared/types'
@@ -16,6 +17,14 @@ const baseDiagnostics = {
     missTokens: 200,
     promptTokens: 1000,
     sampleCount: 2
+  },
+  tokenUsage: {
+    promptTokens: 1500,
+    completionTokens: 400,
+    totalTokens: 1900,
+    reasoningTokens: 120,
+    sampleCount: 2,
+    hasApiUsage: true
   },
   messageCount: 6,
   resourceCount: 2,
@@ -39,6 +48,7 @@ describe('contextDiagnostics', () => {
         role: 'assistant',
         content: 'hi',
         cacheStats: {
+          hasCacheStats: true,
           promptTokens: 100,
           cacheHitTokens: 70,
           cacheMissTokens: 30,
@@ -50,6 +60,7 @@ describe('contextDiagnostics', () => {
         role: 'assistant',
         content: 'again',
         cacheStats: {
+          hasCacheStats: true,
           promptTokens: 300,
           cacheHitTokens: 270,
           cacheMissTokens: 30,
@@ -65,6 +76,56 @@ describe('contextDiagnostics', () => {
       missTokens: 60,
       promptTokens: 400,
       sampleCount: 2
+    })
+  })
+
+  it('summarizes API input and output token usage without treating it as cache data', () => {
+    const messages: Message[] = [
+      { id: 'u1', role: 'user', content: 'hello' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'hi',
+        cacheStats: {
+          hasCacheStats: false,
+          promptTokens: 120,
+          completionTokens: 30,
+          totalTokens: 150,
+          reasoningTokens: 8,
+          cacheHitTokens: 0,
+          hitRate: 0
+        }
+      },
+      {
+        id: 'a2',
+        role: 'assistant',
+        content: 'again',
+        cacheStats: {
+          hasCacheStats: true,
+          promptTokens: 200,
+          completionTokens: 40,
+          cacheHitTokens: 150,
+          cacheMissTokens: 50,
+          hitRate: 75
+        }
+      }
+    ]
+
+    expect(summarizeConversationTokenUsage(messages)).toMatchObject({
+      promptTokens: 320,
+      completionTokens: 70,
+      totalTokens: 390,
+      reasoningTokens: 8,
+      sampleCount: 2,
+      hasApiUsage: true
+    })
+
+    expect(summarizePromptCacheStats(messages)).toMatchObject({
+      latestHitRate: 75,
+      averageHitRate: 75,
+      hitTokens: 150,
+      missTokens: 50,
+      sampleCount: 1
     })
   })
 
@@ -101,6 +162,7 @@ describe('contextDiagnostics', () => {
 
     expect(title).toContain('3,500 / 10,000 tokens (35%)')
     expect(title).toContain('Model: test-model-10k')
+    expect(title).toContain('API tokens: input 1,500 / output 400 / total 1,900 tokens')
     expect(title).toContain('Conversation')
     expect(title).toContain('MCP/tools')
     expect(title).toContain('Steering files')

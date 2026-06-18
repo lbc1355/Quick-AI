@@ -272,7 +272,11 @@ export const runAgentLoop = async (
   let totalCacheHitTokens = 0
   let totalCacheMissTokens = 0
   let totalCachePromptTokens = 0
+  let totalCompletionTokens = 0
+  let totalReasoningTokens = 0
+  let totalUsageTokens = 0
   let hasCacheStats = false
+  let hasUsageStats = false
 
   const getTokenSpeed = (): number => {
     const totalGenerationSec = totalGenerationTimeMs / 1000
@@ -283,6 +287,26 @@ export const runAgentLoop = async (
 
   const addPromptCacheStats = (stats: PromptCacheStats | undefined): void => {
     if (!stats) return
+
+    if (stats.promptTokens !== undefined) {
+      hasUsageStats = true
+      totalCachePromptTokens += stats.promptTokens
+    }
+    if (stats.completionTokens !== undefined) {
+      hasUsageStats = true
+      totalCompletionTokens += stats.completionTokens
+    }
+    if (stats.reasoningTokens !== undefined) {
+      hasUsageStats = true
+      totalReasoningTokens += stats.reasoningTokens
+    }
+    if (stats.totalTokens !== undefined) {
+      hasUsageStats = true
+      totalUsageTokens += stats.totalTokens
+    }
+
+    if (stats.hasCacheStats === false) return
+
     hasCacheStats = true
     totalCacheHitTokens += stats.cacheHitTokens
     if (stats.cacheMissTokens !== undefined) {
@@ -290,23 +314,32 @@ export const runAgentLoop = async (
     } else if (stats.promptTokens !== undefined) {
       totalCacheMissTokens += Math.max(0, stats.promptTokens - stats.cacheHitTokens)
     }
-    if (stats.promptTokens !== undefined) {
-      totalCachePromptTokens += stats.promptTokens
-    }
   }
 
   const getAggregatedCacheStats = (): PromptCacheStats | undefined => {
-    if (!hasCacheStats) return undefined
+    if (!hasCacheStats && !hasUsageStats) return undefined
     const denominator =
       totalCacheHitTokens + totalCacheMissTokens > 0
         ? totalCacheHitTokens + totalCacheMissTokens
         : totalCachePromptTokens
-    if (!denominator || denominator <= 0) return undefined
+    const totalTokens =
+      totalUsageTokens > 0
+        ? totalUsageTokens
+        : totalCachePromptTokens + totalCompletionTokens > 0
+          ? totalCachePromptTokens + totalCompletionTokens
+          : undefined
     return {
+      hasCacheStats,
       promptTokens: totalCachePromptTokens > 0 ? totalCachePromptTokens : undefined,
+      completionTokens: totalCompletionTokens > 0 ? totalCompletionTokens : undefined,
+      totalTokens,
+      reasoningTokens: totalReasoningTokens > 0 ? totalReasoningTokens : undefined,
       cacheHitTokens: totalCacheHitTokens,
-      cacheMissTokens: totalCacheMissTokens,
-      hitRate: Number(((totalCacheHitTokens / denominator) * 100).toFixed(1))
+      cacheMissTokens: hasCacheStats ? totalCacheMissTokens : undefined,
+      hitRate:
+        hasCacheStats && denominator && denominator > 0
+          ? Number(((totalCacheHitTokens / denominator) * 100).toFixed(1))
+          : 0
     }
   }
 

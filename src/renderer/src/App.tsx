@@ -32,7 +32,10 @@ import {
   estimateHistoryContextTokens,
   estimateSteeringContextTokens
 } from './utils/contextLength'
-import { summarizePromptCacheStats } from './utils/contextDiagnostics'
+import {
+  summarizeConversationTokenUsage,
+  summarizePromptCacheStats
+} from './utils/contextDiagnostics'
 import { getContextWindowSize } from '../../shared/modelContext'
 
 import { AppHeader } from './components/AppHeader'
@@ -927,6 +930,7 @@ function App(): React.JSX.Element {
   const contextDiagnostics = useMemo(
     () => ({
       cache: summarizePromptCacheStats(activeSession?.messages || []),
+      tokenUsage: summarizeConversationTokenUsage(activeSession?.messages || []),
       messageCount: activeSession?.messages.length || 0,
       resourceCount: activeSession?.resources?.length || 0,
       hasSystemPrompt: systemPrompt.trim().length > 0,

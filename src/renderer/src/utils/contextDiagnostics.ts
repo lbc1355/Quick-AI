@@ -9,8 +9,18 @@ export interface PromptCacheDiagnostics {
   sampleCount: number
 }
 
+export interface ConversationTokenDiagnostics {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  reasoningTokens: number
+  sampleCount: number
+  hasApiUsage: boolean
+}
+
 export interface ContextDiagnosticsSnapshot {
   cache: PromptCacheDiagnostics
+  tokenUsage: ConversationTokenDiagnostics
   messageCount: number
   resourceCount: number
   hasSystemPrompt: boolean
@@ -47,7 +57,7 @@ export function summarizePromptCacheStats(messages: Message[]): PromptCacheDiagn
 
   for (const message of messages) {
     const stats = message.role === 'assistant' ? message.cacheStats : undefined
-    if (!stats || !Number.isFinite(stats.hitRate)) continue
+    if (!stats || stats.hasCacheStats === false || !Number.isFinite(stats.hitRate)) continue
 
     latestHitRate = stats.hitRate
     sampleCount += 1
@@ -84,6 +94,53 @@ export function summarizePromptCacheStats(messages: Message[]): PromptCacheDiagn
     missTokens,
     promptTokens,
     sampleCount
+  }
+}
+
+export function summarizeConversationTokenUsage(messages: Message[]): ConversationTokenDiagnostics {
+  let promptTokens = 0
+  let completionTokens = 0
+  let totalTokens = 0
+  let reasoningTokens = 0
+  let sampleCount = 0
+
+  for (const message of messages) {
+    const stats = message.role === 'assistant' ? message.cacheStats : undefined
+    if (!stats) continue
+
+    const hasPromptTokens =
+      stats.promptTokens !== undefined && Number.isFinite(stats.promptTokens)
+    const hasCompletionTokens =
+      stats.completionTokens !== undefined && Number.isFinite(stats.completionTokens)
+    const hasTotalTokens = stats.totalTokens !== undefined && Number.isFinite(stats.totalTokens)
+    const hasReasoningTokens =
+      stats.reasoningTokens !== undefined && Number.isFinite(stats.reasoningTokens)
+
+    if (!hasPromptTokens && !hasCompletionTokens && !hasTotalTokens && !hasReasoningTokens) {
+      continue
+    }
+
+    sampleCount += 1
+    if (hasPromptTokens) promptTokens += stats.promptTokens!
+    if (hasCompletionTokens) completionTokens += stats.completionTokens!
+    if (hasReasoningTokens) reasoningTokens += stats.reasoningTokens!
+
+    if (hasTotalTokens) {
+      totalTokens += stats.totalTokens!
+    } else {
+      totalTokens +=
+        (hasPromptTokens ? stats.promptTokens! : 0) +
+        (hasCompletionTokens ? stats.completionTokens! : 0)
+    }
+  }
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    reasoningTokens,
+    sampleCount,
+    hasApiUsage: sampleCount > 0
   }
 }
 
@@ -140,6 +197,18 @@ export function buildContextDiagnosticsTitle({
 }): string {
   const usage = buildContextUsageBreakdown({ draftTokens, diagnostics })
   const cache = diagnostics.cache
+  const tokenUsage = diagnostics.tokenUsage
+  const apiTokenSummary = tokenUsage.hasApiUsage
+    ? [
+        `input ${tokenUsage.promptTokens.toLocaleString()}`,
+        `output ${tokenUsage.completionTokens.toLocaleString()}`,
+        `total ${tokenUsage.totalTokens.toLocaleString()} tokens`
+      ].join(' / ')
+    : 'API usage unavailable for this conversation'
+  const reasoningTokenSummary =
+    tokenUsage.reasoningTokens > 0
+      ? `Reasoning tokens: ${tokenUsage.reasoningTokens.toLocaleString()}`
+      : 'Reasoning tokens: unavailable'
   const latestRate = formatCacheRate(cache.latestHitRate) || '暂无'
   const averageRate = formatCacheRate(cache.averageHitRate) || '暂无'
   const cacheTokens =
@@ -163,6 +232,8 @@ export function buildContextDiagnosticsTitle({
 
   return [
     `Model: ${diagnostics.modelName || 'Current model'}`,
+    `API tokens: ${apiTokenSummary}`,
+    reasoningTokenSummary,
     `上下文估算：${usage.totalTokens.toLocaleString()} / ${usage.contextWindowTokens.toLocaleString()} tokens (${formatUsagePercent(usage.totalPercent)})`,
     `Conversation：${usage.conversationTokens.toLocaleString()} tokens (${formatUsagePercent(usage.conversationPercent)})`,
     `MCP/tools：${usage.mcpToolTokens.toLocaleString()} tokens (${formatUsagePercent(usage.mcpToolPercent)})`,

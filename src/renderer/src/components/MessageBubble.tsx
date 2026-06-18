@@ -132,7 +132,9 @@ const getToolStatusLabel = (status: ParsedToolCall['status']): string => {
 }
 
 const formatCacheHitRate = (cacheStats: Message['cacheStats']): string | null => {
-  if (!cacheStats || !Number.isFinite(cacheStats.hitRate)) return null
+  if (!cacheStats || cacheStats.hasCacheStats === false || !Number.isFinite(cacheStats.hitRate)) {
+    return null
+  }
   return `缓存命中 ${cacheStats.hitRate}%`
 }
 

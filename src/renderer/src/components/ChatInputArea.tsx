@@ -185,6 +185,10 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   } as React.CSSProperties
   const modelContextLabel = contextDiagnostics.modelName || 'Current model'
   const maxContextLabel = `${contextUsage.contextWindowTokens.toLocaleString()} tokens`
+  const tokenUsage = contextDiagnostics.tokenUsage
+  const apiUsageAvailable = tokenUsage.hasApiUsage
+  const formatApiTokens = (tokens: number): string =>
+    apiUsageAvailable ? tokens.toLocaleString() : 'Unavailable'
 
   const updateDraftValue = useCallback(
     (value: string) => {
@@ -292,6 +296,21 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
                 <span>{modelContextLabel}</span>
                 <span>Max {maxContextLabel}</span>
               </span>
+              <span className="context-usage-row">
+                <span>API input</span>
+                <span>{formatApiTokens(tokenUsage.promptTokens)}</span>
+              </span>
+              <span className="context-usage-row">
+                <span>API output</span>
+                <span>{formatApiTokens(tokenUsage.completionTokens)}</span>
+              </span>
+              {tokenUsage.reasoningTokens > 0 && (
+                <span className="context-usage-row">
+                  <span>Reasoning</span>
+                  <span>{tokenUsage.reasoningTokens.toLocaleString()}</span>
+                </span>
+              )}
+              <span className="context-usage-divider" />
               <span className="context-usage-row">
                 <span>Conversation</span>
                 <span>
