@@ -164,20 +164,17 @@ export const useSessions = (): UseSessionsReturn => {
       await clearCachesFor(targetSessionId, computeOrphanResourceIds(target, survivors))
     }
 
-    const updated = sessions.filter((s) => s.id !== targetSessionId)
+    let updated = sessions.filter((s) => s.id !== targetSessionId)
     if (activeSessionId === targetSessionId) {
-      if (updated.length > 0) {
-        setActiveSessionId(updated[0].id)
-      } else {
-        const newSession: Session = {
-          id: Date.now().toString(),
-          title: '新对话',
-          messages: [],
-          lastActiveTime: Date.now()
-        }
-        updated.push(newSession)
-        setActiveSessionId(newSession.id)
+      const newSession: Session = {
+        id: Date.now().toString(),
+        title: '新对话',
+        messages: [],
+        lastActiveTime: Date.now(),
+        projectId: target?.projectId
       }
+      updated = [newSession, ...updated]
+      setActiveSessionId(newSession.id)
     }
     setSessions(updated)
     await window.api.storeSet('sessions', updated)

@@ -84,6 +84,7 @@ function App(): React.JSX.Element {
     isMaximized: false
   })
   const [projects, setProjects] = useState<Project[]>([])
+  const [sidebarProjectId, setSidebarProjectId] = useState<string | null | undefined>(undefined)
 
   // 1. Providers hook
   const {
@@ -193,6 +194,13 @@ function App(): React.JSX.Element {
     return projects.find((project) => project.id === activeSession.projectId) || null
   }, [activeSession?.projectId, projects])
 
+  const resolvedSidebarProjectId =
+    sidebarProjectId === undefined ? (activeSession?.projectId ?? null) : sidebarProjectId
+  const sidebarProject = useMemo(() => {
+    if (!resolvedSidebarProjectId) return null
+    return projects.find((project) => project.id === resolvedSidebarProjectId) || null
+  }, [projects, resolvedSidebarProjectId])
+
   const projectSessionCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const session of sessions) {
@@ -202,44 +210,17 @@ function App(): React.JSX.Element {
     return counts
   }, [sessions])
 
-  const openProject = useCallback(
-    async (projectId: string): Promise<void> => {
-      const projectSessions = sessions
-        .filter((session) => session.projectId === projectId)
-        .sort((a, b) => {
-          const aTime = a.lastActiveTime || Number(a.id)
-          const bTime = b.lastActiveTime || Number(b.id)
-          return bTime - aTime
-        })
-
-      setSessionFamilyRootId(null)
-      setDismissedSessionFamilyViewForId(null)
-      if (projectSessions[0]) {
-        setActiveSessionId(projectSessions[0].id)
-      } else {
-        await handleNewSession({ projectId })
-      }
-    },
-    [handleNewSession, sessions, setActiveSessionId]
-  )
-
-  const openFreeConversations = useCallback(async (): Promise<void> => {
-    const freeSessions = sessions
-      .filter((session) => !session.projectId)
-      .sort((a, b) => {
-        const aTime = a.lastActiveTime || Number(a.id)
-        const bTime = b.lastActiveTime || Number(b.id)
-        return bTime - aTime
-      })
-
+  const openProject = useCallback((projectId: string): void => {
+    setSidebarProjectId(projectId)
     setSessionFamilyRootId(null)
-    setDismissedSessionFamilyViewForId(null)
-    if (freeSessions[0]) {
-      setActiveSessionId(freeSessions[0].id)
-    } else {
-      await handleNewSession()
-    }
-  }, [handleNewSession, sessions, setActiveSessionId])
+    setDismissedSessionFamilyViewForId(activeSessionId || null)
+  }, [activeSessionId])
+
+  const openFreeConversations = useCallback((): void => {
+    setSidebarProjectId(null)
+    setSessionFamilyRootId(null)
+    setDismissedSessionFamilyViewForId(activeSessionId || null)
+  }, [activeSessionId])
 
   const handleAddProject = useCallback(async (): Promise<void> => {
     const selected = await window.api.selectProjectDirectory()
@@ -249,7 +230,7 @@ function App(): React.JSX.Element {
       (project) => normalizeProjectPath(project.path) === normalizeProjectPath(selected.path)
     )
     if (existing) {
-      await openProject(existing.id)
+      openProject(existing.id)
       return
     }
 
@@ -267,6 +248,7 @@ function App(): React.JSX.Element {
     const nextProjects = [project, ...projects]
     await persistProjects(nextProjects)
     await handleNewSession({ projectId: project.id })
+    setSidebarProjectId(project.id)
     setSessionFamilyRootId(null)
     setDismissedSessionFamilyViewForId(null)
   }, [handleNewSession, normalizeProjectPath, openProject, persistProjects, projects])
@@ -288,11 +270,14 @@ function App(): React.JSX.Element {
         session.projectId === projectId ? { ...session, projectId: undefined } : session
       )
       await persistProjects(nextProjects)
+      if (sidebarProjectId === projectId) {
+        setSidebarProjectId(null)
+      }
       setSessions(nextSessions)
       sessionsRef.current = nextSessions
       await window.api.storeSet('sessions', nextSessions)
     },
-    [persistProjects, projects, sessions, sessionsRef, setSessions]
+    [persistProjects, projects, sessions, sessionsRef, setSessions, sidebarProjectId]
   )
 
   // Refs for scrolling and textarea
@@ -430,6 +415,8 @@ function App(): React.JSX.Element {
 
   const openSession = useCallback(
     (sessionId: string, messageId?: string): void => {
+      const targetSession = sessions.find((session) => session.id === sessionId)
+      setSidebarProjectId(targetSession?.projectId ?? null)
       if (messageId) {
         setPendingScrollMessageId(messageId)
       }
@@ -437,7 +424,7 @@ function App(): React.JSX.Element {
       setActiveSessionId(sessionId)
       setAutocompleteItems([])
     },
-    [enterSessionFamilyView, setActiveSessionId, setAutocompleteItems]
+    [enterSessionFamilyView, sessions, setActiveSessionId, setAutocompleteItems]
   )
 
   // Listen to window summon (focus/show) event from Main Process
@@ -938,8 +925,8 @@ function App(): React.JSX.Element {
     const bTime = b.lastActiveTime || Number(b.id)
     return bTime - aTime
   })
-  const scopedOrderedSessions = activeProject
-    ? orderedSessions.filter((session) => session.projectId === activeProject.id)
+  const scopedOrderedSessions = sidebarProject
+    ? orderedSessions.filter((session) => session.projectId === sidebarProject.id)
     : orderedSessions.filter((session) => !session.projectId)
   const visibleSessionEntries = visibleSessionFamilyInfo
     ? visibleSessionFamilyInfo.members.map((familyMember) => ({
@@ -1045,7 +1032,7 @@ function App(): React.JSX.Element {
           <SessionSidebar
             sessions={sessions}
             projects={projects}
-            activeProjectId={activeProject?.id || null}
+            activeProjectId={sidebarProject?.id || null}
             projectSessionCounts={projectSessionCounts}
             activeSessionId={activeSessionId}
             isSidebarCollapsed={isSidebarCollapsed}
@@ -1060,7 +1047,7 @@ function App(): React.JSX.Element {
             onOpenFreeConversations={() => void openFreeConversations()}
             onDeleteProject={(projectId) => void handleDeleteProject(projectId)}
             exitSessionFamilyView={exitSessionFamilyView}
-            handleNewSession={() => handleNewSession({ projectId: activeProject?.id })}
+            handleNewSession={() => handleNewSession({ projectId: sidebarProject?.id })}
             handleDeleteSession={handleDeleteSession}
             openSession={openSession}
             setSessionFamilyRootId={setSessionFamilyRootId}
