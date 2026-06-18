@@ -2,6 +2,7 @@ export interface ToolResultUi {
   title?: string
   url?: string
   summary?: string
+  details?: string
   items?: Array<{
     title: string
     url: string

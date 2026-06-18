@@ -143,6 +143,12 @@
   color: var(--color-danger);
 }
 
+.tool-detail-code.details {
+  max-height: 360px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .tool-detail-result {
   display: flex;
   flex-direction: column;

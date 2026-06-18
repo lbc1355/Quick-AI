@@ -15,6 +15,7 @@ describe('Shell Tool Execution', () => {
     expect(res.resultForModel).toContain('Stdout:\nhello from shell')
     expect(res.resultForUi.title).toContain('Execute Command')
     expect(res.resultForUi.summary).toContain('exited with code 0')
+    expect(res.resultForUi.details).toContain('Stdout:\nhello from shell')
   })
 
   it('captures stderr and reports non-zero exit codes', async () => {
@@ -27,6 +28,7 @@ describe('Shell Tool Execution', () => {
     expect(res.resultForModel).toContain('Exit Code: 42')
     expect(res.resultForModel).toContain('Stderr:\nerr msg')
     expect(res.resultForUi.summary).toContain('exited with code 42')
+    expect(res.resultForUi.details).toContain('Stderr:\nerr msg')
   })
 
   it('executes in the workspace root directory', async () => {

@@ -32,7 +32,8 @@ export const shellTools: Record<string, ToolDefinition> = {
           resultForModel: `Command: ${command}\nExecution Error: Command execution cancelled.`,
           resultForUi: {
             title: `Execute Command: ${command}`,
-            summary: `Command execution cancelled`
+            summary: `Command execution cancelled`,
+            details: 'Status: Command execution cancelled.'
           }
         }
       }
@@ -69,17 +70,24 @@ export const shellTools: Record<string, ToolDefinition> = {
             if (isCancelled) status = 'cancelled'
             else if (isTimedOut) status = 'timeout'
 
-            let resultText = `Command: ${command}\nCwd: ${root}\nExit Code: ${code}\nDuration: ${durationMs}ms\n\n`
+            const detailLines = [`Cwd: ${root}`, `Exit Code: ${code}`, `Duration: ${durationMs}ms`]
+            let resultText = `Command: ${command}\n${detailLines.join('\n')}\n\n`
             if (status === 'cancelled') {
               resultText += `Status: Command execution was cancelled.\n`
+              detailLines.push('Status: Command execution was cancelled.')
             } else if (status === 'timeout') {
               resultText += `Status: Command timed out after ${TIMEOUT_MS}ms and was terminated.\n`
+              detailLines.push(
+                `Status: Command timed out after ${TIMEOUT_MS}ms and was terminated.`
+              )
             }
             if (stdout) {
               resultText += `Stdout:\n${stdout}\n`
+              detailLines.push('', `Stdout:\n${stdout.trimEnd()}`)
             }
             if (stderr) {
               resultText += `Stderr:\n${stderr}\n`
+              detailLines.push('', `Stderr:\n${stderr.trimEnd()}`)
             }
             if (
               status === 'ok' &&
@@ -88,6 +96,7 @@ export const shellTools: Record<string, ToolDefinition> = {
               !error.message.includes('Command failed')
             ) {
               resultText += `Execution Error:\n${error.message}\n`
+              detailLines.push('', `Execution Error:\n${error.message}`)
             }
 
             const title = `Execute Command: ${
@@ -106,7 +115,8 @@ export const shellTools: Record<string, ToolDefinition> = {
               resultForModel: resultText,
               resultForUi: {
                 title,
-                summary
+                summary,
+                details: detailLines.join('\n')
               }
             })
           }

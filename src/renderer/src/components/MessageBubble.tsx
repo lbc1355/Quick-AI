@@ -45,27 +45,46 @@ const formatElapsedDuration = (seconds: number): string => {
   return `${secs}s`
 }
 
-const formatToolArgsSummary = (toolName: string, args: any): string => {
-  if (!args || typeof args !== 'object') return ''
+type ToolArgsRecord = Record<string, unknown>
+
+const isToolArgsRecord = (args: unknown): args is ToolArgsRecord =>
+  typeof args === 'object' && args !== null
+
+const getStringArg = (args: ToolArgsRecord, keys: string[]): string => {
+  for (const key of keys) {
+    const value = args[key]
+    if (typeof value === 'string') return value
+  }
+  return ''
+}
+
+const formatToolArgsSummary = (toolName: string, args: unknown): string => {
+  if (!isToolArgsRecord(args)) return ''
   const name = toolName.toLowerCase()
   if (name.includes('command') || name.includes('shell') || name.includes('run')) {
-    const cmd = args.CommandLine || args.command || args.cmd
-    if (typeof cmd === 'string') {
+    const cmd = getStringArg(args, ['CommandLine', 'command', 'cmd'])
+    if (cmd) {
       return cmd.length > 50 ? cmd.substring(0, 50) + '...' : cmd
     }
   }
-  const path =
-    args.path || args.TargetFile || args.AbsolutePath || args.Target || args.file || args.filePath
-  if (path && typeof path === 'string') {
+  const path = getStringArg(args, [
+    'path',
+    'TargetFile',
+    'AbsolutePath',
+    'Target',
+    'file',
+    'filePath'
+  ])
+  if (path) {
     const parts = path.replace(/\\/g, '/').split('/')
     return parts.length > 2 ? '.../' + parts.slice(-2).join('/') : path
   }
-  const query = args.query || args.q
-  if (query && typeof query === 'string') {
+  const query = getStringArg(args, ['query', 'q'])
+  if (query) {
     return `"${query.length > 40 ? query.substring(0, 40) + '...' : query}"`
   }
-  const url = args.url || args.Url || args.uri
-  if (url && typeof url === 'string') {
+  const url = getStringArg(args, ['url', 'Url', 'uri'])
+  if (url) {
     const displayUrl = url.replace(/^https?:\/\/(www\.)?/, '')
     return displayUrl.length > 40 ? displayUrl.substring(0, 40) + '...' : displayUrl
   }
@@ -77,21 +96,20 @@ const formatToolArgsSummary = (toolName: string, args: any): string => {
   return keyVal.length > 50 ? `{${keyVal.substring(0, 50)}...}` : `{${keyVal}}`
 }
 
-const getShellCommandArg = (toolName: string, args: any): string => {
-  if (!args || typeof args !== 'object') return ''
+const getShellCommandArg = (toolName: string, args: unknown): string => {
+  if (!isToolArgsRecord(args)) return ''
   const name = toolName.toLowerCase()
   if (!name.includes('command') && !name.includes('shell') && !name.includes('run')) return ''
-  const cmd = args.CommandLine || args.command || args.cmd
-  return typeof cmd === 'string' ? cmd : ''
+  return getStringArg(args, ['CommandLine', 'command', 'cmd'])
 }
 
-const formatToolDisplayText = (toolName: string, args: any, purpose?: string): string => {
+const formatToolDisplayText = (toolName: string, args: unknown, purpose?: string): string => {
   const summary = purpose || formatToolArgsSummary(toolName, args)
   return summary ? `${toolName} ${summary}` : toolName
 }
 
-const getToolArgsJson = (args: any): string => {
-  if (!args || typeof args !== 'object') return ''
+const getToolArgsJson = (args: unknown): string => {
+  if (!isToolArgsRecord(args)) return ''
   const cleanArgs = Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'purpose'))
   return Object.keys(cleanArgs).length > 0 ? JSON.stringify(cleanArgs, null, 2) : ''
 }
@@ -199,6 +217,11 @@ const ToolDetailModal: React.FC<{
                   >
                     {result.url}
                   </a>
+                )}
+                {result.details && (
+                  <pre className="tool-detail-code details">
+                    <code>{result.details}</code>
+                  </pre>
                 )}
                 {result.items && result.items.length > 0 && (
                   <div className="tool-detail-result-items">
@@ -472,14 +495,17 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     const isBranchForkMessage = Boolean(msg.isBranchFork || msg.forkedFrom)
     const branchRunId = shortBranchRunId(msg.forkedFrom?.runId)
 
-    const [elapsed, setElapsed] = useState<number>(0)
+    const [elapsed, setElapsed] = useState<number>(() =>
+      isGenerating && msg.role === 'assistant'
+        ? Math.round((Date.now() - (parseInt(msg.id) || Date.now())) / 1000)
+        : 0
+    )
 
     const hasLogs = hasStructuredEvents || (msg.content && msg.content.includes('[tool '))
 
     useEffect(() => {
       if (isGenerating && msg.role === 'assistant') {
         const startTime = parseInt(msg.id) || Date.now()
-        setElapsed(Math.round((Date.now() - startTime) / 1000))
         const timer = setInterval(() => {
           setElapsed(Math.round((Date.now() - startTime) / 1000))
         }, 500)
@@ -614,7 +640,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
             .trim()
             .split(/[。\n]/)[0]
             .trim()
-          const clean = firstLine.replace(/[\*#_``\[\]]/g, '').trim()
+          const clean = firstLine.replace(/[*#_`[\]]/g, '').trim()
           if (clean.length > 0) {
             return clean.length > 25 ? clean.substring(0, 25) + '...' : clean
           }
