@@ -10,6 +10,11 @@ export interface ToolExecutionContext {
   emitOutput?: (chunk: { stream: 'stdout' | 'stderr'; content: string; replace?: boolean }) => void
 }
 
+export interface ToolModelAttachment {
+  type: 'image_url'
+  image_url: { url: string }
+}
+
 export interface ToolDefinition {
   name: string
   title: string
@@ -34,6 +39,7 @@ export interface ToolDefinition {
   ) => Promise<{
     resultForModel: string
     resultForUi: ToolResultUi
+    modelAttachments?: ToolModelAttachment[]
   }>
 }
 

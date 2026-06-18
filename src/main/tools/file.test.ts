@@ -58,6 +58,37 @@ describe('fileTools', () => {
     expect(result.resultForModel).toContain('Content:\ntwo')
   })
 
+  it('loads local images as multimodal model attachments', async () => {
+    const pngBytes = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lM2o3wAAAABJRU5ErkJggg==',
+      'base64'
+    )
+    await fs.writeFile(join(testDir, 'workspace', 'src', 'pixel.png'), pngBytes)
+
+    const result = await fileTools.image_read.execute(
+      { path: 'src/pixel.png', root: 'workspace' },
+      executionContext
+    )
+
+    expect(result.resultForModel).toContain('Image loaded for multimodal context.')
+    expect(result.resultForModel).toContain('MIME: image/png')
+    expect(result.modelAttachments).toHaveLength(1)
+    expect(result.modelAttachments?.[0]).toMatchObject({
+      type: 'image_url',
+      image_url: {
+        url: expect.stringContaining('data:image/png;base64,')
+      }
+    })
+  })
+
+  it('points image files from file_read to image_read', async () => {
+    await fs.writeFile(join(testDir, 'workspace', 'src', 'photo.jpg'), Buffer.from([0xff, 0xd8]))
+
+    await expect(
+      fileTools.file_read.execute({ path: 'src/photo.jpg', root: 'workspace' }, executionContext)
+    ).rejects.toThrow('Use image_read')
+  })
+
   it('supports tail reads', async () => {
     await fs.writeFile(
       join(testDir, 'workspace', 'src', 'tail.ts'),

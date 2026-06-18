@@ -1,8 +1,11 @@
 import { promises as fs } from 'fs'
+import { extname } from 'path'
 import { ToolArgs } from '../../shared/types'
 import { getRun } from '../agent/AgentRunContext'
 import { ROOT_PARAMETER, getRootArg, resolveExistingSafePath } from './filePathSafety'
 import { ToolDefinition, ToolExecutionContext } from './types'
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif'])
+
 function normalizeLineNumberArg(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value)
     ? Math.max(1, Math.floor(value))
@@ -134,6 +137,12 @@ export const fileReadTool: ToolDefinition = {
     }
 
     const target = await resolveExistingSafePath(filePath, ctx, 'Path', getRootArg(args))
+    const extension = extname(target.realPath).toLowerCase()
+    if (IMAGE_EXTENSIONS.has(extension)) {
+      throw new Error(
+        `This is an image file (${extension}). Use image_read to attach it to the multimodal model context.`
+      )
+    }
 
     try {
       const stats = await fs.stat(target.realPath)

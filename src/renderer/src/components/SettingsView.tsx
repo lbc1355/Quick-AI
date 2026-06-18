@@ -91,6 +91,7 @@ const agentTools: Array<{
   { name: 'workspace_search', label: '搜索工作区', risk: 'low' },
   { name: 'code_symbol_read', label: '定位代码符号', risk: 'low' },
   { name: 'file_read', label: '读取本地文件', risk: 'low' },
+  { name: 'image_read', label: '读取本地图片', risk: 'low' },
   { name: 'file_write', label: '写入本地文件', risk: 'medium' },
   { name: 'shell', label: '执行系统命令', risk: 'high' }
 ]

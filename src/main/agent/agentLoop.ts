@@ -39,6 +39,7 @@ import {
 } from './resumePrompts'
 import { buildSideEffectEntry, extractResourceIds, SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { getFetchUrlCallKey, prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
+import type { ToolModelAttachment } from '../tools/types'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -549,6 +550,9 @@ export const runAgentLoop = async (
         })
 
         const toolResponses = new Array<ChatCompletionMessage>(assistantMessage.tool_calls.length)
+        const toolModelAttachments = new Array<ToolModelAttachment[] | undefined>(
+          assistantMessage.tool_calls.length
+        )
 
         // Helper to execute a single (already-prepared) tool call and return its result message
         const executeTool = async (
@@ -691,7 +695,7 @@ export const runAgentLoop = async (
             if (signal.aborted) {
               throw new Error('Agent execution aborted by user.')
             }
-            const { resultForModel, resultForUi } = await withRetry(
+            const { resultForModel, resultForUi, modelAttachments } = await withRetry(
               () =>
                 toolDef.execute(toolArgs, {
                   reqId,
@@ -717,6 +721,9 @@ export const runAgentLoop = async (
             )
             if (signal.aborted) {
               throw new Error('Agent execution aborted by user.')
+            }
+            if (modelAttachments && modelAttachments.length > 0) {
+              toolModelAttachments[prep.index] = modelAttachments
             }
 
             if (toolName === 'fetch_url') {
@@ -939,6 +946,19 @@ export const runAgentLoop = async (
           if (response) {
             messages.push(response)
           }
+        }
+        const visualAttachments = toolModelAttachments.flatMap((attachments) => attachments || [])
+        if (visualAttachments.length > 0) {
+          messages.push({
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Visual context from image_read: ${visualAttachments.length} image(s) attached. Analyze the attached image content directly when it is relevant to the user's request.`
+              },
+              ...visualAttachments
+            ]
+          })
         }
         const lastRecordedCallId = [...toolResponses]
           .reverse()
