@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getContextWindowSize, trimMessagesToFit } from './contextManager'
+import { getContextWindowInfo, getContextWindowSize, trimMessagesToFit } from './contextManager'
 import { ChatCompletionMessage } from '../../shared/types'
 
 describe('getContextWindowSize', () => {
@@ -16,6 +16,21 @@ describe('getContextWindowSize', () => {
   it('falls back to the default for unknown or empty model names', () => {
     expect(getContextWindowSize('totally-unknown')).toBe(128000)
     expect(getContextWindowSize('')).toBe(128000)
+  })
+
+  it('reports where the context size came from', () => {
+    expect(getContextWindowInfo('deepseek-chat')).toEqual({
+      tokens: 64000,
+      source: 'configured'
+    })
+    expect(getContextWindowInfo('some-model-32k')).toEqual({
+      tokens: 32000,
+      source: 'model-name'
+    })
+    expect(getContextWindowInfo('totally-unknown')).toEqual({
+      tokens: 128000,
+      source: 'default'
+    })
   })
 })
 

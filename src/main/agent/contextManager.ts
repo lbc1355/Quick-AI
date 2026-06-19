@@ -1,6 +1,7 @@
 import { ChatCompletionMessage } from '../../shared/types'
 import { estimateMessagesTokens, estimateTokens } from './tokenEstimator'
 export {
+  getContextWindowInfo,
   DEFAULT_CONTEXT_SIZE,
   getContextWindowSize,
   MODEL_CONTEXT_SIZES

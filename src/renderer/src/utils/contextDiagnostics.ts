@@ -1,4 +1,5 @@
 import { Message } from '../../../shared/types'
+import type { ContextWindowSource } from '../../../shared/modelContext'
 
 export interface PromptCacheDiagnostics {
   latestHitRate?: number
@@ -29,6 +30,7 @@ export interface ContextDiagnosticsSnapshot {
   customPermissionCount: number
   skillCount: number
   contextWindowTokens: number
+  contextWindowSource?: ContextWindowSource
   conversationBaseTokens: number
   steeringTokens: number
   mcpToolTokens: number
@@ -186,66 +188,4 @@ export function buildContextUsageBreakdown({
 
 export function formatUsagePercent(percent: number): string {
   return percent % 1 === 0 ? `${percent.toFixed(0)}%` : `${percent.toFixed(1)}%`
-}
-
-export function buildContextDiagnosticsTitle({
-  draftTokens,
-  diagnostics
-}: {
-  draftTokens: number
-  diagnostics: ContextDiagnosticsSnapshot
-}): string {
-  const usage = buildContextUsageBreakdown({ draftTokens, diagnostics })
-  const cache = diagnostics.cache
-  const tokenUsage = diagnostics.tokenUsage
-  const apiTokenSummary = tokenUsage.hasApiUsage
-    ? [
-        `input ${tokenUsage.promptTokens.toLocaleString()}`,
-        `output ${tokenUsage.completionTokens.toLocaleString()}`,
-        `total ${tokenUsage.totalTokens.toLocaleString()} tokens`
-      ].join(' / ')
-    : 'API usage unavailable for this conversation'
-  const reasoningTokenSummary =
-    tokenUsage.reasoningTokens > 0
-      ? `Reasoning tokens: ${tokenUsage.reasoningTokens.toLocaleString()}`
-      : 'Reasoning tokens: unavailable'
-  const latestRate = formatCacheRate(cache.latestHitRate) || '暂无'
-  const averageRate = formatCacheRate(cache.averageHitRate) || '暂无'
-  const cacheTokens =
-    cache.hitTokens + cache.missTokens > 0
-      ? `命中 ${cache.hitTokens.toLocaleString()} / 未命中 ${cache.missTokens.toLocaleString()} tokens`
-      : '当前 provider 未返回可聚合的 hit/miss tokens'
-
-  const prefixFactors = [
-    diagnostics.hasSystemPrompt ? '系统提示已启用' : '无自定义系统提示',
-    diagnostics.projectLabel ? `项目上下文：${diagnostics.projectLabel}` : '自由对话，无项目上下文',
-    diagnostics.resourceCount > 0
-      ? `资源摘要：${diagnostics.resourceCount} 个，资源更新可能改变前缀`
-      : '无资源摘要',
-    diagnostics.customPermissionCount > 0
-      ? `工具权限策略：${diagnostics.customPermissionCount} 项非默认配置`
-      : '工具权限策略为默认形态',
-    diagnostics.skillCount > 0
-      ? `技能目录：${diagnostics.skillCount} 个技能，技能增删改会改变 agent 前缀`
-      : '技能目录为空'
-  ]
-
-  return [
-    `Model: ${diagnostics.modelName || 'Current model'}`,
-    `API tokens: ${apiTokenSummary}`,
-    reasoningTokenSummary,
-    `上下文估算：${usage.totalTokens.toLocaleString()} / ${usage.contextWindowTokens.toLocaleString()} tokens (${formatUsagePercent(usage.totalPercent)})`,
-    `Conversation：${usage.conversationTokens.toLocaleString()} tokens (${formatUsagePercent(usage.conversationPercent)})`,
-    `MCP/tools：${usage.mcpToolTokens.toLocaleString()} tokens (${formatUsagePercent(usage.mcpToolPercent)})`,
-    `Steering files：${usage.steeringTokens.toLocaleString()} tokens (${formatUsagePercent(usage.steeringPercent)})`,
-    `当前输入/附件：${draftTokens.toLocaleString()} tokens`,
-    `历史消息：${diagnostics.messageCount} 条`,
-    '',
-    `缓存命中：本轮 ${latestRate}，会话平均 ${averageRate}`,
-    `缓存样本：${cache.sampleCount} 次`,
-    cacheTokens,
-    '',
-    '可能影响 prefix/cache 的因素：',
-    ...prefixFactors.map((factor) => `- ${factor}`)
-  ].join('\n')
 }

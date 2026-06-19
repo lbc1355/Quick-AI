@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildContextDiagnosticsTitle,
   buildContextUsageBreakdown,
   formatUsagePercent,
   getContextUsagePercent,
@@ -154,19 +153,4 @@ describe('contextDiagnostics', () => {
     expect(formatUsagePercent(3.3)).toBe('3.3%')
   })
 
-  it('includes cache and usage factors in the title', () => {
-    const title = buildContextDiagnosticsTitle({
-      draftTokens: 700,
-      diagnostics: baseDiagnostics
-    })
-
-    expect(title).toContain('3,500 / 10,000 tokens (35%)')
-    expect(title).toContain('Model: test-model-10k')
-    expect(title).toContain('API tokens: input 1,500 / output 400 / total 1,900 tokens')
-    expect(title).toContain('Conversation')
-    expect(title).toContain('MCP/tools')
-    expect(title).toContain('Steering files')
-    expect(title).toContain('本轮 75%')
-    expect(title).toContain('Quick Ai')
-  })
 })

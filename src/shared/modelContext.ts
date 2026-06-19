@@ -10,12 +10,21 @@ export const MODEL_CONTEXT_SIZES: Record<string, number> = {
 
 export const DEFAULT_CONTEXT_SIZE = 128000
 
-export function getContextWindowSize(modelName: string): number {
-  if (!modelName) return DEFAULT_CONTEXT_SIZE
+export type ContextWindowSource = 'configured' | 'model-name' | 'default'
+
+export interface ContextWindowInfo {
+  tokens: number
+  source: ContextWindowSource
+}
+
+export function getContextWindowInfo(modelName: string): ContextWindowInfo {
+  if (!modelName) {
+    return { tokens: DEFAULT_CONTEXT_SIZE, source: 'default' }
+  }
   const lower = modelName.toLowerCase()
 
   if (MODEL_CONTEXT_SIZES[lower]) {
-    return MODEL_CONTEXT_SIZES[lower]
+    return { tokens: MODEL_CONTEXT_SIZES[lower], source: 'configured' }
   }
 
   const sizeMatch = lower.match(/[-_](\d+)(k|m)\b/)
@@ -24,9 +33,13 @@ export function getContextWindowSize(modelName: string): number {
     const unit = sizeMatch[2]
     const tokens = unit === 'm' ? num * 1000000 : num * 1000
     if (tokens >= 2000 && tokens <= 10000000) {
-      return tokens
+      return { tokens, source: 'model-name' }
     }
   }
 
-  return DEFAULT_CONTEXT_SIZE
+  return { tokens: DEFAULT_CONTEXT_SIZE, source: 'default' }
+}
+
+export function getContextWindowSize(modelName: string): number {
+  return getContextWindowInfo(modelName).tokens
 }

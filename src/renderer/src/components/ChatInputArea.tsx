@@ -3,12 +3,9 @@ import { Paperclip, Sparkles, Square, Send } from 'lucide-react'
 import { AutocompleteItem, RunMode } from '../../../shared/types'
 import { FilePreviewList } from './FilePreviewList'
 import { PermissionPopup } from './PermissionPopup'
+import { ContextPanel } from './ContextPanel'
 import { estimateDraftContextTokens } from '../utils/contextLength'
-import {
-  buildContextDiagnosticsTitle,
-  buildContextUsageBreakdown,
-  formatUsagePercent
-} from '../utils/contextDiagnostics'
+import { buildContextUsageBreakdown } from '../utils/contextDiagnostics'
 import type { ContextDiagnosticsSnapshot } from '../utils/contextDiagnostics'
 import {
   getAutocompleteTitle,
@@ -108,6 +105,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   const contextBaseTokenEstimateRef = useRef(contextBaseTokenEstimate)
   const contextMeterTimerRef = useRef<number | null>(null)
   const [hasDraftContent, setHasDraftContent] = useState(() => inputVal.trim().length > 0)
+  const [isContextPanelOpen, setIsContextPanelOpen] = useState(false)
   const [contextTokenEstimate, setContextTokenEstimate] = useState(
     () => contextBaseTokenEstimate + estimateDraftContextTokens({ input: inputVal })
   )
@@ -174,21 +172,12 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     draftTokens: draftContextTokenEstimate,
     diagnostics: contextDiagnostics
   })
-  const effectiveContextLengthTitle = buildContextDiagnosticsTitle({
-    draftTokens: draftContextTokenEstimate,
-    diagnostics: contextDiagnostics
-  })
   const contextUsageLevel =
     contextUsage.totalPercent >= 90 ? 'danger' : contextUsage.totalPercent >= 70 ? 'warn' : 'ok'
   const contextMeterStyle = {
     '--context-progress-angle': `${contextUsage.totalPercent * 3.6}deg`
   } as React.CSSProperties
-  const modelContextLabel = contextDiagnostics.modelName || 'Current model'
-  const maxContextLabel = `${contextUsage.contextWindowTokens.toLocaleString()} tokens`
-  const tokenUsage = contextDiagnostics.tokenUsage
-  const apiUsageAvailable = tokenUsage.hasApiUsage
-  const formatApiTokens = (tokens: number): string =>
-    apiUsageAvailable ? tokens.toLocaleString() : 'Unavailable'
+  const contextMeterLabel = `上下文 ${contextUsage.totalTokens.toLocaleString()} / ${contextUsage.contextWindowTokens.toLocaleString()} tokens`
 
   const updateDraftValue = useCallback(
     (value: string) => {
@@ -224,6 +213,14 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   return (
     <>
       <FilePreviewList attachedFiles={attachedFiles} onRemoveFile={handleRemoveFile} />
+      {isContextPanelOpen && (
+        <ContextPanel
+          diagnostics={contextDiagnostics}
+          draftTokens={draftContextTokenEstimate}
+          attachedFiles={attachedFiles}
+          onClose={() => setIsContextPanelOpen(false)}
+        />
+      )}
 
       {/* Input Area */}
       <div className="chat-input-section">
@@ -284,65 +281,15 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
               onClick={() => window.api.setFilePickerActive(true)}
             />
           </label>
-          <span
+          <button
+            type="button"
             className={`input-context-meter ${contextUsageLevel}`}
-            tabIndex={0}
-            aria-label={effectiveContextLengthTitle}
+            aria-label="Open context details"
+            title={contextMeterLabel}
+            onClick={() => setIsContextPanelOpen(true)}
           >
             <span className="context-progress-ring" style={contextMeterStyle} aria-hidden="true" />
-            <span className="context-usage-popover" role="tooltip">
-              <span className="context-usage-title">Context usage</span>
-              <span className="context-usage-model">
-                <span>{modelContextLabel}</span>
-                <span>Max {maxContextLabel}</span>
-              </span>
-              <span className="context-usage-row">
-                <span>API input</span>
-                <span>{formatApiTokens(tokenUsage.promptTokens)}</span>
-              </span>
-              <span className="context-usage-row">
-                <span>API output</span>
-                <span>{formatApiTokens(tokenUsage.completionTokens)}</span>
-              </span>
-              {tokenUsage.reasoningTokens > 0 && (
-                <span className="context-usage-row">
-                  <span>Reasoning</span>
-                  <span>{tokenUsage.reasoningTokens.toLocaleString()}</span>
-                </span>
-              )}
-              <span className="context-usage-divider" />
-              <span className="context-usage-row">
-                <span>Conversation</span>
-                <span>
-                  {contextUsage.conversationTokens.toLocaleString()} ·{' '}
-                  {formatUsagePercent(contextUsage.conversationPercent)}
-                </span>
-              </span>
-              <span className="context-usage-row">
-                <span>MCP tools</span>
-                <span>
-                  {contextUsage.mcpToolTokens.toLocaleString()} ·{' '}
-                  {formatUsagePercent(contextUsage.mcpToolPercent)}
-                </span>
-              </span>
-              <span className="context-usage-row">
-                <span>Steering files</span>
-                <span>
-                  {contextUsage.steeringTokens.toLocaleString()} ·{' '}
-                  {formatUsagePercent(contextUsage.steeringPercent)}
-                </span>
-              </span>
-              <span className="context-usage-divider" />
-              <span className="context-usage-row total">
-                <span>Total</span>
-                <span>
-                  {contextUsage.totalTokens.toLocaleString()} /{' '}
-                  {contextUsage.contextWindowTokens.toLocaleString()} ·{' '}
-                  {formatUsagePercent(contextUsage.totalPercent)}
-                </span>
-              </span>
-            </span>
-          </span>
+          </button>
           <textarea
             ref={textareaRef}
             className="chat-input"

@@ -36,7 +36,7 @@ import {
   summarizeConversationTokenUsage,
   summarizePromptCacheStats
 } from './utils/contextDiagnostics'
-import { getContextWindowSize } from '../../shared/modelContext'
+import { getContextWindowInfo } from '../../shared/modelContext'
 
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
@@ -926,7 +926,8 @@ function App(): React.JSX.Element {
   )
   const contextBaseTokenEstimate =
     steeringContextTokenEstimate + historyContextTokenEstimate + draftAttachmentTokenEstimate
-  const contextWindowTokens = useMemo(() => getContextWindowSize(selectedModel), [selectedModel])
+  const contextWindowInfo = useMemo(() => getContextWindowInfo(selectedModel), [selectedModel])
+  const contextWindowTokens = contextWindowInfo.tokens
   const contextDiagnostics = useMemo(
     () => ({
       cache: summarizePromptCacheStats(activeSession?.messages || []),
@@ -942,6 +943,7 @@ function App(): React.JSX.Element {
         .length,
       skillCount: skills.length,
       contextWindowTokens,
+      contextWindowSource: contextWindowInfo.source,
       conversationBaseTokens: historyContextTokenEstimate + draftAttachmentTokenEstimate,
       steeringTokens: steeringContextTokenEstimate,
       mcpToolTokens: 0
@@ -950,6 +952,7 @@ function App(): React.JSX.Element {
       activeProject,
       activeSession?.messages,
       activeSession?.resources,
+      contextWindowInfo.source,
       contextWindowTokens,
       draftAttachmentTokenEstimate,
       historyContextTokenEstimate,
