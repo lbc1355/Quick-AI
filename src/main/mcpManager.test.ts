@@ -9,6 +9,12 @@ const pathMock = vi.hoisted(() => ({
   root: `${process.cwd()}/.test-quickai`
 }))
 
+const mcpMockState = vi.hoisted((): { callToolResult: { content: Array<Record<string, unknown>> } } => ({
+  callToolResult: {
+    content: [{ type: 'text', text: 'mocked tool response' }]
+  }
+}))
+
 vi.mock('./paths', () => ({
   getQuickAiRoot: () => pathMock.root,
   getLogsRoot: () => `${pathMock.root}/logs`,
@@ -36,9 +42,7 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
           }
         ]
       })
-      callTool = vi.fn().mockResolvedValue({
-        content: [{ type: 'text', text: 'mocked tool response' }]
-      })
+      callTool = vi.fn().mockImplementation(() => Promise.resolve(mcpMockState.callToolResult))
       close = vi.fn().mockResolvedValue(undefined)
     }
   }
@@ -55,6 +59,9 @@ describe('McpManager', () => {
   const configPath = join(getQuickAiRoot(), 'mcp.json')
 
   beforeEach(() => {
+    mcpMockState.callToolResult = {
+      content: [{ type: 'text', text: 'mocked tool response' }]
+    }
     mkdirSync(getQuickAiRoot(), { recursive: true })
     // Delete config file if it exists to ensure a clean state
     if (existsSync(configPath)) {
@@ -131,6 +138,51 @@ describe('McpManager', () => {
     const executionResult = await toolDef?.execute({ inputVal: 'test' }, { reqId: 'test-req', signal: new AbortController().signal })
     expect(executionResult?.resultForModel).toBe('mocked tool response')
     expect(executionResult?.resultForUi.title).toBe('MCP Tool Call: git / test_tool')
+  })
+
+  it('keeps structured MCP tool content visible in UI details', async () => {
+    mcpMockState.callToolResult = {
+      content: [
+        { type: 'text', text: 'text part' },
+        {
+          type: 'resource',
+          resource: {
+            uri: 'file:///paper.md',
+            text: 'resource part'
+          }
+        }
+      ]
+    }
+
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          servers: {
+            arxiv: {
+              command: 'node',
+              args: ['arxiv-server.js']
+            }
+          }
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const toolDef = getToolRegistry().get('mcp_arxiv_test_tool')
+    const executionResult = await toolDef?.execute(
+      { inputVal: 'test' },
+      { reqId: 'test-req', signal: new AbortController().signal }
+    )
+
+    expect(executionResult?.resultForModel).toContain('text part')
+    expect(executionResult?.resultForModel).toContain('"uri": "file:///paper.md"')
+    expect(executionResult?.resultForUi.details).toContain('resource part')
   })
 
   it('supports mcpServers compatibility key', async () => {

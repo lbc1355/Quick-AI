@@ -1,6 +1,7 @@
 import React from 'react'
 import { Check, Pencil, Plus, Server, Trash2 } from 'lucide-react'
 import { ApiProvider } from '../../../shared/types'
+import { getProviderModels } from '../../../shared/modelCatalog'
 import { getProviderTypeLabel, PROVIDER_PRESETS } from '../utils/providerPresets'
 
 interface ProviderListProps {
@@ -120,7 +121,7 @@ export const ProviderList: React.FC<ProviderListProps> = ({
 
         {providers.map((provider) => {
           const isActive = provider.id === activeProviderId
-          const configuredModels = provider.modelsList?.length || 0
+          const configuredModels = getProviderModels(provider).length
           return (
             <div key={provider.id} className={`provider-card ${isActive ? 'active' : ''}`}>
               <div className="provider-card-main">

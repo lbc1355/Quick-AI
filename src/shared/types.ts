@@ -230,6 +230,24 @@ export interface Project {
   updatedAt: number
 }
 
+export type ProviderEndpointType = 'openai-compatible' | 'ollama-openai' | 'custom'
+
+export type ModelCapability = 'text' | 'vision' | 'tools' | 'reasoning'
+
+export interface ModelInfo {
+  id: string
+  apiId: string
+  providerId: string
+  displayName?: string
+  endpointType: ProviderEndpointType
+  capabilities?: ModelCapability[]
+  limit: {
+    context: number
+    output?: number
+  }
+  enabled: boolean
+}
+
 export interface ApiProvider {
   id: string
   name: string
@@ -239,6 +257,8 @@ export interface ApiProvider {
   model: string
   modelsList: string[]
   modelContextWindows?: Record<string, number>
+  endpointType?: ProviderEndpointType
+  models?: Record<string, ModelInfo>
 }
 
 export interface AppSettings {

@@ -31,7 +31,7 @@ import {
   summarizeConversationTokenUsage,
   summarizePromptCacheStats
 } from './utils/contextDiagnostics'
-import { getContextWindowInfo } from '../../shared/modelContext'
+import { getProviderModelContextWindowInfo } from '../../shared/modelCatalog'
 
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
@@ -154,7 +154,10 @@ function App(): React.JSX.Element {
     () => providers.find((provider) => provider.id === activeProviderId),
     [activeProviderId, providers]
   )
-  const activeModelContextWindowTokens = activeProviderConfig?.modelContextWindows?.[selectedModel]
+  const activeModelContextWindowTokens = getProviderModelContextWindowInfo(
+    activeProviderConfig,
+    selectedModel
+  ).tokens
 
   // 2. Sessions hook
   const {
@@ -931,8 +934,8 @@ function App(): React.JSX.Element {
   const contextBaseTokenEstimate =
     steeringContextTokenEstimate + historyContextTokenEstimate + draftAttachmentTokenEstimate
   const contextWindowInfo = useMemo(
-    () => getContextWindowInfo(selectedModel, activeModelContextWindowTokens),
-    [activeModelContextWindowTokens, selectedModel]
+    () => getProviderModelContextWindowInfo(activeProviderConfig, selectedModel),
+    [activeProviderConfig, selectedModel]
   )
   const contextWindowTokens = contextWindowInfo.tokens
   const contextDiagnostics = useMemo(

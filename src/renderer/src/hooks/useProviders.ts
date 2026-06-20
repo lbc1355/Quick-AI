@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { ApiProvider, AppSettings, WebSearchProviderType } from '../../../shared/types'
 import { normalizeContextWindowTokens } from '../../../shared/modelContext'
+import {
+  normalizeProviderModelCatalog,
+  normalizeProvidersModelCatalog
+} from '../../../shared/modelCatalog'
 import { ensureCoreProviderPresets, getProviderPreset } from '../utils/providerPresets'
 
 export interface UseProvidersReturn {
@@ -115,7 +119,7 @@ export const useProviders = (): UseProvidersReturn => {
           await window.api.storeSet('settings', upgradedSettings)
         }
 
-        const loadedProviders = upgradedSettings.providers || []
+        const loadedProviders = normalizeProvidersModelCatalog(upgradedSettings.providers || [])
         const loadedActiveId = upgradedSettings.activeProviderId || ''
         setProviders(loadedProviders)
         setActiveProviderId(loadedActiveId)
@@ -230,14 +234,14 @@ export const useProviders = (): UseProvidersReturn => {
     if (savedSettings) {
       savedSettings.providers = providers.map((p) => {
         if (p.id === editingProviderId) {
-          return {
+          return normalizeProviderModelCatalog({
             ...p,
             apiKey,
             apiUrl,
             model: selectedModel,
             modelsList,
             modelContextWindows: sanitizedContextWindows
-          }
+          })
         }
         return p
       })
@@ -252,7 +256,7 @@ export const useProviders = (): UseProvidersReturn => {
     const preset = getProviderPreset(type)
     const customName = name.trim() || preset?.name || `${type.toUpperCase()}-配置`
     const newId = `provider-custom-${Date.now()}`
-    const newProv: ApiProvider = {
+    const newProv: ApiProvider = normalizeProviderModelCatalog({
       id: newId,
       name: customName,
       type,
@@ -261,7 +265,7 @@ export const useProviders = (): UseProvidersReturn => {
       model: preset ? preset.defaultModel : '',
       modelsList: preset ? [...preset.modelsList] : [],
       modelContextWindows: {}
-    }
+    })
     const updated = [...providers, newProv]
     setProviders(updated)
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings

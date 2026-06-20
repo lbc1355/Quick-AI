@@ -12,6 +12,7 @@ import {
   isPathInsideRoot,
   resolveExistingSafePath
 } from './filePathSafety'
+import { createToolResult } from './result'
 const CODE_SYMBOL_EXTENSIONS = new Set([
   '.ts',
   '.tsx',
@@ -455,17 +456,17 @@ export const codeSymbolTool: ToolDefinition = {
     }
 
     if (matches.length === 0) {
-      return {
-        resultForModel:
+      const resultForModel =
           `No definition-like symbol match found for "${symbol}".` +
           (requestedPath
             ? ' Try workspace_search for text references or verify the file path.'
-            : ' Try workspace_search with the symbol text or provide a path.'),
-        resultForUi: {
-          title: `Code Symbol: ${symbol}`,
-          summary: 'No definition-like symbol match found'
-        }
-      }
+            : ' Try workspace_search with the symbol text or provide a path.')
+
+      return createToolResult({
+        resultForModel,
+        title: `Code Symbol: ${symbol}`,
+        summary: 'No definition-like symbol match found'
+      })
     }
 
     const best = matches[0]
@@ -498,13 +499,11 @@ export const codeSymbolTool: ToolDefinition = {
       .filter(Boolean)
       .join('\n\n')
 
-    return {
+    return createToolResult({
       resultForModel,
-      resultForUi: {
-        title: `Code Symbol: ${symbol}`,
-        url: `file:///${best.realPath.replace(/\\/g, '/')}`,
-        summary: `${best.relPath}:${best.lineNumber} (${best.kind}), lines ${range.startIndex + 1}-${range.endIndex + 1}`
-      }
-    }
+      title: `Code Symbol: ${symbol}`,
+      url: `file:///${best.realPath.replace(/\\/g, '/')}`,
+      summary: `${best.relPath}:${best.lineNumber} (${best.kind}), lines ${range.startIndex + 1}-${range.endIndex + 1}`
+    })
   }
 }

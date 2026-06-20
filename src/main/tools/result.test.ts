@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildToolResultUiDetails,
+  createRawToolResult,
   createToolResult,
   normalizeToolExecutionResult
 } from './result'
@@ -42,5 +43,26 @@ describe('tool result helpers', () => {
     expect(details).toContain('abc')
     expect(details).toContain('call-2')
     expect(details.length).toBeGreaterThan(3)
+  })
+
+  it('creates model and UI results from mixed raw tool output', () => {
+    const result = createRawToolResult({
+      rawOutput: [
+        { type: 'text', text: 'first line' },
+        {
+          type: 'resource',
+          resource: {
+            uri: 'file:///tmp/a.txt',
+            text: 'resource body'
+          }
+        }
+      ],
+      title: 'External Tool',
+      summary: 'Returned mixed content'
+    })
+
+    expect(result.resultForModel).toContain('first line')
+    expect(result.resultForModel).toContain('"uri": "file:///tmp/a.txt"')
+    expect(result.resultForUi.details).toContain('resource body')
   })
 })

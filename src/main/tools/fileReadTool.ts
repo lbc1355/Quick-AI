@@ -4,6 +4,7 @@ import { ToolArgs } from '../../shared/types'
 import { getRun } from '../agent/AgentRunContext'
 import { ROOT_PARAMETER, getRootArg, resolveExistingSafePath } from './filePathSafety'
 import { ToolDefinition, ToolExecutionContext } from './types'
+import { createToolResult } from './result'
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif'])
 
 function normalizeLineNumberArg(value: unknown, fallback: number): number {
@@ -199,13 +200,11 @@ export const fileReadTool: ToolDefinition = {
 
     const fileUrl = `file:///${target.realPath.replace(/\\/g, '/')}`
 
-    return {
+    return createToolResult({
       resultForModel,
-      resultForUi: {
-        title: `Read File: ${target.relPath}`,
-        url: fileUrl,
-        summary: `Read lines ${window.startLine}-${window.endLine} of ${totalLines} in ${target.rootKind} ${target.root}`
-      }
-    }
+      title: `Read File: ${target.relPath}`,
+      url: fileUrl,
+      summary: `Read lines ${window.startLine}-${window.endLine} of ${totalLines} in ${target.rootKind} ${target.root}`
+    })
   }
 }

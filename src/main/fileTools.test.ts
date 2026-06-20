@@ -31,6 +31,10 @@ describe('File Safety & Search Tools', () => {
     await fs.writeFile(join(testDir, 'a.txt'), `line1\nline2\n${queryStr}\nline4`)
     await fs.writeFile(join(testDir, 'b.log'), `${queryStr}\nline2\n${queryStrUpper}`)
     await fs.writeFile(join(testDir, 'root.ts'), `${queryStr}`)
+    await fs.writeFile(
+      join(testDir, 'symbols.ts'),
+      `export function targetFn() {\n  return 'ok'\n}\n`
+    )
     await fs.writeFile(join(testDir, 'sub', 'c.ts'), `other\n${queryStr}`)
     await fs.writeFile(join(testDir, 'sub', 'deep', 'd.ts'), `${queryStr}`)
     await fs.writeFile(join(testDir, 'sub', 'sensitive.key'), 'secret')
@@ -89,6 +93,7 @@ describe('File Safety & Search Tools', () => {
       expect(res.resultForModel).toContain(`line2\n${queryStr}`)
       expect(res.resultForModel).toContain('Lines: 2 to 3 of 4')
       expect(res.resultForUi.title).toBe(`Read File: temp-file-test-dir/a.txt`)
+      expect(res.resultForUi.details).toContain(`line2\n${queryStr}`)
     })
 
     it('rejects reading outside workspace', async () => {
@@ -133,6 +138,20 @@ describe('File Safety & Search Tools', () => {
       await expect(
         ToolRegistry.file_read.execute({ path: join(testDir, '.env') }, context)
       ).rejects.toThrow('sensitive file')
+    })
+  })
+
+  describe('code_symbol_read tool', () => {
+    it('returns symbol details for UI inspection', async () => {
+      const context = { reqId: 'test-req', signal: new AbortController().signal }
+      const res = await ToolRegistry.code_symbol_read.execute(
+        { symbol: 'targetFn', path: join(testDir, 'symbols.ts') },
+        context
+      )
+
+      expect(res.resultForModel).toContain('Symbol: targetFn')
+      expect(res.resultForUi.title).toBe('Code Symbol: targetFn')
+      expect(res.resultForUi.details).toContain("return 'ok'")
     })
   })
 

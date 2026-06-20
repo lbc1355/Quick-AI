@@ -40,6 +40,7 @@ interface ContextPanelMetric {
 }
 
 const sourceLabelMap = {
+  'model-catalog': '模型目录',
   configured: '模型配置',
   'model-name': '模型名推断',
   default: '默认 128k'

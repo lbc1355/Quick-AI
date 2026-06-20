@@ -1,4 +1,5 @@
 import { ApiProvider, AppSettings } from '../../../shared/types'
+import { normalizeProviderModelCatalog } from '../../../shared/modelCatalog'
 
 export interface ProviderPreset {
   type: ApiProvider['type']
@@ -8,7 +9,7 @@ export interface ProviderPreset {
   defaultModel: string
 }
 
-export const PROVIDER_PRESET_VERSION = 1
+export const PROVIDER_PRESET_VERSION = 2
 
 const CORE_PROVIDER_TYPES: ApiProvider['type'][] = ['opencode', 'glm', 'kimi', 'mimo']
 
@@ -70,15 +71,16 @@ export const getProviderPreset = (type: ApiProvider['type']): ProviderPreset | u
 export const getProviderTypeLabel = (type: ApiProvider['type']): string =>
   getProviderPreset(type)?.name || type
 
-export const buildProviderFromPreset = (preset: ProviderPreset): ApiProvider => ({
-  id: `provider-${preset.type}`,
-  name: preset.name,
-  type: preset.type,
-  apiKey: '',
-  apiUrl: preset.apiUrl,
-  model: preset.defaultModel,
-  modelsList: [...preset.modelsList]
-})
+export const buildProviderFromPreset = (preset: ProviderPreset): ApiProvider =>
+  normalizeProviderModelCatalog({
+    id: `provider-${preset.type}`,
+    name: preset.name,
+    type: preset.type,
+    apiKey: '',
+    apiUrl: preset.apiUrl,
+    model: preset.defaultModel,
+    modelsList: [...preset.modelsList]
+  })
 
 const providerMatchesPreset = (provider: ApiProvider, preset: ProviderPreset): boolean => {
   if (provider.type === preset.type) return true
@@ -93,20 +95,19 @@ export function ensureCoreProviderPresets(settings: AppSettings): {
   settings: AppSettings
   changed: boolean
 } {
-  if ((settings.providerPresetVersion || 0) >= PROVIDER_PRESET_VERSION) {
-    return { settings, changed: false }
-  }
-
+  const shouldInstallCorePresets = (settings.providerPresetVersion || 0) < PROVIDER_PRESET_VERSION
   const providers = [...(settings.providers || [])]
   let changed = false
 
-  for (const type of CORE_PROVIDER_TYPES) {
-    const preset = getProviderPreset(type)
-    if (!preset) continue
-    const exists = providers.some((provider) => providerMatchesPreset(provider, preset))
-    if (!exists) {
-      providers.push(buildProviderFromPreset(preset))
-      changed = true
+  if (shouldInstallCorePresets) {
+    for (const type of CORE_PROVIDER_TYPES) {
+      const preset = getProviderPreset(type)
+      if (!preset) continue
+      const exists = providers.some((provider) => providerMatchesPreset(provider, preset))
+      if (!exists) {
+        providers.push(buildProviderFromPreset(preset))
+        changed = true
+      }
     }
   }
 
@@ -116,9 +117,23 @@ export function ensureCoreProviderPresets(settings: AppSettings): {
       ? settings.activeProviderId
       : providers[0]?.id || ''
 
+  const normalizedProviders = providers.map(normalizeProviderModelCatalog)
+  changed =
+    changed ||
+    normalizedProviders.some((provider, index) => {
+      const original = providers[index]
+      return (
+        !original ||
+        original.endpointType !== provider.endpointType ||
+        JSON.stringify(original.models || {}) !== JSON.stringify(provider.models || {}) ||
+        JSON.stringify(original.modelContextWindows || {}) !==
+          JSON.stringify(provider.modelContextWindows || {})
+      )
+    })
+
   const nextSettings: AppSettings = {
     ...settings,
-    providers,
+    providers: normalizedProviders,
     activeProviderId,
     providerPresetVersion: PROVIDER_PRESET_VERSION
   }

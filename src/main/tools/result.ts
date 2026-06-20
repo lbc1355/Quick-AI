@@ -16,7 +16,54 @@ export interface CreateToolResultOptions {
   detailsLimit?: number
 }
 
+export interface CreateRawToolResultOptions
+  extends Omit<CreateToolResultOptions, 'resultForModel' | 'details'> {
+  rawOutput: unknown
+  details?: string
+}
+
 const compact = (text: string): string => text.replace(/\s+/g, ' ').trim()
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const safeJsonStringify = (value: unknown): string => {
+  const seen = new WeakSet<object>()
+  try {
+    return JSON.stringify(
+      value,
+      (_key, nestedValue: unknown) => {
+        if (typeof nestedValue === 'bigint') return nestedValue.toString()
+        if (typeof nestedValue !== 'object' || nestedValue === null) return nestedValue
+        if (seen.has(nestedValue)) return '[Circular]'
+        seen.add(nestedValue)
+        return nestedValue
+      },
+      2
+    )
+  } catch {
+    return String(value)
+  }
+}
+
+const formatRawToolPart = (part: unknown): string => {
+  if (part === undefined || part === null) return ''
+  if (typeof part === 'string') return part
+  if (typeof part === 'number' || typeof part === 'boolean' || typeof part === 'bigint') {
+    return String(part)
+  }
+  if (isRecord(part) && part.type === 'text' && typeof part.text === 'string') {
+    return part.text
+  }
+  return safeJsonStringify(part)
+}
+
+export const formatRawToolOutput = (rawOutput: unknown): string => {
+  if (Array.isArray(rawOutput)) {
+    return rawOutput.map(formatRawToolPart).filter(Boolean).join('\n\n')
+  }
+  return formatRawToolPart(rawOutput)
+}
 
 export const summarizeToolResult = (text: string, maxLength = 220): string => {
   const clean = compact(text)
@@ -66,6 +113,16 @@ export function createToolResult(options: CreateToolResultOptions): ToolExecutio
     resultForUi: buildToolResultUi(options),
     modelAttachments: options.modelAttachments
   }
+}
+
+export function createRawToolResult(options: CreateRawToolResultOptions): ToolExecutionResult {
+  const resultForModel = formatRawToolOutput(options.rawOutput)
+
+  return createToolResult({
+    ...options,
+    resultForModel,
+    details: options.details ?? resultForModel
+  })
 }
 
 export function normalizeToolExecutionResult(

@@ -6,7 +6,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { getQuickAiRoot } from './paths'
 import { registerTool, unregisterTool } from './toolRegistry'
 import { ToolDefinition } from './tools/types'
-import { createToolResult } from './tools/result'
+import { createRawToolResult, createToolResult } from './tools/result'
 import { logger } from './logger'
 
 export interface McpServerConfig {
@@ -293,6 +293,7 @@ class McpManagerImpl {
         tags: ['mcp', name],
         category: 'system',
         risk: 'medium', // Default to medium risk so it goes through standard approval prompts
+        source: 'mcp',
         implemented: true,
         discoverable: true,
         parameters: (tool.inputSchema as any) || {
@@ -307,16 +308,8 @@ class McpManagerImpl {
               arguments: args
             })) as any
 
-            const textParts = result.content
-              .filter((c: any) => c.type === 'text')
-              .map((c: any) => c.text)
-
-            const textOutput = textParts.join('\n')
-
-            const resultForModel = textOutput || JSON.stringify(result.content)
-
-            return createToolResult({
-              resultForModel,
+            return createRawToolResult({
+              rawOutput: result.content ?? result,
               title: `MCP Tool Call: ${name} / ${tool.name}`,
               summary: `Successfully executed tool "${tool.name}" on server "${name}"`
             })

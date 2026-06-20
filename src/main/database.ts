@@ -12,6 +12,7 @@ import {
   SessionResourceChunk,
   Project
 } from '../shared/types'
+import { normalizeProviderModelCatalog } from '../shared/modelCatalog'
 
 let db: Database.Database | null = null
 
@@ -56,7 +57,9 @@ function createSchema(database: Database.Database): void {
       apiUrl     TEXT NOT NULL,
       model      TEXT NOT NULL,
       modelsList TEXT NOT NULL DEFAULT '[]',
-      modelContextWindows TEXT NOT NULL DEFAULT '{}'
+      modelContextWindows TEXT NOT NULL DEFAULT '{}',
+      endpointType TEXT,
+      models TEXT NOT NULL DEFAULT '{}'
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
@@ -170,6 +173,8 @@ function createSchema(database: Database.Database): void {
   ensureColumn(database, 'messages', 'tokenSpeed', 'REAL')
   ensureColumn(database, 'messages', 'cacheStats', 'TEXT')
   ensureColumn(database, 'providers', 'modelContextWindows', "TEXT NOT NULL DEFAULT '{}'")
+  ensureColumn(database, 'providers', 'endpointType', 'TEXT')
+  ensureColumn(database, 'providers', 'models', "TEXT NOT NULL DEFAULT '{}'")
   ensureColumn(database, 'skills', 'entryPath', 'TEXT')
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")
@@ -241,19 +246,22 @@ function migrateStore(database: Database.Database, storePath: string): void {
       if (settings.providers && settings.providers.length > 0) {
         const insertProvider = database.prepare(
           `INSERT OR REPLACE INTO providers
-           (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         for (const p of settings.providers) {
+          const normalized = normalizeProviderModelCatalog(p)
           insertProvider.run(
-            p.id,
-            p.name,
-            p.type || 'custom',
-            p.apiKey || '',
-            p.apiUrl,
-            p.model,
-            JSON.stringify(p.modelsList || []),
-            JSON.stringify(p.modelContextWindows || {})
+            normalized.id,
+            normalized.name,
+            normalized.type || 'custom',
+            normalized.apiKey || '',
+            normalized.apiUrl,
+            normalized.model,
+            JSON.stringify(normalized.modelsList || []),
+            JSON.stringify(normalized.modelContextWindows || {}),
+            normalized.endpointType || null,
+            JSON.stringify(normalized.models || {})
           )
         }
       }
@@ -434,6 +442,8 @@ export function loadSettings(): AppSettings {
     model: string
     modelsList: string
     modelContextWindows: string
+    endpointType: string | null
+    models: string
   }>
 
   let permissions: { [toolName: string]: 'allow' | 'ask' | 'deny' } = {}
@@ -451,16 +461,20 @@ export function loadSettings(): AppSettings {
   }
 
   return {
-    providers: providers.map((p) => ({
-      id: p.id,
-      name: p.name,
-      type: p.type as ApiProvider['type'],
-      apiKey: p.apiKey,
-      apiUrl: p.apiUrl,
-      model: p.model,
-      modelsList: JSON.parse(p.modelsList || '[]'),
-      modelContextWindows: JSON.parse(p.modelContextWindows || '{}')
-    })),
+    providers: providers.map((p) =>
+      normalizeProviderModelCatalog({
+        id: p.id,
+        name: p.name,
+        type: p.type as ApiProvider['type'],
+        apiKey: p.apiKey,
+        apiUrl: p.apiUrl,
+        model: p.model,
+        modelsList: JSON.parse(p.modelsList || '[]'),
+        modelContextWindows: JSON.parse(p.modelContextWindows || '{}'),
+        endpointType: (p.endpointType || undefined) as ApiProvider['endpointType'],
+        models: JSON.parse(p.models || '{}')
+      })
+    ),
     activeProviderId: kv['activeProviderId'] || '',
     systemPrompt: kv['systemPrompt'] || '',
     autoHideOnBlur: kv['autoHideOnBlur'] !== 'false',
@@ -476,7 +490,7 @@ export function saveSettings(settings: AppSettings): void {
   const upsert = database.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
   const deleteProviders = database.prepare('DELETE FROM providers')
   const insert = database.prepare(
-    'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
 
   // Wrap the whole save in a single transaction: turns N independent fsync-per-statement
@@ -494,15 +508,18 @@ export function saveSettings(settings: AppSettings): void {
     // Providers: delete all then re-insert
     deleteProviders.run()
     for (const p of s.providers) {
+      const normalized = normalizeProviderModelCatalog(p)
       insert.run(
-        p.id,
-        p.name,
-        p.type,
-        p.apiKey || '',
-        p.apiUrl,
-        p.model,
-        JSON.stringify(p.modelsList || []),
-        JSON.stringify(p.modelContextWindows || {})
+        normalized.id,
+        normalized.name,
+        normalized.type,
+        normalized.apiKey || '',
+        normalized.apiUrl,
+        normalized.model,
+        JSON.stringify(normalized.modelsList || []),
+        JSON.stringify(normalized.modelContextWindows || {}),
+        normalized.endpointType || null,
+        JSON.stringify(normalized.models || {})
       )
     }
   })

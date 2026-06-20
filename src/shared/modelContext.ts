@@ -26,7 +26,7 @@ export const DEFAULT_CONTEXT_SIZE = 128000
 const MIN_CONTEXT_SIZE = 2000
 const MAX_CONTEXT_SIZE = 10000000
 
-export type ContextWindowSource = 'configured' | 'model-name' | 'default'
+export type ContextWindowSource = 'model-catalog' | 'configured' | 'model-name' | 'default'
 
 export interface ContextWindowInfo {
   tokens: number
