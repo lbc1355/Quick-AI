@@ -21,13 +21,13 @@ import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
-import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
+import { ActionLog, getActionLogPath } from './actionLog'
 import { SessionLogger } from './sessionLogger'
 import { AmbiguousAction, loadRunCheckpoint, saveRunCheckpoint } from './runCheckpoint'
 import {
   appendRunCheckpoint,
   createRunManifest,
-  finishRunManifest,
+  finishRunManifest
 } from './runManifest'
 import {
   ACTION_HISTORY_RESUME_LIMIT,
@@ -37,14 +37,10 @@ import {
   injectPromptBeforeLatestUser
 } from './resumePrompts'
 import { SIDE_EFFECTING_TOOLS } from './sideEffects'
-import { getFetchUrlCallKey, prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
+import { prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 import type { ToolModelAttachment } from '../tools/types'
-import {
-  applyRuntimeToolCallResult,
-  createSkippedToolCallResult,
-  executeRuntimeToolCall
-} from './toolRuntime'
 import { recordToolAction } from './toolActionRecorder'
+import { executePreparedToolCall } from './preparedToolExecutor'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -278,8 +274,7 @@ export const runAgentLoop = async (
     }
   }
 
-  let fetchUrlsCount = 0
-  const MAX_FETCH_URLS_PER_RUN = 10
+  const fetchUrlBudget = { count: 0, max: 10 }
   let totalGeneratedTokens = 0
   let totalGenerationTimeMs = 0
   let totalCacheHitTokens = 0
@@ -580,192 +575,71 @@ export const runAgentLoop = async (
           prep: PreparedToolCall,
           isApproved = true
         ): Promise<ChatCompletionMessage> => {
-          const { toolName, callId, args: toolArgs } = prep
+          const { toolName } = prep
           const toolDef = ToolRegistry[toolName]
           const toolStartTime = Date.now()
 
-          const recordAction = (
-            status: ActionRecord['resultStatus'],
-            resultContent: string
-          ): void => {
-            recordToolAction({
-              actionLog: runCtx.actionLog,
-              conversationId,
-              reqId,
-              turnIndex: step,
-              callId: prep.callId,
-              toolName: prep.toolName,
-              args: prep.args,
-              permission: prep.permission,
-              status,
-              resultContent,
-              outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
-              startedAt: toolStartTime
-            })
-          }
-
-          if (!prep.isValid || prep.permission === 'deny') {
-            const errorMsg =
-              prep.blockReason ||
-              `Tool execution blocked: Tool "${toolName}" is not registered, not implemented, not whitelisted/activated, or denied by policy.`
-            const skippedResult = createSkippedToolCallResult({
-              toolName,
-              callId,
-              args: toolArgs,
-              modelContent: `Error: ${errorMsg}`,
-              toolError: errorMsg,
-              actionStatus: 'denied',
-              step,
-              stepId,
-              deniedToolCall: {
-                purpose: prep.purpose
-              }
-            })
-            sendToolEvents(skippedResult.events)
-            recordAction(skippedResult.action.resultStatus, skippedResult.action.resultContent)
-            return skippedResult.response
-          }
-
-          if (prep.isDeadlock) {
-            const offset = typeof toolArgs.offset === 'number' ? toolArgs.offset : 0
-            const deadlockWarning = `Warning: You have already fetched this URL window: ${toolArgs.url} at offset ${offset}. Use the nextOffset from the previous result to continue.`
-            const skippedResult = createSkippedToolCallResult({
-              toolName,
-              callId,
-              args: toolArgs,
-              modelContent: deadlockWarning,
-              toolError: deadlockWarning,
-              actionStatus: 'blocked',
-              step,
-              stepId
-            })
-            sendToolEvents(skippedResult.events)
-            recordAction(skippedResult.action.resultStatus, skippedResult.action.resultContent)
-            return skippedResult.response
-          }
-
-          if (prep.loopBlock) {
-            const skippedResult = createSkippedToolCallResult({
-              toolName,
-              callId,
-              args: toolArgs,
-              modelContent: prep.loopBlock,
-              toolError: prep.loopBlock,
-              actionStatus: 'blocked',
-              step,
-              stepId
-            })
-            sendToolEvents(skippedResult.events)
-            recordAction(skippedResult.action.resultStatus, skippedResult.action.resultContent)
-            return skippedResult.response
-          }
-
-          if (toolName === 'fetch_url') {
-            if (fetchUrlsCount >= MAX_FETCH_URLS_PER_RUN) {
-              const limitWarning = `Warning: You have reached the maximum fetch limit of ${MAX_FETCH_URLS_PER_RUN} page windows for this run. Please summarize based only on the content you already have.`
-              const skippedResult = createSkippedToolCallResult({
-                toolName,
-                callId,
-                args: toolArgs,
-                modelContent: limitWarning,
-                toolError: limitWarning,
-                actionStatus: 'blocked',
-                step,
-                stepId
-              })
-              sendToolEvents(skippedResult.events)
-              recordAction(skippedResult.action.resultStatus, skippedResult.action.resultContent)
-              return skippedResult.response
-            }
-            if (isApproved) {
-              fetchUrlsCount++
-            }
-          }
-
-          if (!isApproved) {
-            const errorMsg = 'Tool execution denied by user.'
-            const skippedResult = createSkippedToolCallResult({
-              toolName,
-              callId,
-              args: toolArgs,
-              modelContent: `ERROR: ${errorMsg}`,
-              toolError: errorMsg,
-              actionStatus: 'denied',
-              step,
-              stepId
-            })
-            sendToolEvents(skippedResult.events)
-            recordAction(skippedResult.action.resultStatus, skippedResult.action.resultContent)
-            return skippedResult.response
-          }
-
-          const runtimeResult = await executeRuntimeToolCall({
-            toolName,
-            callId,
-            args: toolArgs,
+          const executionResult = await executePreparedToolCall({
+            prep,
             tool: toolDef,
-            context: {
-              reqId,
-              callId,
-              signal,
-              mainWindow,
-              resources: options.resources,
-              emitOutput: ({ stream, content, replace }) => {
-                if (!content) return
-                sendEvent(mainWindow, reqId, {
-                  type: 'tool_output_delta',
-                  callId,
-                  stream,
-                  content,
-                  replace,
-                  step,
-                  stepId
-                })
-              }
-            },
-            retryPolicy: DEFAULT_RETRY_POLICY,
-            isSideEffecting: SIDE_EFFECTING_TOOLS.has(toolName)
-          })
-
-          const appliedResult = applyRuntimeToolCallResult({
-            runtimeResult,
-            toolName,
-            callId,
-            args: toolArgs,
-            loopGuard,
-            outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
-            fetchUrlCallKey: toolName === 'fetch_url' ? getFetchUrlCallKey(toolArgs) : undefined,
+            isApproved,
+            reqId,
             step,
             maxSteps,
             stepId,
-            activeTools: Array.from(runCtx.activeTools)
+            signal,
+            mainWindow,
+            resources: options.resources,
+            retryPolicy: DEFAULT_RETRY_POLICY,
+            isSideEffecting: SIDE_EFFECTING_TOOLS.has(toolName),
+            loopGuard,
+            outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
+            activeTools: Array.from(runCtx.activeTools),
+            fetchUrlBudget,
+            emitEvent: (event) => sendEvent(mainWindow, reqId, event)
           })
 
-          if (appliedResult.modelAttachments && appliedResult.modelAttachments.length > 0) {
-            toolModelAttachments[prep.index] = appliedResult.modelAttachments
+          if (executionResult.modelAttachments && executionResult.modelAttachments.length > 0) {
+            toolModelAttachments[prep.index] = executionResult.modelAttachments
           }
 
-          if (appliedResult.markExecutedCallKey) {
-            runCtx.markExecuted(appliedResult.markExecutedCallKey)
+          if (executionResult.markExecutedCallKey) {
+            runCtx.markExecuted(executionResult.markExecutedCallKey)
           }
 
-          if (appliedResult.outputStore) {
-            runCtx.storeToolOutput(appliedResult.outputStore.callId, appliedResult.outputStore.content)
-            runCtx.activateTool(appliedResult.outputStore.activateToolName)
+          if (executionResult.outputStore) {
+            runCtx.storeToolOutput(
+              executionResult.outputStore.callId,
+              executionResult.outputStore.content
+            )
+            runCtx.activateTool(executionResult.outputStore.activateToolName)
           }
 
-          sendToolEvents(appliedResult.events)
+          sendToolEvents(executionResult.events)
 
-          if (appliedResult.haltRequested) {
+          if (executionResult.haltRequested) {
             haltRequested = true
           }
 
-          if (appliedResult.ambiguousAction) {
-            ambiguousActions.push(appliedResult.ambiguousAction)
+          if (executionResult.ambiguousAction) {
+            ambiguousActions.push(executionResult.ambiguousAction)
           }
 
-          recordAction(appliedResult.action.resultStatus, appliedResult.action.resultContent)
-          return appliedResult.response
+          recordToolAction({
+            actionLog: runCtx.actionLog,
+            conversationId,
+            reqId,
+            turnIndex: step,
+            callId: prep.callId,
+            toolName: prep.toolName,
+            args: prep.args,
+            permission: prep.permission,
+            status: executionResult.action.resultStatus,
+            resultContent: executionResult.action.resultContent,
+            outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
+            startedAt: toolStartTime
+          })
+          return executionResult.response
         }
 
         // 1. Process askCalls sequentially
