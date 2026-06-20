@@ -23,15 +23,11 @@ import {
   cloneMessagesForCheckpoint
 } from './resumePrompts'
 import { SIDE_EFFECTING_TOOLS } from './sideEffects'
-import { prepareToolCalls } from './toolCallPlanning'
-import type { ToolModelAttachment } from '../tools/types'
-import { processPreparedToolStep } from './toolStepProcessor'
-import { createToolStepExecutor } from './toolStepApplicator'
-import { buildAgentStepPresentation } from './toolStepPresentation'
 import { createToolDeclarationCache } from './toolDeclarationCache'
 import { createRunUsageTracker } from './runUsageTracker'
 import { runModelTurn } from './modelTurnRunner'
 import { AgentRunOptions, prepareAgentRun } from './agentRunPreparation'
+import { runToolTurn } from './toolTurnRunner'
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
@@ -244,30 +240,12 @@ export const runAgentLoop = async (
       SessionLogger.logModelResponse(conversationId, assistantMessage)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-        const isToolWhitelisted = (toolName: string): boolean =>
-          toolDiscovery === 'static' ? skillTools.includes(toolName) : runCtx.isToolActive(toolName)
-
-        const { askCalls, directCalls, blockedCalls } = prepareToolCalls({
-          toolCalls: assistantMessage.tool_calls,
+        const toolTurn = await runToolTurn({
+          assistantMessage,
+          assistantTextBuffer,
+          toolDiscovery,
+          skillTools,
           permissions,
-          isToolWhitelisted,
-          isToolApproved: (toolName) => runCtx.isToolApproved(toolName),
-          isCommandPrefixApproved: (command) => runCtx.isCommandPrefixApproved(command),
-          hasExecuted: (callKey) => runCtx.hasExecuted(callKey),
-          loopGuard,
-          projectRoot: runCtx.projectRoot
-        })
-
-        const preparedCalls = [...askCalls, ...directCalls, ...blockedCalls].sort(
-          (a, b) => a.index - b.index
-        )
-        const assistantStepText = getAssistantText(assistantMessage.content) || assistantTextBuffer
-        const stepPresentation = buildAgentStepPresentation(assistantStepText, preparedCalls)
-
-        const toolModelAttachments = new Array<ToolModelAttachment[] | undefined>(
-          assistantMessage.tool_calls.length
-        )
-        const executeTool = createToolStepExecutor({
           toolRegistry: ToolRegistry,
           reqId,
           conversationId,
@@ -281,47 +259,19 @@ export const runAgentLoop = async (
           isSideEffecting: (toolName) => SIDE_EFFECTING_TOOLS.has(toolName),
           loopGuard,
           outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
-          activeTools: runCtx.activeTools,
           fetchUrlBudget,
-          toolModelAttachments,
-          actionLog: runCtx.actionLog,
-          markExecuted: (callKey) => runCtx.markExecuted(callKey),
-          storeToolOutput: (callId, text) => runCtx.storeToolOutput(callId, text),
-          activateTool: (toolName) => runCtx.activateTool(toolName),
-          onHaltRequested: () => {
-            haltRequested = true
-          },
-          onAmbiguousAction: (action) => {
-            ambiguousActions.push(action)
-          },
-          emitEvent: (event) => sendEvent(mainWindow, reqId, event)
-        })
-
-        const processedStep = await processPreparedToolStep({
-          toolCallCount: assistantMessage.tool_calls.length,
-          preparedCalls,
-          askCalls,
-          directCalls,
-          blockedCalls,
-          step,
-          maxSteps,
-          stepId,
-          title: stepPresentation.title,
-          message: stepPresentation.message,
-          signal,
+          runContext: runCtx,
           emitEvent: (event) => sendEvent(mainWindow, reqId, event),
-          requestPermission: (callId) => globalPermissionManager.requestPermission(reqId, callId),
-          isToolApproved: (toolName) => runCtx.isToolApproved(toolName),
-          isCommandPrefixApproved: (command) => runCtx.isCommandPrefixApproved(command),
-          executeTool,
-          toolModelAttachments
+          requestPermission: (callId) => globalPermissionManager.requestPermission(reqId, callId)
         })
 
-        messages.push(...processedStep.messagesToAppend)
-        persistCheckpoint(step, processedStep.lastRecordedCallId)
+        messages.push(...toolTurn.messagesToAppend)
+        ambiguousActions.push(...toolTurn.ambiguousActions)
+        persistCheckpoint(step, toolTurn.lastRecordedCallId)
 
         // A loop-guard halt ends tool use immediately; fall through to the final-answer path.
-        if (haltRequested) {
+        if (toolTurn.haltRequested) {
+          haltRequested = true
           break
         }
 
