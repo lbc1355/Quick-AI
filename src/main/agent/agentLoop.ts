@@ -1,12 +1,6 @@
 import { BrowserWindow } from 'electron'
-import {
-  AgentSkillRunOptions,
-  ChatCompletionMessage,
-  AgentEvent,
-  SessionResource
-} from '../../shared/types'
-import { ToolRegistry, searchToolDefinitions } from '../toolRegistry'
-import { buildSkillMessages, prepareChatAgentMessages } from './messageBuilder'
+import { ChatCompletionMessage, AgentEvent } from '../../shared/types'
+import { ToolRegistry } from '../toolRegistry'
 import {
   getContextWindowSize,
   normalizeContextWindowTokens,
@@ -17,9 +11,8 @@ import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
-import { ActionLog, getActionLogPath } from './actionLog'
 import { SessionLogger } from './sessionLogger'
-import { AmbiguousAction, loadRunCheckpoint, saveRunCheckpoint } from './runCheckpoint'
+import { saveRunCheckpoint } from './runCheckpoint'
 import {
   appendRunCheckpoint,
   createRunManifest,
@@ -27,10 +20,7 @@ import {
 } from './runManifest'
 import {
   ACTION_HISTORY_RESUME_LIMIT,
-  buildBranchForkPrompt,
-  buildCheckpointResumePrompt,
-  cloneMessagesForCheckpoint,
-  injectPromptBeforeLatestUser
+  cloneMessagesForCheckpoint
 } from './resumePrompts'
 import { SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { prepareToolCalls } from './toolCallPlanning'
@@ -41,11 +31,7 @@ import { buildAgentStepPresentation } from './toolStepPresentation'
 import { createToolDeclarationCache } from './toolDeclarationCache'
 import { createRunUsageTracker } from './runUsageTracker'
 import { runModelTurn } from './modelTurnRunner'
-
-const clampMaxSteps = (value: number | undefined): number => {
-  if (!value || Number.isNaN(value)) return 30
-  return Math.max(1, Math.min(30, Math.floor(value)))
-}
+import { AgentRunOptions, prepareAgentRun } from './agentRunPreparation'
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
@@ -70,124 +56,23 @@ const getEffectiveContextWindowSize = (options: {
 export const runAgentLoop = async (
   mainWindow: BrowserWindow,
   reqId: string,
-  options: {
-    apiUrl: string
-    apiKey: string
-    model: string
-    contextWindowTokens?: number
-    systemPrompt?: string
-    messages?: ChatCompletionMessage[]
-    skill?: AgentSkillRunOptions['skill']
-    userInput?: string
-    resources?: SessionResource[]
-    /** Per-conversation id for action-log persistence. Falls back to reqId. */
-    sessionId?: string
-    projectRoot?: string
-    projectName?: string
-    /** Existing run checkpoint to continue without adding a new user message. */
-    resumeFromRunId?: string
-    resumeSourceSessionId?: string
-    sourceMessageId?: string
-    assistantMessageId?: string
-    branchOf?: { sessionId: string; messageId: string; runId?: string }
-  },
+  options: AgentRunOptions,
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): Promise<void> => {
-  const isSkill = !!options.skill
-  const toolDiscovery = isSkill
-    ? options.skill!.toolDiscovery === 'dynamic'
-      ? 'dynamic'
-      : 'static'
-    : 'dynamic'
+  const preparedRun = prepareAgentRun({ reqId, options, permissions })
+  const {
+    isSkill,
+    toolDiscovery,
+    maxSteps,
+    skillTools,
+    toolScope,
+    conversationId,
+    actionLog,
+    resumeLoadError,
+    initialActiveTools
+  } = preparedRun
+  let messages = preparedRun.messages
 
-  const maxSteps = isSkill ? clampMaxSteps(options.skill!.maxSteps) : 30
-  const resourceToolNames =
-    options.resources && options.resources.length > 0
-      ? ['list_cached_resources', 'read_cached_resource', 'search_cached_resource']
-      : []
-  const skillTools = isSkill
-    ? Array.from(new Set([...(options.skill!.tools || []), ...resourceToolNames]))
-    : []
-  const toolScope = isSkill ? new Set<string>(skillTools) : 'all'
-
-  // Per-conversation action log: persists tool call history across runs so the model can
-  // consult what it did earlier in the same conversation, even after context truncation.
-  const conversationId = options.sessionId || reqId
-  const actionLog = new ActionLog(getActionLogPath(conversationId))
-  const resumeSourceSessionId = options.resumeSourceSessionId || conversationId
-  const resumeCheckpoint = options.resumeFromRunId
-    ? loadRunCheckpoint(resumeSourceSessionId, options.resumeFromRunId)
-    : undefined
-
-  const resumeLoadError =
-    options.resumeFromRunId && !resumeCheckpoint
-      ? `No resumable checkpoint found for run ${options.resumeFromRunId}. Regenerate the message if you want to start over.`
-      : undefined
-  // Prepare messages history
-  let messages: ChatCompletionMessage[] = []
-  if (resumeLoadError) {
-    messages = []
-  } else if (resumeCheckpoint) {
-    messages = cloneMessagesForCheckpoint(resumeCheckpoint.messages)
-    messages.push({
-      role: 'system',
-      content: buildCheckpointResumePrompt(resumeCheckpoint, actionLog)
-    })
-  } else if (isSkill) {
-    messages = buildSkillMessages({
-      apiUrl: options.apiUrl,
-      apiKey: options.apiKey,
-      model: options.model,
-      systemPrompt: options.systemPrompt,
-      skill: options.skill!,
-      userInput: options.userInput || '',
-      resources: options.resources
-    })
-  } else {
-    messages = prepareChatAgentMessages(
-      options.messages || [],
-      options.systemPrompt,
-      options.resources,
-      permissions,
-      options.projectRoot,
-      options.projectName
-    )
-  }
-  if (options.branchOf) {
-    messages = injectPromptBeforeLatestUser(messages, buildBranchForkPrompt(options.branchOf))
-  }
-
-  // Initialize Run Context
-  const initialActiveTools = toolDiscovery === 'dynamic' ? ['search_tools'] : [...skillTools]
-  if (resumeCheckpoint) {
-    for (const toolName of resumeCheckpoint.activeTools) {
-      if (!initialActiveTools.includes(toolName)) {
-        initialActiveTools.push(toolName)
-      }
-    }
-  }
-  // Dynamic mode: pre-activate every tool surfaced in the system-prompt directory so that
-  // "you may call them directly" actually holds. Without this, a direct call to a directory
-  // tool that has not yet been discovered via search_tools fails the whitelist check and is
-  // silently denied (no permission prompt) — the model sees a tool it cannot actually call.
-  if (toolDiscovery === 'dynamic') {
-    for (const summary of searchToolDefinitions('', 'all', permissions)) {
-      if (!initialActiveTools.includes(summary.name)) {
-        initialActiveTools.push(summary.name)
-      }
-    }
-  }
-  if (options.resources && options.resources.length > 0) {
-    if (!initialActiveTools.includes('list_cached_resources')) {
-      initialActiveTools.push('list_cached_resources')
-    }
-    if (!initialActiveTools.includes('read_cached_resource')) {
-      initialActiveTools.push('read_cached_resource')
-    }
-    if (!initialActiveTools.includes('search_cached_resource')) {
-      initialActiveTools.push('search_cached_resource')
-    }
-  }
   const runCtx = createRun(
     reqId,
     initialActiveTools,
@@ -240,7 +125,7 @@ export const runAgentLoop = async (
   // complement the hard maxSteps ceiling. Scoped to this run.
   const loopGuard = new LoopGuard()
   let haltRequested = false
-  const ambiguousActions: AmbiguousAction[] = [...(resumeCheckpoint?.ambiguousActions || [])]
+  const ambiguousActions = [...preparedRun.ambiguousActions]
 
   const persistCheckpoint = (checkpointStep: number, lastCompletedCallId?: string): void => {
     try {
