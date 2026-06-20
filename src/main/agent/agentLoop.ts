@@ -41,6 +41,7 @@ import { prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 import type { ToolModelAttachment } from '../tools/types'
 import { recordToolAction } from './toolActionRecorder'
 import { executePreparedToolCall } from './preparedToolExecutor'
+import { runPreparedToolBatch } from './toolBatchRunner'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -565,7 +566,6 @@ export const runAgentLoop = async (
           status: 'running'
         })
 
-        const toolResponses = new Array<ChatCompletionMessage>(assistantMessage.tool_calls.length)
         const toolModelAttachments = new Array<ToolModelAttachment[] | undefined>(
           assistantMessage.tool_calls.length
         )
@@ -642,134 +642,21 @@ export const runAgentLoop = async (
           return executionResult.response
         }
 
-        // 1. Process askCalls sequentially
-        for (const prep of askCalls) {
-          if (signal.aborted) break
-          const { index, toolName, callId, args: toolArgs } = prep
-
-          // Check if this tool call has been approved in the meantime
-          // (e.g. from a previous confirmation in this parallel batch)
-          let isApproved = false
-          const isToolApproved = runCtx.isToolApproved(toolName)
-          const isCmdApproved =
-            toolName === 'shell' &&
-            typeof toolArgs.command === 'string' &&
-            runCtx.isCommandPrefixApproved(toolArgs.command)
-
-          if (isToolApproved || isCmdApproved) {
-            isApproved = true
-          } else {
-            // Emit tool_call event with pending permission state
-            sendEvent(mainWindow, reqId, {
-              type: 'tool_call',
-              callId,
-              toolName,
-              args: toolArgs,
-              purpose: prep.purpose,
-              permissionState: 'pending',
-              step,
-              stepId
-            })
-
-            try {
-              isApproved = await globalPermissionManager.requestPermission(reqId, callId)
-            } catch (err) {
-              const error = err as Error
-              sendEvent(mainWindow, reqId, {
-                type: 'tool_call',
-                callId,
-                toolName,
-                args: toolArgs,
-                purpose: prep.purpose,
-                permissionState: 'denied',
-                step,
-                stepId
-              })
-              sendToolErrorEvent(callId, error.message)
-              toolResponses[index] = {
-                role: 'tool',
-                tool_call_id: callId,
-                name: toolName,
-                content: `ERROR: ${error.message}`
-              }
-              if (signal.aborted) {
-                break
-              }
-              continue
-            }
-          }
-
-          sendEvent(mainWindow, reqId, {
-            type: 'tool_call',
-            callId,
-            toolName,
-            args: toolArgs,
-            purpose: prep.purpose,
-            permissionState: isApproved ? 'approved' : 'denied',
-            step,
-            stepId
-          })
-
-          toolResponses[index] = await executeTool(prep, isApproved)
-        }
-
-        if (signal.aborted) {
-          throw new Error('Agent execution aborted by user.')
-        }
-
-        const interactiveDirectCalls = directCalls.filter(
-          (prep) => prep.toolName === 'ask_user_choice'
-        )
-        const nonInteractiveDirectCalls = directCalls.filter(
-          (prep) => prep.toolName !== 'ask_user_choice'
-        )
-
-        // 2. Process interactive direct calls sequentially so only one user-choice dialog is open.
-        for (const prep of interactiveDirectCalls) {
-          if (signal.aborted) break
-          sendEvent(mainWindow, reqId, {
-            type: 'tool_call',
-            callId: prep.callId,
-            toolName: prep.toolName,
-            args: prep.args,
-            purpose: prep.purpose,
-            permissionState: 'approved',
-            step,
-            stepId
-          })
-
-          toolResponses[prep.index] = await executeTool(prep, true)
-        }
-
-        if (signal.aborted) {
-          throw new Error('Agent execution aborted by user.')
-        }
-
-        // 3. Process directCalls concurrently (validated and allowed)
-        await Promise.all(
-          nonInteractiveDirectCalls.map(async (prep) => {
-            // Emit tool_call event
-            sendEvent(mainWindow, reqId, {
-              type: 'tool_call',
-              callId: prep.callId,
-              toolName: prep.toolName,
-              args: prep.args,
-              purpose: prep.purpose,
-              permissionState: 'approved',
-              step,
-              stepId
-            })
-
-            toolResponses[prep.index] = await executeTool(prep, true)
-          })
-        )
-
-        // 4. Process blockedCalls concurrently (no permission request, immediately run executeTool which blocks/denies it)
-        await Promise.all(
-          blockedCalls.map(async (prep) => {
-            toolResponses[prep.index] = await executeTool(prep, false)
-          })
-        )
+        const { toolResponses } = await runPreparedToolBatch({
+          toolCallCount: assistantMessage.tool_calls.length,
+          askCalls,
+          directCalls,
+          blockedCalls,
+          reqId,
+          step,
+          stepId,
+          signal,
+          emitEvent: (event) => sendToolEvents([event]),
+          requestPermission: (callId) => globalPermissionManager.requestPermission(reqId, callId),
+          isToolApproved: (toolName) => runCtx.isToolApproved(toolName),
+          isCommandPrefixApproved: (command) => runCtx.isCommandPrefixApproved(command),
+          executeTool
+        })
 
         // 5. Append all responses in correct index order to messages array
         for (const response of toolResponses) {
