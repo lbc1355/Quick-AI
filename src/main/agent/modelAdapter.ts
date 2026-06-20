@@ -81,6 +81,23 @@ const openaiAdapter: ModelAdapter = {
   sanitizeBody: (body) => body
 }
 
+const sanitizeStrictOpenAiCompatibleMessages = (
+  msgs: ChatCompletionMessage[]
+): ChatCompletionMessage[] => {
+  let cleaned = stripReasoningContent(msgs)
+  cleaned = stripToolMessageName(cleaned)
+  cleaned = normalizeEmptyContent(cleaned)
+  cleaned = stripEmptyToolCalls(cleaned)
+  return cleaned
+}
+
+const createStrictOpenAiCompatibleAdapter = (name: string): ModelAdapter => ({
+  name,
+  supportsStreamUsage: true,
+  sanitizeMessages: sanitizeStrictOpenAiCompatibleMessages,
+  sanitizeBody: (body) => body
+})
+
 // ---- DeepSeek adapter ----
 
 const deepseekAdapter: ModelAdapter = {
@@ -98,6 +115,10 @@ const kimiAdapter: ModelAdapter = {
   sanitizeMessages: stripReasoningContent,
   sanitizeBody: (body) => body
 }
+
+// ---- opencode adapter ----
+
+const opencodeAdapter = createStrictOpenAiCompatibleAdapter('opencode')
 
 // ---- GLM (Zhipu) adapter ----
 
@@ -122,6 +143,10 @@ const glmAdapter: ModelAdapter = {
   }
 }
 
+// ---- Xiaomi MiMo adapter ----
+
+const mimoAdapter = createStrictOpenAiCompatibleAdapter('mimo')
+
 // ---- Ollama adapter ----
 
 const ollamaAdapter: ModelAdapter = {
@@ -144,10 +169,12 @@ const ollamaAdapter: ModelAdapter = {
 // ---- Provider detection ----
 
 const ADAPTERS: Record<string, ModelAdapter> = {
+  opencode: opencodeAdapter,
   deepseek: deepseekAdapter,
   kimi: kimiAdapter,
   glm: glmAdapter,
-  ollama: ollamaAdapter
+  ollama: ollamaAdapter,
+  mimo: mimoAdapter
 }
 
 /**
@@ -157,10 +184,12 @@ const ADAPTERS: Record<string, ModelAdapter> = {
  */
 export function detectProvider(apiUrl: string): ModelAdapter {
   const url = apiUrl.toLowerCase()
+  if (url.includes('opencode')) return opencodeAdapter
   if (url.includes('deepseek')) return deepseekAdapter
   if (url.includes('moonshot') || url.includes('kimi')) return kimiAdapter
   if (url.includes('bigmodel') || url.includes('glm') || url.includes('zhipu')) return glmAdapter
   if (url.includes('ollama') || url.includes(':11434')) return ollamaAdapter
+  if (url.includes('mimo') || url.includes('xiaomi')) return mimoAdapter
   return openaiAdapter
 }
 

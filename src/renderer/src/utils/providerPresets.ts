@@ -1,4 +1,4 @@
-import { ApiProvider } from '../../../shared/types'
+import { ApiProvider, AppSettings } from '../../../shared/types'
 
 export interface ProviderPreset {
   type: ApiProvider['type']
@@ -8,20 +8,45 @@ export interface ProviderPreset {
   defaultModel: string
 }
 
+export const PROVIDER_PRESET_VERSION = 1
+
+const CORE_PROVIDER_TYPES: ApiProvider['type'][] = ['opencode', 'glm', 'kimi', 'mimo']
+
 export const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    type: 'opencode',
+    name: 'opencode',
+    apiUrl: 'https://opencode.ai/zen/v1',
+    modelsList: ['deepseek-v4-flash-free', 'deepseek-v4-pro', 'qwen3-coder-plus'],
+    defaultModel: 'deepseek-v4-flash-free'
+  },
+  {
+    type: 'glm',
+    name: 'GLM',
+    apiUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    modelsList: ['glm-4.5-air', 'glm-4.5', 'glm-4.6', 'glm-4.7', 'glm-5', 'glm-4-flash'],
+    defaultModel: 'glm-4.5-air'
+  },
+  {
+    type: 'kimi',
+    name: 'Kimi',
+    apiUrl: 'https://api.moonshot.cn/v1',
+    modelsList: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi-k2-0711-preview'],
+    defaultModel: 'moonshot-v1-8k'
+  },
+  {
+    type: 'mimo',
+    name: 'MiMo',
+    apiUrl: 'https://api.mimo.xiaomi.com/v1',
+    modelsList: ['mimo-v2.5-pro', 'mimo-v2.5', 'mimo-v2-pro', 'mimo-v2-flash'],
+    defaultModel: 'mimo-v2.5-pro'
+  },
   {
     type: 'deepseek',
     name: 'DeepSeek',
     apiUrl: 'https://api.deepseek.com/v1',
     modelsList: ['deepseek-chat', 'deepseek-reasoner'],
     defaultModel: 'deepseek-chat'
-  },
-  {
-    type: 'kimi',
-    name: 'Kimi (Moonshot)',
-    apiUrl: 'https://api.moonshot.cn/v1',
-    modelsList: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-    defaultModel: 'moonshot-v1-8k'
   },
   {
     type: 'ollama',
@@ -31,13 +56,6 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModel: 'deepseek-r1:8b'
   },
   {
-    type: 'glm',
-    name: '智谱 GLM',
-    apiUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    modelsList: ['glm-4-flash', 'glm-4-plus', 'glm-4-long'],
-    defaultModel: 'glm-4-flash'
-  },
-  {
     type: 'custom',
     name: '自定义服务商',
     apiUrl: '',
@@ -45,3 +63,71 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaultModel: 'custom-model'
   }
 ]
+
+export const getProviderPreset = (type: ApiProvider['type']): ProviderPreset | undefined =>
+  PROVIDER_PRESETS.find((preset) => preset.type === type)
+
+export const getProviderTypeLabel = (type: ApiProvider['type']): string =>
+  getProviderPreset(type)?.name || type
+
+export const buildProviderFromPreset = (preset: ProviderPreset): ApiProvider => ({
+  id: `provider-${preset.type}`,
+  name: preset.name,
+  type: preset.type,
+  apiKey: '',
+  apiUrl: preset.apiUrl,
+  model: preset.defaultModel,
+  modelsList: [...preset.modelsList]
+})
+
+const providerMatchesPreset = (provider: ApiProvider, preset: ProviderPreset): boolean => {
+  if (provider.type === preset.type) return true
+  if (provider.name.trim().toLowerCase() === preset.name.toLowerCase()) return true
+  if (preset.apiUrl && provider.apiUrl.trim().toLowerCase() === preset.apiUrl.toLowerCase()) {
+    return true
+  }
+  return false
+}
+
+export function ensureCoreProviderPresets(settings: AppSettings): {
+  settings: AppSettings
+  changed: boolean
+} {
+  if ((settings.providerPresetVersion || 0) >= PROVIDER_PRESET_VERSION) {
+    return { settings, changed: false }
+  }
+
+  const providers = [...(settings.providers || [])]
+  let changed = false
+
+  for (const type of CORE_PROVIDER_TYPES) {
+    const preset = getProviderPreset(type)
+    if (!preset) continue
+    const exists = providers.some((provider) => providerMatchesPreset(provider, preset))
+    if (!exists) {
+      providers.push(buildProviderFromPreset(preset))
+      changed = true
+    }
+  }
+
+  const activeProviderId =
+    settings.activeProviderId &&
+    providers.some((provider) => provider.id === settings.activeProviderId)
+      ? settings.activeProviderId
+      : providers[0]?.id || ''
+
+  const nextSettings: AppSettings = {
+    ...settings,
+    providers,
+    activeProviderId,
+    providerPresetVersion: PROVIDER_PRESET_VERSION
+  }
+
+  return {
+    settings: nextSettings,
+    changed:
+      changed ||
+      activeProviderId !== settings.activeProviderId ||
+      settings.providerPresetVersion !== PROVIDER_PRESET_VERSION
+  }
+}

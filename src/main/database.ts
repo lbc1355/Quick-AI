@@ -55,7 +55,8 @@ function createSchema(database: Database.Database): void {
       apiKey     TEXT NOT NULL DEFAULT '',
       apiUrl     TEXT NOT NULL,
       model      TEXT NOT NULL,
-      modelsList TEXT NOT NULL DEFAULT '[]'
+      modelsList TEXT NOT NULL DEFAULT '[]',
+      modelContextWindows TEXT NOT NULL DEFAULT '{}'
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
@@ -168,6 +169,7 @@ function createSchema(database: Database.Database): void {
   ensureColumn(database, 'messages', 'agentRunIds', "TEXT DEFAULT '[]'")
   ensureColumn(database, 'messages', 'tokenSpeed', 'REAL')
   ensureColumn(database, 'messages', 'cacheStats', 'TEXT')
+  ensureColumn(database, 'providers', 'modelContextWindows', "TEXT NOT NULL DEFAULT '{}'")
   ensureColumn(database, 'skills', 'entryPath', 'TEXT')
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")
@@ -227,6 +229,9 @@ function migrateStore(database: Database.Database, storePath: string): void {
       insertSetting.run('autoHideOnBlur', String(settings.autoHideOnBlur ?? true))
       insertSetting.run('theme', settings.theme || 'dark')
       insertSetting.run('activeProviderId', settings.activeProviderId || '')
+      if (settings.providerPresetVersion !== undefined) {
+        insertSetting.run('providerPresetVersion', String(settings.providerPresetVersion))
+      }
 
       if (settings.permissions) {
         insertSetting.run('permissions', JSON.stringify(settings.permissions))
@@ -235,8 +240,9 @@ function migrateStore(database: Database.Database, storePath: string): void {
       // ── Providers ──
       if (settings.providers && settings.providers.length > 0) {
         const insertProvider = database.prepare(
-          `INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
+          `INSERT OR REPLACE INTO providers
+           (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
         for (const p of settings.providers) {
           insertProvider.run(
@@ -246,7 +252,8 @@ function migrateStore(database: Database.Database, storePath: string): void {
             p.apiKey || '',
             p.apiUrl,
             p.model,
-            JSON.stringify(p.modelsList || [])
+            JSON.stringify(p.modelsList || []),
+            JSON.stringify(p.modelContextWindows || {})
           )
         }
       }
@@ -426,6 +433,7 @@ export function loadSettings(): AppSettings {
     apiUrl: string
     model: string
     modelsList: string
+    modelContextWindows: string
   }>
 
   let permissions: { [toolName: string]: 'allow' | 'ask' | 'deny' } = {}
@@ -450,14 +458,16 @@ export function loadSettings(): AppSettings {
       apiKey: p.apiKey,
       apiUrl: p.apiUrl,
       model: p.model,
-      modelsList: JSON.parse(p.modelsList || '[]')
+      modelsList: JSON.parse(p.modelsList || '[]'),
+      modelContextWindows: JSON.parse(p.modelContextWindows || '{}')
     })),
     activeProviderId: kv['activeProviderId'] || '',
     systemPrompt: kv['systemPrompt'] || '',
     autoHideOnBlur: kv['autoHideOnBlur'] !== 'false',
     theme: (kv['theme'] as 'dark' | 'light') || 'dark',
     permissions,
-    webSearch
+    webSearch,
+    providerPresetVersion: Number(kv['providerPresetVersion'] || 0)
   }
 }
 
@@ -466,7 +476,7 @@ export function saveSettings(settings: AppSettings): void {
   const upsert = database.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
   const deleteProviders = database.prepare('DELETE FROM providers')
   const insert = database.prepare(
-    'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   )
 
   // Wrap the whole save in a single transaction: turns N independent fsync-per-statement
@@ -479,6 +489,7 @@ export function saveSettings(settings: AppSettings): void {
     upsert.run('activeProviderId', s.activeProviderId)
     upsert.run('permissions', JSON.stringify(s.permissions || {}))
     upsert.run('webSearch', JSON.stringify(s.webSearch || {}))
+    upsert.run('providerPresetVersion', String(s.providerPresetVersion || 0))
 
     // Providers: delete all then re-insert
     deleteProviders.run()
@@ -490,7 +501,8 @@ export function saveSettings(settings: AppSettings): void {
         p.apiKey || '',
         p.apiUrl,
         p.model,
-        JSON.stringify(p.modelsList || [])
+        JSON.stringify(p.modelsList || []),
+        JSON.stringify(p.modelContextWindows || {})
       )
     }
   })

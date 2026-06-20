@@ -31,6 +31,7 @@ interface SettingsViewProps {
   apiUrl: string
   selectedModel: string
   modelsList: string[]
+  modelContextWindows: Record<string, number>
   manualModelInput: string
   fetchModelsUrl: string
   isFetchingModels: boolean
@@ -64,6 +65,7 @@ interface SettingsViewProps {
   onAddManualModel: () => void
   onFetchModels: () => void
   onRemoveModel: (modelId: string) => void
+  onChangeModelContextWindow: (modelId: string, value: string) => void
   onInstallSkill: (payload: SkillInstallPayload) => Promise<Skill>
   onRemoveSkill: (id: string) => Promise<void>
   onChangeEditingProviderName: (name: string) => void
@@ -305,6 +307,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   apiUrl,
   selectedModel,
   modelsList,
+  modelContextWindows,
   manualModelInput,
   fetchModelsUrl,
   isFetchingModels,
@@ -338,6 +341,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onAddManualModel,
   onFetchModels,
   onRemoveModel,
+  onChangeModelContextWindow,
   onInstallSkill,
   onRemoveSkill,
   onChangeEditingProviderName,
@@ -391,6 +395,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           apiUrl={apiUrl}
           selectedModel={selectedModel}
           modelsList={modelsList}
+          modelContextWindows={modelContextWindows}
           manualModelInput={manualModelInput}
           fetchModelsUrl={fetchModelsUrl}
           isFetchingModels={isFetchingModels}
@@ -405,6 +410,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           onAddManualModel={onAddManualModel}
           onFetchModels={onFetchModels}
           onRemoveModel={onRemoveModel}
+          onChangeModelContextWindow={onChangeModelContextWindow}
         />
       </div>
     )

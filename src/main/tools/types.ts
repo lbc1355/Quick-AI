@@ -15,6 +15,12 @@ export interface ToolModelAttachment {
   image_url: { url: string }
 }
 
+export interface ToolExecutionResult {
+  resultForModel: string
+  resultForUi: ToolResultUi
+  modelAttachments?: ToolModelAttachment[]
+}
+
 export interface ToolDefinition {
   name: string
   title: string
@@ -34,14 +40,14 @@ export interface ToolDefinition {
     >
     required?: string[]
   }
+  /**
+   * Executes the tool and returns both model-facing content and UI-facing metadata.
+   * Prefer createToolResult() from ./result for new tools so frontend details stay consistent.
+   */
   execute: (
     args: ToolArgs,
     ctx: ToolExecutionContext
-  ) => Promise<{
-    resultForModel: string
-    resultForUi: ToolResultUi
-    modelAttachments?: ToolModelAttachment[]
-  }>
+  ) => Promise<ToolExecutionResult>
 }
 
 export interface ToolSummary {

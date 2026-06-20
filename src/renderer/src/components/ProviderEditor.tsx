@@ -1,6 +1,7 @@
 import React from 'react'
 import { ArrowLeft, Plus, X } from 'lucide-react'
 import { ApiProvider } from '../../../shared/types'
+import { getContextWindowInfo } from '../../../shared/modelContext'
 
 interface ProviderEditorProps {
   provider: ApiProvider | undefined
@@ -8,6 +9,7 @@ interface ProviderEditorProps {
   apiUrl: string
   selectedModel: string
   modelsList: string[]
+  modelContextWindows: Record<string, number>
   manualModelInput: string
   fetchModelsUrl: string
   isFetchingModels: boolean
@@ -22,7 +24,10 @@ interface ProviderEditorProps {
   onAddManualModel: () => void
   onFetchModels: () => void
   onRemoveModel: (modelId: string) => void
+  onChangeModelContextWindow: (modelId: string, value: string) => void
 }
+
+const formatContextTokens = (tokens: number): string => `${tokens.toLocaleString()} tokens`
 
 export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   provider,
@@ -30,6 +35,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   apiUrl,
   selectedModel,
   modelsList,
+  modelContextWindows,
   manualModelInput,
   fetchModelsUrl,
   isFetchingModels,
@@ -43,7 +49,8 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   onChangeFetchModelsUrl,
   onAddManualModel,
   onFetchModels,
-  onRemoveModel
+  onRemoveModel,
+  onChangeModelContextWindow
 }) => {
   if (!provider) return null
 
@@ -154,15 +161,35 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
             </div>
           </div>
 
-          <div className="model-pill-list">
-            {modelsList.map((model) => (
-              <span key={model} className="model-pill">
-                <span>{model}</span>
-                <button type="button" onClick={() => onRemoveModel(model)} title="移出列表">
-                  <X size={10} />
-                </button>
-              </span>
-            ))}
+          <div className="model-context-list">
+            {modelsList.map((model) => {
+              const automaticContext = getContextWindowInfo(model).tokens
+              const configuredContext = modelContextWindows[model]
+              return (
+                <div key={model} className="model-context-row">
+                  <div className="model-context-main">
+                    <span className="model-context-name">{model}</span>
+                    <small>Auto {formatContextTokens(automaticContext)}</small>
+                  </div>
+                  <label className="model-context-field">
+                    <span>Context</span>
+                    <input
+                      type="number"
+                      className="settings-input model-context-input"
+                      min={2000}
+                      max={10000000}
+                      step={1000}
+                      placeholder={String(automaticContext)}
+                      value={configuredContext ?? ''}
+                      onChange={(e) => onChangeModelContextWindow(model, e.target.value)}
+                    />
+                  </label>
+                  <button type="button" onClick={() => onRemoveModel(model)} title="移出列表">
+                    <X size={12} />
+                  </button>
+                </div>
+              )
+            })}
           </div>
         </section>
       </div>

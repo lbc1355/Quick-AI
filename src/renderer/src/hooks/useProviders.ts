@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { ApiProvider, AppSettings, WebSearchProviderType } from '../../../shared/types'
-import { PROVIDER_PRESETS } from '../utils/providerPresets'
+import { normalizeContextWindowTokens } from '../../../shared/modelContext'
+import { ensureCoreProviderPresets, getProviderPreset } from '../utils/providerPresets'
 
 export interface UseProvidersReturn {
   apiKey: string
@@ -11,6 +12,8 @@ export interface UseProvidersReturn {
   setSelectedModel: React.Dispatch<React.SetStateAction<string>>
   modelsList: string[]
   setModelsList: React.Dispatch<React.SetStateAction<string[]>>
+  modelContextWindows: Record<string, number>
+  setModelContextWindows: React.Dispatch<React.SetStateAction<Record<string, number>>>
   systemPrompt: string
   setSystemPrompt: React.Dispatch<React.SetStateAction<string>>
   autoHideOnBlur: boolean
@@ -53,6 +56,7 @@ export interface UseProvidersReturn {
   handleFetchModels: () => Promise<void>
   handleRemoveModelDirectly: (modelId: string) => void
   handleToggleModelSelection: (modelId: string) => void
+  handleChangeModelContextWindow: (modelId: string, value: string) => void
   resetLocalSettings: () => void
   permissions: Record<string, 'allow' | 'ask' | 'deny'>
   onChangeToolPermission: (toolName: string, policy: 'allow' | 'ask' | 'deny') => void
@@ -65,9 +69,14 @@ export interface UseProvidersReturn {
 export const useProviders = (): UseProvidersReturn => {
   // Settings state
   const [apiKey, setApiKey] = useState('')
-  const [apiUrl, setApiUrl] = useState('https://api.deepseek.com/v1')
-  const [selectedModel, setSelectedModel] = useState('deepseek-chat')
-  const [modelsList, setModelsList] = useState<string[]>(['deepseek-chat', 'deepseek-reasoner'])
+  const [apiUrl, setApiUrl] = useState('https://opencode.ai/zen/v1')
+  const [selectedModel, setSelectedModel] = useState('deepseek-v4-flash-free')
+  const [modelsList, setModelsList] = useState<string[]>([
+    'deepseek-v4-flash-free',
+    'deepseek-v4-pro',
+    'qwen3-coder-plus'
+  ])
+  const [modelContextWindows, setModelContextWindows] = useState<Record<string, number>>({})
   const [systemPrompt, setSystemPrompt] = useState('')
   const [autoHideOnBlur, setAutoHideOnBlur] = useState(true)
   const [appStorePath, setAppStorePath] = useState('')
@@ -86,11 +95,11 @@ export const useProviders = (): UseProvidersReturn => {
   // Add provider form states
   const [showAddForm, setShowAddForm] = useState(false)
   const [newProviderName, setNewProviderName] = useState('')
-  const [newProviderType, setNewProviderType] = useState<ApiProvider['type']>('deepseek')
+  const [newProviderType, setNewProviderType] = useState<ApiProvider['type']>('opencode')
 
   // Model Management inputs state
   const [manualModelInput, setManualModelInput] = useState('')
-  const [fetchModelsUrl, setFetchModelsUrl] = useState('https://api.deepseek.com/v1/models')
+  const [fetchModelsUrl, setFetchModelsUrl] = useState('https://opencode.ai/zen/v1/models')
   const [isFetchingModels, setIsFetchingModels] = useState(false)
   const [fetchedModels, setFetchedModels] = useState<string[]>([])
   const [showModelsModal, setShowModelsModal] = useState(false)
@@ -101,8 +110,13 @@ export const useProviders = (): UseProvidersReturn => {
       // Settings
       const savedSettings = (await window.api.storeGet('settings')) as AppSettings
       if (savedSettings) {
-        const loadedProviders = savedSettings.providers || []
-        const loadedActiveId = savedSettings.activeProviderId || ''
+        const { settings: upgradedSettings, changed } = ensureCoreProviderPresets(savedSettings)
+        if (changed) {
+          await window.api.storeSet('settings', upgradedSettings)
+        }
+
+        const loadedProviders = upgradedSettings.providers || []
+        const loadedActiveId = upgradedSettings.activeProviderId || ''
         setProviders(loadedProviders)
         setActiveProviderId(loadedActiveId)
         setEditingProviderId(loadedActiveId)
@@ -115,16 +129,17 @@ export const useProviders = (): UseProvidersReturn => {
           setApiUrl(activeProv.apiUrl || '')
           setSelectedModel(activeProv.model || '')
           setModelsList(activeProv.modelsList || [])
+          setModelContextWindows(activeProv.modelContextWindows || {})
           setFetchModelsUrl(`${(activeProv.apiUrl || '').replace(/\/$/, '')}/models`)
         }
 
-        setSystemPrompt(savedSettings.systemPrompt || '')
-        setAutoHideOnBlur(savedSettings.autoHideOnBlur !== false)
-        setTheme(savedSettings.theme || 'dark')
-        setWebSearchProvider(savedSettings.webSearch?.provider || 'auto')
-        setWebSearchApiKey(savedSettings.webSearch?.apiKey || '')
+        setSystemPrompt(upgradedSettings.systemPrompt || '')
+        setAutoHideOnBlur(upgradedSettings.autoHideOnBlur !== false)
+        setTheme(upgradedSettings.theme || 'dark')
+        setWebSearchProvider(upgradedSettings.webSearch?.provider || 'auto')
+        setWebSearchApiKey(upgradedSettings.webSearch?.apiKey || '')
         setPermissions(
-          savedSettings.permissions || {
+          upgradedSettings.permissions || {
             fetch_url: 'allow',
             click_link: 'allow',
             find_in_page: 'allow',
@@ -154,6 +169,7 @@ export const useProviders = (): UseProvidersReturn => {
         setApiUrl(activeProv.apiUrl || '')
         setSelectedModel(activeProv.model || '')
         setModelsList(activeProv.modelsList || [])
+        setModelContextWindows(activeProv.modelContextWindows || {})
         setFetchModelsUrl(`${(activeProv.apiUrl || '').replace(/\/$/, '')}/models`)
         setEditingProviderId(activeProviderId)
       }
@@ -199,6 +215,17 @@ export const useProviders = (): UseProvidersReturn => {
       alert('未选择默认模型，请先选择一个默认模型！')
       return
     }
+    const sanitizedContextWindows: Record<string, number> = {}
+    for (const model of modelsList) {
+      const value = modelContextWindows[model]
+      if (value === undefined) continue
+      const normalized = normalizeContextWindowTokens(value)
+      if (!normalized) {
+        alert(`模型 ${model} 的上下文长度需要在 2,000 到 10,000,000 tokens 之间。`)
+        return
+      }
+      sanitizedContextWindows[model] = normalized
+    }
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
     if (savedSettings) {
       savedSettings.providers = providers.map((p) => {
@@ -208,20 +235,22 @@ export const useProviders = (): UseProvidersReturn => {
             apiKey,
             apiUrl,
             model: selectedModel,
-            modelsList
+            modelsList,
+            modelContextWindows: sanitizedContextWindows
           }
         }
         return p
       })
       await window.api.storeSet('settings', savedSettings)
       setProviders(savedSettings.providers)
+      setModelContextWindows(sanitizedContextWindows)
       setIsEditingProviderDetail(false)
     }
   }
 
   const handleAddProvider = async (name: string, type: ApiProvider['type']): Promise<void> => {
-    const customName = name.trim() || `${type.toUpperCase()}-配置`
-    const preset = PROVIDER_PRESETS.find((p) => p.type === type)
+    const preset = getProviderPreset(type)
+    const customName = name.trim() || preset?.name || `${type.toUpperCase()}-配置`
     const newId = `provider-custom-${Date.now()}`
     const newProv: ApiProvider = {
       id: newId,
@@ -230,7 +259,8 @@ export const useProviders = (): UseProvidersReturn => {
       apiKey: '',
       apiUrl: preset ? preset.apiUrl : '',
       model: preset ? preset.defaultModel : '',
-      modelsList: preset ? [...preset.modelsList] : []
+      modelsList: preset ? [...preset.modelsList] : [],
+      modelContextWindows: {}
     }
     const updated = [...providers, newProv]
     setProviders(updated)
@@ -246,6 +276,7 @@ export const useProviders = (): UseProvidersReturn => {
     setApiUrl(preset ? preset.apiUrl : '')
     setSelectedModel(preset ? preset.defaultModel : '')
     setModelsList(preset ? [...preset.modelsList] : [])
+    setModelContextWindows({})
     setFetchModelsUrl(`${(preset ? preset.apiUrl : '').replace(/\/$/, '')}/models`)
     setIsEditingProviderDetail(true)
   }
@@ -259,6 +290,7 @@ export const useProviders = (): UseProvidersReturn => {
       setApiUrl(target.apiUrl || '')
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
+      setModelContextWindows(target.modelContextWindows || {})
       setFetchModelsUrl(`${(target.apiUrl || '').replace(/\/$/, '')}/models`)
     }
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
@@ -276,6 +308,7 @@ export const useProviders = (): UseProvidersReturn => {
       setApiUrl(target.apiUrl || '')
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
+      setModelContextWindows(target.modelContextWindows || {})
       setFetchModelsUrl(`${(target.apiUrl || '').replace(/\/$/, '')}/models`)
     }
     setIsEditingProviderDetail(true)
@@ -296,6 +329,7 @@ export const useProviders = (): UseProvidersReturn => {
       setApiUrl(target.apiUrl || '')
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
+      setModelContextWindows(target.modelContextWindows || {})
       setFetchModelsUrl(`${(target.apiUrl || '').replace(/\/$/, '')}/models`)
     }
 
@@ -344,6 +378,11 @@ export const useProviders = (): UseProvidersReturn => {
     }
     const updated = modelsList.filter((m) => m !== modelId)
     setModelsList(updated)
+    setModelContextWindows((prev) => {
+      const next = { ...prev }
+      delete next[modelId]
+      return next
+    })
     if (selectedModel === modelId) {
       setSelectedModel(updated[0] || '')
     }
@@ -357,12 +396,34 @@ export const useProviders = (): UseProvidersReturn => {
       }
       const updated = modelsList.filter((m) => m !== modelId)
       setModelsList(updated)
+      setModelContextWindows((prev) => {
+        const next = { ...prev }
+        delete next[modelId]
+        return next
+      })
       if (selectedModel === modelId) {
         setSelectedModel(updated[0] || '')
       }
     } else {
       setModelsList((prev) => [...prev, modelId])
     }
+  }
+
+  const handleChangeModelContextWindow = (modelId: string, value: string): void => {
+    const trimmed = value.trim()
+    setModelContextWindows((prev) => {
+      const next = { ...prev }
+      if (!trimmed) {
+        delete next[modelId]
+        return next
+      }
+
+      const parsed = Number(trimmed)
+      if (Number.isFinite(parsed)) {
+        next[modelId] = Math.round(parsed)
+      }
+      return next
+    })
   }
 
   const toggleTheme = (): void => {
@@ -386,6 +447,8 @@ export const useProviders = (): UseProvidersReturn => {
     setSelectedModel,
     modelsList,
     setModelsList,
+    modelContextWindows,
+    setModelContextWindows,
     systemPrompt,
     setSystemPrompt,
     autoHideOnBlur,
@@ -428,6 +491,7 @@ export const useProviders = (): UseProvidersReturn => {
     handleFetchModels,
     handleRemoveModelDirectly,
     handleToggleModelSelection,
+    handleChangeModelContextWindow,
     resetLocalSettings,
     permissions,
     onChangeToolPermission,

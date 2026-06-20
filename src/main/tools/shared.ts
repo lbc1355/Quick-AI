@@ -1,7 +1,8 @@
 import { fetchUrl, renderWithLineNumbers } from '../webTools'
 import { SessionResource } from '../../shared/types'
-import { ToolExecutionContext } from './types'
+import { ToolExecutionContext, ToolExecutionResult } from './types'
 import { saveResourceChunk, getResourceId } from '../resourceCache'
+import { createToolResult } from './result'
 
 // ---- fetch + cache helpers shared by web tools ----
 
@@ -9,10 +10,7 @@ export async function fetchCacheAndFormat(
   url: string,
   ctx: ToolExecutionContext,
   opts: { offset?: number; maxChars?: number; render?: boolean }
-): Promise<{
-  resultForModel: string
-  resultForUi: { title?: string; url?: string; summary: string }
-}> {
+): Promise<ToolExecutionResult> {
   const result = await fetchUrl(url, ctx.signal, opts)
   const resourceId = getResourceId(result.finalUrl)
 
@@ -102,14 +100,12 @@ export async function fetchCacheAndFormat(
       ? `${body.slice(0, 20000)}\n\n[Tool result truncated after 20000 characters. Continue with nextOffset if more content is needed.]`
       : body
 
-  return {
+  return createToolResult({
     resultForModel,
-    resultForUi: {
-      title: result.title || undefined,
-      url: result.finalUrl || undefined,
-      summary: result.text
-        ? `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}. ${result.text.slice(0, 160)}${result.text.length > 160 ? '...' : ''}`
-        : `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}.`
-    }
-  }
+    title: result.title || undefined,
+    url: result.finalUrl || undefined,
+    summary: result.text
+      ? `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}. ${result.text.slice(0, 160)}${result.text.length > 160 ? '...' : ''}`
+      : `Read characters ${result.offset}-${result.endOffset} of ${result.totalChars}.`
+  })
 }

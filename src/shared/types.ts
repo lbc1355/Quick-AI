@@ -233,11 +233,12 @@ export interface Project {
 export interface ApiProvider {
   id: string
   name: string
-  type: 'deepseek' | 'kimi' | 'ollama' | 'glm' | 'custom'
+  type: 'opencode' | 'deepseek' | 'kimi' | 'ollama' | 'glm' | 'mimo' | 'custom'
   apiKey: string
   apiUrl: string
   model: string
   modelsList: string[]
+  modelContextWindows?: Record<string, number>
 }
 
 export interface AppSettings {
@@ -250,6 +251,7 @@ export interface AppSettings {
     [toolName: string]: 'allow' | 'ask' | 'deny'
   }
   webSearch?: WebSearchConfig
+  providerPresetVersion?: number
 }
 
 /** Which web search backend to use. 'auto' picks an API provider when an apiKey is configured,
@@ -346,6 +348,7 @@ export interface AgentSkillRunOptions {
   apiUrl: string
   apiKey: string
   model: string
+  contextWindowTokens?: number
   systemPrompt?: string
   skill: Skill
   userInput: string
@@ -413,6 +416,7 @@ export interface ChatRunOptions {
   apiUrl: string
   apiKey: string
   model: string
+  contextWindowTokens?: number
   messages: ChatCompletionMessage[]
   systemPrompt?: string
   runMode?: RunMode

@@ -25,6 +25,7 @@ interface UseChatCompletionProps {
   apiKey: string
   apiUrl: string
   selectedModel: string
+  contextWindowTokens?: number
   systemPrompt: string
   setShowSettings: (show: boolean) => void
   attachedFiles: Array<{ name: string; content: string; type: string }>
@@ -93,6 +94,7 @@ export const useChatCompletion = ({
   apiKey,
   apiUrl,
   selectedModel,
+  contextWindowTokens,
   systemPrompt,
   setShowSettings,
   attachedFiles,
@@ -110,6 +112,7 @@ export const useChatCompletion = ({
     apiKey,
     apiUrl,
     selectedModel,
+    contextWindowTokens,
     systemPrompt,
     projects
   })
@@ -118,10 +121,11 @@ export const useChatCompletion = ({
       apiKey,
       apiUrl,
       selectedModel,
+      contextWindowTokens,
       systemPrompt,
       projects
     }
-  }, [apiKey, apiUrl, selectedModel, systemPrompt, projects])
+  }, [apiKey, apiUrl, selectedModel, contextWindowTokens, systemPrompt, projects])
 
   const isGeneratingRef = useRef(isGenerating)
   useEffect(() => {
@@ -490,6 +494,7 @@ export const useChatCompletion = ({
           apiUrl: requestConfig.apiUrl,
           apiKey: requestConfig.apiKey,
           model: requestConfig.selectedModel,
+          contextWindowTokens: requestConfig.contextWindowTokens,
           messages: apiMessages,
           runMode: effectiveRunMode,
           resources: targetSession.resources,
@@ -566,6 +571,7 @@ export const useChatCompletion = ({
           apiUrl: requestConfig.apiUrl,
           apiKey: requestConfig.apiKey,
           model: requestConfig.selectedModel,
+          contextWindowTokens: requestConfig.contextWindowTokens,
           systemPrompt: requestConfig.systemPrompt,
           skill,
           userInput,
@@ -711,6 +717,7 @@ export const useChatCompletion = ({
           apiUrl: requestConfig.apiUrl,
           apiKey: requestConfig.apiKey,
           model: requestConfig.selectedModel,
+          contextWindowTokens: requestConfig.contextWindowTokens,
           messages: [],
           runMode: 'agent',
           resources: targetSession.resources,

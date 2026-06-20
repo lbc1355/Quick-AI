@@ -1,12 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Sparkles, GitBranch, Paperclip, ArrowDown } from 'lucide-react'
 
-import {
-  AutocompleteItem,
-  AppSettings,
-  Project,
-  WindowState
-} from '../../shared/types'
+import { AutocompleteItem, AppSettings, Project, WindowState } from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
 import { SettingsView } from './components/SettingsView'
@@ -99,6 +94,7 @@ function App(): React.JSX.Element {
     selectedModel,
     setSelectedModel,
     modelsList,
+    modelContextWindows,
     systemPrompt,
     setSystemPrompt,
     autoHideOnBlur,
@@ -138,6 +134,7 @@ function App(): React.JSX.Element {
     handleFetchModels,
     handleRemoveModelDirectly,
     handleToggleModelSelection,
+    handleChangeModelContextWindow,
     resetLocalSettings,
     permissions,
     onChangeToolPermission,
@@ -152,6 +149,12 @@ function App(): React.JSX.Element {
     setShowSettings(false)
     resetLocalSettings()
   }, [resetLocalSettings])
+
+  const activeProviderConfig = useMemo(
+    () => providers.find((provider) => provider.id === activeProviderId),
+    [activeProviderId, providers]
+  )
+  const activeModelContextWindowTokens = activeProviderConfig?.modelContextWindows?.[selectedModel]
 
   // 2. Sessions hook
   const {
@@ -338,6 +341,7 @@ function App(): React.JSX.Element {
     apiKey,
     apiUrl,
     selectedModel,
+    contextWindowTokens: activeModelContextWindowTokens,
     systemPrompt,
     setShowSettings: setShowSettings,
     attachedFiles,
@@ -905,7 +909,7 @@ function App(): React.JSX.Element {
 
   // Check if current active session is a clean "new session" with no message history
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
-  const activeProviderName = providers.find((p) => p.id === activeProviderId)?.name || 'No provider'
+  const activeProviderName = activeProviderConfig?.name || 'No provider'
   const activeModelName = selectedModel || 'No model'
   const steeringContextTokenEstimate = useMemo(
     () =>
@@ -926,7 +930,10 @@ function App(): React.JSX.Element {
   )
   const contextBaseTokenEstimate =
     steeringContextTokenEstimate + historyContextTokenEstimate + draftAttachmentTokenEstimate
-  const contextWindowInfo = useMemo(() => getContextWindowInfo(selectedModel), [selectedModel])
+  const contextWindowInfo = useMemo(
+    () => getContextWindowInfo(selectedModel, activeModelContextWindowTokens),
+    [activeModelContextWindowTokens, selectedModel]
+  )
   const contextWindowTokens = contextWindowInfo.tokens
   const contextDiagnostics = useMemo(
     () => ({
@@ -1024,6 +1031,7 @@ function App(): React.JSX.Element {
           apiUrl={apiUrl}
           selectedModel={selectedModel}
           modelsList={modelsList}
+          modelContextWindows={modelContextWindows}
           manualModelInput={manualModelInput}
           fetchModelsUrl={fetchModelsUrl}
           isFetchingModels={isFetchingModels}
@@ -1055,6 +1063,7 @@ function App(): React.JSX.Element {
           onAddManualModel={handleAddManualModel}
           onFetchModels={handleFetchModels}
           onRemoveModel={handleRemoveModelDirectly}
+          onChangeModelContextWindow={handleChangeModelContextWindow}
           onInstallSkill={installSkill}
           onRemoveSkill={removeSkill}
           onChangeEditingProviderName={(name) => {

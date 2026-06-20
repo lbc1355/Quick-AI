@@ -4,7 +4,8 @@ export {
   getContextWindowInfo,
   DEFAULT_CONTEXT_SIZE,
   getContextWindowSize,
-  MODEL_CONTEXT_SIZES
+  MODEL_CONTEXT_SIZES,
+  normalizeContextWindowTokens
 } from '../../shared/modelContext'
 
 export interface ContextManagerOptions {

@@ -11,6 +11,7 @@ import { ToolRegistry, toChatToolDeclaration, searchToolDefinitions } from '../t
 import { buildSkillMessages, prepareChatAgentMessages } from './messageBuilder'
 import {
   getContextWindowSize,
+  normalizeContextWindowTokens,
   trimMessagesToFit,
   TOOL_OUTPUT_SPILLOVER_THRESHOLD
 } from './contextManager'
@@ -40,6 +41,7 @@ import {
 import { buildSideEffectEntry, extractResourceIds, SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { getFetchUrlCallKey, prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 import type { ToolModelAttachment } from '../tools/types'
+import { normalizeToolExecutionResult } from '../tools/result'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -112,6 +114,12 @@ const buildAgentStepPresentation = (
   }
 }
 
+const getEffectiveContextWindowSize = (options: {
+  model: string
+  contextWindowTokens?: number
+}): number =>
+  normalizeContextWindowTokens(options.contextWindowTokens) ?? getContextWindowSize(options.model)
+
 export const runAgentLoop = async (
   mainWindow: BrowserWindow,
   reqId: string,
@@ -119,6 +127,7 @@ export const runAgentLoop = async (
     apiUrl: string
     apiKey: string
     model: string
+    contextWindowTokens?: number
     systemPrompt?: string
     messages?: ChatCompletionMessage[]
     skill?: AgentSkillRunOptions['skill']
@@ -466,7 +475,7 @@ export const runAgentLoop = async (
       }
 
       // Phase 1: Context Size Control & Message Trimming
-      const contextSize = getContextWindowSize(options.model)
+      const contextSize = getEffectiveContextWindowSize(options)
       messages = trimMessagesToFit(messages, {
         maxTokens: contextSize,
         reserveForResponse: 2000,
@@ -695,7 +704,7 @@ export const runAgentLoop = async (
             if (signal.aborted) {
               throw new Error('Agent execution aborted by user.')
             }
-            const { resultForModel, resultForUi, modelAttachments } = await withRetry(
+            const rawResult = await withRetry(
               () =>
                 toolDef.execute(toolArgs, {
                   reqId,
@@ -718,6 +727,10 @@ export const runAgentLoop = async (
                 }),
               DEFAULT_RETRY_POLICY,
               signal
+            )
+            const { resultForModel, resultForUi, modelAttachments } = normalizeToolExecutionResult(
+              rawResult,
+              callId
             )
             if (signal.aborted) {
               throw new Error('Agent execution aborted by user.')
@@ -1001,7 +1014,7 @@ export const runAgentLoop = async (
     }
 
     // Final call to model
-    const contextSize = getContextWindowSize(options.model)
+    const contextSize = getEffectiveContextWindowSize(options)
     messages = trimMessagesToFit(messages, {
       maxTokens: contextSize,
       reserveForResponse: 2000,

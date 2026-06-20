@@ -19,6 +19,10 @@ describe('getContextWindowSize', () => {
   })
 
   it('reports where the context size came from', () => {
+    expect(getContextWindowInfo('some-model-32k', 256000)).toEqual({
+      tokens: 256000,
+      source: 'configured'
+    })
     expect(getContextWindowInfo('deepseek-chat')).toEqual({
       tokens: 64000,
       source: 'configured'

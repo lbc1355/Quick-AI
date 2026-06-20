@@ -817,7 +817,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .provider-panel-toolbar {
@@ -826,6 +826,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.provider-count {
+  color: var(--color-text-faint);
+  font-size: 11.5px;
 }
 
 .provider-add-btn {
@@ -855,18 +860,27 @@
   margin: 0;
   padding: 0;
   overflow-y: visible;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  align-items: stretch;
+  gap: 12px;
 }
 
 .provider-card {
-  min-height: 58px;
-  padding: 9px 10px;
+  min-height: 148px;
+  padding: 14px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  align-items: center;
-  gap: 10px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 14px;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: transparent !important;
+  background: var(--color-card-bg) !important;
+  box-shadow: none;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    transform 120ms ease;
 }
 
 .provider-card.active {
@@ -876,16 +890,42 @@
 
 .provider-card:hover {
   background: var(--color-card-bg-hover) !important;
+  border-color: var(--color-border-strong);
 }
 
 .provider-card-main {
   min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.provider-card-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.provider-icon,
+.provider-add-icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-elevated);
+  color: var(--color-primary);
 }
 
 .provider-card-title-row {
   min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
 }
 
@@ -899,14 +939,30 @@
 
 .provider-name {
   color: var(--color-text-title);
-  font-size: 12.5px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .provider-url {
-  margin-top: 4px;
   color: var(--color-text-faint);
   font-size: 11px;
+}
+
+.provider-meta-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+}
+
+.provider-meta-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .provider-type,
@@ -925,6 +981,9 @@
 }
 
 .provider-active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--color-primary);
   background: rgba(52, 120, 246, 0.12);
 }
@@ -932,11 +991,12 @@
 .provider-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
 }
 
 .provider-text-btn,
-.provider-delete-btn {
+.provider-icon-action {
   height: 26px;
   border: 1px solid var(--color-border);
   border-radius: 6px;
@@ -950,7 +1010,7 @@
   font-size: 11.5px;
 }
 
-.provider-delete-btn {
+.provider-icon-action {
   width: 26px;
   display: inline-flex;
   align-items: center;
@@ -962,15 +1022,72 @@
   color: var(--color-text-title);
 }
 
-.provider-delete-btn:hover:not(:disabled) {
+.provider-icon-action:hover:not(:disabled) {
+  background: var(--color-card-bg-hover);
+  color: var(--color-text-title);
+}
+
+.provider-icon-action.danger:hover:not(:disabled) {
   border-color: rgba(229, 72, 77, 0.24);
   background: rgba(229, 72, 77, 0.1);
   color: var(--color-danger);
 }
 
-.provider-delete-btn:disabled {
+.provider-icon-action:disabled {
   cursor: default;
   opacity: 0.35;
+}
+
+.provider-add-card {
+  place-items: center;
+  justify-content: center;
+  border-style: dashed;
+  color: var(--color-text-muted);
+  text-align: center;
+  cursor: pointer;
+}
+
+.provider-add-card:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 48%, var(--color-border));
+  background: rgba(52, 120, 246, 0.08) !important;
+}
+
+.provider-add-title {
+  color: var(--color-text-title);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.provider-add-description {
+  max-width: 170px;
+  color: var(--color-text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.provider-add-form-card {
+  align-content: start;
+}
+
+.provider-add-form-header {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.provider-add-form-header strong {
+  display: block;
+  color: var(--color-text-title);
+  font-size: 13px;
+}
+
+.provider-add-form-header small {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-faint);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .websearch-config {
@@ -1640,6 +1757,80 @@
 }
 
 .model-pill button:hover {
+  background: rgba(229, 72, 77, 0.1);
+  color: var(--color-danger);
+}
+
+.model-context-list {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.model-context-row {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(132px, 172px) 24px;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-context-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.model-context-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.model-context-main small,
+.model-context-field span {
+  color: var(--color-text-faint);
+  font-size: 10.5px;
+}
+
+.model-context-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.model-context-input {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+.model-context-row > button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.model-context-row > button:hover {
   background: rgba(229, 72, 77, 0.1);
   color: var(--color-danger);
 }

@@ -6,6 +6,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { getQuickAiRoot } from './paths'
 import { registerTool, unregisterTool } from './toolRegistry'
 import { ToolDefinition } from './tools/types'
+import { createToolResult } from './tools/result'
 import { logger } from './logger'
 
 export interface McpServerConfig {
@@ -312,23 +313,21 @@ class McpManagerImpl {
 
             const textOutput = textParts.join('\n')
 
-            return {
-              resultForModel: textOutput || JSON.stringify(result.content),
-              resultForUi: {
-                title: `MCP Tool Call: ${name} / ${tool.name}`,
-                summary: `Successfully executed tool "${tool.name}" on server "${name}"`
-              }
-            }
+            const resultForModel = textOutput || JSON.stringify(result.content)
+
+            return createToolResult({
+              resultForModel,
+              title: `MCP Tool Call: ${name} / ${tool.name}`,
+              summary: `Successfully executed tool "${tool.name}" on server "${name}"`
+            })
           } catch (err) {
             const errorMsg = (err as Error).message || String(err)
             logger.error('MCP', `Error executing tool "${tool.name}" on server "${name}": ${errorMsg}`)
-            return {
+            return createToolResult({
               resultForModel: `Error executing MCP tool: ${errorMsg}`,
-              resultForUi: {
-                title: `MCP Tool Call Failed: ${name} / ${tool.name}`,
-                summary: `Failed to execute: ${errorMsg}`
-              }
-            }
+              title: `MCP Tool Call Failed: ${name} / ${tool.name}`,
+              summary: `Failed to execute: ${errorMsg}`
+            })
           }
         }
       }
