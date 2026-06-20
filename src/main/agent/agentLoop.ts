@@ -41,8 +41,7 @@ import { prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 import type { ToolModelAttachment } from '../tools/types'
 import { recordToolAction } from './toolActionRecorder'
 import { executePreparedToolCall } from './preparedToolExecutor'
-import { runPreparedToolBatch } from './toolBatchRunner'
-import { finalizeToolStep } from './toolStepFinalizer'
+import { EmitToolEvents, processPreparedToolStep } from './toolStepProcessor'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -542,30 +541,6 @@ export const runAgentLoop = async (
         )
         const assistantStepText = getAssistantText(assistantMessage.content) || assistantTextBuffer
         const stepPresentation = buildAgentStepPresentation(assistantStepText, preparedCalls)
-        let stepHadToolFailure = false
-        const sendToolErrorEvent = (callId: string, error: string): void => {
-          stepHadToolFailure = true
-          sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error, step, stepId })
-        }
-        const sendToolEvents = (events: AgentEvent[]): void => {
-          for (const event of events) {
-            if (event.type === 'tool_error') {
-              sendToolErrorEvent(event.callId, event.error)
-            } else {
-              sendEvent(mainWindow, reqId, event)
-            }
-          }
-        }
-
-        sendEvent(mainWindow, reqId, {
-          type: 'agent_step',
-          stepId,
-          step,
-          maxSteps,
-          title: stepPresentation.title,
-          message: stepPresentation.message,
-          status: 'running'
-        })
 
         const toolModelAttachments = new Array<ToolModelAttachment[] | undefined>(
           assistantMessage.tool_calls.length
@@ -574,7 +549,8 @@ export const runAgentLoop = async (
         // Helper to execute a single (already-prepared) tool call and return its result message
         const executeTool = async (
           prep: PreparedToolCall,
-          isApproved = true
+          isApproved: boolean,
+          emitToolEvents: EmitToolEvents
         ): Promise<ChatCompletionMessage> => {
           const { toolName } = prep
           const toolDef = ToolRegistry[toolName]
@@ -616,7 +592,7 @@ export const runAgentLoop = async (
             runCtx.activateTool(executionResult.outputStore.activateToolName)
           }
 
-          sendToolEvents(executionResult.events)
+          emitToolEvents(executionResult.events)
 
           if (executionResult.haltRequested) {
             haltRequested = true
@@ -643,30 +619,28 @@ export const runAgentLoop = async (
           return executionResult.response
         }
 
-        const { toolResponses } = await runPreparedToolBatch({
+        const processedStep = await processPreparedToolStep({
           toolCallCount: assistantMessage.tool_calls.length,
+          preparedCalls,
           askCalls,
           directCalls,
           blockedCalls,
-          reqId,
           step,
+          maxSteps,
           stepId,
+          title: stepPresentation.title,
+          message: stepPresentation.message,
           signal,
-          emitEvent: (event) => sendToolEvents([event]),
+          emitEvent: (event) => sendEvent(mainWindow, reqId, event),
           requestPermission: (callId) => globalPermissionManager.requestPermission(reqId, callId),
           isToolApproved: (toolName) => runCtx.isToolApproved(toolName),
           isCommandPrefixApproved: (command) => runCtx.isCommandPrefixApproved(command),
-          executeTool
+          executeTool,
+          toolModelAttachments
         })
 
-        const finalizedStep = finalizeToolStep({ toolResponses, toolModelAttachments })
-        messages.push(...finalizedStep.messagesToAppend)
-        persistCheckpoint(step, finalizedStep.lastRecordedCallId)
-        sendEvent(mainWindow, reqId, {
-          type: 'agent_step_end',
-          stepId,
-          status: stepHadToolFailure ? 'failed' : 'completed'
-        })
+        messages.push(...processedStep.messagesToAppend)
+        persistCheckpoint(step, processedStep.lastRecordedCallId)
 
         // A loop-guard halt ends tool use immediately; fall through to the final-answer path.
         if (haltRequested) {
