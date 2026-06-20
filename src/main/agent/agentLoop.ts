@@ -13,7 +13,6 @@ import {
   trimMessagesToFit,
   TOOL_OUTPUT_SPILLOVER_THRESHOLD
 } from './contextManager'
-import { callModel, getPromptCacheStats } from './callModel'
 import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY } from './retryPolicy'
@@ -41,6 +40,7 @@ import { createToolStepExecutor } from './toolStepApplicator'
 import { buildAgentStepPresentation } from './toolStepPresentation'
 import { createToolDeclarationCache } from './toolDeclarationCache'
 import { createRunUsageTracker } from './runUsageTracker'
+import { runModelTurn } from './modelTurnRunner'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -332,10 +332,8 @@ export const runAgentLoop = async (
       // Stream assistant text as an unclassified model message until we know whether this
       // model turn becomes a tool step or the final answer. Some providers emit content
       // before tool_call deltas, so the final/step classification has to happen after the turn.
-      let assistantTextBuffer = ''
-      const modelStartTime = Date.now()
-      const assistantMessage = await callModel(
-        {
+      const { assistantMessage, streamedText: assistantTextBuffer } = await runModelTurn({
+        modelConfig: {
           apiUrl: options.apiUrl,
           apiKey: options.apiKey,
           model: options.model
@@ -343,27 +341,19 @@ export const runAgentLoop = async (
         messages,
         toolsToDeclare,
         signal,
-        {
-          onReasoning: (content) => {
-            sendEvent(mainWindow, reqId, { type: 'reasoning', content, step, stepId })
-          },
-          onFinalChunk: (content) => {
-            assistantTextBuffer += content
-            sendEvent(mainWindow, reqId, {
-              type: 'agent_message_delta',
-              content,
-              step,
-              stepId
-            })
-          }
+        usageTracker,
+        onReasoning: (content) => {
+          sendEvent(mainWindow, reqId, { type: 'reasoning', content, step, stepId })
+        },
+        onContentChunk: (content) => {
+          sendEvent(mainWindow, reqId, {
+            type: 'agent_message_delta',
+            content,
+            step,
+            stepId
+          })
         }
-      )
-      const modelElapsed = Date.now() - modelStartTime
-      usageTracker.recordModelResponse(
-        assistantMessage,
-        modelElapsed,
-        getPromptCacheStats(assistantMessage)
-      )
+      })
 
       messages.push(assistantMessage)
       SessionLogger.logModelResponse(conversationId, assistantMessage)
@@ -484,32 +474,23 @@ export const runAgentLoop = async (
     })
 
     let forcedFinalEmitted = false
-    const finalModelStartTime = Date.now()
-    const forcedFinalMessage = await callModel(
-      {
+    const { assistantMessage: forcedFinalMessage } = await runModelTurn({
+      modelConfig: {
         apiUrl: options.apiUrl,
         apiKey: options.apiKey,
         model: options.model
       },
       messages,
-      undefined,
       signal,
-      {
-        onReasoning: (content) => {
-          sendEvent(mainWindow, reqId, { type: 'reasoning', content })
-        },
-        onFinalChunk: (content) => {
-          forcedFinalEmitted = true
-          sendEvent(mainWindow, reqId, { type: 'final', content })
-        }
+      usageTracker,
+      onReasoning: (content) => {
+        sendEvent(mainWindow, reqId, { type: 'reasoning', content })
+      },
+      onContentChunk: (content) => {
+        forcedFinalEmitted = true
+        sendEvent(mainWindow, reqId, { type: 'final', content })
       }
-    )
-    const finalModelElapsed = Date.now() - finalModelStartTime
-    usageTracker.recordModelResponse(
-      forcedFinalMessage,
-      finalModelElapsed,
-      getPromptCacheStats(forcedFinalMessage)
-    )
+    })
 
     const forcedFinalText = getAssistantText(forcedFinalMessage.content)
     if (!forcedFinalEmitted && forcedFinalText) {
