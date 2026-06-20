@@ -3,8 +3,7 @@ import {
   AgentSkillRunOptions,
   ChatCompletionMessage,
   AgentEvent,
-  SessionResource,
-  PromptCacheStats
+  SessionResource
 } from '../../shared/types'
 import { ToolRegistry, searchToolDefinitions } from '../toolRegistry'
 import { buildSkillMessages, prepareChatAgentMessages } from './messageBuilder'
@@ -15,7 +14,6 @@ import {
   TOOL_OUTPUT_SPILLOVER_THRESHOLD
 } from './contextManager'
 import { callModel, getPromptCacheStats } from './callModel'
-import { estimateTokens } from './tokenEstimator'
 import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY } from './retryPolicy'
@@ -42,6 +40,7 @@ import { processPreparedToolStep } from './toolStepProcessor'
 import { createToolStepExecutor } from './toolStepApplicator'
 import { buildAgentStepPresentation } from './toolStepPresentation'
 import { createToolDeclarationCache } from './toolDeclarationCache'
+import { createRunUsageTracker } from './runUsageTracker'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -224,89 +223,15 @@ export const runAgentLoop = async (
   }
 
   const fetchUrlBudget = { count: 0, max: 10 }
-  let totalGeneratedTokens = 0
-  let totalGenerationTimeMs = 0
-  let totalCacheHitTokens = 0
-  let totalCacheMissTokens = 0
-  let totalCachePromptTokens = 0
-  let totalCompletionTokens = 0
-  let totalReasoningTokens = 0
-  let totalUsageTokens = 0
-  let hasCacheStats = false
-  let hasUsageStats = false
-
-  const getTokenSpeed = (): number => {
-    const totalGenerationSec = totalGenerationTimeMs / 1000
-    return totalGenerationSec > 0
-      ? Number((totalGeneratedTokens / totalGenerationSec).toFixed(1))
-      : 0
-  }
-
-  const addPromptCacheStats = (stats: PromptCacheStats | undefined): void => {
-    if (!stats) return
-
-    if (stats.promptTokens !== undefined) {
-      hasUsageStats = true
-      totalCachePromptTokens += stats.promptTokens
-    }
-    if (stats.completionTokens !== undefined) {
-      hasUsageStats = true
-      totalCompletionTokens += stats.completionTokens
-    }
-    if (stats.reasoningTokens !== undefined) {
-      hasUsageStats = true
-      totalReasoningTokens += stats.reasoningTokens
-    }
-    if (stats.totalTokens !== undefined) {
-      hasUsageStats = true
-      totalUsageTokens += stats.totalTokens
-    }
-
-    if (stats.hasCacheStats === false) return
-
-    hasCacheStats = true
-    totalCacheHitTokens += stats.cacheHitTokens
-    if (stats.cacheMissTokens !== undefined) {
-      totalCacheMissTokens += stats.cacheMissTokens
-    } else if (stats.promptTokens !== undefined) {
-      totalCacheMissTokens += Math.max(0, stats.promptTokens - stats.cacheHitTokens)
-    }
-  }
-
-  const getAggregatedCacheStats = (): PromptCacheStats | undefined => {
-    if (!hasCacheStats && !hasUsageStats) return undefined
-    const denominator =
-      totalCacheHitTokens + totalCacheMissTokens > 0
-        ? totalCacheHitTokens + totalCacheMissTokens
-        : totalCachePromptTokens
-    const totalTokens =
-      totalUsageTokens > 0
-        ? totalUsageTokens
-        : totalCachePromptTokens + totalCompletionTokens > 0
-          ? totalCachePromptTokens + totalCompletionTokens
-          : undefined
-    return {
-      hasCacheStats,
-      promptTokens: totalCachePromptTokens > 0 ? totalCachePromptTokens : undefined,
-      completionTokens: totalCompletionTokens > 0 ? totalCompletionTokens : undefined,
-      totalTokens,
-      reasoningTokens: totalReasoningTokens > 0 ? totalReasoningTokens : undefined,
-      cacheHitTokens: totalCacheHitTokens,
-      cacheMissTokens: hasCacheStats ? totalCacheMissTokens : undefined,
-      hitRate:
-        hasCacheStats && denominator && denominator > 0
-          ? Number(((totalCacheHitTokens / denominator) * 100).toFixed(1))
-          : 0
-    }
-  }
+  const usageTracker = createRunUsageTracker()
 
   const buildDoneChunk = (extra: Record<string, unknown> = {}): Record<string, unknown> => {
-    const cacheStats = getAggregatedCacheStats()
+    const cacheStats = usageTracker.getAggregatedCacheStats()
     return {
       reqId,
       ...extra,
       done: true,
-      tokenSpeed: getTokenSpeed(),
+      tokenSpeed: usageTracker.getTokenSpeed(),
       ...(cacheStats ? { cacheStats } : {})
     }
   }
@@ -434,12 +359,11 @@ export const runAgentLoop = async (
         }
       )
       const modelElapsed = Date.now() - modelStartTime
-      const reasoningText = assistantMessage.reasoning_content || ''
-      const contentText =
-        typeof assistantMessage.content === 'string' ? assistantMessage.content : ''
-      totalGeneratedTokens += estimateTokens(reasoningText) + estimateTokens(contentText)
-      totalGenerationTimeMs += modelElapsed
-      addPromptCacheStats(getPromptCacheStats(assistantMessage))
+      usageTracker.recordModelResponse(
+        assistantMessage,
+        modelElapsed,
+        getPromptCacheStats(assistantMessage)
+      )
 
       messages.push(assistantMessage)
       SessionLogger.logModelResponse(conversationId, assistantMessage)
@@ -581,12 +505,11 @@ export const runAgentLoop = async (
       }
     )
     const finalModelElapsed = Date.now() - finalModelStartTime
-    const finalReasoningText = forcedFinalMessage.reasoning_content || ''
-    const finalContentText =
-      typeof forcedFinalMessage.content === 'string' ? forcedFinalMessage.content : ''
-    totalGeneratedTokens += estimateTokens(finalReasoningText) + estimateTokens(finalContentText)
-    totalGenerationTimeMs += finalModelElapsed
-    addPromptCacheStats(getPromptCacheStats(forcedFinalMessage))
+    usageTracker.recordModelResponse(
+      forcedFinalMessage,
+      finalModelElapsed,
+      getPromptCacheStats(forcedFinalMessage)
+    )
 
     const forcedFinalText = getAssistantText(forcedFinalMessage.content)
     if (!forcedFinalEmitted && forcedFinalText) {
