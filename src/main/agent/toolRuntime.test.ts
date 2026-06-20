@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   applyRuntimeToolCallResult,
   classifyToolRuntimeError,
+  createSkippedToolCallResult,
   createToolFailureExecutionResult,
   executeRuntimeToolCall
 } from './toolRuntime'
@@ -266,5 +267,68 @@ describe('tool runtime helpers', () => {
       step: 3,
       stepId: 'step-3'
     })
+  })
+
+  it('creates skipped denied tool results with a denied tool_call event when requested', () => {
+    const result = createSkippedToolCallResult({
+      toolName: 'missing_tool',
+      callId: 'call-5',
+      args: { value: 1 },
+      modelContent: 'Error: Tool execution blocked',
+      toolError: 'Tool execution blocked',
+      actionStatus: 'denied',
+      step: 4,
+      stepId: 'step-4',
+      deniedToolCall: {
+        purpose: 'test denied call'
+      }
+    })
+
+    expect(result.response).toEqual({
+      role: 'tool',
+      tool_call_id: 'call-5',
+      name: 'missing_tool',
+      content: 'Error: Tool execution blocked'
+    })
+    expect(result.action).toEqual({
+      resultStatus: 'denied',
+      resultContent: 'Error: Tool execution blocked'
+    })
+    expect(result.events).toEqual([
+      {
+        type: 'tool_call',
+        callId: 'call-5',
+        toolName: 'missing_tool',
+        args: { value: 1 },
+        purpose: 'test denied call',
+        permissionState: 'denied',
+        step: 4,
+        stepId: 'step-4'
+      },
+      {
+        type: 'tool_error',
+        callId: 'call-5',
+        error: 'Tool execution blocked',
+        step: 4,
+        stepId: 'step-4'
+      }
+    ])
+  })
+
+  it('creates skipped blocked tool results without emitting a synthetic tool_call', () => {
+    const result = createSkippedToolCallResult({
+      toolName: 'fetch_url',
+      callId: 'call-6',
+      args: { url: 'https://example.com' },
+      modelContent: 'Warning: fetch limit reached',
+      toolError: 'Warning: fetch limit reached',
+      actionStatus: 'blocked',
+      step: 5,
+      stepId: 'step-5'
+    })
+
+    expect(result.action.resultStatus).toBe('blocked')
+    expect(result.response.content).toBe('Warning: fetch limit reached')
+    expect(result.events.map((event) => event.type)).toEqual(['tool_error'])
   })
 })

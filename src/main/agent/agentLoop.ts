@@ -41,7 +41,11 @@ import {
 import { buildSideEffectEntry, extractResourceIds, SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { getFetchUrlCallKey, prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 import type { ToolModelAttachment } from '../tools/types'
-import { applyRuntimeToolCallResult, executeRuntimeToolCall } from './toolRuntime'
+import {
+  applyRuntimeToolCallResult,
+  createSkippedToolCallResult,
+  executeRuntimeToolCall
+} from './toolRuntime'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -547,6 +551,15 @@ export const runAgentLoop = async (
           stepHadToolFailure = true
           sendEvent(mainWindow, reqId, { type: 'tool_error', callId, error, step, stepId })
         }
+        const sendToolEvents = (events: AgentEvent[]): void => {
+          for (const event of events) {
+            if (event.type === 'tool_error') {
+              sendToolErrorEvent(event.callId, event.error)
+            } else {
+              sendEvent(mainWindow, reqId, event)
+            }
+          }
+        }
 
         sendEvent(mainWindow, reqId, {
           type: 'agent_step',
@@ -624,62 +637,74 @@ export const runAgentLoop = async (
             const errorMsg =
               prep.blockReason ||
               `Tool execution blocked: Tool "${toolName}" is not registered, not implemented, not whitelisted/activated, or denied by policy.`
-            sendEvent(mainWindow, reqId, {
-              type: 'tool_call',
-              callId,
+            const skippedResult = createSkippedToolCallResult({
               toolName,
+              callId,
               args: toolArgs,
-              purpose: prep.purpose,
-              permissionState: 'denied',
+              modelContent: `Error: ${errorMsg}`,
+              toolError: errorMsg,
+              actionStatus: 'denied',
               step,
-              stepId
+              stepId,
+              deniedToolCall: {
+                purpose: prep.purpose
+              }
             })
-            sendToolErrorEvent(callId, errorMsg)
-            const content = `Error: ${errorMsg}`
-            recordAction('denied', content)
-            return {
-              role: 'tool',
-              tool_call_id: callId,
-              name: toolName,
-              content
-            }
+            sendToolEvents(skippedResult.events)
+            recordAction(skippedResult.action.resultStatus, skippedResult.action.resultContent)
+            return skippedResult.response
           }
 
           if (prep.isDeadlock) {
             const offset = typeof toolArgs.offset === 'number' ? toolArgs.offset : 0
             const deadlockWarning = `Warning: You have already fetched this URL window: ${toolArgs.url} at offset ${offset}. Use the nextOffset from the previous result to continue.`
-            sendToolErrorEvent(callId, deadlockWarning)
-            recordAction('blocked', deadlockWarning)
-            return {
-              role: 'tool',
-              tool_call_id: callId,
-              name: toolName,
-              content: deadlockWarning
-            }
+            const skippedResult = createSkippedToolCallResult({
+              toolName,
+              callId,
+              args: toolArgs,
+              modelContent: deadlockWarning,
+              toolError: deadlockWarning,
+              actionStatus: 'blocked',
+              step,
+              stepId
+            })
+            sendToolEvents(skippedResult.events)
+            recordAction(skippedResult.action.resultStatus, skippedResult.action.resultContent)
+            return skippedResult.response
           }
 
           if (prep.loopBlock) {
-            sendToolErrorEvent(callId, prep.loopBlock)
-            recordAction('blocked', prep.loopBlock)
-            return {
-              role: 'tool',
-              tool_call_id: callId,
-              name: toolName,
-              content: prep.loopBlock
-            }
+            const skippedResult = createSkippedToolCallResult({
+              toolName,
+              callId,
+              args: toolArgs,
+              modelContent: prep.loopBlock,
+              toolError: prep.loopBlock,
+              actionStatus: 'blocked',
+              step,
+              stepId
+            })
+            sendToolEvents(skippedResult.events)
+            recordAction(skippedResult.action.resultStatus, skippedResult.action.resultContent)
+            return skippedResult.response
           }
 
           if (toolName === 'fetch_url') {
             if (fetchUrlsCount >= MAX_FETCH_URLS_PER_RUN) {
               const limitWarning = `Warning: You have reached the maximum fetch limit of ${MAX_FETCH_URLS_PER_RUN} page windows for this run. Please summarize based only on the content you already have.`
-              sendToolErrorEvent(callId, limitWarning)
-              recordAction('blocked', limitWarning)
-              return {
-                role: 'tool',
-                tool_call_id: callId,
-                name: toolName,
-                content: limitWarning
-              }
+              const skippedResult = createSkippedToolCallResult({
+                toolName,
+                callId,
+                args: toolArgs,
+                modelContent: limitWarning,
+                toolError: limitWarning,
+                actionStatus: 'blocked',
+                step,
+                stepId
+              })
+              sendToolEvents(skippedResult.events)
+              recordAction(skippedResult.action.resultStatus, skippedResult.action.resultContent)
+              return skippedResult.response
             }
             if (isApproved) {
               fetchUrlsCount++
@@ -688,15 +713,19 @@ export const runAgentLoop = async (
 
           if (!isApproved) {
             const errorMsg = 'Tool execution denied by user.'
-            sendToolErrorEvent(callId, errorMsg)
-            const content = `ERROR: ${errorMsg}`
-            recordAction('denied', content)
-            return {
-              role: 'tool',
-              tool_call_id: callId,
-              name: toolName,
-              content
-            }
+            const skippedResult = createSkippedToolCallResult({
+              toolName,
+              callId,
+              args: toolArgs,
+              modelContent: `ERROR: ${errorMsg}`,
+              toolError: errorMsg,
+              actionStatus: 'denied',
+              step,
+              stepId
+            })
+            sendToolEvents(skippedResult.events)
+            recordAction(skippedResult.action.resultStatus, skippedResult.action.resultContent)
+            return skippedResult.response
           }
 
           const runtimeResult = await executeRuntimeToolCall({
@@ -754,13 +783,7 @@ export const runAgentLoop = async (
             runCtx.activateTool(appliedResult.outputStore.activateToolName)
           }
 
-          for (const event of appliedResult.events) {
-            if (event.type === 'tool_error') {
-              sendToolErrorEvent(event.callId, event.error)
-            } else {
-              sendEvent(mainWindow, reqId, event)
-            }
-          }
+          sendToolEvents(appliedResult.events)
 
           if (appliedResult.haltRequested) {
             haltRequested = true

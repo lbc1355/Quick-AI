@@ -70,7 +70,7 @@ export interface ApplyRuntimeToolCallResultOptions {
 }
 
 export interface RuntimeToolActionDraft {
-  resultStatus: 'success' | 'error' | 'ambiguous'
+  resultStatus: 'success' | 'error' | 'ambiguous' | 'denied' | 'blocked'
   resultContent: string
 }
 
@@ -97,6 +97,26 @@ export interface AppliedRuntimeToolCallResult {
   markExecutedCallKey?: string
   outputStore?: RuntimeToolOutputStoreRequest
   ambiguousAction?: RuntimeToolAmbiguousActionDraft
+}
+
+export interface CreateSkippedToolCallResultOptions {
+  toolName: string
+  callId: string
+  args: ToolArgs
+  modelContent: string
+  toolError: string
+  actionStatus: 'denied' | 'blocked'
+  step: number
+  stepId: string
+  deniedToolCall?: {
+    purpose?: string
+  }
+}
+
+export interface SkippedToolCallResult {
+  response: ChatCompletionMessage
+  events: AgentEvent[]
+  action: RuntimeToolActionDraft
 }
 
 const safeJsonStringify = (value: unknown): string => {
@@ -174,6 +194,45 @@ export function createToolFailureExecutionResult(
     summary: options.errorMessage,
     details
   })
+}
+
+export function createSkippedToolCallResult(
+  options: CreateSkippedToolCallResultOptions
+): SkippedToolCallResult {
+  const events: AgentEvent[] = []
+  if (options.deniedToolCall) {
+    events.push({
+      type: 'tool_call',
+      callId: options.callId,
+      toolName: options.toolName,
+      args: options.args,
+      purpose: options.deniedToolCall.purpose,
+      permissionState: 'denied',
+      step: options.step,
+      stepId: options.stepId
+    })
+  }
+  events.push({
+    type: 'tool_error',
+    callId: options.callId,
+    error: options.toolError,
+    step: options.step,
+    stepId: options.stepId
+  })
+
+  return {
+    response: {
+      role: 'tool',
+      tool_call_id: options.callId,
+      name: options.toolName,
+      content: options.modelContent
+    },
+    events,
+    action: {
+      resultStatus: options.actionStatus,
+      resultContent: options.modelContent
+    }
+  }
 }
 
 export function applyRuntimeToolCallResult(
