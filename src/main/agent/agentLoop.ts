@@ -42,6 +42,7 @@ import { buildSideEffectEntry, extractResourceIds, SIDE_EFFECTING_TOOLS } from '
 import { getFetchUrlCallKey, prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 import type { ToolModelAttachment } from '../tools/types'
 import { normalizeToolExecutionResult } from '../tools/result'
+import { classifyToolRuntimeError, createToolFailureExecutionResult } from './toolRuntime'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -781,17 +782,12 @@ export const runAgentLoop = async (
             }
           } catch (error) {
             const err = error as Error
-            const interrupted =
-              signal.aborted ||
-              err.name === 'AbortError' ||
-              err.message.toLowerCase().includes('aborted') ||
-              err.message.toLowerCase().includes('cancelled')
-            const isAmbiguousSideEffect = SIDE_EFFECTING_TOOLS.has(toolName) && interrupted
-            const errorCategory = isAmbiguousSideEffect
-              ? '[Ambiguous Side Effect - inspect state before repeating]'
-              : isRetryableError(err, DEFAULT_RETRY_POLICY)
-                ? '[Transient Error - retries exhausted]'
-                : '[Permanent Error - do not retry this action]'
+            const classification = classifyToolRuntimeError(err, {
+              signal,
+              isSideEffecting: SIDE_EFFECTING_TOOLS.has(toolName),
+              retryable: isRetryableError(err, DEFAULT_RETRY_POLICY)
+            })
+            const isAmbiguousSideEffect = classification.status === 'ambiguous'
 
             // Track consecutive failures of this tool. Repeated failures first nudge the model,
             // then halt the turn so we return a best-effort answer instead of looping.
@@ -804,7 +800,21 @@ export const runAgentLoop = async (
               guardNote = ` [Loop guard: "${toolName}" has failed ${failure.count} times in a row; try a different approach or tool.]`
             }
 
-            const errorContent = `${errorCategory} ${err.message}${guardNote}`
+            const errorContent = `${classification.category} ${err.message}${guardNote}`
+            const failureResult = createToolFailureExecutionResult({
+              toolName,
+              args: toolArgs,
+              errorMessage: err.message,
+              errorContent,
+              status: classification.status
+            })
+            sendEvent(mainWindow, reqId, {
+              type: 'tool_result',
+              callId,
+              result: failureResult.resultForUi,
+              step,
+              stepId
+            })
             sendToolErrorEvent(callId, err.message)
             if (isAmbiguousSideEffect) {
               ambiguousActions.push({

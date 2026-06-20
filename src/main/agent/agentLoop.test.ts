@@ -607,6 +607,58 @@ describe('runAgentLoop', () => {
     })
   })
 
+  it('emits failure tool result details when a tool throws', async () => {
+    vi.spyOn(ToolRegistry.file_read, 'execute').mockRejectedValue(new Error('String not found'))
+
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (_options, messages) => {
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'tc-file-read-fail',
+              type: 'function',
+              function: {
+                name: 'file_read',
+                arguments: JSON.stringify({ path: 'missing.ts' })
+              }
+            }
+          ]
+        }
+      }
+
+      const lastMsg = messages[messages.length - 1]
+      expect(lastMsg.role).toBe('tool')
+      expect(lastMsg.content).toContain('Permanent Error')
+      return { role: 'assistant', content: 'I could not read the file.' }
+    })
+
+    await runAgentLoop(mockWindow, 'tool-runtime-fail-run', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Read a file' }]
+    })
+
+    const sentEvents = sendMock.mock.calls
+      .filter((call) => call[0] === 'chat-chunk')
+      .map((call) => call[1]?.event)
+
+    const failureResult = sentEvents.find(
+      (event) => event?.type === 'tool_result' && event.callId === 'tc-file-read-fail'
+    )
+    const failureError = sentEvents.find(
+      (event) => event?.type === 'tool_error' && event.callId === 'tc-file-read-fail'
+    )
+
+    expect(failureResult?.result.title).toBe('Tool Failed: file_read')
+    expect(failureResult?.result.details).toContain('"path": "missing.ts"')
+    expect(failureError?.error).toBe('String not found')
+  })
+
   it('records run manifest source ids and successful actions', async () => {
     vi.spyOn(ToolRegistry.file_read, 'execute').mockResolvedValue({
       resultForModel: 'Read manifest file content.',
