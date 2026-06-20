@@ -19,7 +19,7 @@ import { callModel, getPromptCacheStats } from './callModel'
 import { estimateTokens } from './tokenEstimator'
 import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
-import { DEFAULT_RETRY_POLICY, withRetry, isRetryableError } from './retryPolicy'
+import { DEFAULT_RETRY_POLICY } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
 import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
 import { SessionLogger } from './sessionLogger'
@@ -41,8 +41,7 @@ import {
 import { buildSideEffectEntry, extractResourceIds, SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { getFetchUrlCallKey, prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 import type { ToolModelAttachment } from '../tools/types'
-import { normalizeToolExecutionResult } from '../tools/result'
-import { classifyToolRuntimeError, createToolFailureExecutionResult } from './toolRuntime'
+import { executeRuntimeToolCall } from './toolRuntime'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -700,42 +699,38 @@ export const runAgentLoop = async (
             }
           }
 
-          // Execute tool with retry policy
-          try {
-            if (signal.aborted) {
-              throw new Error('Agent execution aborted by user.')
-            }
-            const rawResult = await withRetry(
-              () =>
-                toolDef.execute(toolArgs, {
-                  reqId,
+          const runtimeResult = await executeRuntimeToolCall({
+            toolName,
+            callId,
+            args: toolArgs,
+            tool: toolDef,
+            context: {
+              reqId,
+              callId,
+              signal,
+              mainWindow,
+              resources: options.resources,
+              emitOutput: ({ stream, content, replace }) => {
+                if (!content) return
+                sendEvent(mainWindow, reqId, {
+                  type: 'tool_output_delta',
                   callId,
-                  signal,
-                  mainWindow,
-                  resources: options.resources,
-                  emitOutput: ({ stream, content, replace }) => {
-                    if (!content) return
-                    sendEvent(mainWindow, reqId, {
-                      type: 'tool_output_delta',
-                      callId,
-                      stream,
-                      content,
-                      replace,
-                      step,
-                      stepId
-                    })
-                  }
-                }),
-              DEFAULT_RETRY_POLICY,
-              signal
-            )
-            const { resultForModel, resultForUi, modelAttachments } = normalizeToolExecutionResult(
-              rawResult,
-              callId
-            )
-            if (signal.aborted) {
-              throw new Error('Agent execution aborted by user.')
-            }
+                  stream,
+                  content,
+                  replace,
+                  step,
+                  stepId
+                })
+              }
+            },
+            retryPolicy: DEFAULT_RETRY_POLICY,
+            isSideEffecting: SIDE_EFFECTING_TOOLS.has(toolName)
+          })
+
+          const { resultForModel, resultForUi, modelAttachments } =
+            runtimeResult.executionResult
+
+          if (runtimeResult.status === 'success') {
             if (modelAttachments && modelAttachments.length > 0) {
               toolModelAttachments[prep.index] = modelAttachments
             }
@@ -774,64 +769,42 @@ export const runAgentLoop = async (
             })
 
             recordAction('success', resultForModel)
-            return {
-              role: 'tool',
-              tool_call_id: callId,
-              name: toolName,
-              content: resultForModel
-            }
-          } catch (error) {
-            const err = error as Error
-            const classification = classifyToolRuntimeError(err, {
-              signal,
-              isSideEffecting: SIDE_EFFECTING_TOOLS.has(toolName),
-              retryable: isRetryableError(err, DEFAULT_RETRY_POLICY)
-            })
-            const isAmbiguousSideEffect = classification.status === 'ambiguous'
+            return runtimeResult.response
+          }
 
-            // Track consecutive failures of this tool. Repeated failures first nudge the model,
-            // then halt the turn so we return a best-effort answer instead of looping.
-            const failure = loopGuard.recordFailure(toolName)
-            let guardNote = ''
-            if (failure.level === 'halt') {
-              haltRequested = true
-              guardNote = ` [Loop guard: "${toolName}" failed ${failure.count} times in a row; halting tool use and forcing a final answer.]`
-            } else if (failure.level === 'warn') {
-              guardNote = ` [Loop guard: "${toolName}" has failed ${failure.count} times in a row; try a different approach or tool.]`
-            }
+          // Track consecutive failures of this tool. Repeated failures first nudge the model,
+          // then halt the turn so we return a best-effort answer instead of looping.
+          const failure = loopGuard.recordFailure(toolName)
+          let guardNote = ''
+          if (failure.level === 'halt') {
+            haltRequested = true
+            guardNote = ` [Loop guard: "${toolName}" failed ${failure.count} times in a row; halting tool use and forcing a final answer.]`
+          } else if (failure.level === 'warn') {
+            guardNote = ` [Loop guard: "${toolName}" has failed ${failure.count} times in a row; try a different approach or tool.]`
+          }
 
-            const errorContent = `${classification.category} ${err.message}${guardNote}`
-            const failureResult = createToolFailureExecutionResult({
+          const errorContent = `${runtimeResult.errorContent || resultForModel}${guardNote}`
+          sendEvent(mainWindow, reqId, {
+            type: 'tool_result',
+            callId,
+            result: resultForUi,
+            step,
+            stepId
+          })
+          sendToolErrorEvent(callId, runtimeResult.errorMessage || errorContent)
+          if (runtimeResult.status === 'ambiguous') {
+            ambiguousActions.push({
+              callId,
               toolName,
               args: toolArgs,
-              errorMessage: err.message,
-              errorContent,
-              status: classification.status
+              reason: errorContent,
+              timestamp: Date.now()
             })
-            sendEvent(mainWindow, reqId, {
-              type: 'tool_result',
-              callId,
-              result: failureResult.resultForUi,
-              step,
-              stepId
-            })
-            sendToolErrorEvent(callId, err.message)
-            if (isAmbiguousSideEffect) {
-              ambiguousActions.push({
-                callId,
-                toolName,
-                args: toolArgs,
-                reason: errorContent,
-                timestamp: Date.now()
-              })
-            }
-            recordAction(isAmbiguousSideEffect ? 'ambiguous' : 'error', errorContent)
-            return {
-              role: 'tool',
-              tool_call_id: callId,
-              name: toolName,
-              content: errorContent
-            }
+          }
+          recordAction(runtimeResult.status === 'ambiguous' ? 'ambiguous' : 'error', errorContent)
+          return {
+            ...runtimeResult.response,
+            content: errorContent
           }
         }
 

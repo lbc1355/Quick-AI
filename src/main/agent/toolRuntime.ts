@@ -1,6 +1,12 @@
-import { ToolArgs } from '../../shared/types'
-import { ToolExecutionResult } from '../tools/types'
-import { createToolResult } from '../tools/result'
+import { ChatCompletionMessage, ToolArgs } from '../../shared/types'
+import {
+  ToolDefinition,
+  ToolExecutionContext,
+  ToolExecutionResult,
+  ToolModelAttachment
+} from '../tools/types'
+import { createToolResult, normalizeToolExecutionResult } from '../tools/result'
+import { RetryPolicy, isRetryableError, withRetry } from './retryPolicy'
 
 export type ToolRuntimeFailureStatus = 'error' | 'ambiguous'
 
@@ -22,6 +28,25 @@ export interface CreateToolFailureExecutionResultOptions {
   errorMessage: string
   errorContent: string
   status: ToolRuntimeFailureStatus
+}
+
+export interface ExecuteRuntimeToolCallOptions {
+  toolName: string
+  callId: string
+  args: ToolArgs
+  tool: ToolDefinition
+  context: ToolExecutionContext
+  retryPolicy: RetryPolicy
+  isSideEffecting: boolean
+}
+
+export interface ToolRuntimeCallResult {
+  status: 'success' | ToolRuntimeFailureStatus
+  response: ChatCompletionMessage
+  executionResult: ToolExecutionResult
+  modelAttachments?: ToolModelAttachment[]
+  errorMessage?: string
+  errorContent?: string
 }
 
 const safeJsonStringify = (value: unknown): string => {
@@ -99,4 +124,65 @@ export function createToolFailureExecutionResult(
     summary: options.errorMessage,
     details
   })
+}
+
+export async function executeRuntimeToolCall(
+  options: ExecuteRuntimeToolCallOptions
+): Promise<ToolRuntimeCallResult> {
+  try {
+    if (options.context.signal.aborted) {
+      throw new Error('Agent execution aborted by user.')
+    }
+
+    const rawResult = await withRetry(
+      () => options.tool.execute(options.args, options.context),
+      options.retryPolicy,
+      options.context.signal
+    )
+    const executionResult = normalizeToolExecutionResult(rawResult, options.callId)
+
+    if (options.context.signal.aborted) {
+      throw new Error('Agent execution aborted by user.')
+    }
+
+    return {
+      status: 'success',
+      executionResult,
+      modelAttachments: executionResult.modelAttachments,
+      response: {
+        role: 'tool',
+        tool_call_id: options.callId,
+        name: options.toolName,
+        content: executionResult.resultForModel
+      }
+    }
+  } catch (error) {
+    const err = error as Error
+    const classification = classifyToolRuntimeError(err, {
+      signal: options.context.signal,
+      isSideEffecting: options.isSideEffecting,
+      retryable: isRetryableError(err, options.retryPolicy)
+    })
+    const errorContent = `${classification.category} ${err.message}`
+    const executionResult = createToolFailureExecutionResult({
+      toolName: options.toolName,
+      args: options.args,
+      errorMessage: err.message,
+      errorContent,
+      status: classification.status
+    })
+
+    return {
+      status: classification.status,
+      executionResult,
+      errorMessage: err.message,
+      errorContent,
+      response: {
+        role: 'tool',
+        tool_call_id: options.callId,
+        name: options.toolName,
+        content: errorContent
+      }
+    }
+  }
 }
