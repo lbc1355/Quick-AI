@@ -1,4 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import {
+  Bot,
+  Brain,
+  Boxes,
+  FolderCog,
+  ServerCog,
+  SlidersHorizontal,
+  type LucideIcon
+} from 'lucide-react'
 import {
   AgentToolInfo,
   ApiProvider,
@@ -11,6 +20,7 @@ import { ProviderEditor } from './ProviderEditor'
 import { SkillManager } from './SkillManager'
 import { MemoryManager } from './MemoryManager'
 import { McpManagerView } from './McpManagerView'
+import { CapabilitiesPanel } from './CapabilitiesPanel'
 
 interface SettingsViewProps {
   isEditingProviderDetail: boolean
@@ -68,21 +78,34 @@ interface SettingsViewProps {
 
 type SettingsSection = 'providers' | 'general' | 'agent' | 'skills' | 'memory' | 'mcp'
 type ToolDisplayLanguage = 'zh' | 'en'
+type SettingsGroup = 'desktop' | 'services' | 'resources'
 
-const settingsSections: Array<{ id: SettingsSection; label: string; detail: string }> = [
-  { id: 'providers', label: '服务商', detail: 'API 与模型' },
-  { id: 'general', label: '通用', detail: '提示词与窗口' },
-  { id: 'agent', label: 'Agent', detail: '工具权限' },
-  { id: 'skills', label: 'Skills', detail: 'Markdown / 文件夹' },
-  { id: 'memory', label: '记忆', detail: '管理常态与按需记忆' },
-  { id: 'mcp', label: 'MCP', detail: '管理外部工具' }
+const settingsGroups: Array<{ id: SettingsGroup; label: string }> = [
+  { id: 'desktop', label: '桌面' },
+  { id: 'services', label: '服务' },
+  { id: 'resources', label: '资源' }
 ]
 
-const riskLabels: Record<'low' | 'medium' | 'high', string> = {
-  low: '低',
-  medium: '中',
-  high: '高'
-}
+const settingsSections: Array<{
+  id: SettingsSection
+  group: SettingsGroup
+  label: string
+  detail: string
+  icon: LucideIcon
+}> = [
+  {
+    id: 'general',
+    group: 'desktop',
+    label: '通用',
+    detail: '提示词与窗口',
+    icon: SlidersHorizontal
+  },
+  { id: 'agent', group: 'desktop', label: 'Agent', detail: '工具执行策略', icon: Bot },
+  { id: 'providers', group: 'services', label: '服务商', detail: 'API 与模型', icon: ServerCog },
+  { id: 'mcp', group: 'services', label: 'MCP', detail: '外部工具服务', icon: FolderCog },
+  { id: 'skills', group: 'resources', label: 'Skills', detail: '技能与文件夹', icon: Boxes },
+  { id: 'memory', group: 'resources', label: '记忆', detail: '长期与按需记忆', icon: Brain }
+]
 
 const toolTranslations: Record<string, { title: string; description: string }> = {
   ask_user_choice: {
@@ -359,15 +382,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }, [activeSection])
 
-  const panelStats = useMemo(
-    () => [
-      { label: '服务商', value: providers.length.toString() },
-      { label: '模型', value: modelsList.length.toString() },
-      { label: 'Skills', value: skills.length.toString() }
-    ],
-    [modelsList.length, providers.length, skills.length]
-  )
-
   if (isEditingProviderDetail) {
     return (
       <div className="settings-container">
@@ -401,42 +415,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="control-panel">
         <aside className="control-panel-sidebar">
           <div className="control-panel-title-block">
-            <span className="control-panel-kicker">Control Panel</span>
+            <span className="control-panel-kicker">QuickAI Desktop</span>
             <span className="control-panel-title">设置</span>
           </div>
 
-          <div className="control-panel-stats">
-            {panelStats.map((item) => (
-              <div key={item.label} className="control-panel-stat">
-                <span>{item.value}</span>
-                <small>{item.label}</small>
-              </div>
-            ))}
-          </div>
-
           <nav className="control-panel-nav" aria-label="Settings sections">
-            {settingsSections.map((section) => (
-              <button
-                key={section.id}
-                type="button"
-                className={`control-panel-nav-item ${activeSection === section.id ? 'active' : ''}`}
-                onClick={() => setActiveSection(section.id)}
-              >
-                <span>{section.label}</span>
-                <small>{section.detail}</small>
-              </button>
-            ))}
+            {settingsGroups.map((group) => {
+              const groupSections = settingsSections.filter((section) => section.group === group.id)
+              return (
+                <div key={group.id} className="control-panel-nav-group">
+                  <span className="control-panel-nav-group-label">{group.label}</span>
+                  {groupSections.map((section) => {
+                    const SectionIcon = section.icon
+                    return (
+                      <button
+                        key={section.id}
+                        type="button"
+                        className={`control-panel-nav-item ${
+                          activeSection === section.id ? 'active' : ''
+                        }`}
+                        onClick={() => setActiveSection(section.id)}
+                      >
+                        <SectionIcon size={15} />
+                        <span className="control-panel-nav-text">
+                          <span>{section.label}</span>
+                          <small>{section.detail}</small>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })}
           </nav>
 
           <div className="control-panel-sidebar-footer">
+            <div className="control-panel-product">
+              <span>QuickAI Desktop</span>
+              <small>v1.0.0</small>
+            </div>
             <button
               type="button"
-              className="settings-save-btn control-save-btn"
+              className={`settings-save-btn control-save-btn ${saveSuccess ? 'saved' : ''}`}
               onClick={onSaveGlobalSettings}
             >
-              保存设置
+              {saveSuccess ? '已保存' : '保存设置'}
             </button>
-            {saveSuccess && <span className="settings-save-msg">已保存</span>}
           </div>
         </aside>
 
@@ -475,9 +499,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </header>
 
-              <div className="settings-form-grid">
-                <label className="settings-field settings-field-wide">
-                  <span className="settings-label">系统预设提示词</span>
+              <div className="setting-list">
+                <label className="setting-row setting-row-block">
+                  <span className="setting-row-main">
+                    <strong>系统预设提示词</strong>
+                    <small>作为每次对话的基础行为说明，会影响 agent 的默认工作方式</small>
+                  </span>
                   <textarea
                     className="settings-input settings-textarea"
                     value={systemPrompt}
@@ -485,26 +512,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   />
                 </label>
 
-                <label className="settings-toggle-row">
-                  <input
-                    type="checkbox"
-                    className="settings-checkbox"
-                    checked={autoHideOnBlur}
-                    onChange={(e) => setAutoHideOnBlur(e.target.checked)}
-                  />
-                  <span>失焦自动隐藏</span>
+                <label className="setting-row">
+                  <span className="setting-row-main">
+                    <strong>失焦自动隐藏</strong>
+                    <small>窗口失去焦点时自动隐藏面板</small>
+                  </span>
+                  <span className="setting-row-control">
+                    <input
+                      type="checkbox"
+                      className="settings-checkbox settings-switch"
+                      checked={autoHideOnBlur}
+                      onChange={(e) => setAutoHideOnBlur(e.target.checked)}
+                    />
+                  </span>
                 </label>
 
-                <label className="settings-field settings-field-wide">
-                  <span className="settings-label">本地数据存储路径</span>
-                  <input
-                    type="text"
-                    className="settings-input settings-path-input"
-                    value={appStorePath}
-                    readOnly
-                    disabled
-                  />
-                </label>
+                <div className="setting-row">
+                  <span className="setting-row-main">
+                    <strong>本地数据存储路径</strong>
+                    <small>会话、配置和本地缓存的保存位置</small>
+                  </span>
+                  <span className="setting-row-control setting-row-control-wide">
+                    <input
+                      type="text"
+                      className="settings-input settings-path-input"
+                      value={appStorePath}
+                      readOnly
+                      disabled
+                    />
+                  </span>
+                </div>
               </div>
             </section>
           )}
@@ -518,106 +555,67 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </header>
 
-              <div className="websearch-config">
-                <div className="websearch-config-header">
-                  <h3>网络搜索引擎</h3>
-                  <p>
-                    选择搜索后端。配置 API 后可获得更稳定的结果与直接答案；无 Key
-                    时自动回退到内置抓取。
-                  </p>
-                </div>
-                <div className="websearch-config-row">
-                  <label>搜索提供商</label>
-                  <select
-                    className="settings-select"
-                    value={webSearchProvider}
-                    onChange={(e) => setWebSearchProvider(e.target.value as WebSearchProviderType)}
-                  >
-                    <option value="auto">自动（有 Key 用 API，否则内置抓取）</option>
-                    <option value="html">内置抓取（Bing / Sogou / DuckDuckGo）</option>
-                    <option value="tavily">Tavily API</option>
-                    <option value="brave">Brave Search API</option>
-                  </select>
-                </div>
-                {webSearchProvider !== 'html' && (
-                  <div className="websearch-config-row">
-                    <label>API Key</label>
-                    <input
-                      type="password"
-                      className="settings-input"
-                      placeholder={
-                        webSearchProvider === 'brave'
-                          ? 'Brave Search 订阅令牌'
-                          : webSearchProvider === 'tavily'
-                            ? 'tvly-...'
-                            : 'API Key（auto 模式下默认使用 Tavily）'
-                      }
-                      value={webSearchApiKey}
-                      onChange={(e) => setWebSearchApiKey(e.target.value)}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="tool-language-toggle" aria-label="工具说明语言">
-                <span>工具说明语言</span>
-                <div className="tool-language-options">
-                  <button
-                    type="button"
-                    className={toolDisplayLanguage === 'zh' ? 'active' : ''}
-                    onClick={() => setToolLanguage('zh')}
-                  >
-                    中文
-                  </button>
-                  <button
-                    type="button"
-                    className={toolDisplayLanguage === 'en' ? 'active' : ''}
-                    onClick={() => setToolLanguage('en')}
-                  >
-                    English
-                  </button>
-                </div>
-              </div>
-
-              <div className="permission-table">
-                {agentTools.length === 0 && (
-                  <div className="permission-row">
-                    <div className="permission-tool">
-                      <span>工具列表加载中...</span>
-                      <code>ToolRegistry</code>
-                    </div>
-                  </div>
-                )}
-                {agentTools.map((tool) => {
-                  const display = getToolDisplay(tool, toolDisplayLanguage)
-                  return (
-                  <div key={tool.name} className="permission-row">
-                    <div className="permission-tool">
-                      <span>{display.title}</span>
-                      <code>{tool.name}</code>
-                      <small className="permission-tool-description" title={display.description}>
-                        {display.description}
-                      </small>
-                    </div>
-                    <span className={`permission-risk ${tool.risk}`}>{riskLabels[tool.risk]}</span>
+              <div className="setting-list setting-list-spaced">
+                <div className="setting-row">
+                  <span className="setting-row-main">
+                    <strong>网络搜索引擎</strong>
+                    <small>配置 API 后可获得更稳定的结果；无 Key 时回退到内置抓取</small>
+                  </span>
+                  <span className="setting-row-control">
                     <select
-                      className="settings-select permission-select"
-                      value={permissions[tool.name] || 'allow'}
+                      className="settings-select"
+                      value={webSearchProvider}
                       onChange={(e) =>
-                        onChangeToolPermission(
-                          tool.name,
-                          e.target.value as 'allow' | 'ask' | 'deny'
-                        )
+                        setWebSearchProvider(e.target.value as WebSearchProviderType)
                       }
                     >
-                      <option value="allow">允许</option>
-                      <option value="ask">询问</option>
-                      <option value="deny">拒绝</option>
+                      <option value="auto">自动</option>
+                      <option value="html">内置抓取</option>
+                      <option value="tavily">Tavily API</option>
+                      <option value="brave">Brave Search API</option>
                     </select>
-                  </div>
-                  )
-                })}
+                  </span>
+                </div>
+
+                {webSearchProvider !== 'html' && (
+                  <label className="setting-row">
+                    <span className="setting-row-main">
+                      <strong>搜索 API Key</strong>
+                      <small>
+                        {webSearchProvider === 'brave'
+                          ? 'Brave Search 订阅令牌'
+                          : webSearchProvider === 'tavily'
+                            ? 'Tavily API 密钥'
+                            : 'Auto 模式下默认作为 Tavily Key 使用'}
+                      </small>
+                    </span>
+                    <span className="setting-row-control setting-row-control-wide">
+                      <input
+                        type="password"
+                        className="settings-input"
+                        placeholder={
+                          webSearchProvider === 'brave'
+                            ? 'Brave Search 订阅令牌'
+                            : webSearchProvider === 'tavily'
+                              ? 'tvly-...'
+                              : 'API Key'
+                        }
+                        value={webSearchApiKey}
+                        onChange={(e) => setWebSearchApiKey(e.target.value)}
+                      />
+                    </span>
+                  </label>
+                )}
               </div>
+
+              <CapabilitiesPanel
+                tools={agentTools}
+                permissions={permissions}
+                toolDisplayLanguage={toolDisplayLanguage}
+                onToolDisplayLanguageChange={setToolLanguage}
+                getToolDisplay={getToolDisplay}
+                onChangeToolPermission={onChangeToolPermission}
+              />
             </section>
           )}
 

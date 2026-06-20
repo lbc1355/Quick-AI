@@ -12,31 +12,28 @@ import {
 } from 'lucide-react'
 import { McpServerStatus } from '../../../shared/types'
 
+type McpConfigFile = {
+  servers?: Record<string, unknown>
+  mcpServers?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 export const McpManagerView: React.FC = () => {
   const [configText, setConfigText] = useState<string>('{\n  "servers": {}\n}')
   const [serverStatuses, setServerStatuses] = useState<McpServerStatus[]>([])
   const [jsonError, setJsonError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState<boolean>(false)
-  const [saveMessage, setSaveMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
+  const [saveMessage, setSaveMessage] = useState<{
+    text: string
+    type: 'success' | 'error'
+  } | null>(null)
   const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({})
 
-  // Load config and statuses on mount
-  useEffect(() => {
-    loadData()
-
-    // Poll status every 5 seconds
-    const timer = setInterval(() => {
-      pollStatus()
-    }, 5000)
-
-    return () => clearInterval(timer)
-  }, [])
-
-  const loadData = async () => {
+  async function loadData(): Promise<void> {
     try {
       const config = await window.api.mcpGetConfig()
       setConfigText(config)
-      
+
       const statuses = await window.api.mcpGetStatus()
       setServerStatuses(statuses)
     } catch (err) {
@@ -44,7 +41,7 @@ export const McpManagerView: React.FC = () => {
     }
   }
 
-  const pollStatus = async () => {
+  async function pollStatus(): Promise<void> {
     try {
       const statuses = await window.api.mcpGetStatus()
       setServerStatuses(statuses)
@@ -53,9 +50,9 @@ export const McpManagerView: React.FC = () => {
     }
   }
 
-  const handleConfigChange = (text: string) => {
+  const handleConfigChange = (text: string): void => {
     setConfigText(text)
-    
+
     // Dry-run parse JSON to check syntax
     try {
       if (text.trim() === '') {
@@ -69,7 +66,7 @@ export const McpManagerView: React.FC = () => {
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<void> => {
     if (jsonError) {
       setSaveMessage({ text: '请先修正 JSON 格式错误', type: 'error' })
       return
@@ -85,7 +82,7 @@ export const McpManagerView: React.FC = () => {
       const mergedConfig = await window.api.mcpSetConfig(configText)
       setConfigText(mergedConfig)
       setSaveMessage({ text: '配置已成功保存并合并，服务重载中...', type: 'success' })
-      
+
       // Wait a moment for server initialization and refresh statuses
       setTimeout(async () => {
         const statuses = await window.api.mcpGetStatus()
@@ -98,7 +95,7 @@ export const McpManagerView: React.FC = () => {
     }
   }
 
-  const handleDeleteServer = async (name: string) => {
+  const handleDeleteServer = async (name: string): Promise<void> => {
     if (!confirm(`确定要删除 MCP 服务器 "${name}" 吗？`)) {
       return
     }
@@ -107,12 +104,15 @@ export const McpManagerView: React.FC = () => {
     setIsSaving(true)
 
     try {
-      let currentConfig: any
+      let currentConfig: McpConfigFile
       try {
         currentConfig = JSON.parse(configText)
-      } catch (e) {
+      } catch {
         setIsSaving(false)
-        setSaveMessage({ text: '删除失败: 无法解析 JSON 语法，请手动在编辑器中删除。', type: 'error' })
+        setSaveMessage({
+          text: '删除失败: 无法解析 JSON 语法，请手动在编辑器中删除。',
+          type: 'error'
+        })
         return
       }
 
@@ -149,14 +149,14 @@ export const McpManagerView: React.FC = () => {
     }
   }
 
-  const toggleServerExpanded = (name: string) => {
+  const toggleServerExpanded = (name: string): void => {
     setExpandedServers((prev) => ({
       ...prev,
       [name]: !prev[name]
     }))
   }
 
-  const getStatusIcon = (status: McpServerStatus['status']) => {
+  const getStatusIcon = (status: McpServerStatus['status']): React.ReactElement => {
     switch (status) {
       case 'connected':
         return <CheckCircle size={14} className="mcp-icon-success" />
@@ -169,7 +169,7 @@ export const McpManagerView: React.FC = () => {
     }
   }
 
-  const getStatusLabel = (status: McpServerStatus['status']) => {
+  const getStatusLabel = (status: McpServerStatus['status']): string => {
     switch (status) {
       case 'connected':
         return '已连接'
@@ -184,6 +184,23 @@ export const McpManagerView: React.FC = () => {
     }
   }
 
+  // Load config and statuses on mount
+  useEffect(() => {
+    const initialTimer = window.setTimeout(() => {
+      void loadData()
+    }, 0)
+
+    // Poll status every 5 seconds
+    const timer = window.setInterval(() => {
+      void pollStatus()
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(initialTimer)
+      window.clearInterval(timer)
+    }
+  }, [])
+
   return (
     <div className="mcp-layout">
       {/* Left panel: Config Editor */}
@@ -195,7 +212,7 @@ export const McpManagerView: React.FC = () => {
         <div className="mcp-textarea-wrapper">
           <textarea
             className={`settings-input mcp-textarea ${jsonError ? 'error' : ''}`}
-            placeholder="在此粘贴您的 MCP 服务器 JSON 配置（可仅粘贴服务器子节点如 { &quot;arxiv-agent&quot;: { ... } }，保存后软件将自动将其合并到配置文件中）"
+            placeholder='在此粘贴您的 MCP 服务器 JSON 配置（可仅粘贴服务器子节点如 { "arxiv-agent": { ... } }，保存后软件将自动将其合并到配置文件中）'
             value={configText}
             onChange={(e) => handleConfigChange(e.target.value)}
             spellCheck={false}
@@ -228,11 +245,9 @@ export const McpManagerView: React.FC = () => {
               </>
             )}
           </button>
-          
+
           {saveMessage && (
-            <span className={`mcp-save-status ${saveMessage.type}`}>
-              {saveMessage.text}
-            </span>
+            <span className={`mcp-save-status ${saveMessage.type}`}>{saveMessage.text}</span>
           )}
         </div>
       </div>
@@ -240,7 +255,7 @@ export const McpManagerView: React.FC = () => {
       {/* Right panel: Server list & tools */}
       <div className="mcp-servers-column">
         <span className="settings-label">连接状态 / 服务列表</span>
-        
+
         <div className="mcp-servers-list">
           {serverStatuses.length === 0 ? (
             <div className="mcp-empty-state">
@@ -252,10 +267,15 @@ export const McpManagerView: React.FC = () => {
             serverStatuses.map((srv) => {
               const isExpanded = !!expandedServers[srv.name]
               return (
-                <div key={srv.name} className={`mcp-server-card ${srv.status}`}>
+                <div
+                  key={srv.name}
+                  className={`mcp-server-card ${srv.status} ${isExpanded ? 'expanded' : ''}`}
+                >
                   <div className="mcp-server-info-row">
                     <div className="mcp-server-name-block">
-                      <span className="mcp-server-name" title={srv.name}>{srv.name}</span>
+                      <span className="mcp-server-name" title={srv.name}>
+                        {srv.name}
+                      </span>
                       <div className={`mcp-status-pill ${srv.status}`}>
                         {getStatusIcon(srv.status)}
                         <span>{getStatusLabel(srv.status)}</span>
@@ -269,9 +289,7 @@ export const McpManagerView: React.FC = () => {
                           className="mcp-expand-btn"
                           onClick={() => toggleServerExpanded(srv.name)}
                         >
-                          <span className="mcp-expand-label">
-                            {srv.tools.length} 个工具
-                          </span>
+                          <span className="mcp-expand-label">{srv.tools.length} 个工具</span>
                           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         </button>
                       )}
@@ -304,9 +322,7 @@ export const McpManagerView: React.FC = () => {
                             </code>
                           </div>
                           {tool.description && (
-                            <p className="mcp-tool-description">
-                              {tool.description}
-                            </p>
+                            <p className="mcp-tool-description">{tool.description}</p>
                           )}
                         </div>
                       ))}

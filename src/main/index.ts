@@ -487,7 +487,9 @@ app.whenReady().then(() => {
         title: tool.title,
         description: tool.description,
         category: tool.category,
-        risk: tool.risk
+        risk: tool.risk,
+        source: tool.source || 'builtin',
+        parameters: tool.parameters
       }))
       .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
   })

@@ -42,6 +42,15 @@ export interface AgentToolInfo {
   description: string
   category: string
   risk: 'low' | 'medium' | 'high'
+  source?: 'builtin' | 'mcp' | 'skill' | 'plugin' | 'external'
+  parameters?: {
+    type: string
+    properties: Record<
+      string,
+      { type: string; description?: string; enum?: string[]; items?: Record<string, unknown> }
+    >
+    required?: string[]
+  }
 }
 
 export interface PromptCacheStats {

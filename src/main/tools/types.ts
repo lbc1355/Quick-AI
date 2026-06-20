@@ -23,6 +23,7 @@ export interface ToolDefinition {
   dependencies?: string[]
   category: 'web' | 'file' | 'shell' | 'memory' | 'system'
   risk: 'low' | 'medium' | 'high'
+  source?: 'builtin' | 'mcp' | 'skill' | 'plugin' | 'external'
   implemented: boolean
   discoverable: boolean
   parameters: {
