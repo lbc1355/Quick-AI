@@ -1665,32 +1665,10 @@
 
 /* MCP Manager Styling */
 .mcp-layout {
-  display: flex;
-  gap: 20px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
-}
-
-.mcp-editor-column {
-  flex: 1;
   display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.mcp-editor-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.mcp-textarea-wrapper {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 .mcp-textarea {
@@ -1763,8 +1741,6 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border-left: 1px solid var(--color-border);
-  padding-left: 20px;
 }
 
 .mcp-servers-list {
@@ -1840,6 +1816,93 @@
 .mcp-server-card.disabled {
   border-left: 3px solid var(--color-text-faint);
   opacity: 0.7;
+}
+
+.mcp-add-card {
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--color-border-strong);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: center;
+}
+
+.mcp-add-card:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 48%, var(--color-border));
+  background: rgba(52, 120, 246, 0.08);
+  color: var(--color-text-title);
+}
+
+.mcp-add-card-icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg-elevated);
+  color: var(--color-primary);
+}
+
+.mcp-add-card-title {
+  color: var(--color-text-title);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mcp-add-card-description {
+  max-width: 150px;
+  color: var(--color-text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.modal-backdrop.mcp-config-modal-backdrop {
+  z-index: 260;
+}
+
+.modal-card.mcp-config-modal {
+  width: min(780px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 48px));
+}
+
+.modal-header.mcp-config-modal-header {
+  align-items: flex-start;
+}
+
+.mcp-config-modal-title-block {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.mcp-config-modal-title-block small {
+  color: var(--color-text-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.modal-body.mcp-config-modal-body {
+  min-height: 420px;
+  gap: 8px;
+}
+
+.mcp-config-modal .mcp-textarea {
+  min-height: 360px;
+}
+
+.modal-footer.mcp-config-modal-footer {
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-config-modal-footer .mcp-save-status {
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mcp-server-info-row {
@@ -2127,21 +2190,8 @@
 }
 
 @media (max-width: 980px) {
-  .mcp-layout {
-    flex-direction: column;
-    overflow-y: auto;
-  }
-
-  .mcp-editor-column,
-  .mcp-servers-column {
-    min-height: 360px;
-  }
-
-  .mcp-servers-column {
-    border-left: 0;
-    border-top: 1px solid var(--color-border);
-    padding-left: 0;
-    padding-top: 16px;
+  .modal-body.mcp-config-modal-body {
+    min-height: 340px;
   }
 }
 

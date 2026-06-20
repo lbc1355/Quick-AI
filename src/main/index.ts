@@ -443,6 +443,18 @@ app.whenReady().then(() => {
     return merged
   })
 
+  ipcMain.handle('mcp-delete-server', (_event, name) => {
+    if (typeof name !== 'string') {
+      throw new Error('MCP server name must be a string')
+    }
+
+    const result = McpManager.deleteServer(name)
+    McpManager.reload().catch((err) => {
+      logger.error('MCP', `Error reloading after MCP server delete: ${err.message}`)
+    })
+    return result
+  })
+
   ipcMain.handle('mcp-get-status', () => {
     return McpManager.getStatuses()
   })

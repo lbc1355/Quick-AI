@@ -141,6 +141,40 @@ class McpManagerImpl {
     }
   }
 
+  deleteServer(name: string): { deleted: boolean; config: string } {
+    if (!name.trim()) {
+      throw new Error('MCP server name cannot be empty')
+    }
+
+    try {
+      let config: McpConfig = { servers: {} }
+      if (existsSync(this.configPath)) {
+        config = JSON.parse(readFileSync(this.configPath, 'utf-8')) as McpConfig
+      }
+
+      let deleted = false
+      if (config.servers && Object.prototype.hasOwnProperty.call(config.servers, name)) {
+        delete config.servers[name]
+        deleted = true
+      }
+      if (config.mcpServers && Object.prototype.hasOwnProperty.call(config.mcpServers, name)) {
+        delete config.mcpServers[name]
+        deleted = true
+      }
+
+      if (!config.servers && !config.mcpServers) {
+        config.servers = {}
+      }
+
+      const content = JSON.stringify(config, null, 2)
+      writeFileSync(this.configPath, content, 'utf-8')
+      return { deleted, config: content }
+    } catch (err) {
+      logger.error('MCP', `Failed to delete MCP server "${name}": ${(err as Error).message}`)
+      throw err
+    }
+  }
+
   async reload(): Promise<void> {
     logger.info('MCP', 'Reloading MCP servers...')
     await this.shutdown()

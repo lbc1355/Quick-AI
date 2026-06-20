@@ -71,6 +71,7 @@ declare global {
       writeMemoryEntry: (id: string, content: string) => Promise<{ ok: boolean }>
       mcpGetConfig: () => Promise<string>
       mcpSetConfig: (content: string) => Promise<string>
+      mcpDeleteServer: (name: string) => Promise<{ deleted: boolean; config: string }>
       mcpGetStatus: () => Promise<McpServerStatus[]>
       mcpOpenConfig: () => Promise<void>
     }

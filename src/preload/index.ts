@@ -108,8 +108,10 @@ const api = {
   writeMemoryEntry: (id: string, content: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('memory-entry-write', id, content),
   mcpGetConfig: (): Promise<string> => ipcRenderer.invoke('mcp-get-config'),
-  mcpSetConfig: (content: string): Promise<boolean> =>
+  mcpSetConfig: (content: string): Promise<string> =>
     ipcRenderer.invoke('mcp-set-config', content),
+  mcpDeleteServer: (name: string): Promise<{ deleted: boolean; config: string }> =>
+    ipcRenderer.invoke('mcp-delete-server', name),
   mcpGetStatus: (): Promise<McpServerStatus[]> => ipcRenderer.invoke('mcp-get-status'),
   mcpOpenConfig: (): Promise<void> => ipcRenderer.invoke('mcp-open-config')
 }

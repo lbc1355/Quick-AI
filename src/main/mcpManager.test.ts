@@ -1,9 +1,21 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
 import { McpManager } from './mcpManager'
 import { join } from 'path'
-import { existsSync, unlinkSync, writeFileSync, readFileSync } from 'fs'
+import { existsSync, unlinkSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'fs'
 import { getQuickAiRoot } from './paths'
 import { getToolRegistry } from './toolRegistry'
+
+const pathMock = vi.hoisted(() => ({
+  root: `${process.cwd()}/.test-quickai`
+}))
+
+vi.mock('./paths', () => ({
+  getQuickAiRoot: () => pathMock.root,
+  getLogsRoot: () => `${pathMock.root}/logs`,
+  getMemoriesRoot: () => `${pathMock.root}/memories`,
+  getWorkspaceRoot: () => `${pathMock.root}/workspace`,
+  getSkillRoot: () => `${pathMock.root}/skill`
+}))
 
 // Mock MCP SDK classes
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
@@ -43,6 +55,7 @@ describe('McpManager', () => {
   const configPath = join(getQuickAiRoot(), 'mcp.json')
 
   beforeEach(() => {
+    mkdirSync(getQuickAiRoot(), { recursive: true })
     // Delete config file if it exists to ensure a clean state
     if (existsSync(configPath)) {
       unlinkSync(configPath)
@@ -54,6 +67,10 @@ describe('McpManager', () => {
     if (existsSync(configPath)) {
       unlinkSync(configPath)
     }
+  })
+
+  afterAll(() => {
+    rmSync(getQuickAiRoot(), { recursive: true, force: true })
   })
 
   it('initializes and creates a default config file if missing', () => {
@@ -189,5 +206,28 @@ describe('McpManager', () => {
     expect(parsed.servers).toHaveProperty('arxiv-agent')
     expect(parsed.servers.git.command).toBe('git')
     expect(parsed.servers['arxiv-agent'].command).toBe('python')
+  })
+
+  it('deletes one MCP server without removing other configured servers', () => {
+    const initialConfig = {
+      servers: {
+        git: {
+          command: 'git',
+          args: ['status']
+        },
+        'arxiv-agent': {
+          command: 'python',
+          args: ['-m', 'arxiv_agent.mcp.server']
+        }
+      }
+    }
+    writeFileSync(configPath, JSON.stringify(initialConfig, null, 2), 'utf-8')
+
+    const result = McpManager.deleteServer('arxiv-agent')
+    const parsed = JSON.parse(result.config)
+
+    expect(result.deleted).toBe(true)
+    expect(parsed.servers).toHaveProperty('git')
+    expect(parsed.servers).not.toHaveProperty('arxiv-agent')
   })
 })
