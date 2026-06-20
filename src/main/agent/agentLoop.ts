@@ -25,11 +25,9 @@ import { ActionLog, getActionLogPath, ActionRecord } from './actionLog'
 import { SessionLogger } from './sessionLogger'
 import { AmbiguousAction, loadRunCheckpoint, saveRunCheckpoint } from './runCheckpoint'
 import {
-  appendRunAction,
   appendRunCheckpoint,
   createRunManifest,
   finishRunManifest,
-  updateRunManifest
 } from './runManifest'
 import {
   ACTION_HISTORY_RESUME_LIMIT,
@@ -38,7 +36,7 @@ import {
   cloneMessagesForCheckpoint,
   injectPromptBeforeLatestUser
 } from './resumePrompts'
-import { buildSideEffectEntry, extractResourceIds, SIDE_EFFECTING_TOOLS } from './sideEffects'
+import { SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { getFetchUrlCallKey, prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 import type { ToolModelAttachment } from '../tools/types'
 import {
@@ -46,6 +44,7 @@ import {
   createSkippedToolCallResult,
   executeRuntimeToolCall
 } from './toolRuntime'
+import { recordToolAction } from './toolActionRecorder'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -589,48 +588,20 @@ export const runAgentLoop = async (
             status: ActionRecord['resultStatus'],
             resultContent: string
           ): void => {
-            const resourceIds = extractResourceIds(resultContent)
-            runCtx.actionLog.append({
-              callId: prep.callId,
+            recordToolAction({
+              actionLog: runCtx.actionLog,
+              conversationId,
               reqId,
               turnIndex: step,
-              timestamp: Date.now(),
+              callId: prep.callId,
               toolName: prep.toolName,
-              args: prep.args as Record<string, unknown>,
-              resultStatus: status,
-              resultSummary: resultContent.slice(0, 500),
-              resultSize: resultContent.length,
-              resultInOutputStore: resultContent.length > TOOL_OUTPUT_SPILLOVER_THRESHOLD,
+              args: prep.args,
               permission: prep.permission,
-              durationMs: Date.now() - toolStartTime
+              status,
+              resultContent,
+              outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
+              startedAt: toolStartTime
             })
-            const sideEffect = buildSideEffectEntry(
-              reqId,
-              prep.callId,
-              prep.toolName,
-              prep.args,
-              status,
-              resultContent
-            )
-            appendRunAction(conversationId, reqId, prep.callId, sideEffect)
-            if (resourceIds.length > 0) {
-              // Resource ids are also tracked in renderer session state; the manifest keeps a
-              // run-local ledger so branch/delete semantics do not have to infer from messages.
-              updateRunManifest(conversationId, reqId, (manifest) => ({
-                ...manifest,
-                resourceIds: Array.from(new Set([...manifest.resourceIds, ...resourceIds]))
-              }))
-            }
-            SessionLogger.logToolExecution(
-              conversationId,
-              prep.callId,
-              prep.toolName,
-              prep.args as Record<string, unknown>,
-              prep.permission,
-              status,
-              Date.now() - toolStartTime,
-              resultContent
-            )
           }
 
           if (!prep.isValid || prep.permission === 'deny') {
