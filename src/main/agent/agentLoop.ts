@@ -28,6 +28,7 @@ import { createRunUsageTracker } from './runUsageTracker'
 import { runModelTurn } from './modelTurnRunner'
 import { AgentRunOptions, prepareAgentRun } from './agentRunPreparation'
 import { runToolTurn } from './toolTurnRunner'
+import { runForcedFinalTurn } from './forcedFinalTurnRunner'
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
@@ -289,48 +290,25 @@ export const runAgentLoop = async (
 
     // Tool use ended without a final answer — either the step ceiling was hit or the loop
     // guard halted on repeated failures. Ask the model for a best-effort final answer.
-    messages.push({
-      role: 'user',
-      content: haltRequested
-        ? 'Tool execution was halted after repeated consecutive failures. Please provide the best final answer you can based only on the observations available.'
-        : 'The maximum number of tool steps has been reached. Please provide a final answer based only on the observations available.'
-    })
-
-    if (signal.aborted) {
-      throw new Error('Agent execution aborted by user.')
-    }
-
-    // Final call to model
-    const contextSize = getEffectiveContextWindowSize(options)
-    messages = trimMessagesToFit(messages, {
-      maxTokens: contextSize,
-      reserveForResponse: 2000,
-      strategy: 'truncate-oldest-tool'
-    })
-
-    let forcedFinalEmitted = false
-    const { assistantMessage: forcedFinalMessage } = await runModelTurn({
+    const forcedFinalTurn = await runForcedFinalTurn({
+      messages,
+      haltRequested,
+      signal,
       modelConfig: {
         apiUrl: options.apiUrl,
         apiKey: options.apiKey,
         model: options.model
       },
-      messages,
-      signal,
+      contextSize: getEffectiveContextWindowSize(options),
       usageTracker,
-      onReasoning: (content) => {
+      emitReasoning: (content) => {
         sendEvent(mainWindow, reqId, { type: 'reasoning', content })
       },
-      onContentChunk: (content) => {
-        forcedFinalEmitted = true
+      emitFinal: (content) => {
         sendEvent(mainWindow, reqId, { type: 'final', content })
       }
     })
-
-    const forcedFinalText = getAssistantText(forcedFinalMessage.content)
-    if (!forcedFinalEmitted && forcedFinalText) {
-      sendEvent(mainWindow, reqId, { type: 'final', content: forcedFinalText })
-    }
+    messages = forcedFinalTurn.messages
 
     setRunEnd('max_steps')
     mainWindow.webContents.send('chat-chunk', buildDoneChunk())
