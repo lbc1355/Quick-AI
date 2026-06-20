@@ -3,11 +3,10 @@ import {
   AgentSkillRunOptions,
   ChatCompletionMessage,
   AgentEvent,
-  ChatToolDeclaration,
   SessionResource,
   PromptCacheStats
 } from '../../shared/types'
-import { ToolRegistry, toChatToolDeclaration, searchToolDefinitions } from '../toolRegistry'
+import { ToolRegistry, searchToolDefinitions } from '../toolRegistry'
 import { buildSkillMessages, prepareChatAgentMessages } from './messageBuilder'
 import {
   getContextWindowSize,
@@ -42,6 +41,7 @@ import type { ToolModelAttachment } from '../tools/types'
 import { processPreparedToolStep } from './toolStepProcessor'
 import { createToolStepExecutor } from './toolStepApplicator'
 import { buildAgentStepPresentation } from './toolStepPresentation'
+import { createToolDeclarationCache } from './toolDeclarationCache'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -370,10 +370,7 @@ export const runAgentLoop = async (
       messages
     })
 
-    // Declaration cache: the set of tools to declare only changes when activeTools changes
-    // (a tool is discovered), so we can avoid rebuilding and re-serialising every step.
-    let cachedDeclarations: ChatToolDeclaration[] | null = null
-    let cachedDeclarationsSignature = ''
+    const toolDeclarationCache = createToolDeclarationCache({ toolRegistry: ToolRegistry })
 
     for (let step = 1; step <= maxSteps; ) {
       runCtx.currentStep = step
@@ -392,34 +389,12 @@ export const runAgentLoop = async (
 
       SessionLogger.logStepStart(conversationId, step, maxSteps)
 
-      // Build tool declarations list for this step. Rebuild only when the active tool set
-      // changes (dynamic mode) or is never cached (static mode: first step only).
-      const declarationSig = Array.from(runCtx.activeTools).sort().join(',')
-      let toolsToDeclare: ChatToolDeclaration[]
-      if (declarationSig !== cachedDeclarationsSignature || cachedDeclarations === null) {
-        toolsToDeclare = []
-        for (const toolName in ToolRegistry) {
-          const tool = ToolRegistry[toolName]
-          if (!tool.implemented) continue
-
-          // Whitelist checks depending on toolDiscovery mode
-          if (toolDiscovery === 'static') {
-            if (!skillTools.includes(toolName)) continue
-          } else {
-            // Dynamic tool discovery: must be active in current run context
-            if (!runCtx.isToolActive(toolName)) continue
-          }
-
-          const permission = permissions?.[toolName] || 'allow'
-          if (permission !== 'deny') {
-            toolsToDeclare.push(toChatToolDeclaration(tool))
-          }
-        }
-        cachedDeclarations = toolsToDeclare
-        cachedDeclarationsSignature = declarationSig
-      } else {
-        toolsToDeclare = cachedDeclarations
-      }
+      const toolsToDeclare = toolDeclarationCache.getDeclarations({
+        toolDiscovery,
+        activeTools: runCtx.activeTools,
+        skillTools,
+        permissions
+      })
 
       // Phase 1: Context Size Control & Message Trimming
       const contextSize = getEffectiveContextWindowSize(options)
