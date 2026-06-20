@@ -39,9 +39,8 @@ import {
 import { SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 import type { ToolModelAttachment } from '../tools/types'
-import { recordToolAction } from './toolActionRecorder'
-import { executePreparedToolCall } from './preparedToolExecutor'
-import { EmitToolEvents, processPreparedToolStep } from './toolStepProcessor'
+import { processPreparedToolStep } from './toolStepProcessor'
+import { createToolStepExecutor } from './toolStepApplicator'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -545,79 +544,35 @@ export const runAgentLoop = async (
         const toolModelAttachments = new Array<ToolModelAttachment[] | undefined>(
           assistantMessage.tool_calls.length
         )
-
-        // Helper to execute a single (already-prepared) tool call and return its result message
-        const executeTool = async (
-          prep: PreparedToolCall,
-          isApproved: boolean,
-          emitToolEvents: EmitToolEvents
-        ): Promise<ChatCompletionMessage> => {
-          const { toolName } = prep
-          const toolDef = ToolRegistry[toolName]
-          const toolStartTime = Date.now()
-
-          const executionResult = await executePreparedToolCall({
-            prep,
-            tool: toolDef,
-            isApproved,
-            reqId,
-            step,
-            maxSteps,
-            stepId,
-            signal,
-            mainWindow,
-            resources: options.resources,
-            retryPolicy: DEFAULT_RETRY_POLICY,
-            isSideEffecting: SIDE_EFFECTING_TOOLS.has(toolName),
-            loopGuard,
-            outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
-            activeTools: Array.from(runCtx.activeTools),
-            fetchUrlBudget,
-            emitEvent: (event) => sendEvent(mainWindow, reqId, event)
-          })
-
-          if (executionResult.modelAttachments && executionResult.modelAttachments.length > 0) {
-            toolModelAttachments[prep.index] = executionResult.modelAttachments
-          }
-
-          if (executionResult.markExecutedCallKey) {
-            runCtx.markExecuted(executionResult.markExecutedCallKey)
-          }
-
-          if (executionResult.outputStore) {
-            runCtx.storeToolOutput(
-              executionResult.outputStore.callId,
-              executionResult.outputStore.content
-            )
-            runCtx.activateTool(executionResult.outputStore.activateToolName)
-          }
-
-          emitToolEvents(executionResult.events)
-
-          if (executionResult.haltRequested) {
+        const executeTool = createToolStepExecutor({
+          toolRegistry: ToolRegistry,
+          reqId,
+          conversationId,
+          step,
+          maxSteps,
+          stepId,
+          signal,
+          mainWindow,
+          resources: options.resources,
+          retryPolicy: DEFAULT_RETRY_POLICY,
+          isSideEffecting: (toolName) => SIDE_EFFECTING_TOOLS.has(toolName),
+          loopGuard,
+          outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
+          activeTools: runCtx.activeTools,
+          fetchUrlBudget,
+          toolModelAttachments,
+          actionLog: runCtx.actionLog,
+          markExecuted: (callKey) => runCtx.markExecuted(callKey),
+          storeToolOutput: (callId, text) => runCtx.storeToolOutput(callId, text),
+          activateTool: (toolName) => runCtx.activateTool(toolName),
+          onHaltRequested: () => {
             haltRequested = true
-          }
-
-          if (executionResult.ambiguousAction) {
-            ambiguousActions.push(executionResult.ambiguousAction)
-          }
-
-          recordToolAction({
-            actionLog: runCtx.actionLog,
-            conversationId,
-            reqId,
-            turnIndex: step,
-            callId: prep.callId,
-            toolName: prep.toolName,
-            args: prep.args,
-            permission: prep.permission,
-            status: executionResult.action.resultStatus,
-            resultContent: executionResult.action.resultContent,
-            outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
-            startedAt: toolStartTime
-          })
-          return executionResult.response
-        }
+          },
+          onAmbiguousAction: (action) => {
+            ambiguousActions.push(action)
+          },
+          emitEvent: (event) => sendEvent(mainWindow, reqId, event)
+        })
 
         const processedStep = await processPreparedToolStep({
           toolCallCount: assistantMessage.tool_calls.length,
