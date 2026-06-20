@@ -42,6 +42,7 @@ import type { ToolModelAttachment } from '../tools/types'
 import { recordToolAction } from './toolActionRecorder'
 import { executePreparedToolCall } from './preparedToolExecutor'
 import { runPreparedToolBatch } from './toolBatchRunner'
+import { finalizeToolStep } from './toolStepFinalizer'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -658,29 +659,9 @@ export const runAgentLoop = async (
           executeTool
         })
 
-        // 5. Append all responses in correct index order to messages array
-        for (const response of toolResponses) {
-          if (response) {
-            messages.push(response)
-          }
-        }
-        const visualAttachments = toolModelAttachments.flatMap((attachments) => attachments || [])
-        if (visualAttachments.length > 0) {
-          messages.push({
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `Visual context from image_read: ${visualAttachments.length} image(s) attached. Analyze the attached image content directly when it is relevant to the user's request.`
-              },
-              ...visualAttachments
-            ]
-          })
-        }
-        const lastRecordedCallId = [...toolResponses]
-          .reverse()
-          .find((response): response is ChatCompletionMessage => !!response)?.tool_call_id
-        persistCheckpoint(step, lastRecordedCallId)
+        const finalizedStep = finalizeToolStep({ toolResponses, toolModelAttachments })
+        messages.push(...finalizedStep.messagesToAppend)
+        persistCheckpoint(step, finalizedStep.lastRecordedCallId)
         sendEvent(mainWindow, reqId, {
           type: 'agent_step_end',
           stepId,
