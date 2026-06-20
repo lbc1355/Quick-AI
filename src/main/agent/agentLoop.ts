@@ -41,7 +41,7 @@ import {
 import { buildSideEffectEntry, extractResourceIds, SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { getFetchUrlCallKey, prepareToolCalls, PreparedToolCall } from './toolCallPlanning'
 import type { ToolModelAttachment } from '../tools/types'
-import { executeRuntimeToolCall } from './toolRuntime'
+import { applyRuntimeToolCallResult, executeRuntimeToolCall } from './toolRuntime'
 
 const clampMaxSteps = (value: number | undefined): number => {
   if (!value || Number.isNaN(value)) return 30
@@ -727,85 +727,51 @@ export const runAgentLoop = async (
             isSideEffecting: SIDE_EFFECTING_TOOLS.has(toolName)
           })
 
-          const { resultForModel, resultForUi, modelAttachments } =
-            runtimeResult.executionResult
-
-          if (runtimeResult.status === 'success') {
-            if (modelAttachments && modelAttachments.length > 0) {
-              toolModelAttachments[prep.index] = modelAttachments
-            }
-
-            if (toolName === 'fetch_url') {
-              const callKey = getFetchUrlCallKey(toolArgs)
-              if (callKey) {
-                runCtx.markExecuted(callKey)
-              }
-            }
-
-            loopGuard.recordSuccess(toolName)
-
-            // Preserve large outputs so a later context-window truncation can leave a retrievable
-            // pointer (read_tool_output) instead of silently discarding the tail.
-            if (resultForModel.length > TOOL_OUTPUT_SPILLOVER_THRESHOLD) {
-              runCtx.storeToolOutput(callId, resultForModel)
-              runCtx.activateTool('read_tool_output')
-            }
-
-            sendEvent(mainWindow, reqId, {
-              type: 'tool_result',
-              callId,
-              result: resultForUi,
-              step,
-              stepId
-            })
-
-            sendEvent(mainWindow, reqId, {
-              type: 'agent_progress',
-              step,
-              maxSteps,
-              stepId,
-              activeTools: Array.from(runCtx.activeTools),
-              message: `Completed ${toolName}`
-            })
-
-            recordAction('success', resultForModel)
-            return runtimeResult.response
-          }
-
-          // Track consecutive failures of this tool. Repeated failures first nudge the model,
-          // then halt the turn so we return a best-effort answer instead of looping.
-          const failure = loopGuard.recordFailure(toolName)
-          let guardNote = ''
-          if (failure.level === 'halt') {
-            haltRequested = true
-            guardNote = ` [Loop guard: "${toolName}" failed ${failure.count} times in a row; halting tool use and forcing a final answer.]`
-          } else if (failure.level === 'warn') {
-            guardNote = ` [Loop guard: "${toolName}" has failed ${failure.count} times in a row; try a different approach or tool.]`
-          }
-
-          const errorContent = `${runtimeResult.errorContent || resultForModel}${guardNote}`
-          sendEvent(mainWindow, reqId, {
-            type: 'tool_result',
+          const appliedResult = applyRuntimeToolCallResult({
+            runtimeResult,
+            toolName,
             callId,
-            result: resultForUi,
+            args: toolArgs,
+            loopGuard,
+            outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
+            fetchUrlCallKey: toolName === 'fetch_url' ? getFetchUrlCallKey(toolArgs) : undefined,
             step,
-            stepId
+            maxSteps,
+            stepId,
+            activeTools: Array.from(runCtx.activeTools)
           })
-          sendToolErrorEvent(callId, runtimeResult.errorMessage || errorContent)
-          if (runtimeResult.status === 'ambiguous') {
-            ambiguousActions.push({
-              callId,
-              toolName,
-              args: toolArgs,
-              reason: errorContent,
-              timestamp: Date.now()
-            })
+
+          if (appliedResult.modelAttachments && appliedResult.modelAttachments.length > 0) {
+            toolModelAttachments[prep.index] = appliedResult.modelAttachments
           }
-          recordAction(runtimeResult.status === 'ambiguous' ? 'ambiguous' : 'error', errorContent)
-          return {
-            ...runtimeResult.response,
-            content: errorContent
+
+          if (appliedResult.markExecutedCallKey) {
+            runCtx.markExecuted(appliedResult.markExecutedCallKey)
           }
+
+          if (appliedResult.outputStore) {
+            runCtx.storeToolOutput(appliedResult.outputStore.callId, appliedResult.outputStore.content)
+            runCtx.activateTool(appliedResult.outputStore.activateToolName)
+          }
+
+          for (const event of appliedResult.events) {
+            if (event.type === 'tool_error') {
+              sendToolErrorEvent(event.callId, event.error)
+            } else {
+              sendEvent(mainWindow, reqId, event)
+            }
+          }
+
+          if (appliedResult.haltRequested) {
+            haltRequested = true
+          }
+
+          if (appliedResult.ambiguousAction) {
+            ambiguousActions.push(appliedResult.ambiguousAction)
+          }
+
+          recordAction(appliedResult.action.resultStatus, appliedResult.action.resultContent)
+          return appliedResult.response
         }
 
         // 1. Process askCalls sequentially

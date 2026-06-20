@@ -1,4 +1,4 @@
-import { ChatCompletionMessage, ToolArgs } from '../../shared/types'
+import { AgentEvent, ChatCompletionMessage, ToolArgs } from '../../shared/types'
 import {
   ToolDefinition,
   ToolExecutionContext,
@@ -47,6 +47,56 @@ export interface ToolRuntimeCallResult {
   modelAttachments?: ToolModelAttachment[]
   errorMessage?: string
   errorContent?: string
+}
+
+export interface ToolRuntimeLoopGuard {
+  recordSuccess(toolName: string): void
+  recordFailure(toolName: string): { level: 'ok' | 'warn' | 'halt'; count: number }
+}
+
+export interface ApplyRuntimeToolCallResultOptions {
+  runtimeResult: ToolRuntimeCallResult
+  toolName: string
+  callId: string
+  args: ToolArgs
+  loopGuard: ToolRuntimeLoopGuard
+  outputSpilloverThreshold: number
+  fetchUrlCallKey?: string | null
+  step: number
+  maxSteps: number
+  stepId: string
+  activeTools: string[]
+  now?: number
+}
+
+export interface RuntimeToolActionDraft {
+  resultStatus: 'success' | 'error' | 'ambiguous'
+  resultContent: string
+}
+
+export interface RuntimeToolOutputStoreRequest {
+  callId: string
+  content: string
+  activateToolName: 'read_tool_output'
+}
+
+export interface RuntimeToolAmbiguousActionDraft {
+  callId: string
+  toolName: string
+  args: ToolArgs
+  reason: string
+  timestamp: number
+}
+
+export interface AppliedRuntimeToolCallResult {
+  response: ChatCompletionMessage
+  events: AgentEvent[]
+  action: RuntimeToolActionDraft
+  haltRequested: boolean
+  modelAttachments?: ToolModelAttachment[]
+  markExecutedCallKey?: string
+  outputStore?: RuntimeToolOutputStoreRequest
+  ambiguousAction?: RuntimeToolAmbiguousActionDraft
 }
 
 const safeJsonStringify = (value: unknown): string => {
@@ -124,6 +174,108 @@ export function createToolFailureExecutionResult(
     summary: options.errorMessage,
     details
   })
+}
+
+export function applyRuntimeToolCallResult(
+  options: ApplyRuntimeToolCallResultOptions
+): AppliedRuntimeToolCallResult {
+  const { runtimeResult, toolName, callId, step, stepId } = options
+  const { resultForModel, resultForUi, modelAttachments } = runtimeResult.executionResult
+
+  if (runtimeResult.status === 'success') {
+    options.loopGuard.recordSuccess(toolName)
+    const outputStore =
+      resultForModel.length > options.outputSpilloverThreshold
+        ? {
+            callId,
+            content: resultForModel,
+            activateToolName: 'read_tool_output' as const
+          }
+        : undefined
+    const activeTools = outputStore
+      ? Array.from(new Set([...options.activeTools, outputStore.activateToolName]))
+      : options.activeTools
+
+    return {
+      response: runtimeResult.response,
+      events: [
+        {
+          type: 'tool_result',
+          callId,
+          result: resultForUi,
+          step,
+          stepId
+        },
+        {
+          type: 'agent_progress',
+          step,
+          maxSteps: options.maxSteps,
+          stepId,
+          activeTools,
+          message: `Completed ${toolName}`
+        }
+      ],
+      action: {
+        resultStatus: 'success',
+        resultContent: resultForModel
+      },
+      haltRequested: false,
+      modelAttachments,
+      markExecutedCallKey: options.fetchUrlCallKey || undefined,
+      outputStore
+    }
+  }
+
+  const failure = options.loopGuard.recordFailure(toolName)
+  let guardNote = ''
+  let haltRequested = false
+  if (failure.level === 'halt') {
+    haltRequested = true
+    guardNote = ` [Loop guard: "${toolName}" failed ${failure.count} times in a row; halting tool use and forcing a final answer.]`
+  } else if (failure.level === 'warn') {
+    guardNote = ` [Loop guard: "${toolName}" has failed ${failure.count} times in a row; try a different approach or tool.]`
+  }
+
+  const resultContent = `${runtimeResult.errorContent || resultForModel}${guardNote}`
+  const ambiguousAction =
+    runtimeResult.status === 'ambiguous'
+      ? {
+          callId,
+          toolName,
+          args: options.args,
+          reason: resultContent,
+          timestamp: options.now ?? Date.now()
+        }
+      : undefined
+
+  return {
+    response: {
+      ...runtimeResult.response,
+      content: resultContent
+    },
+    events: [
+      {
+        type: 'tool_result',
+        callId,
+        result: resultForUi,
+        step,
+        stepId
+      },
+      {
+        type: 'tool_error',
+        callId,
+        error: runtimeResult.errorMessage || resultContent,
+        step,
+        stepId
+      }
+    ],
+    action: {
+      resultStatus: runtimeResult.status,
+      resultContent
+    },
+    haltRequested,
+    ambiguousAction
+  }
 }
 
 export async function executeRuntimeToolCall(

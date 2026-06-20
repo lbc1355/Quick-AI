@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  applyRuntimeToolCallResult,
   classifyToolRuntimeError,
   createToolFailureExecutionResult,
   executeRuntimeToolCall
@@ -135,5 +136,135 @@ describe('tool runtime helpers', () => {
     expect(result.response.content).toContain('Permanent Error')
     expect(result.executionResult.resultForUi.title).toBe('Tool Failed: test_tool')
     expect(result.executionResult.resultForUi.details).toContain('"path": "missing.ts"')
+  })
+
+  it('applies successful runtime results into response, events, and output-store requests', () => {
+    const loopGuard = {
+      recordSuccess: vi.fn(),
+      recordFailure: vi.fn()
+    }
+
+    const result = applyRuntimeToolCallResult({
+      runtimeResult: {
+        status: 'success',
+        executionResult: {
+          resultForModel: 'large runtime output',
+          resultForUi: {
+            title: 'Runtime Tool',
+            summary: 'ok'
+          }
+        },
+        response: {
+          role: 'tool',
+          tool_call_id: 'call-3',
+          name: 'fetch_url',
+          content: 'large runtime output'
+        }
+      },
+      toolName: 'fetch_url',
+      callId: 'call-3',
+      args: { url: 'https://example.com' },
+      loopGuard,
+      outputSpilloverThreshold: 10,
+      fetchUrlCallKey: 'fetch:https://example.com',
+      step: 2,
+      maxSteps: 8,
+      stepId: 'step-2',
+      activeTools: ['fetch_url'],
+      now: 123
+    })
+
+    expect(loopGuard.recordSuccess).toHaveBeenCalledWith('fetch_url')
+    expect(loopGuard.recordFailure).not.toHaveBeenCalled()
+    expect(result.response.content).toBe('large runtime output')
+    expect(result.action).toMatchObject({
+      resultStatus: 'success',
+      resultContent: 'large runtime output'
+    })
+    expect(result.markExecutedCallKey).toBe('fetch:https://example.com')
+    expect(result.outputStore).toEqual({
+      callId: 'call-3',
+      content: 'large runtime output',
+      activateToolName: 'read_tool_output'
+    })
+    expect(result.events).toEqual([
+      {
+        type: 'tool_result',
+        callId: 'call-3',
+        result: {
+          title: 'Runtime Tool',
+          summary: 'ok'
+        },
+        step: 2,
+        stepId: 'step-2'
+      },
+      {
+        type: 'agent_progress',
+        step: 2,
+        maxSteps: 8,
+        stepId: 'step-2',
+        activeTools: ['fetch_url', 'read_tool_output'],
+        message: 'Completed fetch_url'
+      }
+    ])
+  })
+
+  it('applies failed runtime results with loop guard notes and tool error ordering', () => {
+    const loopGuard = {
+      recordSuccess: vi.fn(),
+      recordFailure: vi.fn(() => ({ level: 'warn' as const, count: 3 }))
+    }
+
+    const result = applyRuntimeToolCallResult({
+      runtimeResult: {
+        status: 'ambiguous',
+        executionResult: createToolFailureExecutionResult({
+          toolName: 'file_edit',
+          args: { path: 'src/main.ts' },
+          errorMessage: 'Agent execution aborted by user.',
+          errorContent: '[Ambiguous Side Effect - inspect state before repeating] Agent execution aborted by user.',
+          status: 'ambiguous'
+        }),
+        errorMessage: 'Agent execution aborted by user.',
+        errorContent: '[Ambiguous Side Effect - inspect state before repeating] Agent execution aborted by user.',
+        response: {
+          role: 'tool',
+          tool_call_id: 'call-4',
+          name: 'file_edit',
+          content: '[Ambiguous Side Effect - inspect state before repeating] Agent execution aborted by user.'
+        }
+      },
+      toolName: 'file_edit',
+      callId: 'call-4',
+      args: { path: 'src/main.ts' },
+      loopGuard,
+      outputSpilloverThreshold: 100,
+      step: 3,
+      maxSteps: 8,
+      stepId: 'step-3',
+      activeTools: ['file_edit'],
+      now: 456
+    })
+
+    expect(loopGuard.recordSuccess).not.toHaveBeenCalled()
+    expect(loopGuard.recordFailure).toHaveBeenCalledWith('file_edit')
+    expect(result.action.resultStatus).toBe('ambiguous')
+    expect(result.action.resultContent).toContain('failed 3 times in a row')
+    expect(result.response.content).toContain('try a different approach or tool')
+    expect(result.ambiguousAction).toEqual({
+      callId: 'call-4',
+      toolName: 'file_edit',
+      args: { path: 'src/main.ts' },
+      reason: result.action.resultContent,
+      timestamp: 456
+    })
+    expect(result.events.map((event) => event.type)).toEqual(['tool_result', 'tool_error'])
+    expect(result.events[1]).toMatchObject({
+      type: 'tool_error',
+      callId: 'call-4',
+      error: 'Agent execution aborted by user.',
+      step: 3,
+      stepId: 'step-3'
+    })
   })
 })
