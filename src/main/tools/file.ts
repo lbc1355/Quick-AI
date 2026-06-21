@@ -10,6 +10,7 @@ import { fileEditTool } from './fileEditTool'
 import { multiEditTool } from './multiEditTool'
 import { directoryCreateTool } from './directoryCreateTool'
 import { fileCopyTool } from './fileCopyTool'
+import { fileMoveTool } from './fileMoveTool'
 
 export const fileTools: Record<string, ToolDefinition> = {
   file_read: fileReadTool,
@@ -20,6 +21,7 @@ export const fileTools: Record<string, ToolDefinition> = {
   multi_edit: multiEditTool,
   directory_create: directoryCreateTool,
   file_copy: fileCopyTool,
+  file_move: fileMoveTool,
   ...fileSearchTools,
   ...fileOperationTools,
   file_diff: fileDiffTool
