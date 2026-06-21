@@ -11,38 +11,10 @@ import { createSkillListResult } from './skillListResult'
 import { getSkillDisplayName } from './skillMetadata'
 import { formatSkillForModel } from './skillModelFormat'
 import { normalizeSkillResourcePath } from './skillResourcePath'
+import { cleanSkillLookup, resolveSkill } from './skillLookup'
+import { validateSkillRecord } from './skillValidation'
 import { promises as fs } from 'fs'
 import { basename, join, resolve } from 'path'
-
-function cleanSkillLookup(value: string): string {
-  return value
-    .trim()
-    .replace(/^[@/]+/, '')
-    .toLowerCase()
-}
-
-function getSkillLookupKeys(skill: Skill): string[] {
-  const keys = new Set<string>()
-  const add = (value: string | undefined): void => {
-    if (!value) return
-    const clean = cleanSkillLookup(value)
-    if (clean) keys.add(clean)
-  }
-
-  add(skill.id)
-  add(skill.id.replace(/^skill-/, ''))
-  add(skill.name)
-  add(skill.trigger)
-  ;(skill.triggers || []).forEach(add)
-
-  return Array.from(keys)
-}
-
-function resolveSkill(skills: Skill[], lookup: string): Skill | undefined {
-  const clean = cleanSkillLookup(lookup)
-  if (!clean) return undefined
-  return skills.find((skill) => getSkillLookupKeys(skill).includes(clean))
-}
 
 function resolveSkillResource(skill: Skill, path: string): SkillPackageFile | undefined {
   const normalized = normalizeSkillResourcePath(path).toLowerCase()
@@ -186,27 +158,6 @@ async function copySkillDirectory(sourceDir: string, destDir: string): Promise<v
 function isSystemSkill(skill: Skill): boolean {
   const targetPath = getSkillStoragePath(skill)
   return Boolean(targetPath && normalizeComparablePath(targetPath).includes('/.system/'))
-}
-
-function validateSkillRecord(skill: Skill, allSkills: Skill[]): string[] {
-  const issues: string[] = []
-  if (!skill.name.trim()) issues.push('Missing skill name.')
-  if (!skill.trigger.trim()) issues.push('Missing primary trigger.')
-  if (!skill.rawMarkdown && !skill.prompt.trim()) issues.push('Missing SKILL.md instructions.')
-  if (!skill.description && !skill.interface?.shortDescription) {
-    issues.push('Missing description or interface.shortDescription for discovery.')
-  }
-  const duplicateTriggers = allSkills
-    .filter((other) => other.id !== skill.id)
-    .flatMap((other) => other.triggers || [other.trigger])
-    .filter((trigger) => (skill.triggers || [skill.trigger]).includes(trigger))
-  if (duplicateTriggers.length > 0) {
-    issues.push(`Duplicate trigger(s): ${Array.from(new Set(duplicateTriggers)).join(', ')}`)
-  }
-  if ((skill.rawMarkdown || skill.prompt).length > 30000) {
-    issues.push('SKILL.md is very long; move detailed material into references/.')
-  }
-  return issues
 }
 
 export const skillTools: Record<string, ToolDefinition> = {
