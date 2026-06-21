@@ -4,81 +4,9 @@ import { ToolArgs } from '../../shared/types'
 import { getRun } from '../agent/AgentRunContext'
 import { ROOT_PARAMETER, getRootArg, resolveExistingSafePath } from './filePathSafety'
 import { ToolDefinition, ToolExecutionContext } from './types'
-import { createToolResult } from './result'
+import { calculateReadWindow, buildNumberedLines } from './fileReadWindow'
+import { createFileReadResult } from './fileReadResult'
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif'])
-
-function normalizeLineNumberArg(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? Math.max(1, Math.floor(value))
-    : fallback
-}
-
-function normalizeNonNegativeLineArg(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? Math.max(0, Math.floor(value))
-    : fallback
-}
-
-function normalizeSignedIntegerArg(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : fallback
-}
-
-function buildNumberedLines(lines: string[], startLine: number): string {
-  const width = String(startLine + lines.length - 1).length
-  return lines
-    .map((line, index) => `${String(startLine + index).padStart(width, ' ')} | ${line}`)
-    .join('\n')
-}
-
-function calculateReadWindow(
-  args: ToolArgs,
-  totalLines: number
-): { startLine: number; endLine: number; mode: string; note?: string } {
-  const requestedLimit = Math.min(normalizeLineNumberArg(args.limit, 1000), 2000)
-
-  if (typeof args.tail === 'number' && Number.isFinite(args.tail)) {
-    const tailLines = Math.min(Math.max(1, Math.floor(args.tail)), 2000)
-    const startLine = Math.max(1, totalLines - tailLines + 1)
-    return {
-      startLine,
-      endLine: totalLines,
-      mode: 'tail',
-      ...(tailLines !== Math.floor(args.tail)
-        ? { note: `tail was clamped to ${tailLines} lines.` }
-        : {})
-    }
-  }
-
-  if (typeof args.around === 'number' && Number.isFinite(args.around)) {
-    const aroundLine = Math.min(Math.max(1, Math.floor(args.around)), totalLines)
-    const contextLines = Math.min(
-      normalizeNonNegativeLineArg(args.context, normalizeNonNegativeLineArg(args.contextLines, 20)),
-      500
-    )
-    const startLine = Math.max(1, aroundLine - contextLines)
-    const endLine = Math.min(totalLines, aroundLine + contextLines)
-    return {
-      startLine,
-      endLine,
-      mode: 'around',
-      ...(aroundLine !== Math.floor(args.around)
-        ? { note: `around was clamped to line ${aroundLine}.` }
-        : {})
-    }
-  }
-
-  const rawOffset = normalizeSignedIntegerArg(args.offset, 1)
-  const startLine =
-    rawOffset < 0
-      ? Math.max(1, totalLines + rawOffset + 1)
-      : Math.min(Math.max(1, rawOffset), totalLines)
-  const endLine = Math.min(totalLines, startLine + requestedLimit - 1)
-  return {
-    startLine,
-    endLine,
-    mode: rawOffset < 0 ? 'negative_offset' : 'offset'
-  }
-}
 
 export const fileReadTool: ToolDefinition = {
   name: 'file_read',
@@ -179,32 +107,16 @@ export const fileReadTool: ToolDefinition = {
       ? buildNumberedLines(slicedLines, window.startLine)
       : slicedLines.join('\n')
 
-    const isTruncated = window.startLine > 1 || window.endLine < totalLines
-
     // Mark the file as observed so surgical edit tools (file_edit, multi_edit) can verify the
     // model has seen the content before mutating it. A partial read still counts as "seen".
     if (ctx.reqId) getRun(ctx.reqId)?.markFileSeen(target.realPath)
 
-    const resultForModel = [
-      `Root (${target.rootKind}): ${target.root}`,
-      `File: ${target.relPath}`,
-      `Lines: ${window.startLine} to ${window.endLine} of ${totalLines}`,
-      `Read Mode: ${window.mode}`,
-      includeLineNumbers ? 'Line Numbers: included in content.' : '',
-      window.note ? `Note: ${window.note}` : '',
-      isTruncated ? 'Note: file content was truncated.' : '',
-      `Content:\n${resultText}`
-    ]
-      .filter(Boolean)
-      .join('\n\n')
-
-    const fileUrl = `file:///${target.realPath.replace(/\\/g, '/')}`
-
-    return createToolResult({
-      resultForModel,
-      title: `Read File: ${target.relPath}`,
-      url: fileUrl,
-      summary: `Read lines ${window.startLine}-${window.endLine} of ${totalLines} in ${target.rootKind} ${target.root}`
+    return createFileReadResult({
+      target,
+      window,
+      totalLines,
+      includeLineNumbers,
+      resultText
     })
   }
 }
