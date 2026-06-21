@@ -39,8 +39,17 @@ describe('toolRegistry public APIs', () => {
   it('exposes registered tools through the read-only view and admin registry', () => {
     registerToolDefinition(testTool)
 
-    expect(getToolRegistryView().get(testToolName)).toBe(testTool)
-    expect(getToolRegistryView().list()).toContain(testTool)
+    expect(getToolRegistryView().get(testToolName)).toMatchObject({
+      name: testToolName,
+      title: 'Registry View Test Tool',
+      source: 'builtin'
+    })
+    expect(getToolRegistryView().list()).toContainEqual(
+      expect.objectContaining({
+        name: testToolName,
+        source: 'builtin'
+      })
+    )
     expect(getToolRegistryAdmin().has(testToolName)).toBe(true)
 
     expect(unregisterToolDefinition(testToolName)).toBe(true)

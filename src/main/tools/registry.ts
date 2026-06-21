@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolSummary } from './types'
+import { normalizeToolDefinition } from './metadata'
 
 /**
  * Dynamically-registerable tool registry. Replaces the old static `Record<string, ToolDefinition>`
@@ -14,8 +15,8 @@ export class ToolRegistryImpl {
   // ---- mutation ----
 
   register(def: ToolDefinition): void {
-    if (!def.name) throw new Error('Tool definition must have a name')
-    this.tools.set(def.name, def)
+    const normalized = normalizeToolDefinition(def)
+    this.tools.set(normalized.name, normalized)
   }
 
   /** Remove a tool. Returns true when the tool existed and was removed. */
