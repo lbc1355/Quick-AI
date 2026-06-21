@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { existsSync, rmSync, readFileSync } from 'fs'
@@ -17,6 +17,12 @@ import {
   writeMemoryEntry,
   deleteTaskGroup
 } from './memoryStore'
+
+vi.mock('./memoryGit', () => ({
+  ensureRepo: async () => undefined,
+  commit: async () => true,
+  resetGitAvailabilityCache: () => undefined
+}))
 
 let home: string
 
@@ -156,4 +162,3 @@ describe('deleteTaskGroup', () => {
     expect(deleted).toBe(false)
   })
 })
-

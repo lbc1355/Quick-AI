@@ -183,7 +183,11 @@ describe('callModel retry behavior', () => {
     )
 
     expect(getPromptCacheStats(result)).toEqual({
+      hasCacheStats: true,
       promptTokens: 100,
+      completionTokens: undefined,
+      totalTokens: undefined,
+      reasoningTokens: undefined,
       cacheHitTokens: 75,
       cacheMissTokens: 25,
       hitRate: 75
