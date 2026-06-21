@@ -1,115 +1,15 @@
-import { execFileSync, spawn } from 'child_process'
+import { spawn } from 'child_process'
 import { ToolArgs } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { getWorkspaceRoot } from './helpers'
 import { getRun } from '../agent/AgentRunContext'
+import { decodeShellOutputForDisplay, getShellFallbackEncoding } from './shellEncoding'
+import { buildShellDetails, trimLivePreview } from './shellResult'
+export { decodeShellOutputForDisplay } from './shellEncoding'
 
-const WINDOWS_CODE_PAGE_ENCODINGS: Record<string, string> = {
-  '65001': 'utf-8',
-  '936': 'gbk',
-  '54936': 'gb18030',
-  '950': 'big5',
-  '932': 'shift_jis',
-  '949': 'euc-kr',
-  '874': 'windows-874',
-  '1250': 'windows-1250',
-  '1251': 'windows-1251',
-  '1252': 'windows-1252',
-  '1253': 'windows-1253',
-  '1254': 'windows-1254',
-  '1255': 'windows-1255',
-  '1256': 'windows-1256',
-  '1257': 'windows-1257',
-  '1258': 'windows-1258'
-}
-
-let cachedShellFallbackEncoding: string | undefined
 const SHELL_TIMEOUT_MS = 60000
 const SHELL_MAX_OUTPUT_BYTES = 10 * 1024 * 1024
 const SHELL_OUTPUT_FLUSH_MS = 100
-const SHELL_LIVE_PREVIEW_CHARS = 64 * 1024
-
-function decodeBuffer(buffer: Buffer, encoding: string): string {
-  try {
-    return new TextDecoder(encoding).decode(buffer)
-  } catch {
-    return buffer.toString('utf8')
-  }
-}
-
-function countReplacementChars(value: string): number {
-  return (value.match(/\uFFFD/g) || []).length
-}
-
-function getShellFallbackEncoding(): string {
-  if (process.platform !== 'win32') return 'utf-8'
-  if (cachedShellFallbackEncoding) return cachedShellFallbackEncoding
-
-  try {
-    const output = execFileSync('cmd.exe', ['/d', '/c', 'chcp'], {
-      encoding: 'utf8',
-      windowsHide: true,
-      timeout: 2000
-    })
-    const codePage = output.match(/(\d+)/)?.[1]
-    cachedShellFallbackEncoding = codePage ? WINDOWS_CODE_PAGE_ENCODINGS[codePage] || 'gbk' : 'gbk'
-  } catch {
-    cachedShellFallbackEncoding = 'gbk'
-  }
-
-  return cachedShellFallbackEncoding
-}
-
-export function decodeShellOutputForDisplay(
-  output: string | Buffer,
-  fallbackEncoding = getShellFallbackEncoding()
-): string {
-  if (typeof output === 'string') return output
-  if (output.length === 0) return ''
-
-  const utf8Text = decodeBuffer(output, 'utf-8')
-  const utf8ReplacementCount = countReplacementChars(utf8Text)
-  if (utf8ReplacementCount === 0 || fallbackEncoding.toLowerCase() === 'utf-8') {
-    return utf8Text
-  }
-
-  const fallbackText = decodeBuffer(output, fallbackEncoding)
-  return countReplacementChars(fallbackText) <= utf8ReplacementCount ? fallbackText : utf8Text
-}
-
-function trimLivePreview(details: string): string {
-  if (details.length <= SHELL_LIVE_PREVIEW_CHARS) return details
-  return `[Live output preview truncated to last ${SHELL_LIVE_PREVIEW_CHARS} chars]\n${details.slice(-SHELL_LIVE_PREVIEW_CHARS)}`
-}
-
-function buildShellDetails(args: {
-  root: string
-  code?: number
-  durationMs?: number
-  status?: string
-  stdoutText?: string
-  stderrText?: string
-  executionError?: string
-}): string {
-  const lines = [
-    `Cwd: ${args.root}`,
-    args.code !== undefined ? `Exit Code: ${args.code}` : '',
-    args.durationMs !== undefined ? `Duration: ${args.durationMs}ms` : '',
-    args.status ? `Status: ${args.status}` : ''
-  ].filter(Boolean)
-
-  if (args.stdoutText) {
-    lines.push('', `Stdout:\n${args.stdoutText.trimEnd()}`)
-  }
-  if (args.stderrText) {
-    lines.push('', `Stderr:\n${args.stderrText.trimEnd()}`)
-  }
-  if (args.executionError) {
-    lines.push('', `Execution Error:\n${args.executionError}`)
-  }
-
-  return lines.join('\n')
-}
 
 export const shellTools: Record<string, ToolDefinition> = {
   shell: {
