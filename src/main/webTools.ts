@@ -1,10 +1,43 @@
 import { lookup } from 'dns/promises'
+import {
+  isPrivateIPv4,
+  isPrivateIPv6,
+  normalizeFetchUrlOptions,
+  type FetchUrlOptions
+} from './web/urlSafety'
+import {
+  extractMainContentHtml,
+  stripHtml,
+  stripHtmlWithLinks,
+  type WebLink
+} from './web/htmlExtract'
+import {
+  parseBingResults,
+  parseDuckDuckGoResults,
+  parseSogouResults,
+  type WebSearchResult
+} from './web/searchParsers'
 
-export interface WebLink {
-  id: number
-  text: string
-  href: string
-}
+export {
+  isPrivateIPv4,
+  isPrivateIPv6,
+  normalizeFetchUrlOptions,
+  type FetchUrlOptions
+} from './web/urlSafety'
+export {
+  extractMainContentHtml,
+  renderWithLineNumbers,
+  stripHtml,
+  stripHtmlWithLinks,
+  type WebLink
+} from './web/htmlExtract'
+export {
+  formatSearchResultsForModel,
+  parseBingResults,
+  parseDuckDuckGoResults,
+  parseSogouResults,
+  type WebSearchResult
+} from './web/searchParsers'
 
 export interface FetchUrlResult {
   url: string
@@ -25,18 +58,8 @@ export interface FetchUrlResult {
 const MAX_RESPONSE_BYTES = 800 * 1024
 const REQUEST_TIMEOUT_MS = 10000
 const MAX_REDIRECTS = 4
-const MAX_LINKS = 40
-const DEFAULT_FETCH_PAGE_CHARS = 10000
-const MAX_FETCH_PAGE_CHARS = 16000
 
-export interface FetchUrlOptions {
-  offset?: number
-  maxChars?: number
-  /** Force JS rendering via the injected headless renderer (when available). */
-  render?: boolean
-}
-
-// ── JS-rendering seam ────────────────────────────────────────────────────────
+// JS-rendering seam
 // webTools.ts must stay free of any electron import so it remains unit-testable in plain node.
 // The main process injects a headless renderer (hidden BrowserWindow) at startup via
 // setHtmlRenderer; when absent, the JS-rendering path is simply unavailable and fetch falls back
@@ -60,21 +83,6 @@ export const hasHtmlRenderer = (): boolean => injectedHtmlRenderer !== null
 // shell; when a renderer is available we retry through it.
 const RENDER_FALLBACK_MIN_CHARS = 200
 
-export const normalizeFetchUrlOptions = (
-  options: FetchUrlOptions = {}
-): { offset: number; maxChars: number } => {
-  const rawOffset = typeof options.offset === 'number' ? options.offset : 0
-  const rawMaxChars =
-    typeof options.maxChars === 'number' ? options.maxChars : DEFAULT_FETCH_PAGE_CHARS
-
-  const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0
-  const maxChars = Number.isFinite(rawMaxChars)
-    ? Math.min(MAX_FETCH_PAGE_CHARS, Math.max(1000, Math.floor(rawMaxChars)))
-    : DEFAULT_FETCH_PAGE_CHARS
-
-  return { offset, maxChars }
-}
-
 // Rewrite known academic paper PDF URLs to their HTML abstract pages so the
 // fetch returns lightweight text instead of a multi-MB binary PDF.
 const rewriteAcademicPaperUrl = (rawUrl: string): string => {
@@ -87,47 +95,18 @@ const rewriteAcademicPaperUrl = (rawUrl: string): string => {
   })()
   if (!parsed) return rawUrl
 
-  // arXiv: /pdf/XXXX.XXXX → /abs/XXXX.XXXX
+  // arXiv: /pdf/XXXX.XXXX -> /abs/XXXX.XXXX
   if (
     (parsed.hostname === 'arxiv.org' || parsed.hostname.endsWith('.arxiv.org')) &&
     parsed.pathname.startsWith('/pdf/')
   ) {
     const id = parsed.pathname.replace(/^\/pdf\//, '')
     const newUrl = `https://arxiv.org/abs/${id}`
-    console.log(`[fetch_url] Rewriting arXiv PDF URL → abstract page: ${rawUrl} → ${newUrl}`)
+    console.log(`[fetch_url] Rewriting arXiv PDF URL -> abstract page: ${rawUrl} -> ${newUrl}`)
     return newUrl
   }
 
   return rawUrl
-}
-
-export const isPrivateIPv4 = (address: string): boolean => {
-  const parts = address.split('.').map((part) => Number(part))
-  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return true
-  const [a, b] = parts
-
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 100 && b >= 64 && b <= 127) ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168)
-  )
-}
-
-export const isPrivateIPv6 = (address: string): boolean => {
-  const normalized = address.toLowerCase()
-  return (
-    normalized === '::1' ||
-    normalized.startsWith('fc') ||
-    normalized.startsWith('fd') ||
-    normalized.startsWith('fe80') ||
-    normalized.startsWith('::ffff:127.') ||
-    normalized.startsWith('::ffff:10.') ||
-    normalized.startsWith('::ffff:192.168.')
-  )
 }
 
 const validatePublicHttpUrl = async (rawUrl: string): Promise<URL> => {
@@ -246,204 +225,6 @@ const readLimitedText = async (
   }
 }
 
-const decodeHtmlEntities = (value: string): string => {
-  return value
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCharCode(Number(code)))
-}
-
-export const stripHtml = (html: string): string => {
-  return decodeHtmlEntities(
-    html
-      .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ')
-      .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' ')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/<\/(p|div|section|article|header|footer|li|ul|ol|h[1-6]|tr|br)>/gi, '\n')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\n\s+/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-  ).trim()
-}
-
-// Strip HTML to text while inlining anchors as "[N] text" markers and collecting a
-// numbered link table. Block tags become newlines so document structure is preserved.
-// This lets the model later "click" a link by its id (see click_link tool).
-export const stripHtmlWithLinks = (
-  html: string,
-  baseUrl: string
-): { text: string; links: WebLink[] } => {
-  const links: WebLink[] = []
-
-  // 1. Remove non-content blocks first (content included)
-  let work = html
-    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-
-  // 2. Replace anchors with "[N] text" markers, collecting the link table
-  work = work.replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (full, attrs: string, inner: string) => {
-    const hrefMatch = attrs.match(/\shref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i)
-    const rawHref = hrefMatch?.[1] || hrefMatch?.[2] || hrefMatch?.[3] || ''
-    const text = stripHtml(inner).replace(/\s+/g, ' ').trim()
-
-    if (!rawHref || rawHref.startsWith('#')) {
-      return text || full
-    }
-
-    try {
-      const href = new URL(decodeHtmlEntities(rawHref), baseUrl)
-      if (href.protocol !== 'http:' && href.protocol !== 'https:') {
-        return text
-      }
-      if (links.length >= MAX_LINKS) {
-        return text
-      }
-      const id = links.length + 1
-      const linkText = text || href.hostname
-      links.push({ id, text: linkText.slice(0, 160), href: href.toString() })
-      return `[${id}] ${linkText}`
-    } catch {
-      return text
-    }
-  })
-
-  // 3. Block tags → newlines, strip remaining tags, decode + normalize
-  const text = decodeHtmlEntities(
-    work
-      .replace(/<\/(p|div|section|article|header|footer|li|ul|ol|h[1-6]|tr|br)>/gi, '\n')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\n\s+/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-  ).trim()
-
-  return { text, links }
-}
-
-// ── Readability-lite main-content extraction ─────────────────────────────────
-// A lightweight, dependency-free heuristic that isolates the primary article/content region
-// before link-aware HTML stripping. It removes chrome (nav/header/footer/aside/forms/etc.),
-// then prefers an explicit <main>/<article> region, falling back to the highest-text-density
-// <div>/<section> block. If extraction yields too little text relative to the full page it
-// returns null so the caller can fall back to whole-page stripping (avoids over-pruning).
-
-const CHROME_TAGS = [
-  'nav',
-  'header',
-  'footer',
-  'aside',
-  'form',
-  'figure',
-  'figcaption',
-  'menu',
-  'dialog'
-]
-
-// Strip obvious non-content chrome elements (by tag) from an HTML fragment.
-const removeChrome = (html: string): string => {
-  let work = html
-  for (const tag of CHROME_TAGS) {
-    work = work.replace(new RegExp(`<${tag}\\b[\\s\\S]*?<\\/${tag}>`, 'gi'), ' ')
-  }
-  return work
-}
-
-// Rough text length of an HTML fragment after tags are removed — used to score candidate blocks.
-const approxTextLength = (htmlFragment: string): number =>
-  stripHtml(htmlFragment).replace(/\s+/g, ' ').trim().length
-
-// Pull the inner HTML of the first occurrence of a block tag (handles one level of same-tag
-// nesting well enough for typical article/main containers).
-const extractFirstBlock = (html: string, tag: string): string | null => {
-  const openRe = new RegExp(`<${tag}\\b[^>]*>`, 'i')
-  const openMatch = openRe.exec(html)
-  if (!openMatch) return null
-  const start = openMatch.index + openMatch[0].length
-  const lowerTag = tag.toLowerCase()
-  const tokenRe = new RegExp(`<(/?)${lowerTag}\\b[^>]*>`, 'gi')
-  tokenRe.lastIndex = start
-  let depth = 1
-  let m: RegExpExecArray | null
-  while ((m = tokenRe.exec(html))) {
-    if (m[1] === '/') {
-      depth--
-      if (depth === 0) return html.slice(start, m.index)
-    } else {
-      depth++
-    }
-  }
-  return html.slice(start) // unbalanced markup: take the rest
-}
-
-// Choose the densest block among the candidate container tags.
-const pickDensestBlock = (html: string, tags: string[]): string | null => {
-  let best: { html: string; len: number } | null = null
-  for (const tag of tags) {
-    // Scan all occurrences of this tag.
-    const re = new RegExp(`<${tag}\\b[^>]*>`, 'gi')
-    let match: RegExpExecArray | null
-    while ((match = re.exec(html))) {
-      const block = extractFirstBlock(html.slice(match.index), tag)
-      if (!block) continue
-      const len = approxTextLength(block)
-      if (!best || len > best.len) best = { html: block, len }
-    }
-  }
-  return best && best.len > 0 ? best.html : null
-}
-
-/**
- * Extract the main content HTML fragment from a full HTML document. Returns null when no
- * confident main region is found (caller should then strip the whole page).
- */
-export const extractMainContentHtml = (html: string): string | null => {
-  // Work on the <body> if present to skip head metadata.
-  const bodyMatch = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)
-  const scope = bodyMatch ? bodyMatch[1] : html
-  const fullLen = approxTextLength(scope)
-  if (fullLen === 0) return null
-
-  const cleaned = removeChrome(scope)
-
-  // 1. Prefer semantic containers.
-  const semantic = pickDensestBlock(cleaned, ['main', 'article'])
-  if (semantic && approxTextLength(semantic) >= Math.min(200, fullLen * 0.25)) {
-    return semantic
-  }
-
-  // 2. Fall back to the densest generic block (require a meaningful absolute amount of text so
-  // trivially short pages don't get "extracted" into a tiny div).
-  const generic = pickDensestBlock(cleaned, ['section', 'div'])
-  if (generic && approxTextLength(generic) >= 200 && approxTextLength(generic) >= fullLen * 0.4) {
-    return generic
-  }
-
-  return null
-}
-
-// Prefix each line with a right-aligned line number, starting at startLine (1-indexed).
-export const renderWithLineNumbers = (text: string, startLine = 1): string => {
-  const lines = text.split('\n')
-  return lines.map((line, idx) => `${String(startLine + idx).padStart(5, ' ')}  ${line}`).join('\n')
-}
-
-export interface WebSearchResult {
-  title: string
-  url: string
-  snippet: string
-  source?: 'Bing' | 'Sogou' | 'DuckDuckGo' | 'Tavily' | 'Brave'
-}
-
 /** Options accepted by the high-level webSearch entry point. */
 export interface WebSearchOptions {
   /** Max number of results to return. Clamped 1..20. Default 8. */
@@ -484,108 +265,6 @@ export const normalizeWebSearchOptions = (
 
   return { count, freshness, lang }
 }
-
-
-export const parseDuckDuckGoResults = (html: string, limit = 8): WebSearchResult[] => {
-  const results: WebSearchResult[] = []
-  const blocks = html.split(/<div\s+class="[^"]*web-result[^"]*"/i)
-  for (let i = 1; i < blocks.length && results.length < limit; i++) {
-    const block = blocks[i]
-
-    // Robustly match the link tag containing class "result__a"
-    const aMatch = block.match(/<a\s+[^>]*class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i)
-    if (!aMatch) continue
-
-    const fullLinkTag = aMatch[0]
-    const titleHtml = aMatch[1]
-
-    const hrefMatch = fullLinkTag.match(/href="([^"]+)"/i)
-    let href = hrefMatch ? hrefMatch[1] : ''
-
-    if (href.startsWith('//')) {
-      href = 'https:' + href
-    }
-
-    if (href.includes('/l/?')) {
-      const uddgMatch = href.match(/[?&]uddg=([^&]+)/)
-      if (uddgMatch) {
-        href = decodeURIComponent(uddgMatch[1])
-      }
-    }
-
-    const title = stripHtml(titleHtml).replace(/\s+/g, ' ').trim()
-
-    // Robustly match the snippet tag containing class "result__snippet"
-    const snippetMatch = block.match(
-      /<a\s+[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i
-    )
-    const snippet = snippetMatch ? stripHtml(snippetMatch[1]).replace(/\s+/g, ' ').trim() : ''
-
-    results.push({ title, url: href, snippet, source: 'DuckDuckGo' })
-  }
-  return results
-}
-
-export const parseBingResults = (html: string, limit = 8): WebSearchResult[] => {
-  const results: WebSearchResult[] = []
-  const blocks = html.split(/<li\s+class="[^"]*b_algo[^"]*"/i)
-  for (let i = 1; i < blocks.length && results.length < limit; i++) {
-    const block = blocks[i]
-    const h2Match = block.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i)
-    if (!h2Match) continue
-
-    const h2Content = h2Match[1]
-    const aMatch = h2Content.match(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/i)
-    if (!aMatch) continue
-
-    const href = aMatch[1]
-    const title = stripHtml(aMatch[2]).replace(/\s+/g, ' ').trim()
-
-    const pMatch =
-      block.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i) ||
-      block.match(/<div\s+class="[^"]*b_caption[^"]*"[^>]*>([\s\S]*?)<\/div>/i)
-    const snippet = pMatch ? stripHtml(pMatch[1]).replace(/\s+/g, ' ').trim() : ''
-
-    if (href && title) {
-      results.push({ title, url: href, snippet, source: 'Bing' })
-    }
-  }
-  return results
-}
-
-export const parseSogouResults = (html: string, limit = 8): WebSearchResult[] => {
-  const results: WebSearchResult[] = []
-  const blocks = html.split(/<div\s+class="vrwrap"/i)
-  for (let i = 1; i < blocks.length && results.length < limit; i++) {
-    const block = blocks[i]
-    const h3Match = block.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i)
-    if (!h3Match) continue
-
-    const aMatch = h3Match[1].match(/<a\b[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/i)
-    if (!aMatch) continue
-
-    let href = aMatch[1]
-    if (href.startsWith('/')) {
-      href = 'https://www.sogou.com' + href
-    }
-    const title = stripHtml(aMatch[2]).replace(/\s+/g, ' ').trim()
-
-    const snippetMatch = block.match(
-      /<div\s+class="[^"]*(?:str_info|fz-mid|text-layout)[^"]*"[^>]*>([\s\S]*?)<\/div>/i
-    )
-    const snippet = snippetMatch ? stripHtml(snippetMatch[1]).replace(/\s+/g, ' ').trim() : ''
-
-    if (href && title) {
-      results.push({ title, url: href, snippet, source: 'Sogou' })
-    }
-  }
-  return results
-}
-
-export const formatSearchResultsForModel = (results: WebSearchResult[]): string =>
-  results
-    .map((r, idx) => `${idx + 1}. ${r.title}\n   URL: ${r.url}\n   Snippet: ${r.snippet}`)
-    .join('\n\n')
 
 const readTitle = (html: string): string => {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
@@ -723,7 +402,10 @@ export const fetchUrl = async (
           rendered = true
         }
       } catch (err) {
-        console.warn('[fetch_url] JS-render fallback failed; using static HTML.', (err as Error).message)
+        console.warn(
+          '[fetch_url] JS-render fallback failed; using static HTML.',
+          (err as Error).message
+        )
       }
     }
   }
@@ -838,7 +520,7 @@ const fetchSearchHtml = async (url: string, signal?: AbortSignal, lang = ''): Pr
   }
 }
 
-// ── Search providers ────────────────────────────────────────────────────────
+// Search providers
 // A SearchProvider abstracts a search backend. The built-in HTML provider scrapes the public
 // search engines; the API providers (Tavily, Brave) call dedicated LLM-friendly search APIs and
 // return cleaner results plus, for Tavily, an optional aggregated answer. Provider selection is
@@ -893,7 +575,7 @@ const htmlSearchProvider: SearchProvider = {
       }
     }
     throw new Error(
-      `No search results from any HTML engine for query: "${query}". Tried — ${failures.join('; ')}`
+      `No search results from any HTML engine for query: "${query}". Tried 鈥?${failures.join('; ')}`
     )
   }
 }
@@ -1038,7 +720,7 @@ const resolveProvider = (
   return { provider: htmlSearchProvider, apiKey: '' }
 }
 
-// ── Search result cache ──────────────────────────────────────────────────────
+// Search result cache
 // Short-lived in-memory cache keyed by (provider, normalized query, count, freshness, lang).
 // Identical searches within a task are common; caching avoids hammering engines/APIs and pairs
 // well with the loop guard. TTL is intentionally short so results stay reasonably fresh.
