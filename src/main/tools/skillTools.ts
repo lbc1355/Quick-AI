@@ -6,19 +6,13 @@ import { loadSkillsFromFolders } from '../skillManager'
 import { parseSkillMarkdown } from '../../shared/skillParser'
 import { getWorkspaceRoot, isPathInWorkspace, isSensitiveFile } from './helpers'
 import { ToolDefinition, ToolExecutionContext } from './types'
-import { createSkillResult, pathToFileUrl } from './skillResult'
+import { createSkillResult } from './skillResult'
+import { createSkillListResult } from './skillListResult'
+import { getSkillDisplayName, getSkillShortDescription, getSkillTriggers } from './skillMetadata'
 import { promises as fs } from 'fs'
 import { basename, join, resolve } from 'path'
 const MAX_SKILL_PACKAGE_FILE_CHARS = 6000
 const MAX_SKILL_PACKAGE_TOTAL_CHARS = 20000
-
-function getSkillDisplayName(skill: Skill): string {
-  return skill.interface?.displayName || skill.name
-}
-
-function getSkillShortDescription(skill: Skill): string {
-  return skill.interface?.shortDescription || skill.description || ''
-}
 
 function cleanSkillLookup(value: string): string {
   return value
@@ -255,7 +249,7 @@ function formatSkillPackageFiles(skill: Skill, includeContent: boolean): string[
 }
 
 function formatSkillForModel(skill: Skill, includePackageContent: boolean): string {
-  const triggers = skill.triggers && skill.triggers.length > 0 ? skill.triggers : [skill.trigger]
+  const triggers = getSkillTriggers(skill)
   const shortDescription = getSkillShortDescription(skill)
   const packageLines = formatSkillPackageFiles(skill, includePackageContent)
   const lines = [
@@ -751,45 +745,7 @@ export const skillTools: Record<string, ToolDefinition> = {
         })
       }
 
-      if (skills.length === 0) {
-        return createSkillResult({
-          resultForModel: 'No custom skills installed.',
-          title: 'List Skills',
-          summary: '0 skills installed'
-        })
-      }
-
-      const lines = ['Installed Skills:']
-      const items = skills.map((s) => {
-        const triggersStr = s.triggers && s.triggers.length > 0 ? s.triggers.join(', ') : s.trigger
-        const displayName = getSkillDisplayName(s)
-        const shortDescription = getSkillShortDescription(s)
-        lines.push(`- ID: ${s.id}`)
-        lines.push(`  Name: ${displayName}`)
-        if (displayName !== s.name) lines.push(`  Internal Name: ${s.name}`)
-        lines.push(`  Triggers: ${triggersStr}`)
-        if (shortDescription) lines.push(`  Description: ${shortDescription}`)
-        if (s.filePath) lines.push(`  File Path: ${s.filePath}`)
-        if (s.dirPath) lines.push(`  Directory Path: ${s.dirPath}`)
-        lines.push(`  Mode: ${s.mode || 'insert'}`)
-        lines.push(`  Kind: ${s.kind || 'prompt'}`)
-        if (s.tools && s.tools.length > 0) lines.push(`  Declared Tools: ${s.tools.join(', ')}`)
-        lines.push('')
-
-        return {
-          title: displayName,
-          url: s.filePath ? pathToFileUrl(s.filePath) : '',
-          snippet: `Triggers: ${triggersStr} | Mode: ${s.mode || 'insert'}${shortDescription ? ` | ${shortDescription}` : ''}`,
-          source: s.source || 'markdown'
-        }
-      })
-
-      return createSkillResult({
-        resultForModel: lines.join('\n'),
-        title: 'List Skills',
-        summary: `Found ${skills.length} skills`,
-        items
-      })
+      return createSkillListResult(skills)
     }
   }
 }
