@@ -1,6 +1,6 @@
 import { AgentEvent, ChatCompletionMessage, SessionResource } from '../../shared/types'
 import { ToolDefinition, ToolModelAttachment } from '../tools/types'
-import { ToolRegistrySource } from '../tools/registryView'
+import { ToolRegistryView } from '../tools/registryView'
 import { ActionLog } from './actionLog'
 import { AgentToolDiscovery } from './agentRunPreparation'
 import { FetchUrlBudget } from './preparedToolExecutor'
@@ -59,7 +59,7 @@ export interface RunToolTurnOptions {
   loopGuard: LoopGuard
   outputSpilloverThreshold: number
   fetchUrlBudget: FetchUrlBudget
-  toolRegistry: ToolRegistrySource
+  toolRegistry: ToolRegistryView
   runContext: ToolTurnRunContext
   emitEvent: (event: AgentEvent) => void
   requestPermission: (callId: string) => Promise<boolean>

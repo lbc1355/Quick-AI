@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AgentEvent, ChatCompletionMessage } from '../../shared/types'
 import { ToolDefinition } from '../tools/types'
+import { ToolRegistryView } from '../tools/registryView'
 import { createToolStepExecutor } from './toolStepApplicator'
 import { PreparedToolCall } from './toolCallPlanning'
 
@@ -38,6 +39,11 @@ const makeTool = (): ToolDefinition => ({
     properties: {}
   },
   execute: vi.fn()
+})
+
+const registryOf = (tools: Record<string, ToolDefinition | undefined>): ToolRegistryView => ({
+  get: (name) => tools[name],
+  list: () => Object.values(tools).filter((tool): tool is ToolDefinition => !!tool)
 })
 
 describe('createToolStepExecutor', () => {
@@ -98,7 +104,7 @@ describe('createToolStepExecutor', () => {
     const recordToolAction = vi.fn()
 
     const executeTool = createToolStepExecutor({
-      toolRegistry: { file_read: tool },
+      toolRegistry: registryOf({ file_read: tool }),
       reqId: 'req-1',
       conversationId: 'session-1',
       step: 3,

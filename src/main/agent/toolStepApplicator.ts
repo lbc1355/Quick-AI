@@ -1,6 +1,6 @@
 import { AgentEvent, ChatCompletionMessage, SessionResource } from '../../shared/types'
 import { ToolDefinition, ToolModelAttachment } from '../tools/types'
-import { ToolRegistrySource, toToolRegistryView } from '../tools/registryView'
+import { ToolRegistryView } from '../tools/registryView'
 import { ActionLog } from './actionLog'
 import { FetchUrlBudget, PreparedToolExecutionResult, executePreparedToolCall } from './preparedToolExecutor'
 import { RetryPolicy } from './retryPolicy'
@@ -11,7 +11,7 @@ import { ToolRuntimeLoopGuard } from './toolRuntime'
 import { RecordToolActionOptions, recordToolAction } from './toolActionRecorder'
 
 export interface CreateToolStepExecutorOptions {
-  toolRegistry: ToolRegistrySource
+  toolRegistry: ToolRegistryView
   reqId: string
   conversationId: string
   step: number
@@ -41,7 +41,6 @@ export interface CreateToolStepExecutorOptions {
 export function createToolStepExecutor(options: CreateToolStepExecutorOptions): ExecuteToolForStep {
   const runPreparedTool = options.executePreparedToolCall || executePreparedToolCall
   const recordAction = options.recordToolAction || recordToolAction
-  const toolRegistry = toToolRegistryView(options.toolRegistry)
 
   return async (
     prep: PreparedToolCall,
@@ -53,7 +52,7 @@ export function createToolStepExecutor(options: CreateToolStepExecutorOptions): 
 
     const executionResult: PreparedToolExecutionResult = await runPreparedTool({
       prep,
-      tool: toolRegistry.get(toolName),
+      tool: options.toolRegistry.get(toolName),
       isApproved,
       reqId: options.reqId,
       step: options.step,

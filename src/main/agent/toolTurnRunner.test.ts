@@ -6,6 +6,7 @@ import { LoopGuard } from './loopGuard'
 import { DEFAULT_RETRY_POLICY } from './retryPolicy'
 import { runToolTurn, ToolTurnRunContext } from './toolTurnRunner'
 import { PreparedToolCall } from './toolCallPlanning'
+import { ToolRegistryView } from '../tools/registryView'
 
 const rawToolCall = (id: string, name: string): NonNullable<ChatCompletionMessage['tool_calls']>[number] => ({
   id,
@@ -31,6 +32,11 @@ const prepared = (
   isDeadlock: false,
   classification
 })
+
+const emptyToolRegistry: ToolRegistryView = {
+  get: () => undefined,
+  list: () => []
+}
 
 describe('runToolTurn', () => {
   it('prepares, presents, processes, and returns a completed tool turn', async () => {
@@ -106,7 +112,7 @@ describe('runToolTurn', () => {
       loopGuard: new LoopGuard(),
       outputSpilloverThreshold: 1000,
       fetchUrlBudget: { count: 0, max: 10 },
-      toolRegistry: {},
+      toolRegistry: emptyToolRegistry,
       runContext,
       emitEvent,
       requestPermission,

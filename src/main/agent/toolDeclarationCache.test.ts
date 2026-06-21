@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { ChatToolDeclaration } from '../../shared/types'
 import { ToolDefinition } from '../tools/types'
+import { ToolRegistryView } from '../tools/registryView'
 import { createToolDeclarationCache } from './toolDeclarationCache'
 
 const tool = (name: string, implemented = true): ToolDefinition => ({
@@ -34,16 +35,21 @@ const declarationFor = (definition: ToolDefinition): ChatToolDeclaration => ({
   }
 })
 
+const registryOf = (tools: Record<string, ToolDefinition | undefined>): ToolRegistryView => ({
+  get: (name) => tools[name],
+  list: () => Object.values(tools).filter((tool): tool is ToolDefinition => !!tool)
+})
+
 describe('createToolDeclarationCache', () => {
   it('declares active implemented non-denied tools in dynamic mode', () => {
     const cache = createToolDeclarationCache({
-      toolRegistry: {
+      toolRegistry: registryOf({
         file_read: tool('file_read'),
         shell: tool('shell'),
         denied_tool: tool('denied_tool'),
         inactive_tool: tool('inactive_tool'),
         missing_impl: tool('missing_impl', false)
-      },
+      }),
       toDeclaration: declarationFor
     })
 
@@ -64,10 +70,10 @@ describe('createToolDeclarationCache', () => {
 
   it('declares only skill tools in static mode', () => {
     const cache = createToolDeclarationCache({
-      toolRegistry: {
+      toolRegistry: registryOf({
         file_read: tool('file_read'),
         shell: tool('shell')
-      },
+      }),
       toDeclaration: declarationFor
     })
 
@@ -103,9 +109,9 @@ describe('createToolDeclarationCache', () => {
   it('reuses declarations while the declaration signature is unchanged', () => {
     const toDeclaration = vi.fn(declarationFor)
     const cache = createToolDeclarationCache({
-      toolRegistry: {
+      toolRegistry: registryOf({
         file_read: tool('file_read')
-      },
+      }),
       toDeclaration
     })
     const input = {
@@ -123,10 +129,10 @@ describe('createToolDeclarationCache', () => {
 
   it('rebuilds declarations when active tools change', () => {
     const cache = createToolDeclarationCache({
-      toolRegistry: {
+      toolRegistry: registryOf({
         file_read: tool('file_read'),
         shell: tool('shell')
-      },
+      }),
       toDeclaration: declarationFor
     })
 
