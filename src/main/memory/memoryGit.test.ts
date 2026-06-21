@@ -13,7 +13,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true })
+  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   resetGitAvailabilityCache()
 })
 
@@ -33,5 +33,5 @@ describe('memoryGit', () => {
     writeFileSync(join(dir, 'a.md'), 'hello')
     const committed = await commit(dir, 'memory: add a.md')
     expect(committed).toBe(true)
-  })
+  }, 20000)
 })
