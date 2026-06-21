@@ -2,18 +2,13 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Message, AgentEvent } from '../../../shared/types'
 import {
-  Edit,
-  RefreshCw,
   Paperclip,
   Sparkles,
-  Play,
-  Copy,
-  Check,
   ChevronRight,
+  Check,
   AlertCircle,
   GitBranch,
-  Loader2,
-  X
+  Loader2
 } from 'lucide-react'
 import {
   parseThinkTags,
@@ -24,6 +19,13 @@ import {
   ParsedToolCall
 } from '../utils/messageFormat'
 import { shortBranchRunId, type BranchChildInfo } from '../utils/branchDisplay'
+import { MessageActions } from './message/MessageActions'
+import { ToolDetailModal } from './message/ToolDetailModal'
+import {
+  formatCacheHitRate,
+  formatToolArgsSummary,
+  formatToolDisplayText
+} from './message/toolDisplay'
 
 const formatWorkedDuration = (seconds: number, stepsCount: number): string => {
   if (seconds > 0) {
@@ -43,231 +45,6 @@ const formatElapsedDuration = (seconds: number): string => {
   const secs = safeSeconds % 60
   if (mins > 0) return `${mins}m${secs > 0 ? ` ${secs}s` : ''}`
   return `${secs}s`
-}
-
-type ToolArgsRecord = Record<string, unknown>
-
-const isToolArgsRecord = (args: unknown): args is ToolArgsRecord =>
-  typeof args === 'object' && args !== null
-
-const getStringArg = (args: ToolArgsRecord, keys: string[]): string => {
-  for (const key of keys) {
-    const value = args[key]
-    if (typeof value === 'string') return value
-  }
-  return ''
-}
-
-const formatToolArgsSummary = (toolName: string, args: unknown): string => {
-  if (!isToolArgsRecord(args)) return ''
-  const name = toolName.toLowerCase()
-  if (name.includes('command') || name.includes('shell') || name.includes('run')) {
-    const cmd = getStringArg(args, ['CommandLine', 'command', 'cmd'])
-    if (cmd) {
-      return cmd.length > 50 ? cmd.substring(0, 50) + '...' : cmd
-    }
-  }
-  const path = getStringArg(args, [
-    'path',
-    'TargetFile',
-    'AbsolutePath',
-    'Target',
-    'file',
-    'filePath'
-  ])
-  if (path) {
-    const parts = path.replace(/\\/g, '/').split('/')
-    return parts.length > 2 ? '.../' + parts.slice(-2).join('/') : path
-  }
-  const query = getStringArg(args, ['query', 'q'])
-  if (query) {
-    return `"${query.length > 40 ? query.substring(0, 40) + '...' : query}"`
-  }
-  const url = getStringArg(args, ['url', 'Url', 'uri'])
-  if (url) {
-    const displayUrl = url.replace(/^https?:\/\/(www\.)?/, '')
-    return displayUrl.length > 40 ? displayUrl.substring(0, 40) + '...' : displayUrl
-  }
-  const keyVal = Object.entries(args)
-    .filter(([k]) => k !== 'purpose')
-    .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
-    .join(', ')
-  if (!keyVal) return ''
-  return keyVal.length > 50 ? `{${keyVal.substring(0, 50)}...}` : `{${keyVal}}`
-}
-
-const getShellCommandArg = (toolName: string, args: unknown): string => {
-  if (!isToolArgsRecord(args)) return ''
-  const name = toolName.toLowerCase()
-  if (!name.includes('command') && !name.includes('shell') && !name.includes('run')) return ''
-  return getStringArg(args, ['CommandLine', 'command', 'cmd'])
-}
-
-const formatToolDisplayText = (toolName: string, args: unknown, purpose?: string): string => {
-  const summary = purpose || formatToolArgsSummary(toolName, args)
-  return summary ? `${toolName} ${summary}` : toolName
-}
-
-const getToolArgsJson = (args: unknown): string => {
-  if (!isToolArgsRecord(args)) return ''
-  const cleanArgs = Object.fromEntries(Object.entries(args).filter(([key]) => key !== 'purpose'))
-  return Object.keys(cleanArgs).length > 0 ? JSON.stringify(cleanArgs, null, 2) : ''
-}
-
-const getToolStatusLabel = (status: ParsedToolCall['status']): string => {
-  switch (status) {
-    case 'completed':
-      return '已完成'
-    case 'running':
-      return '运行中'
-    case 'pending':
-      return '等待中'
-    case 'denied':
-      return '已拒绝'
-    case 'failed':
-      return '失败'
-    default:
-      return status
-  }
-}
-
-const formatCacheHitRate = (cacheStats: Message['cacheStats']): string | null => {
-  if (!cacheStats || cacheStats.hasCacheStats === false || !Number.isFinite(cacheStats.hitRate)) {
-    return null
-  }
-  return `缓存命中 ${cacheStats.hitRate}%`
-}
-
-const ToolDetailModal: React.FC<{
-  toolCall: ParsedToolCall
-  onClose: () => void
-}> = ({ toolCall, onClose }) => {
-  const shellCommand = getShellCommandArg(toolCall.toolName, toolCall.args)
-  const argsJson = shellCommand ? '' : getToolArgsJson(toolCall.args)
-  const result = toolCall.result
-  const outputDetails = result?.details || toolCall.output
-
-  return (
-    <div className="tool-detail-backdrop" onMouseDown={onClose}>
-      <section
-        className="tool-detail-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${toolCall.toolName} 工具详情`}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="tool-detail-header">
-          <div className="tool-detail-title-group">
-            <code className="tool-detail-name">{toolCall.toolName}</code>
-            <span className={`tool-detail-status ${toolCall.status}`}>
-              {getToolStatusLabel(toolCall.status)}
-            </span>
-          </div>
-          <button type="button" className="tool-detail-close" onClick={onClose} title="关闭">
-            <X size={15} />
-          </button>
-        </header>
-
-        <div className="tool-detail-body">
-          {toolCall.purpose && (
-            <section className="tool-detail-section">
-              <h4>说明</h4>
-              <p>{toolCall.purpose}</p>
-            </section>
-          )}
-
-          {shellCommand && (
-            <section className="tool-detail-section">
-              <h4>Command</h4>
-              <pre className="tool-detail-code command">
-                <code>{shellCommand}</code>
-              </pre>
-            </section>
-          )}
-
-          {argsJson && (
-            <section className="tool-detail-section">
-              <h4>调用参数</h4>
-              <pre className="tool-detail-code">
-                <code>{argsJson}</code>
-              </pre>
-            </section>
-          )}
-
-          {toolCall.error && (
-            <section className="tool-detail-section">
-              <h4>错误</h4>
-              <pre className="tool-detail-code error">
-                <code>{toolCall.error}</code>
-              </pre>
-            </section>
-          )}
-
-          {result && (
-            <section className="tool-detail-section">
-              <h4>执行结果</h4>
-              <div className="tool-detail-result">
-                {result.title && <div className="tool-detail-result-title">{result.title}</div>}
-                {result.summary && (
-                  <div className="tool-detail-result-summary">{result.summary}</div>
-                )}
-                {result.url && (
-                  <a
-                    className="tool-detail-result-url"
-                    href={result.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {result.url}
-                  </a>
-                )}
-                {outputDetails && (
-                  <pre className="tool-detail-code details">
-                    <code>{outputDetails}</code>
-                  </pre>
-                )}
-                {result.items && result.items.length > 0 && (
-                  <div className="tool-detail-result-items">
-                    {result.items.map((item, itemIdx) => (
-                      <div key={`${item.url}-${itemIdx}`} className="tool-detail-result-item">
-                        <div className="tool-detail-result-item-header">
-                          <span className="tool-detail-result-item-index">#{itemIdx + 1}</span>
-                          <a href={item.url} target="_blank" rel="noreferrer">
-                            {item.title}
-                          </a>
-                          {item.source && (
-                            <span className="tool-detail-result-item-source">{item.source}</span>
-                          )}
-                        </div>
-                        {item.snippet && (
-                          <div className="tool-detail-result-item-snippet">{item.snippet}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-
-          {!result && outputDetails && (
-            <section className="tool-detail-section">
-              <h4>实时输出</h4>
-              <pre className="tool-detail-code details">
-                <code>{outputDetails}</code>
-              </pre>
-            </section>
-          )}
-
-          {!toolCall.purpose && !argsJson && !toolCall.error && !result && !outputDetails && (
-            <section className="tool-detail-section">
-              <p>这个工具调用没有返回额外详情。</p>
-            </section>
-          )}
-        </div>
-      </section>
-    </div>
-  )
 }
 
 const getToolEventVerb = (toolCall: ParsedToolCall): string => {
@@ -1081,42 +858,32 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                     </div>
                   )}
 
-                  {msg.role === 'user'
-                    ? !isGenerating && (
-                        <div className="message-actions" style={{ justifyContent: 'flex-end' }}>
-                          <button className="msg-action-btn" onClick={() => onStartEdit(msg)}>
-                            <Edit size={10} />
-                            <span>编辑</span>
-                          </button>
-                        </div>
-                      )
-                    : (!isGenerating ||
-                        (hasStructuredEvents &&
-                          msg.agentEvents!.some((e) => e.type === 'task_update'))) && (
-                        <div className="message-actions" style={{ justifyContent: 'flex-start' }}>
-                          {msg.agentRunId && agentStatus === 'failed' && !isGenerating && (
-                            <button
-                              className="msg-action-btn"
-                              onClick={() => onResumeAgentRun(idx)}
-                            >
-                              <Play size={10} />
-                              <span>继续执行</span>
-                            </button>
-                          )}
-                          {!isGenerating && (
-                            <button className="msg-action-btn" onClick={() => onRegenerate(idx)}>
-                              <RefreshCw size={10} />
-                              <span>重新生成</span>
-                            </button>
-                          )}
-                          {!isGenerating && finalReplyText && (
-                            <button className="msg-action-btn" onClick={handleCopy}>
-                              {copied ? <Check size={10} /> : <Copy size={10} />}
-                              <span>{copied ? '已复制' : '复制'}</span>
-                            </button>
-                          )}
-                        </div>
-                      )}
+                  {msg.role === 'user' ? (
+                    <MessageActions
+                      align="flex-end"
+                      canEdit={!isGenerating}
+                      canRegenerate={false}
+                      canResume={false}
+                      copied={copied}
+                      onCopy={handleCopy}
+                      onEdit={() => onStartEdit(msg)}
+                      onRegenerate={() => onRegenerate(idx)}
+                      onResume={() => onResumeAgentRun(idx)}
+                    />
+                  ) : (
+                    <MessageActions
+                      align="flex-start"
+                      canEdit={false}
+                      canResume={!!msg.agentRunId && agentStatus === 'failed' && !isGenerating}
+                      canRegenerate={!isGenerating}
+                      canCopy={!isGenerating && !!finalReplyText}
+                      copied={copied}
+                      onCopy={handleCopy}
+                      onEdit={() => onStartEdit(msg)}
+                      onRegenerate={() => onRegenerate(idx)}
+                      onResume={() => onResumeAgentRun(idx)}
+                    />
+                  )}
                 </>
               )}
             </div>
