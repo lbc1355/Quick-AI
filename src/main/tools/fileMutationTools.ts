@@ -1,13 +1,7 @@
-import { dirname } from 'path'
 import { promises as fs } from 'fs'
 import { ToolArgs } from '../../shared/types'
 import { getRun } from '../agent/AgentRunContext'
-import {
-  ROOT_PARAMETER,
-  getRootArg,
-  resolveExistingSafePath,
-  resolveTargetSafePath
-} from './filePathSafety'
+import { ROOT_PARAMETER, getRootArg, resolveExistingSafePath } from './filePathSafety'
 import {
   buildShortUnifiedDiff,
   formatEditLookupFailure,
@@ -16,128 +10,11 @@ import {
 import { ToolDefinition, ToolExecutionContext } from './types'
 
 export const fileMutationTools: Record<string, ToolDefinition> = {
-  file_write: {
-    name: 'file_write',
-    title: 'Write File',
-    description:
-      'Writes content to a local file. Files inside the workspace are written directly, while files outside the workspace require user approval.',
-    tags: [
-      'file',
-      'write',
-      'local',
-      'save',
-      '文件',
-      '写入',
-      '保存',
-      '修改',
-      '编辑',
-      '创建',
-      '翻译'
-    ],
-    category: 'file',
-    risk: 'medium',
-    implemented: true,
-    discoverable: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        path: {
-          type: 'string',
-          description: 'The relative or absolute path to write the file to.'
-        },
-        root: ROOT_PARAMETER,
-        content: {
-          type: 'string',
-          description: 'The file content to write.'
-        },
-        mode: {
-          type: 'string',
-          description:
-            'Whether to fail if file exists ("create") or overwrite ("overwrite"). (default: "create")',
-          enum: ['create', 'overwrite']
-        },
-        createDirs: {
-          type: 'boolean',
-          description:
-            'Whether to automatically create parent directories if they do not exist. (default: true)'
-        }
-      },
-      required: ['path', 'content']
-    },
-    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      const filePath = args.path
-      const content = args.content
-      const mode = (args.mode as string) || 'create'
-      const createDirs = args.createDirs !== false
-
-      if (typeof filePath !== 'string' || !filePath) {
-        throw new Error('Missing or invalid path parameter')
-      }
-      if (typeof content !== 'string') {
-        throw new Error('Missing or invalid content parameter')
-      }
-
-      const target = await resolveTargetSafePath(filePath, ctx, 'Path', getRootArg(args))
-      console.log(`[file_write] ${target.rootKind} root is: ${target.root}`)
-
-      const MAX_WRITE_BYTES = 2 * 1024 * 1024
-      const contentBuffer = Buffer.from(content, 'utf-8')
-      if (contentBuffer.length > MAX_WRITE_BYTES) {
-        throw new Error(
-          `File content is too large (${(contentBuffer.length / 1024 / 1024).toFixed(2)} MB). Max supported write size is 2 MB.`
-        )
-      }
-
-      let exists = false
-      try {
-        const stats = await fs.stat(target.realPath)
-        exists = true
-        if (stats.isDirectory()) {
-          throw new Error('Target path is a directory, not a file.')
-        }
-      } catch {
-        // If file doesn't exist, stat throws ENOENT, which is expected
-      }
-
-      if (exists && mode === 'create') {
-        throw new Error(
-          `File already exists and mode is set to "create". To overwrite, set mode to "overwrite".`
-        )
-      }
-
-      try {
-        if (createDirs) {
-          const parent = dirname(target.realPath)
-          await fs.mkdir(parent, { recursive: true })
-        }
-        await fs.writeFile(target.realPath, content, 'utf-8')
-      } catch (err) {
-        const error = err as Error
-        throw new Error(`Failed to write file: ${error.message}`)
-      }
-
-      const fileUrl = `file:///${target.realPath.replace(/\\/g, '/')}`
-
-      // Writing establishes known content, so subsequent surgical edits in this run are allowed.
-      if (ctx.reqId) getRun(ctx.reqId)?.markFileSeen(target.realPath)
-
-      const resultForModel = `Successfully wrote file: ${target.relPath}\nRoot (${target.rootKind}): ${target.root}\nSize: ${contentBuffer.length} bytes\nPath: ${target.realPath}`
-
-      return {
-        resultForModel,
-        resultForUi: {
-          title: `Write File: ${target.relPath}`,
-          url: fileUrl,
-          summary: `Wrote ${contentBuffer.length} bytes to ${target.relPath} (${exists ? 'overwrote' : 'created'}) in ${target.rootKind} ${target.root}`
-        }
-      }
-    }
-  },
   file_edit: {
     name: 'file_edit',
     title: 'Edit File',
     description:
-      'Performs exact string replacement in a file. Files inside the workspace are edited directly, while files outside the workspace require user approval. Provide the exact text to replace (old_string) and the new text (new_string). By default, old_string must match exactly one location — if it matches multiple locations the edit is rejected with a list of matching lines so you can add more surrounding context to make it unique. Use replace_all=true to replace every occurrence.',
+      'Performs exact string replacement in a file. Files inside the workspace are edited directly, while files outside the workspace require user approval. Provide the exact text to replace (old_string) and the new text (new_string). By default, old_string must match exactly one location - if it matches multiple locations the edit is rejected with a list of matching lines so you can add more surrounding context to make it unique. Use replace_all=true to replace every occurrence.',
     tags: [
       'file',
       'edit',
