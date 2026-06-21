@@ -38,6 +38,9 @@ import { SessionSidebar } from './components/SessionSidebar'
 import { ChatInputArea } from './components/ChatInputArea'
 import { UserChoicePopup } from './components/UserChoicePopup'
 import { getPopupOptions, groupAutocompleteItems } from './utils/autocompleteHelpers'
+import { buildMessageNavPreview } from './features/chat/messageNavigation'
+import { useMessageNavigation } from './features/chat/useMessageNavigation'
+import { useProjectNavigation } from './features/chat/useProjectNavigation'
 
 interface PendingPermission {
   msgId: string
@@ -45,32 +48,6 @@ interface PendingPermission {
   callId: string
   toolName: string
   args: unknown
-}
-
-const buildMessageNavPreview = (
-  content: string,
-  files?: Array<{ name: string; content: string; type: string }>
-): string => {
-  const text = content
-    .replace(/<think>[\s\S]*?<\/think>/gi, ' ')
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
-    .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
-    .replace(/^\s*\[[^\]]+\]\s*/gm, ' ')
-    .replace(/[`*_>#-]/g, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-  if (text) return text.length > 88 ? `${text.slice(0, 85)}...` : text
-
-  const fileNames = files?.map((file) => file.name).filter(Boolean) || []
-  if (fileNames.length > 0) {
-    const shown = fileNames.slice(0, 2).join(', ')
-    return fileNames.length > 2 ? `附件：${shown} 等 ${fileNames.length} 个文件` : `附件：${shown}`
-  }
-
-  return '空消息'
 }
 
 function App(): React.JSX.Element {
@@ -84,7 +61,6 @@ function App(): React.JSX.Element {
     isMaximized: false
   })
   const [projects, setProjects] = useState<Project[]>([])
-  const [sidebarProjectId, setSidebarProjectId] = useState<string | null | undefined>(undefined)
 
   // 1. Providers hook
   const {
@@ -177,131 +153,31 @@ function App(): React.JSX.Element {
     string | null
   >(null)
 
-  useEffect(() => {
-    let disposed = false
-    window.api
-      .storeGet('projects')
-      .then((savedProjects) => {
-        if (!disposed) setProjects(savedProjects || [])
-      })
-      .catch((err) => console.warn('Failed to load projects:', err))
-    return () => {
-      disposed = true
-    }
-  }, [])
+  const {
+    setSidebarProjectId,
+    activeProject,
+    sidebarProject,
+    projectSessionCounts,
+    openProject,
+    openFreeConversations,
+    handleAddProject,
+    handleDeleteProject
+  } = useProjectNavigation({
+    projects,
+    sessions,
+    sessionsRef,
+    activeSession,
+    activeSessionId,
+    setProjects,
+    setSessions,
+    handleNewSession,
+    setSessionFamilyRootId,
+    setDismissedSessionFamilyViewForId
+  })
 
-  const persistProjects = useCallback(async (nextProjects: Project[]): Promise<void> => {
-    setProjects(nextProjects)
-    await window.api.storeSet('projects', nextProjects)
-  }, [])
-
-  const normalizeProjectPath = useCallback((projectPath: string): string => {
-    const normalized = projectPath.replace(/\\/g, '/').replace(/\/+$/, '')
-    return normalized.toLowerCase()
-  }, [])
-
-  const activeProject = useMemo(() => {
-    if (!activeSession?.projectId) return null
-    return projects.find((project) => project.id === activeSession.projectId) || null
-  }, [activeSession?.projectId, projects])
-
-  const resolvedSidebarProjectId =
-    sidebarProjectId === undefined ? (activeSession?.projectId ?? null) : sidebarProjectId
-  const sidebarProject = useMemo(() => {
-    if (!resolvedSidebarProjectId) return null
-    return projects.find((project) => project.id === resolvedSidebarProjectId) || null
-  }, [projects, resolvedSidebarProjectId])
-
-  const projectSessionCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const session of sessions) {
-      if (!session.projectId) continue
-      counts.set(session.projectId, (counts.get(session.projectId) || 0) + 1)
-    }
-    return counts
-  }, [sessions])
-
-  const openProject = useCallback((projectId: string): void => {
-    setSidebarProjectId(projectId)
-    setSessionFamilyRootId(null)
-    setDismissedSessionFamilyViewForId(activeSessionId || null)
-  }, [activeSessionId])
-
-  const openFreeConversations = useCallback((): void => {
-    setSidebarProjectId(null)
-    setSessionFamilyRootId(null)
-    setDismissedSessionFamilyViewForId(activeSessionId || null)
-  }, [activeSessionId])
-
-  const handleAddProject = useCallback(async (): Promise<void> => {
-    const selected = await window.api.selectProjectDirectory()
-    if (!selected) return
-
-    const existing = projects.find(
-      (project) => normalizeProjectPath(project.path) === normalizeProjectPath(selected.path)
-    )
-    if (existing) {
-      openProject(existing.id)
-      return
-    }
-
-    const now = Date.now()
-    const project: Project = {
-      id: `project-${now}-${Math.random().toString(36).slice(2, 7)}`,
-      name:
-        selected.name ||
-        selected.path.replace(/\\/g, '/').split('/').filter(Boolean).pop() ||
-        'Project',
-      path: selected.path,
-      createdAt: now,
-      updatedAt: now
-    }
-    const nextProjects = [project, ...projects]
-    await persistProjects(nextProjects)
-    await handleNewSession({ projectId: project.id })
-    setSidebarProjectId(project.id)
-    setSessionFamilyRootId(null)
-    setDismissedSessionFamilyViewForId(null)
-  }, [handleNewSession, normalizeProjectPath, openProject, persistProjects, projects])
-
-  const handleDeleteProject = useCallback(
-    async (projectId: string): Promise<void> => {
-      const project = projects.find((item) => item.id === projectId)
-      if (!project) return
-      const relatedCount = sessions.filter((session) => session.projectId === projectId).length
-      const confirmed = window.confirm(
-        relatedCount > 0
-          ? `移除项目「${project.name}」？磁盘文件不会被删除，${relatedCount} 个对话会保留为自由对话。`
-          : `移除项目「${project.name}」？磁盘文件不会被删除。`
-      )
-      if (!confirmed) return
-
-      const nextProjects = projects.filter((item) => item.id !== projectId)
-      const nextSessions = sessions.map((session) =>
-        session.projectId === projectId ? { ...session, projectId: undefined } : session
-      )
-      await persistProjects(nextProjects)
-      if (sidebarProjectId === projectId) {
-        setSidebarProjectId(null)
-      }
-      setSessions(nextSessions)
-      sessionsRef.current = nextSessions
-      await window.api.storeSet('sessions', nextSessions)
-    },
-    [persistProjects, projects, sessions, sessionsRef, setSessions, sidebarProjectId]
-  )
-
-  // Refs for scrolling and textarea
+  // Refs for textarea and draft input
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const inputDraftRef = useRef('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const messagesContainerRef = useRef<HTMLDivElement>(null)
-  const messagesInnerRef = useRef<HTMLDivElement>(null)
-  const shouldAutoScrollRef = useRef(true)
-  const isProgrammaticScrollRef = useRef(false)
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
-  const [activeMessageNavId, setActiveMessageNavId] = useState<string | null>(null)
-  const [pendingScrollMessageId, setPendingScrollMessageId] = useState<string | null>(null)
 
   // 3. Attachments hook
   const {
@@ -361,6 +237,17 @@ function App(): React.JSX.Element {
     activeGenerationSessionId,
     activeSessionId
   )
+  const {
+    messagesEndRef,
+    messagesContainerRef,
+    messagesInnerRef,
+    showScrollToBottom,
+    activeMessageNavId,
+    setPendingScrollMessageId,
+    scrollToBottom,
+    scrollToMessage,
+    handleScroll
+  } = useMessageNavigation({ activeSession, isCurrentSessionGenerating })
 
   // 5. Autocomplete hook
   const {
@@ -387,12 +274,6 @@ function App(): React.JSX.Element {
   if (activeSessionId !== prevSessionId) {
     setPrevSessionId(activeSessionId)
   }
-
-  useEffect(() => {
-    shouldAutoScrollRef.current = true
-    setShowScrollToBottom(false)
-    setActiveMessageNavId(null)
-  }, [activeSessionId])
 
   const isSessionFamilyViewDismissed = dismissedSessionFamilyViewForId === activeSessionId
 
@@ -436,7 +317,13 @@ function App(): React.JSX.Element {
       setActiveSessionId(sessionId)
       setAutocompleteItems([])
     },
-    [enterSessionFamilyView, sessions, setActiveSessionId, setAutocompleteItems]
+    [
+      enterSessionFamilyView,
+      sessions,
+      setActiveSessionId,
+      setAutocompleteItems,
+      setPendingScrollMessageId
+    ]
   )
 
   // Listen to window summon (focus/show) event from Main Process
@@ -488,186 +375,6 @@ function App(): React.JSX.Element {
     window.api.setWindowPinned(isPanelPinned)
     return () => window.api.setWindowPinned(false)
   }, [isPanelPinned, windowState.mode])
-
-  // Reset auto-scroll flag to true when a new message starts generating
-  useEffect(() => {
-    if (isCurrentSessionGenerating) {
-      shouldAutoScrollRef.current = true
-      setShowScrollToBottom(false)
-    }
-  }, [isCurrentSessionGenerating])
-
-  const updateMessageNavigationState = useCallback((container: HTMLDivElement): void => {
-    const messageNodes = Array.from(
-      container.querySelectorAll<HTMLElement>('[data-message-id]')
-    )
-    if (messageNodes.length === 0) {
-      setActiveMessageNavId(null)
-      return
-    }
-
-    const threshold = 60
-    const isAtBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight <= threshold
-
-    if (isAtBottom) {
-      setActiveMessageNavId(messageNodes[messageNodes.length - 1].dataset.messageId || null)
-      return
-    }
-
-    const containerTop = container.getBoundingClientRect().top
-    const targetY = containerTop + Math.min(Math.max(container.clientHeight * 0.28, 120), 240)
-    const activeNode =
-      messageNodes.find((node) => node.getBoundingClientRect().bottom >= targetY) ||
-      messageNodes[0]
-
-    setActiveMessageNavId(activeNode.dataset.messageId || null)
-  }, [])
-
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth'): void => {
-    const container = messagesContainerRef.current
-    if (!container) return
-
-    shouldAutoScrollRef.current = true
-    setShowScrollToBottom(false)
-    const lastMessage = activeSession?.messages[activeSession.messages.length - 1]
-    setActiveMessageNavId(lastMessage?.id || null)
-    isProgrammaticScrollRef.current = true
-    container.scrollTo({
-      top: container.scrollHeight,
-      behavior
-    })
-
-    const resetDelay = behavior === 'smooth' ? 500 : 60
-    window.setTimeout(() => {
-      isProgrammaticScrollRef.current = false
-    }, resetDelay)
-  }, [activeSession?.messages])
-
-  const scrollToMessage = useCallback(
-    (messageId: string, isLastMessage: boolean): void => {
-      if (isLastMessage) {
-        scrollToBottom('smooth')
-        return
-      }
-
-      const container = messagesContainerRef.current
-      if (!container) return
-
-      const target = Array.from(
-        container.querySelectorAll<HTMLElement>('[data-message-id]')
-      ).find((node) => node.dataset.messageId === messageId)
-      if (!target) return
-
-      shouldAutoScrollRef.current = false
-      setShowScrollToBottom(true)
-      setActiveMessageNavId(messageId)
-      isProgrammaticScrollRef.current = true
-      target.scrollIntoView({ block: 'center', behavior: 'smooth' })
-
-      window.setTimeout(() => {
-        isProgrammaticScrollRef.current = false
-        updateMessageNavigationState(container)
-      }, 500)
-    },
-    [scrollToBottom, updateMessageNavigationState]
-  )
-
-  // Auto-scroll when messages update
-  useEffect(() => {
-    if (shouldAutoScrollRef.current) {
-      const container = messagesContainerRef.current
-      if (container) {
-        const lastMessage = activeSession?.messages[activeSession.messages.length - 1]
-        setActiveMessageNavId(lastMessage?.id || null)
-        const behavior = isCurrentSessionGenerating ? 'auto' : 'smooth'
-        if (behavior === 'smooth') {
-          isProgrammaticScrollRef.current = true
-          container.scrollTo({
-            top: container.scrollHeight,
-            behavior: 'smooth'
-          })
-          const timeoutId = setTimeout(() => {
-            isProgrammaticScrollRef.current = false
-          }, 500)
-          setShowScrollToBottom(false)
-          return () => clearTimeout(timeoutId)
-        } else {
-          container.scrollTop = container.scrollHeight
-          setShowScrollToBottom(false)
-        }
-      }
-    }
-    return undefined
-  }, [activeSession?.messages, activeSessionId, isCurrentSessionGenerating])
-
-  useEffect(() => {
-    if (!pendingScrollMessageId) return
-
-    const container = messagesContainerRef.current
-    const target = container?.querySelector<HTMLElement>(
-      `[data-message-id="${pendingScrollMessageId}"]`
-    )
-    if (!target) return
-
-    shouldAutoScrollRef.current = false
-    setActiveMessageNavId(pendingScrollMessageId)
-    isProgrammaticScrollRef.current = true
-    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
-
-    const timeoutId = setTimeout(() => {
-      isProgrammaticScrollRef.current = false
-      setPendingScrollMessageId(null)
-    }, 500)
-    return () => clearTimeout(timeoutId)
-  }, [activeSessionId, activeSession?.messages.length, pendingScrollMessageId])
-
-  // Keep scrolling to the bottom when size of the message list inner content changes during generation (e.g. streaming tokens or expanding tool details)
-  useEffect(() => {
-    const container = messagesContainerRef.current
-    const inner = messagesInnerRef.current
-    if (!container || !inner) return undefined
-
-    const observer = new ResizeObserver(() => {
-      if (shouldAutoScrollRef.current && isCurrentSessionGenerating) {
-        isProgrammaticScrollRef.current = true
-        container.scrollTop = container.scrollHeight
-        const messageNodes = Array.from(
-          container.querySelectorAll<HTMLElement>('[data-message-id]')
-        )
-        setActiveMessageNavId(messageNodes[messageNodes.length - 1]?.dataset.messageId || null)
-        setTimeout(() => {
-          isProgrammaticScrollRef.current = false
-        }, 60)
-      }
-    })
-
-    observer.observe(inner)
-    return () => observer.disconnect()
-  }, [activeSessionId, isCurrentSessionGenerating])
-
-  // Handle manual scroll detection
-  const handleScroll = (): void => {
-    const container = messagesContainerRef.current
-    if (!container) return
-
-    // If it's a programmatic scroll (like smooth scrolling on load), ignore it
-    if (isProgrammaticScrollRef.current) return
-
-    const threshold = 60 // pixels from bottom (higher threshold for high-DPI/zoom tolerance)
-    const isAtBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight <= threshold
-
-    if (isAtBottom) {
-      shouldAutoScrollRef.current = true
-      setShowScrollToBottom(false)
-    } else {
-      shouldAutoScrollRef.current = false
-      setShowScrollToBottom(true)
-    }
-
-    updateMessageNavigationState(container)
-  }
 
   // Focus textarea when UI toggles
   useEffect(() => {
