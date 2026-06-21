@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { ToolDefinition } from '../tools/types'
 import { LoopGuard } from './loopGuard'
 import {
   getFetchUrlCallKey,
@@ -18,6 +19,39 @@ function toolCall(name: string, args: Record<string, unknown>, id = `tc-${name}`
   }
 }
 
+const tool = (
+  name: string,
+  overrides: Partial<Pick<ToolDefinition, 'category' | 'risk' | 'implemented'>> = {}
+): ToolDefinition => ({
+  name,
+  title: name,
+  description: `${name} description`,
+  tags: [],
+  category: overrides.category || 'system',
+  risk: overrides.risk || 'low',
+  implemented: overrides.implemented ?? true,
+  discoverable: true,
+  parameters: {
+    type: 'object',
+    properties: {}
+  },
+  execute: async () => ({
+    resultForModel: '',
+    resultForUi: { title: name }
+  })
+})
+
+const defaultToolRegistry = {
+  get: (name: string): ToolDefinition | undefined =>
+    ({
+      web_search: tool('web_search', { category: 'web' }),
+      fetch_url: tool('fetch_url', { category: 'web' }),
+      file_write: tool('file_write', { category: 'file', risk: 'high' }),
+      shell: tool('shell', { category: 'shell', risk: 'high' })
+    })[name],
+  list: () => []
+}
+
 function plan(
   overrides: Partial<Parameters<typeof prepareToolCalls>[0]> = {}
 ): PreparedToolCallGroups {
@@ -29,6 +63,7 @@ function plan(
     isCommandPrefixApproved: () => false,
     hasExecuted: () => false,
     loopGuard: new LoopGuard(),
+    toolRegistry: defaultToolRegistry,
     ...overrides
   })
 }

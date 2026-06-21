@@ -1,5 +1,4 @@
 import { ChatCompletionMessage, ToolArgs } from '../../shared/types'
-import { getToolRegistry } from '../toolRegistry'
 import { ToolRegistrySource, toToolRegistryView } from '../tools/registryView'
 import { evaluateToolGuard, DEFAULT_CONSTITUTION } from './constitution'
 import { LoopGuard } from './loopGuard'
@@ -56,9 +55,9 @@ export function prepareToolCalls(input: {
   hasExecuted: (callKey: string) => boolean
   loopGuard: LoopGuard
   projectRoot?: string
-  toolRegistry?: ToolRegistrySource
+  toolRegistry: ToolRegistrySource
 }): PreparedToolCallGroups {
-  const toolRegistry = toToolRegistryView(input.toolRegistry || getToolRegistry())
+  const toolRegistry = toToolRegistryView(input.toolRegistry)
   const seenFetchCallsThisTurn = new Set<string>()
 
   const prepared = input.toolCalls.map((toolCall, index): PreparedToolCall => {
