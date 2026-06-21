@@ -1,6 +1,5 @@
 import { ToolDefinition } from './types'
 import { fileDiffTool } from './fileDiff'
-import { fileSearchTools } from './fileSearch'
 import { codeSymbolTool } from './codeSymbolTool'
 import { fileReadTool } from './fileReadTool'
 import { imageReadTool } from './imageReadTool'
@@ -11,6 +10,8 @@ import { directoryCreateTool } from './directoryCreateTool'
 import { fileCopyTool } from './fileCopyTool'
 import { fileMoveTool } from './fileMoveTool'
 import { fileDeleteTool } from './fileDeleteTool'
+import { workspaceSearchTool } from './workspaceSearchTool'
+import { workspaceListFilesTool } from './workspaceListFilesTool'
 
 export const fileTools: Record<string, ToolDefinition> = {
   file_read: fileReadTool,
@@ -23,6 +24,7 @@ export const fileTools: Record<string, ToolDefinition> = {
   file_copy: fileCopyTool,
   file_move: fileMoveTool,
   file_delete: fileDeleteTool,
-  ...fileSearchTools,
+  workspace_search: workspaceSearchTool,
+  workspace_list_files: workspaceListFilesTool,
   file_diff: fileDiffTool
 }
