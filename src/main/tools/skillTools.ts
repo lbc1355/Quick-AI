@@ -6,6 +6,7 @@ import { loadSkillsFromFolders } from '../skillManager'
 import { parseSkillMarkdown } from '../../shared/skillParser'
 import { getWorkspaceRoot, isPathInWorkspace, isSensitiveFile } from './helpers'
 import { ToolDefinition, ToolExecutionContext } from './types'
+import { createSkillResult, pathToFileUrl } from './skillResult'
 import { promises as fs } from 'fs'
 import { basename, join, resolve } from 'path'
 const MAX_SKILL_PACKAGE_FILE_CHARS = 6000
@@ -381,14 +382,12 @@ export const skillTools: Record<string, ToolDefinition> = {
         )
       }
 
-      return {
+      return createSkillResult({
         resultForModel: `Created QuickAI skill:\nID: ${skill.id}\nTrigger: @${skill.trigger}\nDirectory: ${skillDir}\nNext: call load_skill with "${skill.trigger}" or validate_skill with "${skill.id}".`,
-        resultForUi: {
-          title: `Create Skill: ${skill.name}`,
-          url: `file:///${skillDir.replace(/\\/g, '/')}`,
-          summary: `Created ${skill.id} (@${skill.trigger})`
-        }
-      }
+        title: `Create Skill: ${skill.name}`,
+        filePath: skillDir,
+        summary: `Created ${skill.id} (@${skill.trigger})`
+      })
     }
   },
   install_skill: {
@@ -455,14 +454,12 @@ export const skillTools: Record<string, ToolDefinition> = {
         throw new Error(`Skill already installed at ${destinationDir}`)
       }
       if (sourceIsDestination) {
-        return {
+        return createSkillResult({
           resultForModel: `Skill is already installed:\nID: ${skill.id}\nName: ${skill.name}\nTrigger: @${skill.trigger}\nDirectory: ${destinationDir}`,
-          resultForUi: {
-            title: `Install Skill: ${skill.name}`,
-            url: `file:///${destinationDir.replace(/\\/g, '/')}`,
-            summary: `Already installed ${skill.id} (@${skill.trigger})`
-          }
-        }
+          title: `Install Skill: ${skill.name}`,
+          filePath: destinationDir,
+          summary: `Already installed ${skill.id} (@${skill.trigger})`
+        })
       }
       if (overwrite) {
         await fs.rm(destinationDir, { recursive: true, force: true })
@@ -475,14 +472,12 @@ export const skillTools: Record<string, ToolDefinition> = {
         await fs.writeFile(join(destinationDir, 'SKILL.md'), markdown, 'utf-8')
       }
 
-      return {
+      return createSkillResult({
         resultForModel: `Installed QuickAI skill:\nID: ${skill.id}\nName: ${skill.name}\nTrigger: @${skill.trigger}\nDirectory: ${destinationDir}\nNext: call list_skills to confirm the live catalog.`,
-        resultForUi: {
-          title: `Install Skill: ${skill.name}`,
-          url: `file:///${destinationDir.replace(/\\/g, '/')}`,
-          summary: `Installed ${skill.id} (@${skill.trigger})`
-        }
-      }
+        title: `Install Skill: ${skill.name}`,
+        filePath: destinationDir,
+        summary: `Installed ${skill.id} (@${skill.trigger})`
+      })
     }
   },
   remove_skill: {
@@ -528,13 +523,11 @@ export const skillTools: Record<string, ToolDefinition> = {
       const targetStats = await fs.stat(targetPath)
       await fs.rm(targetPath, { recursive: targetStats.isDirectory(), force: false })
 
-      return {
+      return createSkillResult({
         resultForModel: `Removed QuickAI skill:\nID: ${skill.id}\nPath: ${targetPath}`,
-        resultForUi: {
-          title: `Remove Skill: ${getSkillDisplayName(skill)}`,
-          summary: `Removed ${skill.id}`
-        }
-      }
+        title: `Remove Skill: ${getSkillDisplayName(skill)}`,
+        summary: `Removed ${skill.id}`
+      })
     }
   },
   validate_skill: {
@@ -577,13 +570,11 @@ export const skillTools: Record<string, ToolDefinition> = {
         }
       }
 
-      return {
+      return createSkillResult({
         resultForModel: lines.join('\n'),
-        resultForUi: {
-          title: name ? `Validate Skill: ${name}` : 'Validate Skills',
-          summary: `${targets.length} skill(s), ${issueCount} issue(s)`
-        }
-      }
+        title: name ? `Validate Skill: ${name}` : 'Validate Skills',
+        summary: `${targets.length} skill(s), ${issueCount} issue(s)`
+      })
     }
   },
   load_skill: {
@@ -630,13 +621,11 @@ export const skillTools: Record<string, ToolDefinition> = {
         )
       }
 
-      return {
+      return createSkillResult({
         resultForModel: `Loaded QuickAI Skill. Follow these instructions for the current user request. Auxiliary package files are listed but not loaded; call read_skill_resource for a listed Path when needed.\n\n${formatSkillForModel(skill, false)}`,
-        resultForUi: {
-          title: `Load Skill: ${getSkillDisplayName(skill)}`,
-          summary: `Loaded ${skill.id}`
-        }
-      }
+        title: `Load Skill: ${getSkillDisplayName(skill)}`,
+        summary: `Loaded ${skill.id}`
+      })
     }
   },
   read_skill_resource: {
@@ -713,15 +702,13 @@ export const skillTools: Record<string, ToolDefinition> = {
       const endOffset = offset + slice.length
       const nextOffset = endOffset < full.length ? endOffset : undefined
 
-      return {
+      return createSkillResult({
         resultForModel: `Skill Resource: ${skill.id}\nPath: ${resource.path}\nChars: ${offset}-${endOffset} of ${full.length}${
           nextOffset !== undefined ? `\nMore available: call again with offset=${nextOffset}.` : ''
         }\n\nContent:\n${slice}`,
-        resultForUi: {
-          title: `Skill Resource: ${resource.path}`,
-          summary: `${skill.id} chars ${offset}-${endOffset}`
-        }
-      }
+        title: `Skill Resource: ${resource.path}`,
+        summary: `${skill.id} chars ${offset}-${endOffset}`
+      })
     }
   },
   list_skills: {
@@ -757,23 +744,19 @@ export const skillTools: Record<string, ToolDefinition> = {
           )
         }
 
-        return {
+        return createSkillResult({
           resultForModel: formatSkillForModel(s, false),
-          resultForUi: {
-            title: `Skill Details: ${getSkillDisplayName(s)}`,
-            summary: `Loaded details for skill ${s.id}`
-          }
-        }
+          title: `Skill Details: ${getSkillDisplayName(s)}`,
+          summary: `Loaded details for skill ${s.id}`
+        })
       }
 
       if (skills.length === 0) {
-        return {
+        return createSkillResult({
           resultForModel: 'No custom skills installed.',
-          resultForUi: {
-            title: 'List Skills',
-            summary: '0 skills installed'
-          }
-        }
+          title: 'List Skills',
+          summary: '0 skills installed'
+        })
       }
 
       const lines = ['Installed Skills:']
@@ -795,20 +778,18 @@ export const skillTools: Record<string, ToolDefinition> = {
 
         return {
           title: displayName,
-          url: s.filePath ? `file:///${s.filePath.replace(/\\/g, '/')}` : '',
+          url: s.filePath ? pathToFileUrl(s.filePath) : '',
           snippet: `Triggers: ${triggersStr} | Mode: ${s.mode || 'insert'}${shortDescription ? ` | ${shortDescription}` : ''}`,
           source: s.source || 'markdown'
         }
       })
 
-      return {
+      return createSkillResult({
         resultForModel: lines.join('\n'),
-        resultForUi: {
-          title: 'List Skills',
-          summary: `Found ${skills.length} skills`,
-          items
-        }
-      }
+        title: 'List Skills',
+        summary: `Found ${skills.length} skills`,
+        items
+      })
     }
   }
 }
