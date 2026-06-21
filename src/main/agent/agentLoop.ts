@@ -11,12 +11,6 @@ import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
 import { SessionLogger } from './sessionLogger'
-import { saveRunCheckpoint } from './runCheckpoint'
-import { appendRunCheckpoint } from './runManifest'
-import {
-  ACTION_HISTORY_RESUME_LIMIT,
-  cloneMessagesForCheckpoint
-} from './resumePrompts'
 import { SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { createToolDeclarationCache } from './toolDeclarationCache'
 import { createRunUsageTracker } from './runUsageTracker'
@@ -25,6 +19,7 @@ import { AgentRunOptions, prepareAgentRun } from './agentRunPreparation'
 import { runToolTurn } from './toolTurnRunner'
 import { runForcedFinalTurn } from './forcedFinalTurnRunner'
 import { startAgentRunLifecycle } from './agentRunLifecycle'
+import { persistAgentRunCheckpoint } from './agentRunCheckpoint'
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
@@ -119,20 +114,15 @@ export const runAgentLoop = async (
   const ambiguousActions = [...preparedRun.ambiguousActions]
 
   const persistCheckpoint = (checkpointStep: number, lastCompletedCallId?: string): void => {
-    try {
-      saveRunCheckpoint({
-        sessionId: conversationId,
-        reqId,
-        step: checkpointStep,
-        messages: cloneMessagesForCheckpoint(messages),
-        activeTools: Array.from(runCtx.activeTools),
-        lastCompletedCallId,
-        ambiguousActions: ambiguousActions.slice(-ACTION_HISTORY_RESUME_LIMIT)
-      })
-      appendRunCheckpoint(conversationId, reqId, reqId)
-    } catch (err) {
-      console.warn('Failed to save run checkpoint:', (err as Error).message)
-    }
+    persistAgentRunCheckpoint({
+      conversationId,
+      reqId,
+      step: checkpointStep,
+      messages,
+      activeTools: runCtx.activeTools,
+      lastCompletedCallId,
+      ambiguousActions
+    })
   }
 
   const setRunEnd = lifecycle.finish
