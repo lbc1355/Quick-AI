@@ -12,7 +12,7 @@ import { getSkillDisplayName } from './skillMetadata'
 import { formatSkillForModel } from './skillModelFormat'
 import { normalizeSkillResourcePath } from './skillResourcePath'
 import { cleanSkillLookup, resolveSkill } from './skillLookup'
-import { validateSkillRecord } from './skillValidation'
+import { createValidateSkillTool } from './skillValidationTool'
 import { promises as fs } from 'fs'
 import { basename, join, resolve } from 'path'
 
@@ -405,53 +405,7 @@ export const skillTools: Record<string, ToolDefinition> = {
       })
     }
   },
-  validate_skill: {
-    name: 'validate_skill',
-    title: 'Validate Skill',
-    description:
-      'Validates one installed QuickAI skill, or all installed skills when name is omitted. Checks discovery metadata, duplicate triggers, SKILL.md size, and package basics.',
-    tags: ['skills', 'validate', 'lint', 'check', 'skill'],
-    category: 'system',
-    risk: 'low',
-    implemented: true,
-    discoverable: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        name: {
-          type: 'string',
-          description: 'Optional skill name, trigger, @mention, or ID. Omit to validate all skills.'
-        }
-      }
-    },
-    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      void ctx
-      const skills = loadSkillsFromFolders()
-      const name = typeof args.name === 'string' ? args.name.trim() : ''
-      const targets = name ? [resolveSkill(skills, name)].filter((s): s is Skill => !!s) : skills
-      if (name && targets.length === 0) {
-        throw new Error(`Skill "${name}" not found.`)
-      }
-
-      const lines = ['Skill Validation:']
-      let issueCount = 0
-      for (const skill of targets) {
-        const issues = validateSkillRecord(skill, skills)
-        lines.push(`- ${skill.id} (@${skill.trigger}): ${issues.length === 0 ? 'OK' : 'Issues'}`)
-        if (skill.filePath) lines.push(`  File: ${skill.filePath}`)
-        for (const issue of issues) {
-          issueCount += 1
-          lines.push(`  - ${issue}`)
-        }
-      }
-
-      return createSkillResult({
-        resultForModel: lines.join('\n'),
-        title: name ? `Validate Skill: ${name}` : 'Validate Skills',
-        summary: `${targets.length} skill(s), ${issueCount} issue(s)`
-      })
-    }
-  },
+  validate_skill: createValidateSkillTool({ loadSkills: loadSkillsFromFolders }),
   load_skill: {
     name: 'load_skill',
     title: 'Load Skill',
