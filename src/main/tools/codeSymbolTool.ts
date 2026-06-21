@@ -13,6 +13,7 @@ import {
   resolveExistingSafePath
 } from './filePathSafety'
 import { createToolResult } from './result'
+import { formatSelectionReason, rankSymbolCandidates } from './codeSymbolSelection'
 const CODE_SYMBOL_EXTENSIONS = new Set([
   '.ts',
   '.tsx',
@@ -457,10 +458,10 @@ export const codeSymbolTool: ToolDefinition = {
 
     if (matches.length === 0) {
       const resultForModel =
-          `No definition-like symbol match found for "${symbol}".` +
-          (requestedPath
-            ? ' Try workspace_search for text references or verify the file path.'
-            : ' Try workspace_search with the symbol text or provide a path.')
+        `No definition-like symbol match found for "${symbol}".` +
+        (requestedPath
+          ? ' Try workspace_search for text references or verify the file path.'
+          : ' Try workspace_search with the symbol text or provide a path.')
 
       return createToolResult({
         resultForModel,
@@ -469,15 +470,28 @@ export const codeSymbolTool: ToolDefinition = {
       })
     }
 
-    const best = matches[0]
+    const rankedCandidates = rankSymbolCandidates(symbol, matches)
+    const bestRanked = rankedCandidates[0]
+    const best = bestRanked.match
     const content = await fs.readFile(best.realPath, 'utf-8')
     const lines = content.split(/\r?\n/)
     const range = inferSymbolBlockRange(lines, best.lineIndex, maxLines, contextLines)
     const blockResult = buildBoundedSymbolBlock(lines.slice(range.startIndex, range.endIndex + 1))
-    const candidateLines = matches.slice(0, 10).map((match, index) => {
+    const candidateLines = rankedCandidates.slice(0, 10).map((candidate, index) => {
+      const match = candidate.match
       const selected = match === best ? ' selected' : ''
-      return `${index + 1}. ${match.relPath}:${match.lineNumber} (${match.kind})${selected} - ${match.lineText.slice(0, 140)}`
+      return `${index + 1}. ${match.relPath}:${match.lineNumber} (${match.kind}, score ${candidate.score})${selected} - ${match.lineText.slice(0, 140)}`
     })
+    const candidateItems = rankedCandidates.slice(0, 20).map((candidate) => {
+      const match = candidate.match
+      return {
+        title: `${match.relPath}:${match.lineNumber} (${match.kind})`,
+        url: `file:///${match.realPath.replace(/\\/g, '/')}`,
+        snippet: `${match.lineText}\nScore: ${candidate.score}. ${candidate.reasons.join(', ')}`,
+        source: 'code_symbol_read'
+      }
+    })
+    const selectionReason = formatSelectionReason(bestRanked, matches.length)
 
     if (ctx.reqId) getRun(ctx.reqId)?.markFileSeen(best.realPath)
 
@@ -488,6 +502,7 @@ export const codeSymbolTool: ToolDefinition = {
       `File: ${best.relPath}`,
       `Definition Line: ${best.lineNumber} of ${lines.length}`,
       `Block Lines: ${range.startIndex + 1}-${range.endIndex + 1} of ${lines.length}`,
+      `Selection Reason: ${selectionReason}`,
       matches.length > 1 ? `Candidates:\n${candidateLines.join('\n')}` : '',
       truncatedReason ? `Warning: Symbol search was truncated. Reason: ${truncatedReason}` : '',
       range.truncated ? 'Warning: Symbol block was truncated by maxLines.' : '',
@@ -503,7 +518,10 @@ export const codeSymbolTool: ToolDefinition = {
       resultForModel,
       title: `Code Symbol: ${symbol}`,
       url: `file:///${best.realPath.replace(/\\/g, '/')}`,
-      summary: `${best.relPath}:${best.lineNumber} (${best.kind}), lines ${range.startIndex + 1}-${range.endIndex + 1}`
+      summary:
+        `${best.relPath}:${best.lineNumber} (${best.kind}), lines ${range.startIndex + 1}-${range.endIndex + 1}` +
+        (matches.length > 1 ? `, ${matches.length} candidates` : ''),
+      items: candidateItems
     })
   }
 }

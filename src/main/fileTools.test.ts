@@ -27,6 +27,8 @@ describe('File Safety & Search Tools', () => {
     await fs.mkdir(join(testDir, 'sub'), { recursive: true })
     await fs.mkdir(join(testDir, 'sub', 'deep'), { recursive: true })
     await fs.mkdir(join(testDir, 'node_modules'), { recursive: true })
+    await fs.mkdir(join(testDir, 'src'), { recursive: true })
+    await fs.mkdir(join(testDir, '__tests__'), { recursive: true })
 
     await fs.writeFile(join(testDir, 'a.txt'), `line1\nline2\n${queryStr}\nline4`)
     await fs.writeFile(join(testDir, 'b.log'), `${queryStr}\nline2\n${queryStrUpper}`)
@@ -34,6 +36,14 @@ describe('File Safety & Search Tools', () => {
     await fs.writeFile(
       join(testDir, 'symbols.ts'),
       `export function targetFn() {\n  return 'ok'\n}\n`
+    )
+    await fs.writeFile(
+      join(testDir, 'src', 'rankedDuplicate.ts'),
+      `export function rankedDuplicateSymbol() {\n  return 'source'\n}\n`
+    )
+    await fs.writeFile(
+      join(testDir, '__tests__', 'rankedDuplicate.test.ts'),
+      `export function rankedDuplicateSymbol() {\n  return 'test'\n}\n`
     )
     await fs.writeFile(join(testDir, 'sub', 'c.ts'), `other\n${queryStr}`)
     await fs.writeFile(join(testDir, 'sub', 'deep', 'd.ts'), `${queryStr}`)
@@ -152,6 +162,33 @@ describe('File Safety & Search Tools', () => {
       expect(res.resultForModel).toContain('Symbol: targetFn')
       expect(res.resultForUi.title).toBe('Code Symbol: targetFn')
       expect(res.resultForUi.details).toContain("return 'ok'")
+    })
+
+    it('ranks source symbols before test candidates and exposes ambiguity', async () => {
+      const { createRun, destroyRun } = await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+
+      const reqId = 'test-req-code-symbol-rank'
+      createRun(reqId, [], 'all', new ActionLog(), undefined, undefined, testDir, 'Test Project')
+      const context = { reqId, signal: new AbortController().signal }
+
+      try {
+        const res = await ToolRegistry.code_symbol_read.execute(
+          { symbol: 'rankedDuplicateSymbol', root: 'project' },
+          context
+        )
+
+        expect(res.resultForModel).toContain('File: src/rankedDuplicate.ts')
+        expect(res.resultForModel).toContain('Selection Reason:')
+        expect(res.resultForModel).toContain('Candidates:')
+        expect(res.resultForUi.summary).toContain('2 candidates')
+        expect(res.resultForUi.items?.map((item) => item.title)).toEqual([
+          'src/rankedDuplicate.ts:1 (function)',
+          '__tests__/rankedDuplicate.test.ts:1 (function)'
+        ])
+      } finally {
+        destroyRun(reqId)
+      }
     })
   })
 
