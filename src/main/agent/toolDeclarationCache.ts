@@ -1,6 +1,7 @@
 import { ChatToolDeclaration } from '../../shared/types'
 import { toChatToolDeclaration } from '../toolRegistry'
 import { ToolDefinition } from '../tools/types'
+import { ToolRegistrySource, toToolRegistryView } from '../tools/registryView'
 import { ToolPermission } from './toolCallPlanning'
 
 export type ToolDiscoveryMode = 'static' | 'dynamic'
@@ -13,7 +14,7 @@ export interface ToolDeclarationCacheInput {
 }
 
 export interface CreateToolDeclarationCacheOptions {
-  toolRegistry: Record<string, ToolDefinition | undefined>
+  toolRegistry: ToolRegistrySource
   toDeclaration?: (tool: ToolDefinition) => ChatToolDeclaration
 }
 
@@ -36,6 +37,7 @@ export function createToolDeclarationCache(
   options: CreateToolDeclarationCacheOptions
 ): ToolDeclarationCache {
   const toDeclaration = options.toDeclaration || toChatToolDeclaration
+  const toolRegistry = toToolRegistryView(options.toolRegistry)
   let cachedDeclarations: ChatToolDeclaration[] | null = null
   let cachedSignature = ''
 
@@ -47,8 +49,8 @@ export function createToolDeclarationCache(
       }
 
       const declarations: ChatToolDeclaration[] = []
-      for (const toolName in options.toolRegistry) {
-        const tool = options.toolRegistry[toolName]
+      for (const tool of toolRegistry.list()) {
+        const toolName = tool.name
         if (!tool?.implemented) continue
 
         if (input.toolDiscovery === 'static') {

@@ -88,6 +88,43 @@ describe('prepareToolCalls', () => {
     })
   })
 
+  it('uses an injected registry view for validity checks', () => {
+    const result = plan({
+      toolCalls: [toolCall('custom_write', { path: 'src/out.txt', content: 'x' })],
+      permissions: { custom_write: 'allow' },
+      toolRegistry: {
+        get: (name) =>
+          name === 'custom_write'
+            ? {
+                name: 'custom_write',
+                title: 'Custom Write',
+                description: 'Custom write tool',
+                tags: [],
+                category: 'file',
+                risk: 'low',
+                implemented: true,
+                discoverable: true,
+                parameters: {
+                  type: 'object',
+                  properties: {}
+                },
+                execute: async () => ({
+                  resultForModel: '',
+                  resultForUi: { title: 'Custom Write' }
+                })
+              }
+            : undefined,
+        list: () => []
+      }
+    })
+
+    expect(result.directCalls[0]).toMatchObject({
+      toolName: 'custom_write',
+      isValid: true,
+      classification: 'direct'
+    })
+  })
+
   it('blocks file writes outside allowed roots', () => {
     const result = plan({
       toolCalls: [toolCall('file_write', { path: '../../outside.txt', content: 'x' })],

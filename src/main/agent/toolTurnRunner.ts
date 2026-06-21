@@ -1,5 +1,6 @@
 import { AgentEvent, ChatCompletionMessage, SessionResource } from '../../shared/types'
 import { ToolDefinition, ToolModelAttachment } from '../tools/types'
+import { ToolRegistrySource } from '../tools/registryView'
 import { ActionLog } from './actionLog'
 import { AgentToolDiscovery } from './agentRunPreparation'
 import { FetchUrlBudget } from './preparedToolExecutor'
@@ -58,7 +59,7 @@ export interface RunToolTurnOptions {
   loopGuard: LoopGuard
   outputSpilloverThreshold: number
   fetchUrlBudget: FetchUrlBudget
-  toolRegistry: Record<string, ToolDefinition | undefined>
+  toolRegistry: ToolRegistrySource
   runContext: ToolTurnRunContext
   emitEvent: (event: AgentEvent) => void
   requestPermission: (callId: string) => Promise<boolean>
@@ -106,7 +107,8 @@ export async function runToolTurn(options: RunToolTurnOptions): Promise<RunToolT
     isCommandPrefixApproved: (command) => options.runContext.isCommandPrefixApproved(command),
     hasExecuted: (callKey) => options.runContext.hasExecuted(callKey),
     loopGuard: options.loopGuard,
-    projectRoot: options.runContext.projectRoot
+    projectRoot: options.runContext.projectRoot,
+    toolRegistry: options.toolRegistry
   })
 
   const preparedCalls = [...askCalls, ...directCalls, ...blockedCalls].sort(

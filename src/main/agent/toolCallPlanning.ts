@@ -1,5 +1,6 @@
 import { ChatCompletionMessage, ToolArgs } from '../../shared/types'
-import { ToolRegistry } from '../toolRegistry'
+import { getToolRegistry } from '../toolRegistry'
+import { ToolRegistrySource, toToolRegistryView } from '../tools/registryView'
 import { evaluateToolGuard, DEFAULT_CONSTITUTION } from './constitution'
 import { LoopGuard } from './loopGuard'
 
@@ -55,7 +56,9 @@ export function prepareToolCalls(input: {
   hasExecuted: (callKey: string) => boolean
   loopGuard: LoopGuard
   projectRoot?: string
+  toolRegistry?: ToolRegistrySource
 }): PreparedToolCallGroups {
+  const toolRegistry = toToolRegistryView(input.toolRegistry || getToolRegistry())
   const seenFetchCallsThisTurn = new Set<string>()
 
   const prepared = input.toolCalls.map((toolCall, index): PreparedToolCall => {
@@ -75,7 +78,7 @@ export function prepareToolCalls(input: {
       delete args.purpose
     }
 
-    const toolDef = ToolRegistry[toolName]
+    const toolDef = toolRegistry.get(toolName)
     const isValid = !!toolDef && toolDef.implemented && input.isToolWhitelisted(toolName)
 
     let effectivePermission = permission

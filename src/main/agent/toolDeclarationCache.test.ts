@@ -80,6 +80,26 @@ describe('createToolDeclarationCache', () => {
     expect(declarations.map((declaration) => declaration.function.name)).toEqual(['shell'])
   })
 
+  it('accepts registry view sources', () => {
+    const fileRead = tool('file_read')
+    const shell = tool('shell')
+    const cache = createToolDeclarationCache({
+      toolRegistry: {
+        get: (name) => (name === 'file_read' ? fileRead : name === 'shell' ? shell : undefined),
+        list: () => [fileRead, shell]
+      },
+      toDeclaration: declarationFor
+    })
+
+    const declarations = cache.getDeclarations({
+      toolDiscovery: 'dynamic',
+      activeTools: new Set(['shell']),
+      skillTools: []
+    })
+
+    expect(declarations.map((declaration) => declaration.function.name)).toEqual(['shell'])
+  })
+
   it('reuses declarations while the declaration signature is unchanged', () => {
     const toDeclaration = vi.fn(declarationFor)
     const cache = createToolDeclarationCache({

@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { ChatCompletionMessage, AgentEvent } from '../../shared/types'
-import { ToolRegistry } from '../toolRegistry'
+import { getToolRegistry } from '../toolRegistry'
 import {
   getContextWindowSize,
   normalizeContextWindowTokens,
@@ -145,7 +145,8 @@ export const runAgentLoop = async (
       messages
     })
 
-    const toolDeclarationCache = createToolDeclarationCache({ toolRegistry: ToolRegistry })
+    const toolRegistry = getToolRegistry()
+    const toolDeclarationCache = createToolDeclarationCache({ toolRegistry })
 
     for (let step = 1; step <= maxSteps; ) {
       runCtx.currentStep = step
@@ -215,7 +216,7 @@ export const runAgentLoop = async (
           toolDiscovery,
           skillTools,
           permissions,
-          toolRegistry: ToolRegistry,
+          toolRegistry,
           reqId,
           conversationId,
           step,
