@@ -7,17 +7,12 @@ import {
   trimMessagesToFit,
   TOOL_OUTPUT_SPILLOVER_THRESHOLD
 } from './contextManager'
-import { createRun, destroyRun } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
 import { SessionLogger } from './sessionLogger'
 import { saveRunCheckpoint } from './runCheckpoint'
-import {
-  appendRunCheckpoint,
-  createRunManifest,
-  finishRunManifest
-} from './runManifest'
+import { appendRunCheckpoint } from './runManifest'
 import {
   ACTION_HISTORY_RESUME_LIMIT,
   cloneMessagesForCheckpoint
@@ -29,6 +24,7 @@ import { runModelTurn } from './modelTurnRunner'
 import { AgentRunOptions, prepareAgentRun } from './agentRunPreparation'
 import { runToolTurn } from './toolTurnRunner'
 import { runForcedFinalTurn } from './forcedFinalTurnRunner'
+import { startAgentRunLifecycle } from './agentRunLifecycle'
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
@@ -70,27 +66,25 @@ export const runAgentLoop = async (
   } = preparedRun
   let messages = preparedRun.messages
 
-  const runCtx = createRun(
+  const lifecycle = startAgentRunLifecycle({
     reqId,
+    conversationId,
+    maxSteps,
     initialActiveTools,
     toolScope,
     actionLog,
     permissions,
-    options.sessionId,
-    options.projectRoot,
-    options.projectName
-  )
-  runCtx.maxSteps = maxSteps
-  const signal = runCtx.signal
-
-  createRunManifest({
-    runId: reqId,
-    sessionId: conversationId,
+    sessionId: options.sessionId,
+    projectRoot: options.projectRoot,
+    projectName: options.projectName,
     sourceMessageId: options.sourceMessageId,
     assistantMessageId: options.assistantMessageId,
     parentRunId: options.resumeFromRunId,
-    branchOf: options.branchOf
+    branchOf: options.branchOf,
+    emitEvent: (event) => sendEvent(mainWindow, reqId, event)
   })
+  const runCtx = lifecycle.runCtx
+  const signal = runCtx.signal
 
   for (const message of messages) {
     if (
@@ -141,23 +135,7 @@ export const runAgentLoop = async (
     }
   }
 
-  const setRunEnd = (
-    status: 'completed' | 'cancelled' | 'failed' | 'max_steps',
-    error?: string
-  ): void => {
-    runCtx.status = status
-    runCtx.completedAt = Date.now()
-    if (error) {
-      runCtx.error = error
-    }
-    finishRunManifest(conversationId, reqId, status, error)
-    sendEvent(mainWindow, reqId, {
-      type: 'agent_end',
-      status,
-      error
-    })
-    SessionLogger.logRunEnd(conversationId, status, error)
-  }
+  const setRunEnd = lifecycle.finish
 
   try {
     if (resumeLoadError) {
@@ -288,7 +266,7 @@ export const runAgentLoop = async (
       }
     }
 
-    // Tool use ended without a final answer — either the step ceiling was hit or the loop
+    // Tool use ended without a final answer, either the step ceiling was hit or the loop
     // guard halted on repeated failures. Ask the model for a best-effort final answer.
     const forcedFinalTurn = await runForcedFinalTurn({
       messages,
@@ -330,6 +308,6 @@ export const runAgentLoop = async (
     }
   } finally {
     actionLog.save()
-    destroyRun(reqId)
+    lifecycle.destroy()
   }
 }
