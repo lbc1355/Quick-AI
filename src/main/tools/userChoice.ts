@@ -1,72 +1,12 @@
-import { ToolArgs, UserChoiceOption, UserChoiceResponse } from '../../shared/types'
+import { ToolArgs } from '../../shared/types'
 import { globalUserChoiceManager } from '../agent/userChoiceManager'
+import {
+  cleanToolString,
+  formatUserChoiceResult,
+  getSelectedUserChoiceLabel,
+  parseUserChoiceOptions
+} from './userChoiceFormat'
 import { ToolDefinition, ToolExecutionContext } from './types'
-
-const MAX_USER_CHOICE_OPTIONS = 12
-
-function cleanToolString(value: unknown, fallback = '', maxLength = 500): string {
-  const text = typeof value === 'string' ? value.trim() : ''
-  if (!text) return fallback
-  return text.length > maxLength ? text.slice(0, maxLength) : text
-}
-
-function parseUserChoiceOptions(value: unknown): UserChoiceOption[] {
-  if (!Array.isArray(value)) return []
-
-  const options: UserChoiceOption[] = []
-  for (let i = 0; i < value.length && options.length < MAX_USER_CHOICE_OPTIONS; i++) {
-    const item = value[i]
-    if (typeof item === 'string') {
-      const label = cleanToolString(item, '', 120)
-      if (label) {
-        options.push({ id: `option-${options.length + 1}`, label, value: label })
-      }
-      continue
-    }
-
-    if (!item || typeof item !== 'object') continue
-    const record = item as Record<string, unknown>
-    const label = cleanToolString(record.label ?? record.name ?? record.title, '', 120)
-    if (!label) continue
-    const rawValue = record.value ?? record.id ?? label
-    const valueText =
-      typeof rawValue === 'string' || typeof rawValue === 'number' || typeof rawValue === 'boolean'
-        ? String(rawValue)
-        : label
-    const description = cleanToolString(record.description ?? record.detail ?? record.hint, '', 240)
-
-    options.push({
-      id: `option-${options.length + 1}`,
-      label,
-      value: valueText,
-      ...(description ? { description } : {})
-    })
-  }
-
-  return options
-}
-
-function formatUserChoiceResult(response: UserChoiceResponse, options: UserChoiceOption[]): string {
-  if (response.cancelled) {
-    return 'User cancelled the choice request.'
-  }
-
-  const selectedById = response.selectedOptionId
-    ? options.find((option) => option.id === response.selectedOptionId)
-    : undefined
-  const selectedByValue = response.selectedValue
-    ? options.find((option) => option.value === response.selectedValue)
-    : undefined
-  const selectedOption = selectedById || selectedByValue
-  const label = response.customValue || response.selectedLabel || selectedOption?.label || ''
-  const value = response.customValue || response.selectedValue || selectedOption?.value || label
-
-  return [
-    'User made a choice.',
-    `Selected label: ${label || '(none)'}`,
-    `Selected value: ${value || '(none)'}`
-  ].join('\n')
-}
 
 export const askUserChoiceTool: ToolDefinition = {
   name: 'ask_user_choice',
@@ -173,11 +113,7 @@ export const askUserChoiceTool: ToolDefinition = {
     }
 
     const resultForModel = formatUserChoiceResult(response, options)
-    const selectedLabel =
-      response.customValue ||
-      response.selectedLabel ||
-      options.find((option) => option.id === response.selectedOptionId)?.label ||
-      'Selection received'
+    const selectedLabel = getSelectedUserChoiceLabel(response, options)
 
     return {
       resultForModel,
