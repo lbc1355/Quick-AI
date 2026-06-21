@@ -7,12 +7,11 @@ import { parseSkillMarkdown } from '../../shared/skillParser'
 import { getWorkspaceRoot, isPathInWorkspace, isSensitiveFile } from './helpers'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { createSkillResult } from './skillResult'
-import { createSkillListResult } from './skillListResult'
 import { getSkillDisplayName } from './skillMetadata'
-import { formatSkillForModel } from './skillModelFormat'
 import { cleanSkillLookup, resolveSkill } from './skillLookup'
 import { createValidateSkillTool } from './skillValidationTool'
 import { createSkillReadTools } from './skillReadTools'
+import { createListSkillsTool } from './skillListTool'
 import { promises as fs } from 'fs'
 import { basename, join, resolve } from 'path'
 
@@ -401,47 +400,5 @@ export const skillTools: Record<string, ToolDefinition> = {
   },
   validate_skill: createValidateSkillTool({ loadSkills: loadSkillsFromFolders }),
   ...createSkillReadTools({ loadSkills: loadSkillsFromFolders }),
-  list_skills: {
-    name: 'list_skills',
-    title: 'List Installed Skills',
-    description:
-      'Lists all custom Skills currently installed in QuickAI. Call without parameters to list summaries, or pass a skillId to retrieve its full prompt instructions and auxiliary files list.',
-    tags: ['skills', 'list', 'available', 'triggers', 'commands', '列表', '技能', '快捷指令'],
-    category: 'system',
-    risk: 'low',
-    implemented: true,
-    discoverable: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        skillId: {
-          type: 'string',
-          description:
-            'Optional. The ID of a specific skill to retrieve its full prompt instructions and packaged files.'
-        }
-      }
-    },
-    execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-      void ctx
-      const skills = loadSkillsFromFolders()
-
-      const skillId = typeof args.skillId === 'string' ? args.skillId.trim() : undefined
-      if (skillId) {
-        const s = resolveSkill(skills, skillId)
-        if (!s) {
-          throw new Error(
-            `Skill "${skillId}" not found. Call list_skills without parameters to list all installed skills.`
-          )
-        }
-
-        return createSkillResult({
-          resultForModel: formatSkillForModel(s, false),
-          title: `Skill Details: ${getSkillDisplayName(s)}`,
-          summary: `Loaded details for skill ${s.id}`
-        })
-      }
-
-      return createSkillListResult(skills)
-    }
-  }
+  list_skills: createListSkillsTool({ loadSkills: loadSkillsFromFolders })
 }
