@@ -7,6 +7,11 @@ import {
   formatEditLookupFailure,
   formatOccurrenceContexts
 } from './fileMutationResult'
+import {
+  applyStringEdit,
+  assertMutationWithinSizeLimit,
+  findStringOccurrences
+} from './fileEditEngine'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
 export const fileEditTool: ToolDefinition = {
@@ -94,14 +99,7 @@ export const fileEditTool: ToolDefinition = {
       throw new Error(`Failed to read file: ${(err as Error).message}`)
     }
 
-    const occurrences: number[] = []
-    let searchFrom = 0
-    while (searchFrom < content.length) {
-      const idx = content.indexOf(oldString, searchFrom)
-      if (idx === -1) break
-      occurrences.push(idx)
-      searchFrom = idx + 1
-    }
+    const occurrences = findStringOccurrences(content, oldString)
 
     if (occurrences.length === 0) {
       throw new Error(
@@ -115,19 +113,14 @@ export const fileEditTool: ToolDefinition = {
       )
     }
 
-    const newContent = replaceAll
-      ? content.split(oldString).join(newString)
-      : content.slice(0, occurrences[0]) +
-        newString +
-        content.slice(occurrences[0] + oldString.length)
+    const editResult = applyStringEdit(
+      content,
+      { oldString, newString, replaceAll },
+      occurrences
+    )
+    const newContent = editResult.content
 
-    const newBuffer = Buffer.from(newContent, 'utf-8')
-    const MAX_BYTES = 2 * 1024 * 1024
-    if (newBuffer.length > MAX_BYTES) {
-      throw new Error(
-        `Resulting file is too large (${(newBuffer.length / 1024 / 1024).toFixed(2)} MB). Max supported size is 2 MB.`
-      )
-    }
+    assertMutationWithinSizeLimit(newContent)
 
     try {
       await fs.writeFile(target.realPath, newContent, 'utf-8')
@@ -138,7 +131,7 @@ export const fileEditTool: ToolDefinition = {
     // Content is now known after the edit; keep the file marked as seen for follow-up edits.
     runCtx?.markFileSeen(target.realPath)
 
-    const count = replaceAll ? occurrences.length : 1
+    const count = editResult.replacements
     const diff = buildShortUnifiedDiff(content, newContent)
 
     return {

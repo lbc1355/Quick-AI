@@ -7,6 +7,12 @@ import {
   formatEditLookupFailure,
   formatOccurrenceContexts
 } from './fileMutationResult'
+import {
+  applyStringEdit,
+  assertMutationWithinSizeLimit,
+  findStringOccurrences,
+  type ExactStringEdit
+} from './fileEditEngine'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
 export const multiEditTool: ToolDefinition = {
@@ -73,12 +79,7 @@ export const multiEditTool: ToolDefinition = {
       throw new Error('edits must be a non-empty array')
     }
 
-    interface EditOp {
-      oldString: string
-      newString: string
-      replaceAll: boolean
-    }
-    const edits: EditOp[] = rawEdits.map((raw, i) => {
+    const edits: ExactStringEdit[] = rawEdits.map((raw, i) => {
       const e = raw as Record<string, unknown>
       const oldString = e.old_string
       const newString = e.new_string
@@ -115,16 +116,9 @@ export const multiEditTool: ToolDefinition = {
     let working = content
     let totalReplacements = 0
     for (let i = 0; i < edits.length; i++) {
-      const { oldString, newString, replaceAll } = edits[i]
+      const { oldString, replaceAll } = edits[i]
 
-      const occurrences: number[] = []
-      let searchFrom = 0
-      while (searchFrom < working.length) {
-        const idx = working.indexOf(oldString, searchFrom)
-        if (idx === -1) break
-        occurrences.push(idx)
-        searchFrom = idx + 1
-      }
+      const occurrences = findStringOccurrences(working, oldString)
 
       if (occurrences.length === 0) {
         throw new Error(
@@ -137,21 +131,12 @@ export const multiEditTool: ToolDefinition = {
         )
       }
 
-      working = replaceAll
-        ? working.split(oldString).join(newString)
-        : working.slice(0, occurrences[0]) +
-          newString +
-          working.slice(occurrences[0] + oldString.length)
-      totalReplacements += replaceAll ? occurrences.length : 1
+      const editResult = applyStringEdit(working, edits[i], occurrences)
+      working = editResult.content
+      totalReplacements += editResult.replacements
     }
 
-    const newBuffer = Buffer.from(working, 'utf-8')
-    const MAX_BYTES = 2 * 1024 * 1024
-    if (newBuffer.length > MAX_BYTES) {
-      throw new Error(
-        `Resulting file is too large (${(newBuffer.length / 1024 / 1024).toFixed(2)} MB). Max supported size is 2 MB. No changes were written.`
-      )
-    }
+    assertMutationWithinSizeLimit(working, ' No changes were written.')
 
     try {
       await fs.writeFile(target.realPath, working, 'utf-8')
