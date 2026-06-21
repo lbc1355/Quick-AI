@@ -43,7 +43,7 @@ import { logger } from './logger'
 import { McpManager } from './mcpManager'
 import { registerHtmlRenderer } from './webRenderer'
 import { ensureSystemSkills, watchSkillFolders } from './skillManager'
-import { getToolRegistry } from './toolRegistry'
+import { getToolRegistryView } from './toolRegistry'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -491,7 +491,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('list-agent-tools', () => {
-    return getToolRegistry()
+    return getToolRegistryView()
       .list()
       .filter((tool) => tool.implemented && tool.discoverable)
       .map((tool) => ({

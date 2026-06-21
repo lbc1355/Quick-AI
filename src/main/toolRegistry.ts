@@ -3,13 +3,15 @@
 // dynamic registry. The registry supports runtime addition/removal so that external tools (MCP
 // servers, plugins) can be loaded alongside built-ins.
 //
-// ToolRegistry is a Proxy that supports `ToolRegistry[name]` dot/bracket access and `for...in`
-// iteration for backward compatibility — all existing consumers work unchanged.
+// ToolRegistry is a legacy Proxy that supports `ToolRegistry[name]` dot/bracket access and
+// `for...in` iteration for backward compatibility. New production code should use the explicit
+// view/admin APIs below instead of depending on the Proxy shape.
 
 import { ToolArgs } from '../shared/types'
 import { getRun } from './agent/AgentRunContext'
 import { ToolDefinition, ToolExecutionContext, ToolSummary } from './tools/types'
 import { ToolRegistryImpl, createRegistryProxy } from './tools/registry'
+import { ToolRegistryView } from './tools/registryView'
 import { webTools } from './tools/web'
 import { systemTools } from './tools/system'
 import { memoryTools } from './tools/memory'
@@ -94,24 +96,33 @@ registry.register(searchToolsDef)
 // ---- Public API ----
 
 /**
- * Dynamic tool registry. Supports `ToolRegistry[name]` bracket access and `for...in`
- * iteration for backward compatibility. For new code prefer `registry.get(name)` or
- * `registry.list()` on the underlying ToolRegistryImpl.
- *
- * To register external tools at runtime:
- *   import { registerTool, unregisterTool } from './toolRegistry'
- *   registerTool(myExternalToolDef)
+ * Legacy dynamic tool registry. Supports `ToolRegistry[name]` bracket access and `for...in`
+ * iteration for backward compatibility with older tests and direct tool invocations.
+ * New production code should use getToolRegistryView(), getToolRegistryAdmin(), or
+ * registerToolDefinition()/unregisterToolDefinition().
  */
 export const ToolRegistry = createRegistryProxy(registry)
 
 /** Register an external tool at runtime (e.g. from an MCP server). */
-export const registerTool = (def: ToolDefinition): void => registry.register(def)
+export const registerToolDefinition = (def: ToolDefinition): void => registry.register(def)
 
 /** Unregister a tool. Returns true when the tool existed and was removed. */
-export const unregisterTool = (name: string): boolean => registry.unregister(name)
+export const unregisterToolDefinition = (name: string): boolean => registry.unregister(name)
 
-/** The underlying registry instance (for programmatic query, not bracket access). */
-export const getToolRegistry = (): ToolRegistryImpl => registry
+/** Read-only registry view for agent execution and UI listing code. */
+export const getToolRegistryView = (): ToolRegistryView => registry
+
+/** The underlying registry instance for management code that must register/search/mutate. */
+export const getToolRegistryAdmin = (): ToolRegistryImpl => registry
+
+/** @deprecated Use registerToolDefinition. */
+export const registerTool = registerToolDefinition
+
+/** @deprecated Use unregisterToolDefinition. */
+export const unregisterTool = unregisterToolDefinition
+
+/** @deprecated Use getToolRegistryView or getToolRegistryAdmin. */
+export const getToolRegistry = getToolRegistryAdmin
 
 /**
  * Search discoverable tools by keyword. Delegates to the registry's search.

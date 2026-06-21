@@ -4,7 +4,7 @@ import { shell } from 'electron'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { getQuickAiRoot } from './paths'
-import { registerTool, unregisterTool } from './toolRegistry'
+import { registerToolDefinition, unregisterToolDefinition } from './toolRegistry'
 import { ToolDefinition } from './tools/types'
 import { createRawToolResult, createToolResult } from './tools/result'
 import { logger } from './logger'
@@ -325,7 +325,7 @@ class McpManagerImpl {
         }
       }
 
-      registerTool(toolDef)
+      registerToolDefinition(toolDef)
       this.registeredToolNames.add(modelName)
     }
 
@@ -337,7 +337,7 @@ class McpManagerImpl {
 
     // 1. Unregister all registered tool names from the global registry
     for (const toolName of this.registeredToolNames) {
-      unregisterTool(toolName)
+      unregisterToolDefinition(toolName)
     }
     this.registeredToolNames.clear()
 

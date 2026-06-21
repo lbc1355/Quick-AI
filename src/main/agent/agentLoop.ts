@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { ChatCompletionMessage, AgentEvent } from '../../shared/types'
-import { getToolRegistry } from '../toolRegistry'
+import { getToolRegistryView } from '../toolRegistry'
 import {
   getContextWindowSize,
   normalizeContextWindowTokens,
@@ -145,7 +145,7 @@ export const runAgentLoop = async (
       messages
     })
 
-    const toolRegistry = getToolRegistry()
+    const toolRegistry = getToolRegistryView()
     const toolDeclarationCache = createToolDeclarationCache({ toolRegistry })
 
     for (let step = 1; step <= maxSteps; ) {
