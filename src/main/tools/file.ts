@@ -7,7 +7,7 @@ import { fileReadTool } from './fileReadTool'
 import { imageReadTool } from './imageReadTool'
 import { fileWriteTool } from './fileWriteTool'
 import { fileEditTool } from './fileEditTool'
-import { fileMutationTools } from './fileMutationTools'
+import { multiEditTool } from './multiEditTool'
 
 export const fileTools: Record<string, ToolDefinition> = {
   file_read: fileReadTool,
@@ -15,8 +15,8 @@ export const fileTools: Record<string, ToolDefinition> = {
   code_symbol_read: codeSymbolTool,
   file_write: fileWriteTool,
   file_edit: fileEditTool,
+  multi_edit: multiEditTool,
   ...fileSearchTools,
-  ...fileMutationTools,
   ...fileOperationTools,
   file_diff: fileDiffTool
 }
