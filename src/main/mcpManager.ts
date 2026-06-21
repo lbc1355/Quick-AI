@@ -6,7 +6,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { getQuickAiRoot } from './paths'
 import { registerToolDefinition, unregisterToolDefinition } from './toolRegistry'
 import { ToolDefinition } from './tools/types'
-import { createRawToolResult, createToolResult } from './tools/result'
+import { createToolResult } from './tools/result'
+import { createMcpToolResult } from './tools/mcpResult'
 import { logger } from './logger'
 
 export interface McpServerConfig {
@@ -308,10 +309,10 @@ class McpManagerImpl {
               arguments: args
             })) as any
 
-            return createRawToolResult({
-              rawOutput: result.content ?? result,
-              title: `MCP Tool Call: ${name} / ${tool.name}`,
-              summary: `Successfully executed tool "${tool.name}" on server "${name}"`
+            return createMcpToolResult({
+              serverName: name,
+              toolName: tool.name,
+              result
             })
           } catch (err) {
             const errorMsg = (err as Error).message || String(err)
