@@ -3,6 +3,7 @@ import { dirname } from 'path'
 import { ToolArgs } from '../../shared/types'
 import { getRun } from '../agent/AgentRunContext'
 import { ROOT_PARAMETER, getRootArg, resolveTargetSafePath } from './filePathSafety'
+import { createFileWriteResult } from './fileOperationResult'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
 export const fileWriteTool: ToolDefinition = {
@@ -105,20 +106,9 @@ export const fileWriteTool: ToolDefinition = {
       throw new Error(`Failed to write file: ${error.message}`)
     }
 
-    const fileUrl = `file:///${target.realPath.replace(/\\/g, '/')}`
-
     // Writing establishes known content, so subsequent surgical edits in this run are allowed.
     if (ctx.reqId) getRun(ctx.reqId)?.markFileSeen(target.realPath)
 
-    const resultForModel = `Successfully wrote file: ${target.relPath}\nRoot (${target.rootKind}): ${target.root}\nSize: ${contentBuffer.length} bytes\nPath: ${target.realPath}`
-
-    return {
-      resultForModel,
-      resultForUi: {
-        title: `Write File: ${target.relPath}`,
-        url: fileUrl,
-        summary: `Wrote ${contentBuffer.length} bytes to ${target.relPath} (${exists ? 'overwrote' : 'created'}) in ${target.rootKind} ${target.root}`
-      }
-    }
+    return createFileWriteResult(target, contentBuffer.length, exists)
   }
 }

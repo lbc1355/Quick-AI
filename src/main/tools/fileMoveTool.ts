@@ -10,6 +10,7 @@ import {
   resolveExistingSafePath,
   resolveTargetSafePath
 } from './filePathSafety'
+import { createFileMoveResult } from './fileOperationResult'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
 export const fileMoveTool: ToolDefinition = {
@@ -108,13 +109,6 @@ export const fileMoveTool: ToolDefinition = {
       throw new Error(`Failed to move path: ${(err as Error).message}`)
     }
 
-    return {
-      resultForModel: `Moved path:\nFrom: ${source.relPath}\nTo: ${destination.relPath}`,
-      resultForUi: {
-        title: `Move Path: ${source.relPath}`,
-        url: `file:///${destination.realPath.replace(/\\/g, '/')}`,
-        summary: `Moved ${source.relPath} to ${destination.relPath}`
-      }
-    }
+    return createFileMoveResult(source, destination)
   }
 }

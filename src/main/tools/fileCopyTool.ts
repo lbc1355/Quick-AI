@@ -9,6 +9,7 @@ import {
   resolveExistingSafePath,
   resolveTargetSafePath
 } from './filePathSafety'
+import { createFileCopyResult } from './fileOperationResult'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
 export const fileCopyTool: ToolDefinition = {
@@ -100,13 +101,6 @@ export const fileCopyTool: ToolDefinition = {
       throw new Error(`Failed to copy file: ${(err as Error).message}`)
     }
 
-    return {
-      resultForModel: `Copied file:\nFrom: ${source.relPath}\nTo: ${destination.relPath}`,
-      resultForUi: {
-        title: `Copy File: ${source.relPath}`,
-        url: `file:///${destination.realPath.replace(/\\/g, '/')}`,
-        summary: `Copied ${source.relPath} to ${destination.relPath}`
-      }
-    }
+    return createFileCopyResult(source, destination)
   }
 }

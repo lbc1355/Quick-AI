@@ -6,6 +6,7 @@ import {
   getRootArg,
   resolveExistingSafePath
 } from './filePathSafety'
+import { createFileDeleteResult } from './fileOperationResult'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
 export const fileDeleteTool: ToolDefinition = {
@@ -54,12 +55,6 @@ export const fileDeleteTool: ToolDefinition = {
       throw new Error(`Failed to delete path: ${(err as Error).message}`)
     }
 
-    return {
-      resultForModel: `Deleted path: ${target.relPath}`,
-      resultForUi: {
-        title: `Delete Path: ${target.relPath}`,
-        summary: `Deleted ${target.relPath}`
-      }
-    }
+    return createFileDeleteResult(target)
   }
 }
