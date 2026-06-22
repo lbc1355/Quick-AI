@@ -135,14 +135,14 @@ describe('isRuntimeErrorAssistantMessage', () => {
       isRuntimeErrorAssistantMessage({
         id: 'm1',
         role: 'assistant',
-        content: '??????????'
+        content: '\u51fa\u9519\u4e86\uff1a\u7f51\u7edc\u8fde\u63a5\u5931\u8d25'
       })
     ).toBe(true)
     expect(
       isRuntimeErrorAssistantMessage({
         id: 'm2',
         role: 'assistant',
-        content: '?? ??????????'
+        content: '\u26a0\ufe0f \u51fa\u9519\u4e86\uff1a\u7f51\u7edc\u8fde\u63a5\u5931\u8d25'
       })
     ).toBe(true)
   })

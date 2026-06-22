@@ -108,10 +108,10 @@ export const applyAgentEventToMessage = (message: Message, newEvent: AgentEvent)
 }
 
 const RUNTIME_ERROR_PREFIXES = [
-  '?? ????',
-  '?? ???:',
-  '????',
-  '???:',
+  '\u26a0\ufe0f \u51fa\u9519\u4e86\uff1a',
+  '\u26a0\ufe0f \u51fa\u9519\u4e86:',
+  '\u51fa\u9519\u4e86\uff1a',
+  '\u51fa\u9519\u4e86:',
   'Agent Skill failed:',
   'Agent resume failed:'
 ]
