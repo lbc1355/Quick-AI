@@ -1,28 +1,11 @@
 import { ToolArgs } from '../../shared/types'
 import { cancelDesktopReminder, listPendingReminders, scheduleDesktopReminder } from './reminders'
+import {
+  createCancelReminderResult,
+  createListRemindersResult,
+  createScheduleReminderResult
+} from './reminderResult'
 import { ToolDefinition, ToolExecutionContext } from './types'
-
-function formatReminderDelay(ms: number): string {
-  const totalSeconds = Math.max(1, Math.ceil(ms / 1000))
-  if (totalSeconds < 60) return `${totalSeconds} second${totalSeconds === 1 ? '' : 's'}`
-
-  const totalMinutes = Math.ceil(totalSeconds / 60)
-  if (totalMinutes < 60) return `${totalMinutes} minute${totalMinutes === 1 ? '' : 's'}`
-
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  if (minutes === 0) return `${hours} hour${hours === 1 ? '' : 's'}`
-  return `${hours} hour${hours === 1 ? '' : 's'} ${minutes} minute${minutes === 1 ? '' : 's'}`
-}
-
-function formatReminderLine(reminder: {
-  id: string
-  title: string
-  message: string
-  triggerAt: number
-}): string {
-  return `- ${reminder.id}: "${reminder.message}" at ${new Date(reminder.triggerAt).toISOString()} (title: "${reminder.title}", in ${formatReminderDelay(reminder.triggerAt - Date.now())})`
-}
 
 function getReminderClickHandler(ctx: ToolExecutionContext): (() => void) | undefined {
   const win = ctx.mainWindow
@@ -84,23 +67,7 @@ export const reminderTools: Record<string, ToolDefinition> = {
         message: args.message,
         onClick: getReminderClickHandler(ctx)
       })
-      const delayText = formatReminderDelay(reminder.triggerAt - Date.now())
-      const triggerAt = new Date(reminder.triggerAt).toISOString()
-
-      return {
-        resultForModel: [
-          'Reminder scheduled.',
-          `Reminder ID: ${reminder.id}`,
-          `Message: ${reminder.message}`,
-          `Trigger time: ${triggerAt}`,
-          `Delay: ${delayText}`,
-          'Note: QuickAI must remain running for this in-app reminder to fire.'
-        ].join('\n'),
-        resultForUi: {
-          title: 'Reminder Scheduled',
-          summary: `${reminder.message} in ${delayText}`
-        }
-      }
+      return createScheduleReminderResult(reminder)
     }
   },
   list_reminders: {
@@ -121,23 +88,7 @@ export const reminderTools: Record<string, ToolDefinition> = {
       void args
       void ctx
       const reminders = listPendingReminders()
-      if (reminders.length === 0) {
-        return {
-          resultForModel: 'No pending reminders.',
-          resultForUi: {
-            title: 'Reminders',
-            summary: 'No pending reminders'
-          }
-        }
-      }
-
-      return {
-        resultForModel: ['Pending reminders:', ...reminders.map(formatReminderLine)].join('\n'),
-        resultForUi: {
-          title: 'Reminders',
-          summary: `${reminders.length} pending reminder${reminders.length === 1 ? '' : 's'}`
-        }
-      }
+      return createListRemindersResult(reminders)
     }
   },
   cancel_reminder: {
@@ -172,13 +123,7 @@ export const reminderTools: Record<string, ToolDefinition> = {
         throw new Error(`Reminder not found: ${reminderId}`)
       }
 
-      return {
-        resultForModel: `Cancelled reminder ${reminder.id}: "${reminder.message}"`,
-        resultForUi: {
-          title: 'Reminder Cancelled',
-          summary: reminder.message
-        }
-      }
+      return createCancelReminderResult(reminder)
     }
   }
 }
