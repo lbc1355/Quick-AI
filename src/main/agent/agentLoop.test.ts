@@ -1056,8 +1056,15 @@ describe('runAgentLoop', () => {
     })
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-progress-completed',
-      event: { type: 'agent_end', status: 'completed' }
+      event: expect.objectContaining({ type: 'agent_end', status: 'completed' })
     })
+
+    const emittedEvents = sendMock.mock.calls
+      .map(([, payload]) => payload.event)
+      .filter(Boolean)
+    expect(emittedEvents.every((event) => event.runId === 'test-req-progress-completed')).toBe(true)
+    expect(emittedEvents.map((event) => event.sequence)).toEqual([1, 2, 3, 4])
+    expect(emittedEvents.every((event) => typeof event.timestamp === 'number')).toBe(true)
   })
 
   it('emits one agent_step for a model turn with multiple tool calls', async () => {
@@ -1107,7 +1114,7 @@ describe('runAgentLoop', () => {
     })
     expect(toolCallEvents).toHaveLength(2)
     expect(toolCallEvents.every((event) => event.stepId === stepEvents[0].stepId)).toBe(true)
-    expect(finalEvents).toEqual([
+    expect(finalEvents).toMatchObject([
       {
         type: 'final',
         content: 'Done.',
@@ -1135,12 +1142,12 @@ describe('runAgentLoop', () => {
       .filter(Boolean)
 
     expect(events.some((event) => event.type === 'agent_step')).toBe(false)
-    expect(events).toContainEqual({
+    expect(events).toContainEqual(expect.objectContaining({
       type: 'final',
       content: 'Final only.',
       step: 1,
       stepId: 'test-req-final-only:step:1'
-    })
+    }))
   })
 
   it('streams unclassified model text before committing it as final', async () => {
@@ -1166,7 +1173,7 @@ describe('runAgentLoop', () => {
       .map(([, payload]) => payload.event)
       .filter(Boolean)
 
-    expect(events.filter((event) => event.type === 'agent_message_delta')).toEqual([
+    expect(events.filter((event) => event.type === 'agent_message_delta')).toMatchObject([
       {
         type: 'agent_message_delta',
         content: 'Final ',
@@ -1180,12 +1187,12 @@ describe('runAgentLoop', () => {
         stepId: 'test-req-stream-final:step:1'
       }
     ])
-    expect(events).toContainEqual({
+    expect(events).toContainEqual(expect.objectContaining({
       type: 'final',
       content: 'Final answer.',
       step: 1,
       stepId: 'test-req-stream-final:step:1'
-    })
+    }))
   })
 
   it('emits agent_end max_steps on maxSteps exhaustion', async () => {
@@ -1227,7 +1234,7 @@ describe('runAgentLoop', () => {
 
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-max-steps-event',
-      event: { type: 'agent_end', status: 'max_steps' }
+      event: expect.objectContaining({ type: 'agent_end', status: 'max_steps' })
     })
   })
 
@@ -1247,7 +1254,7 @@ describe('runAgentLoop', () => {
     })
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-failed-event',
-      event: { type: 'agent_end', status: 'failed', error: 'Model API is down' }
+      event: expect.objectContaining({ type: 'agent_end', status: 'failed', error: 'Model API is down' })
     })
   })
 
@@ -1295,7 +1302,7 @@ describe('runAgentLoop', () => {
 
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-abort-event',
-      event: { type: 'agent_end', status: 'cancelled' }
+      event: expect.objectContaining({ type: 'agent_end', status: 'cancelled' })
     })
 
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {

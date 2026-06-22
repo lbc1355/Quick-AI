@@ -1,4 +1,4 @@
-import { ToolArgs, ChatToolDeclaration, ToolResultUi, SessionResource } from '../../shared/types'
+import { ToolArgs, ChatToolDeclaration, ToolResultUi, SessionResource, AgentEvent } from '../../shared/types'
 import { BrowserWindow } from 'electron'
 
 export interface ToolExecutionContext {
@@ -8,6 +8,7 @@ export interface ToolExecutionContext {
   mainWindow?: BrowserWindow
   resources?: SessionResource[]
   emitOutput?: (chunk: { stream: 'stdout' | 'stderr'; content: string; replace?: boolean }) => void
+  emitEvent?: (event: AgentEvent) => void
 }
 
 export interface ToolModelAttachment {

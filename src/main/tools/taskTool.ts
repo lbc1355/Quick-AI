@@ -68,10 +68,13 @@ export const taskTool: ToolDefinition = {
 
     const merged = run.mergeTasks(incoming)
 
-    if (ctx.mainWindow) {
+    const event = { type: 'task_update' as const, tasks: merged }
+    if (ctx.emitEvent) {
+      ctx.emitEvent(event)
+    } else if (ctx.mainWindow) {
       ctx.mainWindow.webContents.send('chat-chunk', {
         reqId: ctx.reqId,
-        event: { type: 'task_update', tasks: merged }
+        event
       })
     }
 

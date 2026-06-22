@@ -38,13 +38,16 @@ export async function fetchCacheAndFormat(
       result.links
     )
 
-    if (ctx.mainWindow) {
+    const event = {
+      type: 'resource_update' as const,
+      resource: sessionResource
+    }
+    if (ctx.emitEvent) {
+      ctx.emitEvent(event)
+    } else if (ctx.mainWindow) {
       ctx.mainWindow.webContents.send('chat-chunk', {
         reqId: ctx.reqId,
-        event: {
-          type: 'resource_update',
-          resource: sessionResource
-        }
+        event
       })
     }
   }

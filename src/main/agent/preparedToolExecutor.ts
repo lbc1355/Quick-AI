@@ -164,6 +164,7 @@ export async function executePreparedToolCall(
       signal: options.signal,
       mainWindow: options.mainWindow,
       resources: options.resources,
+      emitEvent: options.emitEvent,
       emitOutput: ({ stream, content, replace }) => {
         if (!content) return
         options.emitEvent?.({

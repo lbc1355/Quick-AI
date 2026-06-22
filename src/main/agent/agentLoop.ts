@@ -20,6 +20,7 @@ import { runToolTurn } from './toolTurnRunner'
 import { runForcedFinalTurn } from './forcedFinalTurnRunner'
 import { startAgentRunLifecycle } from './agentRunLifecycle'
 import { persistAgentRunCheckpoint } from './agentRunCheckpoint'
+import { createAgentEventStream } from './agentEventStream'
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
@@ -61,6 +62,11 @@ export const runAgentLoop = async (
   } = preparedRun
   let messages = preparedRun.messages
 
+  const eventStream = createAgentEventStream({
+    runId: reqId,
+    emit: (event) => sendEvent(mainWindow, reqId, event)
+  })
+
   const lifecycle = startAgentRunLifecycle({
     reqId,
     conversationId,
@@ -76,7 +82,7 @@ export const runAgentLoop = async (
     assistantMessageId: options.assistantMessageId,
     parentRunId: options.resumeFromRunId,
     branchOf: options.branchOf,
-    emitEvent: (event) => sendEvent(mainWindow, reqId, event)
+    emitEvent: eventStream.emit
   })
   const runCtx = lifecycle.runCtx
   const signal = runCtx.signal
@@ -132,7 +138,7 @@ export const runAgentLoop = async (
       throw new Error(resumeLoadError)
     }
 
-    sendEvent(mainWindow, reqId, {
+    eventStream.emit({
       type: 'agent_start',
       skillName: isSkill ? options.skill!.name : 'General Agent'
     })
@@ -155,7 +161,7 @@ export const runAgentLoop = async (
         throw new Error('Agent execution aborted by user.')
       }
 
-      sendEvent(mainWindow, reqId, {
+      eventStream.emit({
         type: 'agent_progress',
         step,
         maxSteps,
@@ -194,10 +200,10 @@ export const runAgentLoop = async (
         signal,
         usageTracker,
         onReasoning: (content) => {
-          sendEvent(mainWindow, reqId, { type: 'reasoning', content, step, stepId })
+          eventStream.emit({ type: 'reasoning', content, step, stepId })
         },
         onContentChunk: (content) => {
-          sendEvent(mainWindow, reqId, {
+          eventStream.emit({
             type: 'agent_message_delta',
             content,
             step,
@@ -231,7 +237,7 @@ export const runAgentLoop = async (
           outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
           fetchUrlBudget,
           runContext: runCtx,
-          emitEvent: (event) => sendEvent(mainWindow, reqId, event),
+          emitEvent: eventStream.emit,
           requestPermission: (callId) => globalPermissionManager.requestPermission(reqId, callId)
         })
 
@@ -249,7 +255,7 @@ export const runAgentLoop = async (
       } else {
         const finalText = getAssistantText(assistantMessage.content) || assistantTextBuffer
         if (finalText) {
-          sendEvent(mainWindow, reqId, { type: 'final', content: finalText, step, stepId })
+          eventStream.emit({ type: 'final', content: finalText, step, stepId })
         }
         setRunEnd('completed')
         mainWindow.webContents.send('chat-chunk', buildDoneChunk())
@@ -271,10 +277,10 @@ export const runAgentLoop = async (
       contextSize: getEffectiveContextWindowSize(options),
       usageTracker,
       emitReasoning: (content) => {
-        sendEvent(mainWindow, reqId, { type: 'reasoning', content })
+        eventStream.emit({ type: 'reasoning', content })
       },
       emitFinal: (content) => {
-        sendEvent(mainWindow, reqId, { type: 'final', content })
+        eventStream.emit({ type: 'final', content })
       }
     })
     messages = forcedFinalTurn.messages

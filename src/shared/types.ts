@@ -64,11 +64,27 @@ export interface PromptCacheStats {
   hitRate: number
 }
 
+export interface AgentEventMetadata {
+  /** Stable run id that emitted this event. Added by the agent event stream. */
+  runId?: string
+  /** Monotonic per-run sequence. Added by the agent event stream. */
+  sequence?: number
+  /** Wall-clock emit time in ms. Added by the agent event stream. */
+  timestamp?: number
+}
+
+type WithAgentEventMetadata<T> = T & AgentEventMetadata
+
 export type AgentEvent =
-  | { type: 'agent_start'; skillName: string }
-  | { type: 'reasoning'; content: string; step?: number; stepId?: string }
-  | { type: 'agent_message_delta'; content: string; step: number; stepId: string }
-  | {
+  | WithAgentEventMetadata<{ type: 'agent_start'; skillName: string }>
+  | WithAgentEventMetadata<{ type: 'reasoning'; content: string; step?: number; stepId?: string }>
+  | WithAgentEventMetadata<{
+      type: 'agent_message_delta'
+      content: string
+      step: number
+      stepId: string
+    }>
+  | WithAgentEventMetadata<{
       type: 'agent_step'
       stepId: string
       step: number
@@ -76,13 +92,13 @@ export type AgentEvent =
       title: string
       message: string
       status: 'running' | 'completed' | 'failed' | 'cancelled'
-    }
-  | {
+    }>
+  | WithAgentEventMetadata<{
       type: 'agent_step_end'
       stepId: string
       status: 'completed' | 'failed' | 'cancelled'
-    }
-  | {
+    }>
+  | WithAgentEventMetadata<{
       type: 'tool_call'
       callId: string
       toolName: string
@@ -91,15 +107,15 @@ export type AgentEvent =
       permissionState?: 'pending' | 'approved' | 'denied'
       step?: number
       stepId?: string
-    }
-  | {
+    }>
+  | WithAgentEventMetadata<{
       type: 'tool_result'
       callId: string
       result: ToolResultUi
       step?: number
       stepId?: string
-    }
-  | {
+    }>
+  | WithAgentEventMetadata<{
       type: 'tool_output_delta'
       callId: string
       stream: 'stdout' | 'stderr'
@@ -107,30 +123,30 @@ export type AgentEvent =
       replace?: boolean
       step?: number
       stepId?: string
-    }
-  | { type: 'tool_error'; callId: string; error: string; step?: number; stepId?: string }
-  | { type: 'final'; content: string; step?: number; stepId?: string }
-  | {
+    }>
+  | WithAgentEventMetadata<{ type: 'tool_error'; callId: string; error: string; step?: number; stepId?: string }>
+  | WithAgentEventMetadata<{ type: 'final'; content: string; step?: number; stepId?: string }>
+  | WithAgentEventMetadata<{
       type: 'agent_progress'
       step: number
       maxSteps: number
       activeTools?: string[]
       message?: string
       stepId?: string
-    }
-  | {
+    }>
+  | WithAgentEventMetadata<{
       type: 'agent_end'
       status: 'completed' | 'cancelled' | 'failed' | 'max_steps'
       error?: string
-    }
-  | {
+    }>
+  | WithAgentEventMetadata<{
       type: 'resource_update'
       resource: SessionResource
-    }
-  | {
+    }>
+  | WithAgentEventMetadata<{
       type: 'task_update'
       tasks: TaskItem[]
-    }
+    }>
 
 export interface TaskItem {
   id: string

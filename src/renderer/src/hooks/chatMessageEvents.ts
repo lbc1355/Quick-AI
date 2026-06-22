@@ -69,7 +69,7 @@ export const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Mess
       if (existingEvent.type === 'tool_call') {
         updatedEvents[existingIdx] = {
           ...existingEvent,
-          permissionState: newEvent.permissionState,
+          ...newEvent,
           purpose: newEvent.purpose || existingEvent.purpose
         }
       }
@@ -85,6 +85,9 @@ export const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Mess
     ) {
       updatedEvents[updatedEvents.length - 1] = {
         ...lastEvent,
+        runId: newEvent.runId ?? lastEvent.runId,
+        sequence: newEvent.sequence ?? lastEvent.sequence,
+        timestamp: newEvent.timestamp ?? lastEvent.timestamp,
         content: newEvent.replace ? newEvent.content : lastEvent.content + newEvent.content,
         replace: newEvent.replace || lastEvent.replace
       }
@@ -101,6 +104,9 @@ export const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Mess
     if (lastEvent.type === 'reasoning' && newEvent.type === 'reasoning') {
       updatedEvents[updatedEvents.length - 1] = {
         ...lastEvent,
+        runId: newEvent.runId ?? lastEvent.runId,
+        sequence: newEvent.sequence ?? lastEvent.sequence,
+        timestamp: newEvent.timestamp ?? lastEvent.timestamp,
         content: lastEvent.content + newEvent.content
       }
     } else if (
@@ -110,11 +116,17 @@ export const applyAgentEventToMessage = (m: Message, newEvent: AgentEvent): Mess
     ) {
       updatedEvents[updatedEvents.length - 1] = {
         ...lastEvent,
+        runId: newEvent.runId ?? lastEvent.runId,
+        sequence: newEvent.sequence ?? lastEvent.sequence,
+        timestamp: newEvent.timestamp ?? lastEvent.timestamp,
         content: lastEvent.content + newEvent.content
       }
     } else if (lastEvent.type === 'final' && newEvent.type === 'final') {
       updatedEvents[updatedEvents.length - 1] = {
         ...lastEvent,
+        runId: newEvent.runId ?? lastEvent.runId,
+        sequence: newEvent.sequence ?? lastEvent.sequence,
+        timestamp: newEvent.timestamp ?? lastEvent.timestamp,
         content: lastEvent.content + newEvent.content
       }
     } else {
