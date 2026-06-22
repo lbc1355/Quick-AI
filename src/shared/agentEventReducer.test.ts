@@ -1,0 +1,176 @@
+import { describe, expect, it } from 'vitest'
+
+import { AgentEvent, Message } from './types'
+import {
+  applyAgentEventToMessage,
+  isRuntimeErrorAssistantMessage,
+  mergeAgentEvents,
+  prepareMessageForInlineResume
+} from './agentEventReducer'
+
+describe('mergeAgentEvents', () => {
+  it('updates repeated tool_call events in place and preserves the original purpose', () => {
+    const events = mergeAgentEvents(
+      [
+        {
+          type: 'tool_call',
+          callId: 'call-1',
+          toolName: 'shell',
+          args: { command: 'git status' },
+          purpose: 'Check status',
+          permissionState: 'pending',
+          runId: 'run-1',
+          sequence: 1,
+          timestamp: 10
+        }
+      ],
+      {
+        type: 'tool_call',
+        callId: 'call-1',
+        toolName: 'shell',
+        args: { command: 'git status' },
+        permissionState: 'approved',
+        runId: 'run-1',
+        sequence: 2,
+        timestamp: 20
+      }
+    )
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      type: 'tool_call',
+      callId: 'call-1',
+      permissionState: 'approved',
+      purpose: 'Check status',
+      sequence: 2,
+      timestamp: 20
+    })
+  })
+
+  it('coalesces adjacent tool output deltas for the same stream', () => {
+    const events = mergeAgentEvents(
+      [
+        {
+          type: 'tool_output_delta',
+          callId: 'call-1',
+          stream: 'stdout',
+          content: 'line 1',
+          sequence: 1
+        }
+      ],
+      {
+        type: 'tool_output_delta',
+        callId: 'call-1',
+        stream: 'stdout',
+        content: '\nline 2',
+        sequence: 2,
+        timestamp: 30
+      }
+    )
+
+    expect(events).toEqual([
+      {
+        type: 'tool_output_delta',
+        callId: 'call-1',
+        stream: 'stdout',
+        content: 'line 1\nline 2',
+        sequence: 2,
+        timestamp: 30,
+        replace: undefined,
+        runId: undefined
+      }
+    ])
+  })
+
+  it('replaces older task updates with the latest task list', () => {
+    const events = mergeAgentEvents(
+      [
+        { type: 'agent_start', skillName: 'General Agent' },
+        { type: 'task_update', tasks: [{ id: '1', title: 'Old', status: 'pending' }] }
+      ],
+      { type: 'task_update', tasks: [{ id: '1', title: 'Old', status: 'completed' }] }
+    )
+
+    expect(events).toEqual([
+      { type: 'agent_start', skillName: 'General Agent' },
+      { type: 'task_update', tasks: [{ id: '1', title: 'Old', status: 'completed' }] }
+    ])
+  })
+})
+
+describe('applyAgentEventToMessage', () => {
+  it('updates visible content and coalesces final events', () => {
+    const message: Message = { id: 'm1', role: 'assistant', content: '' }
+
+    const afterFirst = applyAgentEventToMessage(message, {
+      type: 'final',
+      content: 'Hello ',
+      sequence: 1
+    })
+    const afterSecond = applyAgentEventToMessage(afterFirst, {
+      type: 'final',
+      content: 'world',
+      sequence: 2
+    })
+
+    expect(afterSecond.content).toBe('Hello world')
+    expect(afterSecond.agentEvents).toMatchObject([
+      { type: 'final', content: 'Hello world', sequence: 2 }
+    ])
+  })
+
+  it('updates reasoning content while keeping assistant content untouched', () => {
+    const message: Message = { id: 'm1', role: 'assistant', content: 'answer' }
+    const updated = applyAgentEventToMessage(message, { type: 'reasoning', content: 'thinking' })
+
+    expect(updated.content).toBe('answer')
+    expect(updated.reasoning_content).toBe('thinking')
+    expect(updated.agentEvents).toEqual([{ type: 'reasoning', content: 'thinking' }])
+  })
+})
+
+describe('isRuntimeErrorAssistantMessage', () => {
+  it('recognizes chat runtime error prefixes', () => {
+    expect(
+      isRuntimeErrorAssistantMessage({
+        id: 'm1',
+        role: 'assistant',
+        content: '??????????'
+      })
+    ).toBe(true)
+    expect(
+      isRuntimeErrorAssistantMessage({
+        id: 'm2',
+        role: 'assistant',
+        content: '?? ??????????'
+      })
+    ).toBe(true)
+  })
+})
+
+describe('prepareMessageForInlineResume', () => {
+  it('drops failed terminal events but preserves earlier run events', () => {
+    const message: Message = {
+      id: 'm1',
+      role: 'assistant',
+      content: 'Agent resume failed: API unavailable',
+      agentRunId: 'run-1',
+      isRuntimeError: true,
+      agentEvents: [
+        { type: 'agent_start', skillName: 'General Agent' },
+        { type: 'tool_call', callId: 'call-1', toolName: 'file_read', args: {} },
+        { type: 'agent_end', status: 'failed', error: 'API unavailable' },
+        { type: 'final', content: 'Agent resume failed: API unavailable' }
+      ] as AgentEvent[]
+    }
+
+    const prepared = prepareMessageForInlineResume(message, 'run-2')
+
+    expect(prepared.agentRunId).toBe('run-2')
+    expect(prepared.agentRunIds).toEqual(['run-1', 'run-2'])
+    expect(prepared.agentEvents).toEqual([
+      { type: 'agent_start', skillName: 'General Agent' },
+      { type: 'tool_call', callId: 'call-1', toolName: 'file_read', args: {} }
+    ])
+  })
+})
