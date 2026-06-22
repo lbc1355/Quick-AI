@@ -85,4 +85,83 @@ describeWithSqlite('session branch metadata persistence', () => {
     expect(branch?.branchOf).toEqual({ sessionId: 'src', messageId: 'm1' })
     expect(branch?.branchOf && 'runId' in branch.branchOf).toBe(false)
   })
+
+  it('compacts agent events when saving without mutating the in-memory session', () => {
+    const sessions: Session[] = [
+      {
+        id: 'events',
+        title: 'events',
+        lastActiveTime: 1,
+        messages: [
+          {
+            id: '100',
+            role: 'assistant',
+            content: 'hello',
+            agentEvents: [
+              {
+                type: 'agent_message_delta',
+                content: 'hel',
+                step: 1,
+                stepId: 'step-1',
+                sequence: 1
+              },
+              {
+                type: 'agent_message_delta',
+                content: 'lo',
+                step: 1,
+                stepId: 'step-1',
+                sequence: 2
+              },
+              {
+                type: 'agent_progress',
+                step: 1,
+                maxSteps: 2,
+                stepId: 'step-1',
+                activeTools: ['a'],
+                sequence: 3
+              },
+              {
+                type: 'agent_progress',
+                step: 1,
+                maxSteps: 2,
+                stepId: 'step-1',
+                activeTools: ['b'],
+                sequence: 4
+              },
+              { type: 'task_update', tasks: [{ id: '1', title: 'Read', status: 'pending' }] },
+              { type: 'task_update', tasks: [{ id: '1', title: 'Read', status: 'completed' }] }
+            ]
+          }
+        ]
+      }
+    ]
+
+    saveSessions(sessions)
+
+    expect(sessions[0].messages[0].agentEvents).toHaveLength(6)
+
+    closeDb()
+    const loaded = loadSessions().find((s) => s.id === 'events')
+    const events = loaded?.messages[0].agentEvents
+
+    expect(events).toEqual([
+      {
+        type: 'agent_message_delta',
+        content: 'hello',
+        step: 1,
+        stepId: 'step-1',
+        sequence: 2
+      },
+      {
+        type: 'agent_progress',
+        step: 1,
+        maxSteps: 2,
+        stepId: 'step-1',
+        activeTools: ['b'],
+        sequence: 4
+      },
+      { type: 'task_update', tasks: [{ id: '1', title: 'Read', status: 'completed' }] }
+    ])
+  })
+
 })

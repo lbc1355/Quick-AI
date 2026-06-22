@@ -1,4 +1,5 @@
 import { Message, Session } from '../../shared/types'
+import { compactAgentEvents } from '../../shared/agentEventCompactor'
 import { getDb } from './connection'
 
 export function loadSessions(): Session[] {
@@ -144,6 +145,12 @@ function parseRunIds(value: string | null, fallbackRunId: string | null): string
   }
 }
 
+function serializeAgentEvents(events: Message['agentEvents']): string | null {
+  if (!events || events.length === 0) return null
+  const compacted = compactAgentEvents(events)
+  return compacted.length > 0 ? JSON.stringify(compacted) : null
+}
+
 export function saveSessions(sessions: Session[]): void {
   const database = getDb()
 
@@ -185,7 +192,7 @@ export function saveSessions(sessions: Session[]): void {
             msg.reasoning_content || null,
             msg.agentRunId || null,
             JSON.stringify(msg.agentRunIds || (msg.agentRunId ? [msg.agentRunId] : [])),
-            msg.agentEvents ? JSON.stringify(msg.agentEvents) : null,
+            serializeAgentEvents(msg.agentEvents),
             msg.forkedFrom ? JSON.stringify(msg.forkedFrom) : null,
             msg.isBranchFork ? 1 : 0,
             msg.tokenSpeed || null,
