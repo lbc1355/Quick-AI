@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react'
-import { ApiProvider, AppSettings, WebSearchProviderType } from '../../../shared/types'
+import {
+  ApiProvider,
+  AppSettings,
+  FetchedModelInfo,
+  WebSearchProviderType
+} from '../../../shared/types'
 import { normalizeContextWindowTokens } from '../../../shared/modelContext'
 import {
   normalizeProviderModelCatalog,
@@ -46,7 +51,8 @@ export interface UseProvidersReturn {
   fetchModelsUrl: string
   setFetchModelsUrl: React.Dispatch<React.SetStateAction<string>>
   isFetchingModels: boolean
-  fetchedModels: string[]
+  refreshingModelContextId: string | null
+  fetchedModels: FetchedModelInfo[]
   showModelsModal: boolean
   setShowModelsModal: React.Dispatch<React.SetStateAction<boolean>>
   handleApiUrlChange: (newUrl: string) => void
@@ -58,8 +64,9 @@ export interface UseProvidersReturn {
   handleDeleteProvider: (id: string) => Promise<void>
   handleAddManualModel: () => void
   handleFetchModels: () => Promise<void>
+  handleRefreshModelContext: (modelId: string) => Promise<void>
   handleRemoveModelDirectly: (modelId: string) => void
-  handleToggleModelSelection: (modelId: string) => void
+  handleToggleModelSelection: (model: FetchedModelInfo) => void
   handleChangeModelContextWindow: (modelId: string, value: string) => void
   resetLocalSettings: () => void
   permissions: Record<string, 'allow' | 'ask' | 'deny'>
@@ -105,7 +112,8 @@ export const useProviders = (): UseProvidersReturn => {
   const [manualModelInput, setManualModelInput] = useState('')
   const [fetchModelsUrl, setFetchModelsUrl] = useState('https://opencode.ai/zen/v1/models')
   const [isFetchingModels, setIsFetchingModels] = useState(false)
-  const [fetchedModels, setFetchedModels] = useState<string[]>([])
+  const [refreshingModelContextId, setRefreshingModelContextId] = useState<string | null>(null)
+  const [fetchedModels, setFetchedModels] = useState<FetchedModelInfo[]>([])
   const [showModelsModal, setShowModelsModal] = useState(false)
 
   // Load configuration and data on startup
@@ -359,9 +367,18 @@ export const useProviders = (): UseProvidersReturn => {
     if (!url) return
     setIsFetchingModels(true)
     try {
-      const modelIds = await window.api.fetchModels(url, apiKey)
-      if (modelIds && modelIds.length > 0) {
-        setFetchedModels(modelIds)
+      const fetched = await window.api.fetchModels(url, apiKey)
+      if (fetched && fetched.length > 0) {
+        setFetchedModels(fetched)
+        setModelContextWindows((prev) => {
+          const next = { ...prev }
+          for (const model of fetched) {
+            if (modelsList.includes(model.id) && model.contextWindowTokens) {
+              next[model.id] = model.contextWindowTokens
+            }
+          }
+          return next
+        })
         setShowModelsModal(true)
       } else {
         alert('未能获取到有效的模型列表，请检查 Base URL 或 API Key。')
@@ -372,6 +389,49 @@ export const useProviders = (): UseProvidersReturn => {
       alert(`获取模型列表失败: ${err.message || err}`)
     } finally {
       setIsFetchingModels(false)
+    }
+  }
+
+  const findFetchedModel = (
+    fetched: FetchedModelInfo[],
+    modelId: string
+  ): FetchedModelInfo | undefined =>
+    fetched.find((model) => model.id === modelId) ||
+    fetched.find((model) => model.id.toLowerCase() === modelId.toLowerCase())
+
+  const handleRefreshModelContext = async (modelId: string): Promise<void> => {
+    const url = fetchModelsUrl.trim()
+    if (!url) {
+      alert('\u8bf7\u5148\u586b\u5199\u6a21\u578b\u5217\u8868\u63a5\u53e3\u3002')
+      return
+    }
+
+    setRefreshingModelContextId(modelId)
+    try {
+      const fetched = await window.api.fetchModels(url, apiKey)
+      setFetchedModels(fetched)
+      const matched = findFetchedModel(fetched, modelId)
+      if (matched?.contextWindowTokens) {
+        setModelContextWindows((prev) => ({
+          ...prev,
+          [modelId]: matched.contextWindowTokens as number
+        }))
+        return
+      }
+
+      if (!matched) {
+        alert(`\u8fdc\u7a0b\u6a21\u578b\u5217\u8868\u4e2d\u6ca1\u6709\u627e\u5230 ${modelId}\u3002`)
+      } else {
+        alert(
+          `\u670d\u52a1\u5546\u6ca1\u6709\u8fd4\u56de ${modelId} \u7684\u4e0a\u4e0b\u6587\u957f\u5ea6\u3002`
+        )
+      }
+    } catch (e) {
+      const err = e as Error
+      console.error(err)
+      alert(`\u83b7\u53d6 ${modelId} \u7684\u4e0a\u4e0b\u6587\u957f\u5ea6\u5931\u8d25: ${err.message || err}`)
+    } finally {
+      setRefreshingModelContextId(null)
     }
   }
 
@@ -392,10 +452,11 @@ export const useProviders = (): UseProvidersReturn => {
     }
   }
 
-  const handleToggleModelSelection = (modelId: string): void => {
+  const handleToggleModelSelection = (model: FetchedModelInfo): void => {
+    const modelId = model.id
     if (modelsList.includes(modelId)) {
       if (modelsList.length <= 1) {
-        alert('必须保留至少一个可用模型！')
+        alert('\u5fc5\u987b\u4fdd\u7559\u81f3\u5c11\u4e00\u4e2a\u53ef\u7528\u6a21\u578b\uff01')
         return
       }
       const updated = modelsList.filter((m) => m !== modelId)
@@ -410,6 +471,12 @@ export const useProviders = (): UseProvidersReturn => {
       }
     } else {
       setModelsList((prev) => [...prev, modelId])
+      if (model.contextWindowTokens) {
+        setModelContextWindows((prev) => ({
+          ...prev,
+          [modelId]: model.contextWindowTokens as number
+        }))
+      }
     }
   }
 
@@ -481,6 +548,7 @@ export const useProviders = (): UseProvidersReturn => {
     fetchModelsUrl,
     setFetchModelsUrl,
     isFetchingModels,
+    refreshingModelContextId,
     fetchedModels,
     showModelsModal,
     setShowModelsModal,
@@ -493,6 +561,7 @@ export const useProviders = (): UseProvidersReturn => {
     handleDeleteProvider,
     handleAddManualModel,
     handleFetchModels,
+    handleRefreshModelContext,
     handleRemoveModelDirectly,
     handleToggleModelSelection,
     handleChangeModelContextWindow,

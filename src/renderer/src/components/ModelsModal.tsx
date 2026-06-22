@@ -1,11 +1,22 @@
 import React, { useMemo, useState } from 'react'
 import { Search, X, Minus, Plus } from 'lucide-react'
+import { FetchedModelInfo } from '../../../shared/types'
 
 interface ModelsModalProps {
-  fetchedModels: string[]
+  fetchedModels: FetchedModelInfo[]
   modelsList: string[]
-  onToggleModel: (modelId: string) => void
+  onToggleModel: (model: FetchedModelInfo) => void
   onClose: () => void
+}
+
+const TEXT = {
+  title: '\u83b7\u53d6\u5230\u7684\u6a21\u578b\u5217\u8868',
+  close: '\u5173\u95ed',
+  search: '\u641c\u7d22\u6a21\u578b...',
+  empty: '\u6ca1\u6709\u5339\u914d\u7684\u6a21\u578b',
+  remove: '\u79fb\u9664\u6b64\u6a21\u578b',
+  add: '\u6dfb\u52a0\u6b64\u6a21\u578b',
+  done: '\u5b8c\u6210'
 }
 
 export const ModelsModal: React.FC<ModelsModalProps> = ({
@@ -19,7 +30,9 @@ export const ModelsModal: React.FC<ModelsModalProps> = ({
   const filteredModels = useMemo(
     () =>
       normalizedQuery
-        ? fetchedModels.filter((modelId) => modelId.toLowerCase().includes(normalizedQuery))
+        ? fetchedModels.filter((model) =>
+            `${model.id} ${model.displayName || ''}`.toLowerCase().includes(normalizedQuery)
+          )
         : fetchedModels,
     [fetchedModels, normalizedQuery]
   )
@@ -29,9 +42,9 @@ export const ModelsModal: React.FC<ModelsModalProps> = ({
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <span className="modal-title">
-            获取到的模型列表 ({filteredModels.length}/{fetchedModels.length})
+            {TEXT.title} ({filteredModels.length}/{fetchedModels.length})
           </span>
-          <button className="header-action-btn" onClick={onClose} title="关闭">
+          <button className="header-action-btn" onClick={onClose} title={TEXT.close}>
             <X size={16} />
           </button>
         </div>
@@ -41,32 +54,34 @@ export const ModelsModal: React.FC<ModelsModalProps> = ({
             className="modal-search-input"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索模型..."
+            placeholder={TEXT.search}
             autoFocus
           />
         </div>
         <div className="modal-body">
-          {filteredModels.length === 0 && <div className="modal-empty-state">没有匹配的模型</div>}
-          {filteredModels.map((modelId) => {
-            const isAdded = modelsList.includes(modelId)
+          {filteredModels.length === 0 && (
+            <div className="modal-empty-state">{TEXT.empty}</div>
+          )}
+          {filteredModels.map((model) => {
+            const isAdded = modelsList.includes(model.id)
             return (
-              <div key={modelId} className="modal-list-item">
-                <span className="modal-model-id" title={modelId}>
-                  {modelId}
+              <div key={model.id} className="modal-list-item">
+                <span className="modal-model-id" title={model.displayName || model.id}>
+                  {model.id}
                 </span>
                 {isAdded ? (
                   <button
                     className="modal-action-btn remove"
-                    onClick={() => onToggleModel(modelId)}
-                    title="移除此模型"
+                    onClick={() => onToggleModel(model)}
+                    title={TEXT.remove}
                   >
                     <Minus size={14} />
                   </button>
                 ) : (
                   <button
                     className="modal-action-btn add"
-                    onClick={() => onToggleModel(modelId)}
-                    title="添加此模型"
+                    onClick={() => onToggleModel(model)}
+                    title={TEXT.add}
                   >
                     <Plus size={14} />
                   </button>
@@ -77,7 +92,7 @@ export const ModelsModal: React.FC<ModelsModalProps> = ({
         </div>
         <div className="modal-footer">
           <button className="modal-close-btn" onClick={onClose}>
-            完成
+            {TEXT.done}
           </button>
         </div>
       </div>

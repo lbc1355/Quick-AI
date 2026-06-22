@@ -1,4 +1,4 @@
-import { ChatCompletionMessage } from '../../shared/types'
+import { ChatCompletionMessage, ProviderEndpointType } from '../../shared/types'
 
 /**
  * Per-provider API compatibility adapter. Different LLM providers deviate from the OpenAI
@@ -194,7 +194,11 @@ export function detectProvider(apiUrl: string): ModelAdapter {
 }
 
 /** Look up adapter by explicit provider type string (for callers that DO have the type). */
-export function getAdapter(providerType?: string): ModelAdapter {
+export function getAdapter(
+  providerType?: string,
+  endpointType?: ProviderEndpointType
+): ModelAdapter {
   if (providerType && ADAPTERS[providerType]) return ADAPTERS[providerType]
+  if (endpointType === 'ollama-openai') return ollamaAdapter
   return openaiAdapter
 }

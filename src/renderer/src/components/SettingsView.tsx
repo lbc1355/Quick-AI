@@ -35,6 +35,7 @@ interface SettingsViewProps {
   manualModelInput: string
   fetchModelsUrl: string
   isFetchingModels: boolean
+  refreshingModelContextId: string | null
   showAddForm: boolean
   newProviderName: string
   newProviderType: ApiProvider['type']
@@ -64,6 +65,7 @@ interface SettingsViewProps {
   onDeleteProvider: (id: string) => void
   onAddManualModel: () => void
   onFetchModels: () => void
+  onRefreshModelContext: (modelId: string) => void
   onRemoveModel: (modelId: string) => void
   onChangeModelContextWindow: (modelId: string, value: string) => void
   onInstallSkill: (payload: SkillInstallPayload) => Promise<Skill>
@@ -311,6 +313,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   manualModelInput,
   fetchModelsUrl,
   isFetchingModels,
+  refreshingModelContextId,
   showAddForm,
   newProviderName,
   newProviderType,
@@ -340,6 +343,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onDeleteProvider,
   onAddManualModel,
   onFetchModels,
+  onRefreshModelContext,
   onRemoveModel,
   onChangeModelContextWindow,
   onInstallSkill,
@@ -399,6 +403,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           manualModelInput={manualModelInput}
           fetchModelsUrl={fetchModelsUrl}
           isFetchingModels={isFetchingModels}
+          refreshingModelContextId={refreshingModelContextId}
           onSave={onSaveProviderDetails}
           onCancel={() => setIsEditingProviderDetail(false)}
           onChangeName={onChangeEditingProviderName}
@@ -409,6 +414,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           onChangeFetchModelsUrl={setFetchModelsUrl}
           onAddManualModel={onAddManualModel}
           onFetchModels={onFetchModels}
+          onRefreshModelContext={onRefreshModelContext}
           onRemoveModel={onRemoveModel}
           onChangeModelContextWindow={onChangeModelContextWindow}
         />

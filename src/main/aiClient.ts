@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { ChatCompletionMessage } from '../shared/types'
+import { ChatCompletionMessage, FetchedModelInfo, ModelRuntimeConfig } from '../shared/types'
 import { callModel, getPromptCacheStats } from './agent/callModel'
 import { loadMemoryContextPrompt } from './agent/memoryContext'
 import { injectMemoryContext } from './agent/memoryPrompts'
@@ -9,6 +9,19 @@ interface ModelItem {
   id?: string
   name?: string
   model?: string
+  display_name?: string
+  displayName?: string
+  context_length?: number | string
+  context_window?: number | string
+  contextWindow?: number | string
+  contextWindowTokens?: number | string
+  max_context_length?: number | string
+  max_context_tokens?: number | string
+  max_context_window?: number | string
+  max_input_tokens?: number | string
+  input_token_limit?: number | string
+  max_model_len?: number | string
+  max_sequence_length?: number | string
 }
 
 interface FetchModelsResponse {
@@ -33,11 +46,12 @@ export async function handleChatCompletion(
     apiUrl: string
     apiKey: string
     model: string
+    modelRuntime?: ModelRuntimeConfig
     messages: ChatCompletionMessage[]
     sessionId?: string
   }
 ): Promise<void> {
-  const { apiUrl, apiKey, model, messages } = options
+  const { apiUrl, apiKey, model, modelRuntime, messages } = options
   const controller = new AbortController()
   activeChatSessions.set(reqId, controller)
 
@@ -50,7 +64,7 @@ export async function handleChatCompletion(
     // into reasoning, which the previous inline parser ignored.
     const startTime = Date.now()
     const assistantMessage = await callModel(
-      { apiUrl, apiKey, model },
+      { apiUrl, apiKey, model, modelRuntime },
       messagesWithMemory,
       undefined,
       controller.signal,
@@ -90,7 +104,66 @@ export async function handleChatCompletion(
   }
 }
 
-export async function fetchModels(fetchUrl: string, apiKey: string): Promise<string[]> {
+const CONTEXT_FIELD_NAMES = [
+  'context_length',
+  'context_window',
+  'contextWindow',
+  'contextWindowTokens',
+  'max_context_length',
+  'max_context_tokens',
+  'max_context_window',
+  'max_input_tokens',
+  'input_token_limit',
+  'max_model_len',
+  'max_sequence_length'
+]
+
+function normalizeFetchedContextTokens(value: unknown): number | undefined {
+  const numeric = typeof value === 'string' ? Number(value.trim()) : value
+  if (typeof numeric !== 'number' || !Number.isFinite(numeric)) return undefined
+  const rounded = Math.round(numeric)
+  if (rounded < 2000 || rounded > 10000000) return undefined
+  return rounded
+}
+
+function getFetchedModelContextTokens(model: ModelItem): number | undefined {
+  const record = model as Record<string, unknown>
+  for (const field of CONTEXT_FIELD_NAMES) {
+    const normalized = normalizeFetchedContextTokens(record[field])
+    if (normalized) return normalized
+  }
+  return undefined
+}
+
+function normalizeFetchedModel(item: ModelItem | string): FetchedModelInfo | undefined {
+  if (typeof item === 'string') {
+    const id = item.trim()
+    return id ? { id } : undefined
+  }
+
+  const id = (item.id || item.name || item.model || '').trim()
+  if (!id) return undefined
+  const displayName = (item.displayName || item.display_name || '').trim() || undefined
+  const contextWindowTokens = getFetchedModelContextTokens(item)
+  return {
+    id,
+    ...(displayName ? { displayName } : {}),
+    ...(contextWindowTokens ? { contextWindowTokens } : {})
+  }
+}
+
+function uniqueFetchedModels(models: FetchedModelInfo[]): FetchedModelInfo[] {
+  const seen = new Set<string>()
+  const result: FetchedModelInfo[] = []
+  for (const model of models) {
+    if (seen.has(model.id)) continue
+    seen.add(model.id)
+    result.push(model)
+  }
+  return result
+}
+
+export async function fetchModels(fetchUrl: string, apiKey: string): Promise<FetchedModelInfo[]> {
   if (!fetchUrl) return []
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -99,29 +172,26 @@ export async function fetchModels(fetchUrl: string, apiKey: string): Promise<str
     }
     const response = await fetch(fetchUrl, { method: 'GET', headers })
     if (!response.ok) {
-      throw new Error(`获取失败：${response.status} ${response.statusText}`)
+      throw new Error(`Fetch failed: ${response.status} ${response.statusText}`)
     }
     const data = (await response.json()) as FetchModelsResponse | ModelItem[] | string[]
-    let modelIds: string[] = []
+    let models: FetchedModelInfo[] = []
 
     if (data && typeof data === 'object') {
       if ('data' in data && Array.isArray(data.data)) {
-        modelIds = data.data.map((m) => m.id || '').filter(Boolean)
+        models = data.data.map(normalizeFetchedModel).filter(Boolean) as FetchedModelInfo[]
       } else if ('models' in data && Array.isArray(data.models)) {
-        modelIds = data.models.map((m) => m.name || m.model || m.id || '').filter(Boolean)
+        models = data.models.map(normalizeFetchedModel).filter(Boolean) as FetchedModelInfo[]
       } else if (Array.isArray(data)) {
-        modelIds = (data as (ModelItem | string)[])
-          .map((m) => {
-            if (typeof m === 'string') return m
-            return m.id || m.name || m.model || ''
-          })
-          .filter(Boolean)
+        models = (data as (ModelItem | string)[])
+          .map(normalizeFetchedModel)
+          .filter(Boolean) as FetchedModelInfo[]
       }
     }
-    return modelIds
+    return uniqueFetchedModels(models)
   } catch (error) {
     const err = error as Error
     console.error('Fetch models error:', err)
-    throw new Error(err.message || '网络连接异常')
+    throw new Error(err.message || 'Network error')
   }
 }

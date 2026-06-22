@@ -1,4 +1,4 @@
-import { ApiProvider, ModelInfo, ProviderEndpointType } from './types'
+import { ApiProvider, ModelInfo, ModelRuntimeConfig, ProviderEndpointType } from './types'
 import {
   ContextWindowInfo,
   getContextWindowInfo,
@@ -95,6 +95,44 @@ export function getProviderModels(provider: ApiProvider): ModelInfo[] {
     (model) => model.enabled !== false && !orderedIds.has(model.id)
   )
   return [...ordered, ...extras]
+}
+
+export function getProviderModelInfo(
+  provider: ApiProvider | undefined,
+  modelId: string
+): ModelInfo | undefined {
+  if (!provider || !modelId) return undefined
+  const normalized = provider.models ? provider : normalizeProviderModelCatalog(provider)
+  const direct = normalized.models?.[modelId]
+  if (direct) return direct
+  return getProviderModels(normalized).find(
+    (model) => model.id === modelId || model.apiId === modelId || model.displayName === modelId
+  )
+}
+
+export function getProviderModelRuntimeConfig(
+  provider: ApiProvider | undefined,
+  modelId: string
+): ModelRuntimeConfig | undefined {
+  if (!provider || !modelId) return undefined
+
+  const normalized = provider.models ? provider : normalizeProviderModelCatalog(provider)
+  const modelInfo =
+    getProviderModelInfo(normalized, modelId) ||
+    createModelInfo(normalized, modelId, normalized.modelContextWindows?.[modelId])
+  const contextWindow =
+    normalizeContextWindowTokens(modelInfo.limit.context) ?? getContextWindowInfo(modelInfo.id).tokens
+
+  return {
+    providerId: normalized.id,
+    providerType: normalized.type,
+    endpointType: modelInfo.endpointType || normalized.endpointType || getProviderEndpointType(normalized),
+    modelId: modelInfo.id,
+    apiModel: modelInfo.apiId || modelInfo.id,
+    displayName: modelInfo.displayName,
+    capabilities: modelInfo.capabilities,
+    contextWindowTokens: contextWindow
+  }
 }
 
 export function getProviderModelContextWindowInfo(

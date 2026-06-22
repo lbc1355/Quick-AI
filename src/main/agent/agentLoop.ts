@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { ChatCompletionMessage, AgentEvent } from '../../shared/types'
+import { ChatCompletionMessage, AgentEvent, ModelRuntimeConfig } from '../../shared/types'
 import { getToolRegistryView } from '../toolRegistry'
 import {
   getContextWindowSize,
@@ -38,9 +38,12 @@ const getAssistantText = (content: ChatCompletionMessage['content']): string => 
 
 const getEffectiveContextWindowSize = (options: {
   model: string
+  modelRuntime?: ModelRuntimeConfig
   contextWindowTokens?: number
 }): number =>
-  normalizeContextWindowTokens(options.contextWindowTokens) ?? getContextWindowSize(options.model)
+  normalizeContextWindowTokens(options.contextWindowTokens) ??
+  normalizeContextWindowTokens(options.modelRuntime?.contextWindowTokens) ??
+  getContextWindowSize(options.model)
 
 export const runAgentLoop = async (
   mainWindow: BrowserWindow,
@@ -193,7 +196,8 @@ export const runAgentLoop = async (
         modelConfig: {
           apiUrl: options.apiUrl,
           apiKey: options.apiKey,
-          model: options.model
+          model: options.model,
+          modelRuntime: options.modelRuntime
         },
         messages,
         toolsToDeclare,
@@ -272,7 +276,8 @@ export const runAgentLoop = async (
       modelConfig: {
         apiUrl: options.apiUrl,
         apiKey: options.apiKey,
-        model: options.model
+        model: options.model,
+        modelRuntime: options.modelRuntime
       },
       contextSize: getEffectiveContextWindowSize(options),
       usageTracker,

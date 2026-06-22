@@ -1,11 +1,20 @@
-import { ChatCompletionMessage, ChatToolDeclaration, PromptCacheStats } from '../../shared/types'
+import {
+  ChatCompletionMessage,
+  ChatToolDeclaration,
+  ModelRuntimeConfig,
+  PromptCacheStats,
+  ProviderEndpointType
+} from '../../shared/types'
 import { DEFAULT_RETRY_POLICY, isRetryableError } from './retryPolicy'
-import { detectProvider } from './modelAdapter'
+import { detectProvider, getAdapter, ModelAdapter } from './modelAdapter'
 
 export interface CallModelOptions {
   apiUrl: string
   apiKey: string
   model: string
+  providerType?: ModelRuntimeConfig['providerType']
+  endpointType?: ProviderEndpointType
+  modelRuntime?: ModelRuntimeConfig
 }
 
 export interface CallModelCallbacks {
@@ -109,6 +118,26 @@ export function prepareMessagesForModel(
   })
 }
 
+function resolveModelAdapter(options: CallModelOptions): ModelAdapter {
+  const providerType = options.modelRuntime?.providerType ?? options.providerType
+  const endpointType = options.modelRuntime?.endpointType ?? options.endpointType
+
+  if (providerType || endpointType) {
+    return getAdapter(providerType, endpointType)
+  }
+
+  return detectProvider(options.apiUrl)
+}
+
+function getRequestModelId(options: CallModelOptions): string {
+  return options.modelRuntime?.apiModel?.trim() || options.model
+}
+
+function canUseTools(options: CallModelOptions): boolean {
+  const capabilities = options.modelRuntime?.capabilities
+  return !capabilities || capabilities.length === 0 || capabilities.includes('tools')
+}
+
 export async function callModel(
   options: CallModelOptions,
   messages: ChatCompletionMessage[],
@@ -117,12 +146,12 @@ export async function callModel(
   callbacks?: CallModelCallbacks
 ): Promise<ChatCompletionMessage> {
   const completionsUrl = `${options.apiUrl.replace(/\/$/, '')}/chat/completions`
-  const adapter = detectProvider(options.apiUrl)
+  const adapter = resolveModelAdapter(options)
 
   const sanitizedMessages = adapter.sanitizeMessages(prepareMessagesForModel(messages))
 
   let body: Record<string, unknown> = {
-    model: options.model,
+    model: getRequestModelId(options),
     messages: sanitizedMessages,
     stream: true
   }
@@ -131,7 +160,7 @@ export async function callModel(
     body.stream_options = { include_usage: true }
   }
 
-  if (toolsToDeclare && toolsToDeclare.length > 0) {
+  if (toolsToDeclare && toolsToDeclare.length > 0 && canUseTools(options)) {
     body.tools = toolsToDeclare
     body.tool_choice = 'auto'
   }

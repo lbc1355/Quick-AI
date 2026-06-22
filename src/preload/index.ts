@@ -10,6 +10,7 @@ import {
   ClearSessionCachesPayload,
   ForkSessionCachesPayload,
   McpServerStatus,
+  FetchedModelInfo,
   Project,
   Skill,
   UserChoiceRequest,
@@ -100,7 +101,7 @@ const api = {
   },
   showNotification: (title: string, body: string): void =>
     ipcRenderer.send('show-notification', title, body),
-  fetchModels: (fetchUrl: string, apiKey: string): Promise<string[]> =>
+  fetchModels: (fetchUrl: string, apiKey: string): Promise<FetchedModelInfo[]> =>
     ipcRenderer.invoke('fetch-models', fetchUrl, apiKey),
   listMemoryEntries: (): Promise<Array<{ id: string; label: string; kind: string }>> =>
     ipcRenderer.invoke('memory-entries'),

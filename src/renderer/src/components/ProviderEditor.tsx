@@ -1,5 +1,5 @@
 import React from 'react'
-import { ArrowLeft, Plus, X } from 'lucide-react'
+import { ArrowLeft, Plus, RefreshCw, X } from 'lucide-react'
 import { ApiProvider } from '../../../shared/types'
 import { getContextWindowInfo } from '../../../shared/modelContext'
 
@@ -13,6 +13,7 @@ interface ProviderEditorProps {
   manualModelInput: string
   fetchModelsUrl: string
   isFetchingModels: boolean
+  refreshingModelContextId: string | null
   onSave: () => void
   onCancel: () => void
   onChangeName: (name: string) => void
@@ -23,6 +24,7 @@ interface ProviderEditorProps {
   onChangeFetchModelsUrl: (val: string) => void
   onAddManualModel: () => void
   onFetchModels: () => void
+  onRefreshModelContext: (modelId: string) => void
   onRemoveModel: (modelId: string) => void
   onChangeModelContextWindow: (modelId: string, value: string) => void
 }
@@ -39,6 +41,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   manualModelInput,
   fetchModelsUrl,
   isFetchingModels,
+  refreshingModelContextId,
   onSave,
   onCancel,
   onChangeName,
@@ -49,6 +52,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   onChangeFetchModelsUrl,
   onAddManualModel,
   onFetchModels,
+  onRefreshModelContext,
   onRemoveModel,
   onChangeModelContextWindow
 }) => {
@@ -168,7 +172,21 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
               return (
                 <div key={model} className="model-context-row">
                   <div className="model-context-main">
-                    <span className="model-context-name">{model}</span>
+                    <div className="model-context-name-row">
+                      <span className="model-context-name">{model}</span>
+                      <button
+                        type="button"
+                        className="model-context-refresh-btn"
+                        onClick={() => onRefreshModelContext(model)}
+                        disabled={refreshingModelContextId === model}
+                        title="刷新上下文长度"
+                      >
+                        <RefreshCw
+                          size={12}
+                          className={refreshingModelContextId === model ? 'spin' : undefined}
+                        />
+                      </button>
+                    </div>
                     <small>Auto {formatContextTokens(automaticContext)}</small>
                   </div>
                   <label className="model-context-field">

@@ -277,6 +277,23 @@ export interface ApiProvider {
   models?: Record<string, ModelInfo>
 }
 
+export interface ModelRuntimeConfig {
+  providerId?: string
+  providerType?: ApiProvider['type']
+  endpointType?: ProviderEndpointType
+  modelId: string
+  apiModel: string
+  displayName?: string
+  capabilities?: ModelCapability[]
+  contextWindowTokens?: number
+}
+
+export interface FetchedModelInfo {
+  id: string
+  displayName?: string
+  contextWindowTokens?: number
+}
+
 export interface AppSettings {
   providers: ApiProvider[]
   activeProviderId: string
@@ -384,6 +401,7 @@ export interface AgentSkillRunOptions {
   apiUrl: string
   apiKey: string
   model: string
+  modelRuntime?: ModelRuntimeConfig
   contextWindowTokens?: number
   systemPrompt?: string
   skill: Skill
@@ -452,6 +470,7 @@ export interface ChatRunOptions {
   apiUrl: string
   apiKey: string
   model: string
+  modelRuntime?: ModelRuntimeConfig
   contextWindowTokens?: number
   messages: ChatCompletionMessage[]
   systemPrompt?: string

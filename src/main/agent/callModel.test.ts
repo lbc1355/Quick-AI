@@ -162,6 +162,82 @@ describe('callModel retry behavior', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
+
+  it('uses explicit runtime adapter and API model id instead of guessing from URL', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(sseStream([sseLine({ content: 'Hello' }), 'data: [DONE]\n']))
+    )
+
+    await callModel(
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'k',
+        model: 'friendly-name',
+        modelRuntime: {
+          providerType: 'glm',
+          endpointType: 'openai-compatible',
+          modelId: 'friendly-name',
+          apiModel: 'real-glm-model',
+          capabilities: ['text', 'tools'],
+          contextWindowTokens: 128000
+        }
+      },
+      [{ role: 'user', content: 'hi' }],
+      [
+        {
+          type: 'function',
+          function: {
+            name: 'search_tools',
+            description: 'Search tools',
+            parameters: { type: 'object', properties: {} }
+          }
+        }
+      ]
+    )
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.model).toBe('real-glm-model')
+    expect(body.tools).toHaveLength(1)
+    expect(body.tool_choice).toBeUndefined()
+  })
+
+  it('does not declare tools when the selected model runtime explicitly lacks tool capability', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(sseStream([sseLine({ content: 'Hello' }), 'data: [DONE]\n']))
+    )
+
+    await callModel(
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'k',
+        model: 'text-only',
+        modelRuntime: {
+          providerType: 'custom',
+          endpointType: 'openai-compatible',
+          modelId: 'text-only',
+          apiModel: 'text-only',
+          capabilities: ['text'],
+          contextWindowTokens: 128000
+        }
+      },
+      [{ role: 'user', content: 'hi' }],
+      [
+        {
+          type: 'function',
+          function: {
+            name: 'search_tools',
+            description: 'Search tools',
+            parameters: { type: 'object', properties: {} }
+          }
+        }
+      ]
+    )
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.tools).toBeUndefined()
+    expect(body.tool_choice).toBeUndefined()
+  })
+
   it('extracts prompt cache stats from streaming usage chunks', async () => {
     fetchMock.mockResolvedValue(
       okResponse(

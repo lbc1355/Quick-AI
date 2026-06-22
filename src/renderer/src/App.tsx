@@ -31,7 +31,10 @@ import {
   summarizeConversationTokenUsage,
   summarizePromptCacheStats
 } from './utils/contextDiagnostics'
-import { getProviderModelContextWindowInfo } from '../../shared/modelCatalog'
+import {
+  getProviderModelContextWindowInfo,
+  getProviderModelRuntimeConfig
+} from '../../shared/modelCatalog'
 
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
@@ -96,6 +99,7 @@ function App(): React.JSX.Element {
     fetchModelsUrl,
     setFetchModelsUrl,
     isFetchingModels,
+    refreshingModelContextId,
     fetchedModels,
     showModelsModal,
     setShowModelsModal,
@@ -108,6 +112,7 @@ function App(): React.JSX.Element {
     handleDeleteProvider,
     handleAddManualModel,
     handleFetchModels,
+    handleRefreshModelContext,
     handleRemoveModelDirectly,
     handleToggleModelSelection,
     handleChangeModelContextWindow,
@@ -130,10 +135,13 @@ function App(): React.JSX.Element {
     () => providers.find((provider) => provider.id === activeProviderId),
     [activeProviderId, providers]
   )
-  const activeModelContextWindowTokens = getProviderModelContextWindowInfo(
-    activeProviderConfig,
-    selectedModel
-  ).tokens
+  const activeModelRuntimeConfig = useMemo(
+    () => getProviderModelRuntimeConfig(activeProviderConfig, selectedModel),
+    [activeProviderConfig, selectedModel]
+  )
+  const activeModelContextWindowTokens =
+    activeModelRuntimeConfig?.contextWindowTokens ??
+    getProviderModelContextWindowInfo(activeProviderConfig, selectedModel).tokens
 
   // 2. Sessions hook
   const {
@@ -220,6 +228,7 @@ function App(): React.JSX.Element {
     apiKey,
     apiUrl,
     selectedModel,
+    modelRuntimeConfig: activeModelRuntimeConfig,
     contextWindowTokens: activeModelContextWindowTokens,
     systemPrompt,
     setShowSettings: setShowSettings,
@@ -745,6 +754,7 @@ function App(): React.JSX.Element {
           manualModelInput={manualModelInput}
           fetchModelsUrl={fetchModelsUrl}
           isFetchingModels={isFetchingModels}
+          refreshingModelContextId={refreshingModelContextId}
           showAddForm={showAddForm}
           newProviderName={newProviderName}
           newProviderType={newProviderType}
@@ -772,6 +782,7 @@ function App(): React.JSX.Element {
           onDeleteProvider={handleDeleteProvider}
           onAddManualModel={handleAddManualModel}
           onFetchModels={handleFetchModels}
+          onRefreshModelContext={handleRefreshModelContext}
           onRemoveModel={handleRemoveModelDirectly}
           onChangeModelContextWindow={handleChangeModelContextWindow}
           onInstallSkill={installSkill}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Message, Project, Session, Skill, RunMode } from '../../../shared/types'
+import { Message, ModelRuntimeConfig, Project, Session, Skill, RunMode } from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
 import { isRuntimeErrorAssistantMessage, prepareMessageForInlineResume } from './chatMessageEvents'
 import { createForkedSession, getRunIdsThroughMessage } from './sessionBranching'
@@ -25,6 +25,7 @@ interface UseChatCompletionProps {
   apiKey: string
   apiUrl: string
   selectedModel: string
+  modelRuntimeConfig?: ModelRuntimeConfig
   contextWindowTokens?: number
   systemPrompt: string
   setShowSettings: (show: boolean) => void
@@ -94,6 +95,7 @@ export const useChatCompletion = ({
   apiKey,
   apiUrl,
   selectedModel,
+  modelRuntimeConfig,
   contextWindowTokens,
   systemPrompt,
   setShowSettings,
@@ -112,6 +114,7 @@ export const useChatCompletion = ({
     apiKey,
     apiUrl,
     selectedModel,
+    modelRuntimeConfig,
     contextWindowTokens,
     systemPrompt,
     projects
@@ -121,11 +124,12 @@ export const useChatCompletion = ({
       apiKey,
       apiUrl,
       selectedModel,
+      modelRuntimeConfig,
       contextWindowTokens,
       systemPrompt,
       projects
     }
-  }, [apiKey, apiUrl, selectedModel, contextWindowTokens, systemPrompt, projects])
+  }, [apiKey, apiUrl, selectedModel, modelRuntimeConfig, contextWindowTokens, systemPrompt, projects])
 
   const isGeneratingRef = useRef(isGenerating)
   useEffect(() => {
@@ -494,6 +498,7 @@ export const useChatCompletion = ({
           apiUrl: requestConfig.apiUrl,
           apiKey: requestConfig.apiKey,
           model: requestConfig.selectedModel,
+          modelRuntime: requestConfig.modelRuntimeConfig,
           contextWindowTokens: requestConfig.contextWindowTokens,
           messages: apiMessages,
           runMode: effectiveRunMode,
@@ -571,6 +576,7 @@ export const useChatCompletion = ({
           apiUrl: requestConfig.apiUrl,
           apiKey: requestConfig.apiKey,
           model: requestConfig.selectedModel,
+          modelRuntime: requestConfig.modelRuntimeConfig,
           contextWindowTokens: requestConfig.contextWindowTokens,
           systemPrompt: requestConfig.systemPrompt,
           skill,
@@ -717,6 +723,7 @@ export const useChatCompletion = ({
           apiUrl: requestConfig.apiUrl,
           apiKey: requestConfig.apiKey,
           model: requestConfig.selectedModel,
+          modelRuntime: requestConfig.modelRuntimeConfig,
           contextWindowTokens: requestConfig.contextWindowTokens,
           messages: [],
           runMode: 'agent',

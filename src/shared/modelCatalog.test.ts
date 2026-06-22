@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ApiProvider } from './types'
 import {
   getProviderModelContextWindowInfo,
+  getProviderModelRuntimeConfig,
   getProviderModels,
   normalizeProviderModelCatalog
 } from './modelCatalog'
@@ -97,5 +98,48 @@ describe('modelCatalog', () => {
     )
 
     expect(getProviderModels(normalized).map((model) => model.id)).toEqual(['b-model', 'a-model'])
+  })
+
+  it('builds a model runtime config using the API model id', () => {
+    const normalized = normalizeProviderModelCatalog(
+      provider({
+        modelsList: ['friendly-name'],
+        models: {
+          'friendly-name': {
+            id: 'friendly-name',
+            apiId: 'real-api-model',
+            providerId: 'provider-glm',
+            endpointType: 'openai-compatible',
+            capabilities: ['text', 'tools'],
+            limit: { context: 256000 },
+            enabled: true
+          }
+        }
+      })
+    )
+
+    expect(getProviderModelRuntimeConfig(normalized, 'friendly-name')).toEqual({
+      providerId: 'provider-glm',
+      providerType: 'glm',
+      endpointType: 'openai-compatible',
+      modelId: 'friendly-name',
+      apiModel: 'real-api-model',
+      displayName: undefined,
+      capabilities: ['text', 'tools'],
+      contextWindowTokens: 256000
+    })
+  })
+
+  it('falls back to a generated runtime config for uncatalogued models', () => {
+    const runtime = getProviderModelRuntimeConfig(provider(), 'custom-32k')
+
+    expect(runtime).toMatchObject({
+      providerId: 'provider-glm',
+      providerType: 'glm',
+      endpointType: 'openai-compatible',
+      modelId: 'custom-32k',
+      apiModel: 'custom-32k',
+      contextWindowTokens: 32000
+    })
   })
 })

@@ -21,6 +21,7 @@ export interface AgentRunOptions {
   apiUrl: string
   apiKey: string
   model: string
+  modelRuntime?: AgentSkillRunOptions['modelRuntime']
   contextWindowTokens?: number
   systemPrompt?: string
   messages?: ChatCompletionMessage[]
