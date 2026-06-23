@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { getContextWindowInfo, getContextWindowSize, trimMessagesToFit } from './contextManager'
+import {
+  getContextWindowInfo,
+  getContextWindowSize,
+  getToolOutputSpilloverThreshold,
+  trimMessagesToFit
+} from './contextManager'
 import { ChatCompletionMessage } from '../../shared/types'
 
 describe('getContextWindowSize', () => {
@@ -35,6 +40,14 @@ describe('getContextWindowSize', () => {
       tokens: 128000,
       source: 'default'
     })
+  })
+})
+describe('getToolOutputSpilloverThreshold', () => {
+  it('scales the model-visible tool output budget with the context window', () => {
+    expect(getToolOutputSpilloverThreshold(64000)).toBe(4000)
+    expect(getToolOutputSpilloverThreshold(128000)).toBe(5120)
+    expect(getToolOutputSpilloverThreshold(1000000)).toBe(40000)
+    expect(getToolOutputSpilloverThreshold(2000000)).toBe(64000)
   })
 })
 
@@ -111,7 +124,7 @@ describe('trimMessagesToFit', () => {
   })
 
   it('leaves a read_tool_output pointer when truncating a large tool message', () => {
-    const big = 'z'.repeat(5000)
+    const big = 'z'.repeat(6000)
     const messages: ChatCompletionMessage[] = [
       { role: 'system', content: 'sys' },
       {
@@ -140,7 +153,7 @@ describe('trimMessagesToFit', () => {
   })
 
   it('omits the pointer for tool messages below the spillover threshold', () => {
-    const medium = 'm'.repeat(1800) // > 500 (truncatable) but < 2000 (spillover threshold)
+    const medium = 'm'.repeat(1800) // > 500 (truncatable) but < 4000 (minimum spillover threshold)
     const messages: ChatCompletionMessage[] = [
       { role: 'system', content: 'sys' },
       {

@@ -5,7 +5,7 @@ import {
   getContextWindowSize,
   normalizeContextWindowTokens,
   trimMessagesToFit,
-  TOOL_OUTPUT_SPILLOVER_THRESHOLD
+  getToolOutputSpilloverThreshold
 } from './contextManager'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY } from './retryPolicy'
@@ -21,6 +21,7 @@ import { runForcedFinalTurn } from './forcedFinalTurnRunner'
 import { startAgentRunLifecycle } from './agentRunLifecycle'
 import { persistAgentRunCheckpoint } from './agentRunCheckpoint'
 import { createAgentEventStream } from './agentEventStream'
+import { compactStaleToolResultsForContextPressure } from './staleToolResultCompaction'
 import {
   captureCacheShape,
   commitCacheShapeForSession,
@@ -95,12 +96,15 @@ export const runAgentLoop = async (
   const runCtx = lifecycle.runCtx
   const signal = runCtx.signal
 
+  const initialContextSize = getEffectiveContextWindowSize(options)
+  const initialToolOutputSpilloverThreshold = getToolOutputSpilloverThreshold(initialContextSize)
+
   for (const message of messages) {
     if (
       message.role === 'tool' &&
       message.tool_call_id &&
       typeof message.content === 'string' &&
-      message.content.length > TOOL_OUTPUT_SPILLOVER_THRESHOLD
+      message.content.length > initialToolOutputSpilloverThreshold
     ) {
       runCtx.storeToolOutput(message.tool_call_id, message.content)
       runCtx.activateTool('read_tool_output')
@@ -192,10 +196,26 @@ export const runAgentLoop = async (
 
       // Phase 1: Context Size Control & Message Trimming
       const contextSize = getEffectiveContextWindowSize(options)
+      const toolOutputSpilloverThreshold = getToolOutputSpilloverThreshold(contextSize)
+      const staleToolCompaction = compactStaleToolResultsForContextPressure(messages, {
+        maxTokens: contextSize
+      })
+      if (staleToolCompaction.compactedCount > 0) {
+        messages = staleToolCompaction.messages
+        eventStream.emit({
+          type: 'agent_progress',
+          step,
+          maxSteps,
+          stepId,
+          activeTools: Array.from(runCtx.activeTools),
+          message: `Compacted ${staleToolCompaction.compactedCount} stale tool results before context trimming`
+        })
+      }
       messages = trimMessagesToFit(messages, {
         maxTokens: contextSize,
         reserveForResponse: 2000,
-        strategy: 'truncate-oldest-tool'
+        strategy: 'truncate-oldest-tool',
+        toolOutputSpilloverThreshold
       })
 
       const cacheShape = captureCacheShape({
@@ -272,7 +292,7 @@ export const runAgentLoop = async (
           retryPolicy: DEFAULT_RETRY_POLICY,
           isSideEffecting: (toolName) => SIDE_EFFECTING_TOOLS.has(toolName),
           loopGuard,
-          outputSpilloverThreshold: TOOL_OUTPUT_SPILLOVER_THRESHOLD,
+          outputSpilloverThreshold: toolOutputSpilloverThreshold,
           fetchUrlBudget,
           runContext: runCtx,
           emitEvent: eventStream.emit,

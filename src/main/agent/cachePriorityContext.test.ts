@@ -5,6 +5,11 @@ import {
   insertCachePriorityToolContext
 } from './cachePriorityContext'
 import { RunCheckpoint } from './runCheckpoint'
+import {
+  STALE_TOOL_RESULT_COMPACT_MARKER,
+  compactStaleToolResultMessage,
+  compactStaleToolResultsForContextPressure
+} from './staleToolResultCompaction'
 
 const checkpoint = (messages: ChatCompletionMessage[]): RunCheckpoint => ({
   version: 1,
@@ -268,5 +273,86 @@ describe('cache-priority native tool context', () => {
       'tool'
     ])
     expect(extractNativeToolContextMessages(cp)[0].tool_calls?.[0].function.name).toBe('image_read')
+  })
+  it('keeps retained cached-resource tool results verbatim until context pressure is high', () => {
+    const base: ChatCompletionMessage[] = [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'task 1' },
+      { role: 'assistant', content: 'final answer 1' },
+      { role: 'user', content: 'task 2' }
+    ]
+    const largeCachedRead = [
+      'Resource ID: abcdef1234567890abcdef1234567890',
+      'Requested Offset: 2000',
+      'Requested Max Chars: 10000',
+      'Returned Offset: 2000-12000',
+      'Next Offset: 12000',
+      '',
+      'Content:',
+      'x'.repeat(5000)
+    ].join('\n')
+    const cp = checkpoint([
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'task 1' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'cache-1',
+            type: 'function',
+            function: { name: 'read_cached_resource', arguments: '{}' }
+          }
+        ]
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'cache-1',
+        name: 'read_cached_resource',
+        content: largeCachedRead
+      }
+    ])
+
+    const merged = insertCachePriorityToolContext(base, {
+      sessionId: 'session-1',
+      retainedRuns: [{ runId: 'run-1', assistantMessageIndex: 2 }],
+      loadRunCheckpoint: () => cp
+    })
+
+    expect(merged[3]).toMatchObject({
+      role: 'tool',
+      tool_call_id: 'cache-1',
+      name: 'read_cached_resource'
+    })
+    expect(String(merged[3].content)).toBe(largeCachedRead)
+
+    const belowPressure = compactStaleToolResultsForContextPressure(merged, {
+      maxTokens: 1000000
+    })
+    expect(belowPressure.triggered).toBe(false)
+    expect(belowPressure.messages).toBe(merged)
+
+    const underPressure = compactStaleToolResultsForContextPressure(merged, {
+      maxTokens: 100,
+      triggerRatio: 0.1
+    })
+    expect(underPressure.triggered).toBe(true)
+    expect(underPressure.compactedCount).toBe(1)
+    expect(String(underPressure.messages[3].content)).toContain(STALE_TOOL_RESULT_COMPACT_MARKER)
+    expect(String(underPressure.messages[3].content)).toContain(
+      'read_cached_resource {"resourceId":"abcdef1234567890abcdef1234567890","offset":2000,"maxChars":10000}'
+    )
+    expect(String(underPressure.messages[3].content).length).toBeLessThan(1000)
+  })
+
+  it('does not compact large tool results without a resource reference', () => {
+    const message: ChatCompletionMessage = {
+      role: 'tool',
+      tool_call_id: 'plain-1',
+      name: 'shell',
+      content: 'plain output\n' + 'x'.repeat(5000)
+    }
+
+    expect(compactStaleToolResultMessage(message)).toBe(message)
   })
 })

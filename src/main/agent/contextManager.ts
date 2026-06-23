@@ -1,4 +1,5 @@
 import { ChatCompletionMessage } from '../../shared/types'
+import { DEFAULT_CONTEXT_SIZE, normalizeContextWindowTokens } from '../../shared/modelContext'
 import { estimateMessagesTokens, estimateTokens } from './tokenEstimator'
 export {
   getContextWindowInfo,
@@ -12,6 +13,7 @@ export interface ContextManagerOptions {
   maxTokens: number
   reserveForResponse: number
   strategy?: 'truncate-oldest-tool' | 'summarize'
+  toolOutputSpilloverThreshold?: number
 }
 
 /**
@@ -19,7 +21,23 @@ export interface ContextManagerOptions {
  * so that if the context manager later truncates them it can leave a retrievable pointer
  * (read_tool_output) instead of silently discarding the content. Shared with the agent loop.
  */
-export const TOOL_OUTPUT_SPILLOVER_THRESHOLD = 2000
+export const MIN_TOOL_OUTPUT_SPILLOVER_THRESHOLD = 4000
+export const MAX_TOOL_OUTPUT_SPILLOVER_THRESHOLD = 64000
+const TOOL_OUTPUT_SPILLOVER_CONTEXT_RATIO = 0.04
+
+export function getToolOutputSpilloverThreshold(contextWindowTokens?: number): number {
+  const normalizedContextTokens =
+    normalizeContextWindowTokens(contextWindowTokens) ?? DEFAULT_CONTEXT_SIZE
+  const adaptiveThreshold = Math.floor(
+    normalizedContextTokens * TOOL_OUTPUT_SPILLOVER_CONTEXT_RATIO
+  )
+  return Math.min(
+    MAX_TOOL_OUTPUT_SPILLOVER_THRESHOLD,
+    Math.max(MIN_TOOL_OUTPUT_SPILLOVER_THRESHOLD, adaptiveThreshold)
+  )
+}
+
+export const TOOL_OUTPUT_SPILLOVER_THRESHOLD = MIN_TOOL_OUTPUT_SPILLOVER_THRESHOLD
 
 export function trimMessagesToFit(
   messages: ChatCompletionMessage[],
@@ -27,6 +45,8 @@ export function trimMessagesToFit(
 ): ChatCompletionMessage[] {
   const reserve = options.reserveForResponse || 2000
   const budget = options.maxTokens - reserve
+  const spilloverThreshold =
+    options.toolOutputSpilloverThreshold ?? getToolOutputSpilloverThreshold(options.maxTokens)
   let totalTokens = estimateMessagesTokens(messages)
 
   if (totalTokens <= budget) return messages
@@ -46,7 +66,7 @@ export function trimMessagesToFit(
         // If the full output was preserved in the run's tool-output store, leave a pointer the
         // model can follow instead of silently dropping the tail.
         const pointer =
-          msg.tool_call_id && original.length > TOOL_OUTPUT_SPILLOVER_THRESHOLD
+          msg.tool_call_id && original.length > spilloverThreshold
             ? ` The full ${original.length}-character output can be retrieved with read_tool_output(output_id="${msg.tool_call_id}").`
             : ''
         const truncated =

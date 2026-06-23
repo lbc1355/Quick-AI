@@ -47,10 +47,12 @@ const buildProjectionContent = (options: {
     `Tool: ${options.toolName}`,
     `Resource ID: ${options.resourceId}`,
     `Total chars: ${options.totalChars}`,
+    `Model-visible chars: ${options.previewEndOffset}`,
+    `Saved chars: ${Math.max(0, options.totalChars - options.previewEndOffset)}`,
     `Returned offset: 0-${options.previewEndOffset}`,
     options.nextOffset !== undefined ? `Next offset: ${options.nextOffset}` : 'End of output.',
     options.nextOffset !== undefined
-      ? `To continue reading, call read_cached_resource with {"resourceId":"${options.resourceId}","offset":${options.nextOffset}}.`
+      ? `To continue reading, call read_cached_resource with {"resourceId":"${options.resourceId}","offset":${options.nextOffset},"maxChars":8000}.`
       : '',
     `To search this output, call search_cached_resource with {"resourceId":"${options.resourceId}","query":"..."}.`,
     '',
