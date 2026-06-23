@@ -80,6 +80,13 @@ const contextRoleLabels: Record<ContextCompositionRole, string> = {
 }
 
 const formatChars = (chars: number): string => `${Math.max(0, chars).toLocaleString()} chars`
+const formatRolePercent = (chars: number, totalChars: number): string => {
+  if (!totalChars || chars <= 0) return '0%'
+  const percent = (chars / totalChars) * 100
+  if (percent > 0 && percent < 0.1) return '<0.1%'
+  const rounded = Number(percent.toFixed(1))
+  return rounded % 1 === 0 ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`
+}
 
 interface ContextCompositionRenderGroup {
   id: string
@@ -144,7 +151,22 @@ const ContextCompositionGrid: React.FC<{ segments: ContextCompositionSegment[] }
   segments
 }) => {
   const totalChars = segments.reduce((total, segment) => total + segment.textLength, 0)
+  const roles = Object.keys(contextRoleLabels) as ContextCompositionRole[]
+  const roleStats = roles.reduce(
+    (stats, role) => {
+      stats[role] = { chars: 0, count: 0 }
+      return stats
+    },
+    {} as Record<ContextCompositionRole, { chars: number; count: number }>
+  )
+
+  for (const segment of segments) {
+    roleStats[segment.role].chars += segment.textLength
+    roleStats[segment.role].count += 1
+  }
+
   const groups = buildSegmentGroups(segments)
+  const groupTitles = new Map(groups.map((group) => [group.id, buildGroupTitle(group)]))
 
   return (
     <div className="context-role-composition">
@@ -154,28 +176,33 @@ const ContextCompositionGrid: React.FC<{ segments: ContextCompositionSegment[] }
       </div>
       <div className="context-role-cells" aria-label="Context message roles">
         {segments.length > 0 ? (
-          groups.map((group) => {
-            const groupTitle = buildGroupTitle(group)
+          segments.map((segment, index) => {
+            const groupId = segment.groupId || segment.id
+            const previousGroupId =
+              index > 0 ? segments[index - 1].groupId || segments[index - 1].id : undefined
+            const nextGroupId =
+              index < segments.length - 1
+                ? segments[index + 1].groupId || segments[index + 1].id
+                : undefined
+            const groupTitle = groupTitles.get(groupId)
+            const segmentTitle = buildSegmentTitle(segment)
+            const title = [groupTitle, segmentTitle].filter(Boolean).join('\n\n')
+
             return (
               <span
-                key={group.id}
-                className={`context-role-group kind-${group.kind || 'plain'}`}
-                title={groupTitle}
-                aria-label={groupTitle}
-                role="group"
+                key={segment.id}
+                className={`context-role-cell-slot kind-${segment.groupKind || 'plain'} ${
+                  previousGroupId === groupId ? 'group-continued-before' : 'group-start'
+                } ${nextGroupId === groupId ? 'group-continued-after' : 'group-end'}`}
+                title={title}
+                aria-label={title}
               >
-                {group.segments.map((segment) => {
-                  const title = buildSegmentTitle(segment)
-                  return (
-                    <span
-                      key={segment.id}
-                      className={`context-role-cell role-${segment.role}`}
-                      title={title}
-                      aria-label={title}
-                      tabIndex={0}
-                    />
-                  )
-                })}
+                <span
+                  className={`context-role-cell role-${segment.role}`}
+                  title={segmentTitle}
+                  aria-label={segmentTitle}
+                  tabIndex={0}
+                />
               </span>
             )
           })
@@ -183,13 +210,20 @@ const ContextCompositionGrid: React.FC<{ segments: ContextCompositionSegment[] }
           <span className="context-role-empty">No context messages</span>
         )}
       </div>
-      <div className="context-role-legend" aria-hidden="true">
-        {(Object.keys(contextRoleLabels) as ContextCompositionRole[]).map((role) => (
-          <span className="context-role-legend-item" key={role}>
-            <span className={`context-role-legend-dot role-${role}`} />
-            {contextRoleLabels[role]}
-          </span>
-        ))}
+      <div className="context-role-legend">
+        {roles.map((role) => {
+          const stats = roleStats[role]
+          const percent = formatRolePercent(stats.chars, totalChars)
+          const title = `${contextRoleLabels[role]} · ${percent}\n${formatChars(stats.chars)} · ${stats.count.toLocaleString()} segments`
+
+          return (
+            <span className="context-role-legend-item" key={role} title={title}>
+              <span className={`context-role-legend-dot role-${role}`} />
+              <span>{contextRoleLabels[role]}</span>
+              <span className="context-role-legend-share">{percent}</span>
+            </span>
+          )
+        })}
       </div>
     </div>
   )

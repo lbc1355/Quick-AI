@@ -11,6 +11,19 @@ import {
   createSkippedToolCallResult,
   executeRuntimeToolCall
 } from './toolRuntime'
+import { persistToolOutputResource } from './toolOutputResource'
+
+const TOOL_OUTPUT_RESOURCE_SPILLOVER_EXCLUDED_TOOLS = new Set([
+  'fetch_url',
+  'click_link',
+  'list_cached_resources',
+  'read_cached_resource',
+  'search_cached_resource',
+  'read_tool_output'
+])
+
+const shouldPersistToolOutputResource = (toolName: string): boolean =>
+  !TOOL_OUTPUT_RESOURCE_SPILLOVER_EXCLUDED_TOOLS.has(toolName)
 
 export interface FetchUrlBudget {
   count: number
@@ -182,6 +195,29 @@ export async function executePreparedToolCall(
     isSideEffecting: options.isSideEffecting
   })
 
+  let toolOutputResource: Awaited<ReturnType<typeof persistToolOutputResource>> | undefined
+  if (
+    runtimeResult.status === 'success' &&
+    shouldPersistToolOutputResource(toolName) &&
+    runtimeResult.executionResult.resultForModel.length > options.outputSpilloverThreshold
+  ) {
+    try {
+      toolOutputResource = await persistToolOutputResource({
+        reqId: options.reqId,
+        callId,
+        toolName,
+        content: runtimeResult.executionResult.resultForModel,
+        previewChars: options.outputSpilloverThreshold,
+        emitEvent: options.emitEvent
+      })
+    } catch (err) {
+      console.warn(
+        `[toolOutputResource] Failed to persist large output for ${toolName}/${callId}:`,
+        (err as Error).message
+      )
+    }
+  }
+
   return applyRuntimeToolCallResult({
     runtimeResult,
     toolName,
@@ -193,6 +229,7 @@ export async function executePreparedToolCall(
     step,
     maxSteps: options.maxSteps,
     stepId,
-    activeTools: options.activeTools
+    activeTools: options.activeTools,
+    toolOutputResource
   })
 }

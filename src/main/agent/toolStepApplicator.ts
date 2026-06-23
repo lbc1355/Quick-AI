@@ -2,7 +2,11 @@ import { AgentEvent, ChatCompletionMessage, SessionResource } from '../../shared
 import { ToolDefinition, ToolModelAttachment } from '../tools/types'
 import { ToolRegistryView } from '../tools/registryView'
 import { ActionLog } from './actionLog'
-import { FetchUrlBudget, PreparedToolExecutionResult, executePreparedToolCall } from './preparedToolExecutor'
+import {
+  FetchUrlBudget,
+  PreparedToolExecutionResult,
+  executePreparedToolCall
+} from './preparedToolExecutor'
 import { RetryPolicy } from './retryPolicy'
 import { AmbiguousAction } from './runCheckpoint'
 import { ExecuteToolForStep } from './toolStepProcessor'
@@ -79,8 +83,16 @@ export function createToolStepExecutor(options: CreateToolStepExecutorOptions): 
     }
 
     if (executionResult.outputStore) {
-      options.storeToolOutput(executionResult.outputStore.callId, executionResult.outputStore.content)
-      options.activateTool(executionResult.outputStore.activateToolName)
+      options.storeToolOutput(
+        executionResult.outputStore.callId,
+        executionResult.outputStore.content
+      )
+      const toolNames = executionResult.outputStore.activateToolNames ?? [
+        executionResult.outputStore.activateToolName
+      ]
+      for (const toolName of toolNames) {
+        options.activateTool(toolName)
+      }
     }
 
     emitToolEvents(executionResult.events)

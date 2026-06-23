@@ -1,8 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToolDefinition } from '../tools/types'
 import { LoopGuard } from './loopGuard'
 import { executePreparedToolCall } from './preparedToolExecutor'
+import { persistToolOutputResource } from './toolOutputResource'
 import { PreparedToolCall } from './toolCallPlanning'
+
+vi.mock('./toolOutputResource', () => ({
+  persistToolOutputResource: vi.fn()
+}))
 
 const retryPolicy = {
   maxRetries: 0,
@@ -48,6 +53,9 @@ const makeTool = (execute: ToolDefinition['execute']): ToolDefinition => ({
 })
 
 describe('executePreparedToolCall', () => {
+  beforeEach(() => {
+    vi.mocked(persistToolOutputResource).mockReset()
+  })
   it('returns denied result for invalid prepared calls without executing a tool', async () => {
     const result = await executePreparedToolCall({
       prep: makePrep({
@@ -176,8 +184,138 @@ describe('executePreparedToolCall', () => {
       }
     ])
     expect(result.response.content).toBe('runtime output')
-    expect(result.markExecutedCallKey).toBe('fetch_url:https://example.com:offset=0:maxChars=default')
+    expect(result.markExecutedCallKey).toBe(
+      'fetch_url:https://example.com:offset=0:maxChars=default'
+    )
     expect(result.events.map((event) => event.type)).toEqual(['tool_result', 'agent_progress'])
     expect(result.action.resultStatus).toBe('success')
+  })
+  it('does not resource-wrap fetch_url output because fetch_url already has maxChars and resource paging', async () => {
+    const fullOutput = 'fetch-url-output-'.repeat(200)
+    const tool = makeTool(
+      vi.fn(async () => ({
+        resultForModel: fullOutput,
+        resultForUi: {
+          title: 'Fetched URL',
+          summary: 'windowed output'
+        }
+      }))
+    )
+
+    const result = await executePreparedToolCall({
+      prep: makePrep({
+        toolName: 'fetch_url',
+        callId: 'call-fetch-large',
+        args: { url: 'https://example.com' }
+      }),
+      tool,
+      isApproved: true,
+      reqId: 'req-fetch-large',
+      step: 4,
+      maxSteps: 8,
+      stepId: 'step-4',
+      signal: new AbortController().signal,
+      retryPolicy,
+      isSideEffecting: false,
+      loopGuard: new LoopGuard(),
+      outputSpilloverThreshold: 10,
+      activeTools: ['fetch_url'],
+      fetchUrlBudget: { count: 0, max: 3 }
+    })
+
+    expect(persistToolOutputResource).not.toHaveBeenCalled()
+    expect(result.response.content).toBe(fullOutput)
+    expect(result.outputStore).toEqual({
+      callId: 'call-fetch-large',
+      content: fullOutput,
+      activateToolName: 'read_tool_output'
+    })
+  })
+
+  it('stores oversized tool output in the resource cache and returns a bounded preview', async () => {
+    const outputEvents: unknown[] = []
+    const fullOutput = '0123456789tail-content'
+    const tool = makeTool(
+      vi.fn(async () => ({
+        resultForModel: fullOutput,
+        resultForUi: {
+          title: 'Large Tool',
+          summary: 'large output'
+        }
+      }))
+    )
+
+    vi.mocked(persistToolOutputResource).mockResolvedValue({
+      resourceId: 'abcdef1234567890abcdef1234567890',
+      previewEndOffset: 10,
+      nextOffset: 10,
+      contentForModel:
+        'Tool output exceeded the model-visible limit and was saved to the resource cache.\n' +
+        'Tool: shell\n' +
+        'Resource ID: abcdef1234567890abcdef1234567890\n' +
+        'Total chars: 22\n' +
+        'Returned offset: 0-10\n' +
+        'Next offset: 10\n' +
+        'To continue reading, call read_cached_resource with {"resourceId":"abcdef1234567890abcdef1234567890","offset":10}.\n' +
+        'Head preview:\n0123456789'
+    })
+
+    const result = await executePreparedToolCall({
+      prep: makePrep({
+        toolName: 'shell',
+        callId: 'call-large-cache',
+        args: { command: 'demo' }
+      }),
+      tool,
+      isApproved: true,
+      reqId: 'req-large-cache',
+      step: 4,
+      maxSteps: 8,
+      stepId: 'step-4',
+      signal: new AbortController().signal,
+      retryPolicy,
+      isSideEffecting: false,
+      loopGuard: new LoopGuard(),
+      outputSpilloverThreshold: 10,
+      activeTools: ['shell'],
+      fetchUrlBudget: { count: 0, max: 3 },
+      emitEvent: (event) => outputEvents.push(event)
+    })
+
+    expect(result.response.content).toContain('Tool output exceeded the model-visible limit')
+    expect(result.response.content).toContain('Returned offset: 0-10')
+    expect(result.response.content).toContain('Next offset: 10')
+    expect(result.response.content).toContain('"offset":10')
+    expect(result.response.content).toContain('Head preview:\n0123456789')
+    expect(result.response.content).not.toContain('tail-content')
+    expect(result.action.resultContent).toBe(result.response.content)
+    expect(result.outputStore?.content).toBe(fullOutput)
+    expect(result.outputStore?.activateToolNames).toEqual([
+      'read_tool_output',
+      'list_cached_resources',
+      'read_cached_resource',
+      'search_cached_resource'
+    ])
+    expect(result.events[1]).toMatchObject({
+      type: 'agent_progress',
+      activeTools: [
+        'shell',
+        'read_tool_output',
+        'list_cached_resources',
+        'read_cached_resource',
+        'search_cached_resource'
+      ]
+    })
+
+    expect(persistToolOutputResource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reqId: 'req-large-cache',
+        callId: 'call-large-cache',
+        toolName: 'shell',
+        content: fullOutput,
+        previewChars: 10
+      })
+    )
+    expect(outputEvents).toEqual([])
   })
 })

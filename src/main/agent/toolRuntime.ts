@@ -66,6 +66,11 @@ export interface ApplyRuntimeToolCallResultOptions {
   maxSteps: number
   stepId: string
   activeTools: string[]
+  toolOutputResource?: {
+    contentForModel: string
+    resourceId: string
+    nextOffset?: number
+  }
   now?: number
 }
 
@@ -78,6 +83,7 @@ export interface RuntimeToolOutputStoreRequest {
   callId: string
   content: string
   activateToolName: 'read_tool_output'
+  activateToolNames?: string[]
 }
 
 export interface RuntimeToolAmbiguousActionDraft {
@@ -243,20 +249,35 @@ export function applyRuntimeToolCallResult(
 
   if (runtimeResult.status === 'success') {
     options.loopGuard.recordSuccess(toolName)
+    const resultContent = options.toolOutputResource?.contentForModel ?? resultForModel
     const outputStore =
       resultForModel.length > options.outputSpilloverThreshold
         ? {
             callId,
             content: resultForModel,
-            activateToolName: 'read_tool_output' as const
+            activateToolName: 'read_tool_output' as const,
+            activateToolNames: options.toolOutputResource
+              ? [
+                  'read_tool_output',
+                  'list_cached_resources',
+                  'read_cached_resource',
+                  'search_cached_resource'
+                ]
+              : undefined
           }
         : undefined
+    const activateToolNames = outputStore
+      ? (outputStore.activateToolNames ?? [outputStore.activateToolName])
+      : []
     const activeTools = outputStore
-      ? Array.from(new Set([...options.activeTools, outputStore.activateToolName]))
+      ? Array.from(new Set([...options.activeTools, ...activateToolNames]))
       : options.activeTools
 
     return {
-      response: runtimeResult.response,
+      response: {
+        ...runtimeResult.response,
+        content: resultContent
+      },
       events: [
         {
           type: 'tool_result',
@@ -276,7 +297,7 @@ export function applyRuntimeToolCallResult(
       ],
       action: {
         resultStatus: 'success',
-        resultContent: resultForModel
+        resultContent
       },
       haltRequested: false,
       modelAttachments,
