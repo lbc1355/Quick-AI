@@ -1,5 +1,19 @@
-import { Message } from '../../../shared/types'
+import type { Message, SessionResource } from '../../../shared/types'
 import type { ContextWindowSource } from '../../../shared/modelContext'
+
+export type ContextCompositionRole = 'system' | 'tool_call' | 'tool' | 'user' | 'assistant'
+export type ContextCompositionGroupKind = 'system' | 'user' | 'agent'
+
+export interface ContextCompositionSegment {
+  id: string
+  role: ContextCompositionRole
+  label: string
+  textLength: number
+  preview?: string
+  groupId?: string
+  groupKind?: ContextCompositionGroupKind
+  groupLabel?: string
+}
 
 export interface PromptCacheDiagnostics {
   latestHitRate?: number
@@ -34,6 +48,7 @@ export interface ContextDiagnosticsSnapshot {
   conversationBaseTokens: number
   steeringTokens: number
   mcpToolTokens: number
+  compositionSegments: ContextCompositionSegment[]
 }
 
 export interface ContextUsageBreakdown {
@@ -48,6 +63,222 @@ export interface ContextUsageBreakdown {
   totalPercent: number
 }
 
+const CONTEXT_COMPOSITION_PREVIEW_LIMIT = 120
+
+const normalizeWhitespace = (value: string): string => value.replace(/\s+/g, ' ').trim()
+
+const stringifyForLength = (value: unknown): string => {
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+const previewText = (value: string): string | undefined => {
+  const normalized = normalizeWhitespace(value)
+  if (!normalized) return undefined
+  return normalized.length > CONTEXT_COMPOSITION_PREVIEW_LIMIT
+    ? normalized.slice(0, CONTEXT_COMPOSITION_PREVIEW_LIMIT - 1) + '\u2026'
+    : normalized
+}
+
+const pushSegment = (
+  segments: ContextCompositionSegment[],
+  segment: Omit<ContextCompositionSegment, 'textLength'> & { text: string }
+): void => {
+  const text = segment.text || ''
+  const textLength = text.length
+  if (textLength <= 0) return
+
+  segments.push({
+    id: segment.id,
+    role: segment.role,
+    label: segment.label,
+    textLength,
+    preview: segment.preview ?? previewText(text),
+    groupId: segment.groupId,
+    groupKind: segment.groupKind,
+    groupLabel: segment.groupLabel
+  })
+}
+
+const buildResourceText = (resources: SessionResource[] | undefined): string => {
+  if (!resources?.length) return ''
+
+  return resources
+    .map((resource) => {
+      const chunks = (resource.chunks || [])
+        .map((chunk) => chunk.summary || chunk.text || '')
+        .filter(Boolean)
+        .join('\n')
+      return [resource.title, resource.source, resource.summary, chunks].filter(Boolean).join('\n')
+    })
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+const buildUserMessageText = (message: Message): string => {
+  const files = (message.files || [])
+    .map((file) => [file.name, file.type, file.content].filter(Boolean).join('\n'))
+    .filter(Boolean)
+    .join('\n\n')
+  return [message.content, files].filter(Boolean).join('\n\n')
+}
+
+const buildAssistantMessageText = (message: Message): string =>
+  [message.reasoning_content, message.content].filter(Boolean).join('\n\n')
+
+const buildToolResultText = (result: unknown): string => {
+  if (!result || typeof result !== 'object') return stringifyForLength(result)
+
+  const resultRecord = result as {
+    title?: string
+    url?: string
+    summary?: string
+    details?: string
+    items?: Array<{ title?: string; url?: string; snippet?: string; source?: string }>
+  }
+  const items = (resultRecord.items || [])
+    .map((item) => [item.title, item.url, item.source, item.snippet].filter(Boolean).join('\n'))
+    .filter(Boolean)
+    .join('\n\n')
+
+  const structured = [
+    resultRecord.title,
+    resultRecord.url,
+    resultRecord.summary,
+    resultRecord.details,
+    items
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+
+  return structured || stringifyForLength(result)
+}
+
+export function buildContextCompositionSegments({
+  messages,
+  systemPrompt,
+  projectLabel,
+  resources
+}: {
+  messages: Message[]
+  systemPrompt: string
+  projectLabel?: string
+  resources?: SessionResource[]
+}): ContextCompositionSegment[] {
+  const segments: ContextCompositionSegment[] = []
+  const steeringText = [systemPrompt, projectLabel, buildResourceText(resources)]
+    .filter(Boolean)
+    .join('\n\n')
+
+  pushSegment(segments, {
+    id: 'system-steering',
+    role: 'system',
+    label: 'system',
+    text: steeringText,
+    groupId: 'system-steering',
+    groupKind: 'system',
+    groupLabel: 'System'
+  })
+
+  let agentTurn = 0
+
+  for (const message of messages) {
+    if (message.role === 'user') {
+      pushSegment(segments, {
+        id: `user-${message.id}`,
+        role: 'user',
+        label: 'user',
+        text: buildUserMessageText(message),
+        groupId: `user-${message.id}`,
+        groupKind: 'user',
+        groupLabel: 'User'
+      })
+      continue
+    }
+
+    agentTurn += 1
+    const agentGroupId = `agent-${message.agentRunId || message.agentRunIds?.[0] || message.id}`
+    const agentGroupLabel = `Agent turn ${agentTurn}`
+    const streamedToolOutput = new Map<string, string>()
+    const completedToolOutputs = new Set<string>()
+
+    for (const [eventIndex, event] of (message.agentEvents || []).entries()) {
+      if (event.type === 'tool_call') {
+        const argsText = stringifyForLength(event.args)
+        pushSegment(segments, {
+          id: `tool-call-${event.callId || message.id}-${eventIndex}`,
+          role: 'tool_call',
+          label: event.toolName || 'tool call',
+          text: [event.toolName, event.purpose, argsText].filter(Boolean).join('\n'),
+          preview: previewText(argsText || event.toolName),
+          groupId: agentGroupId,
+          groupKind: 'agent',
+          groupLabel: agentGroupLabel
+        })
+      } else if (event.type === 'tool_result') {
+        completedToolOutputs.add(event.callId)
+        pushSegment(segments, {
+          id: `tool-result-${event.callId || message.id}-${eventIndex}`,
+          role: 'tool',
+          label: event.result.title || event.callId || 'tool',
+          text: buildToolResultText(event.result),
+          groupId: agentGroupId,
+          groupKind: 'agent',
+          groupLabel: agentGroupLabel
+        })
+      } else if (event.type === 'tool_error') {
+        completedToolOutputs.add(event.callId)
+        pushSegment(segments, {
+          id: `tool-error-${event.callId || message.id}-${eventIndex}`,
+          role: 'tool',
+          label: event.callId || 'tool error',
+          text: event.error,
+          groupId: agentGroupId,
+          groupKind: 'agent',
+          groupLabel: agentGroupLabel
+        })
+      } else if (event.type === 'tool_output_delta') {
+        const current = streamedToolOutput.get(event.callId) || ''
+        streamedToolOutput.set(
+          event.callId,
+          event.replace ? event.content : current + event.content
+        )
+      }
+    }
+
+    for (const [callId, output] of streamedToolOutput.entries()) {
+      if (completedToolOutputs.has(callId)) continue
+      pushSegment(segments, {
+        id: `tool-stream-${callId}`,
+        role: 'tool',
+        label: callId || 'tool stream',
+        text: output,
+        groupId: agentGroupId,
+        groupKind: 'agent',
+        groupLabel: agentGroupLabel
+      })
+    }
+
+    pushSegment(segments, {
+      id: `assistant-${message.id}`,
+      role: 'assistant',
+      label: 'assistant',
+      text: buildAssistantMessageText(message),
+      groupId: agentGroupId,
+      groupKind: 'agent',
+      groupLabel: agentGroupLabel
+    })
+  }
+
+  return segments
+}
 export function summarizePromptCacheStats(messages: Message[]): PromptCacheDiagnostics {
   let latestHitRate: number | undefined
   let hitTokens = 0
@@ -110,8 +341,7 @@ export function summarizeConversationTokenUsage(messages: Message[]): Conversati
     const stats = message.role === 'assistant' ? message.cacheStats : undefined
     if (!stats) continue
 
-    const hasPromptTokens =
-      stats.promptTokens !== undefined && Number.isFinite(stats.promptTokens)
+    const hasPromptTokens = stats.promptTokens !== undefined && Number.isFinite(stats.promptTokens)
     const hasCompletionTokens =
       stats.completionTokens !== undefined && Number.isFinite(stats.completionTokens)
     const hasTotalTokens = stats.totalTokens !== undefined && Number.isFinite(stats.totalTokens)

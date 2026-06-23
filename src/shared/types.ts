@@ -124,7 +124,13 @@ export type AgentEvent =
       step?: number
       stepId?: string
     }>
-  | WithAgentEventMetadata<{ type: 'tool_error'; callId: string; error: string; step?: number; stepId?: string }>
+  | WithAgentEventMetadata<{
+      type: 'tool_error'
+      callId: string
+      error: string
+      step?: number
+      stepId?: string
+    }>
   | WithAgentEventMetadata<{ type: 'final'; content: string; step?: number; stepId?: string }>
   | WithAgentEventMetadata<{
       type: 'agent_progress'
@@ -294,11 +300,19 @@ export interface FetchedModelInfo {
   contextWindowTokens?: number
 }
 
+export type ContextRetentionMode = 'default' | 'cache-priority'
+
+export interface CachePriorityRetainedRunRef {
+  runId: string
+  assistantMessageIndex: number
+}
+
 export interface AppSettings {
   providers: ApiProvider[]
   activeProviderId: string
   systemPrompt: string
   autoHideOnBlur: boolean
+  contextRetentionMode?: ContextRetentionMode
   theme?: 'dark' | 'light'
   permissions?: {
     [toolName: string]: 'allow' | 'ask' | 'deny'
@@ -403,6 +417,8 @@ export interface AgentSkillRunOptions {
   model: string
   modelRuntime?: ModelRuntimeConfig
   contextWindowTokens?: number
+  contextRetentionMode?: ContextRetentionMode
+  cachePriorityRetainedRuns?: CachePriorityRetainedRunRef[]
   systemPrompt?: string
   skill: Skill
   userInput: string
@@ -472,6 +488,8 @@ export interface ChatRunOptions {
   model: string
   modelRuntime?: ModelRuntimeConfig
   contextWindowTokens?: number
+  contextRetentionMode?: ContextRetentionMode
+  cachePriorityRetainedRuns?: CachePriorityRetainedRunRef[]
   messages: ChatCompletionMessage[]
   systemPrompt?: string
   runMode?: RunMode

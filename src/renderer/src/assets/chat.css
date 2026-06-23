@@ -649,45 +649,125 @@
   color: var(--color-text-muted);
 }
 
-.context-panel-progress-row {
+.context-role-composition {
   display: grid;
-  gap: 5px;
+  gap: 8px;
 }
 
-.context-panel-progress-head {
+.context-role-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: var(--color-text);
-  font-size: 12px;
-}
-
-.context-panel-progress-head span:last-child {
   color: var(--color-text-muted);
   font-family: Consolas, 'SFMono-Regular', monospace;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
-.context-panel-progress-track {
-  height: 5px;
-  overflow: hidden;
-  border-radius: 999px;
+.context-role-cells {
+  min-height: 64px;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-card-bg);
+}
+
+.context-role-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.context-role-group.kind-agent {
+  min-height: 22px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.context-role-group.kind-system,
+.context-role-group.kind-user,
+.context-role-group.kind-plain {
+  padding: 0;
+}
+
+.context-role-cell {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  border: 1px solid color-mix(in srgb, var(--color-border-strong) 66%, transparent);
+  border-radius: 3px;
   background: color-mix(in srgb, var(--color-text-muted) 18%, transparent);
+  cursor: help;
 }
 
-.context-panel-progress-track span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--color-primary);
+.context-role-cell:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
 }
 
-.context-panel-progress-desc {
-  color: var(--color-text-faint);
+.context-role-cell.role-system,
+.context-role-legend-dot.role-system {
+  border-color: #8b5cf6;
+  background: #c4b5fd;
+}
+
+.context-role-cell.role-tool_call,
+.context-role-legend-dot.role-tool_call {
+  border-color: #d97706;
+  background: #fde68a;
+}
+
+.context-role-cell.role-tool,
+.context-role-legend-dot.role-tool {
+  border-color: #0f766e;
+  background: #99f6e4;
+}
+
+.context-role-cell.role-user,
+.context-role-legend-dot.role-user {
+  border-color: #2563eb;
+  background: #bfdbfe;
+}
+
+.context-role-cell.role-assistant,
+.context-role-legend-dot.role-assistant {
+  border-color: #16a34a;
+  background: #bbf7d0;
+}
+
+.context-role-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: var(--color-text-muted);
   font-size: 11px;
-  line-height: 1.4;
+}
+
+.context-role-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.context-role-legend-dot {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+}
+
+.context-role-empty {
+  color: var(--color-text-muted);
+  font-size: 11px;
 }
 
 .context-panel-metric-grid {

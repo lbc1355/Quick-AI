@@ -11,6 +11,7 @@ import {
 import {
   AgentToolInfo,
   ApiProvider,
+  ContextRetentionMode,
   Skill,
   SkillInstallPayload,
   WebSearchProviderType
@@ -41,6 +42,7 @@ interface SettingsViewProps {
   newProviderType: ApiProvider['type']
   systemPrompt: string
   autoHideOnBlur: boolean
+  contextRetentionMode: ContextRetentionMode
   appStorePath: string
   saveSuccess: boolean
   skills: Skill[]
@@ -56,6 +58,7 @@ interface SettingsViewProps {
   setNewProviderType: (val: ApiProvider['type']) => void
   setSystemPrompt: (val: string) => void
   setAutoHideOnBlur: (val: boolean) => void
+  setContextRetentionMode: (val: ContextRetentionMode) => void
 
   onSaveGlobalSettings: () => void
   onSaveProviderDetails: () => void
@@ -319,6 +322,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   newProviderType,
   systemPrompt,
   autoHideOnBlur,
+  contextRetentionMode,
   appStorePath,
   saveSuccess,
   skills,
@@ -334,6 +338,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setNewProviderType,
   setSystemPrompt,
   setAutoHideOnBlur,
+  setContextRetentionMode,
 
   onSaveGlobalSettings,
   onSaveProviderDetails,
@@ -539,9 +544,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </span>
                 </label>
 
+                <label className="setting-row">
+                  <span className="setting-row-main">
+                    <strong>{'\u4e0a\u4e0b\u6587\u7b56\u7565'}</strong>
+                    <small>
+                      {
+                        '\u9ed8\u8ba4\u6a21\u5f0f\u4fdd\u6301\u73b0\u6709\u884c\u4e3a\uff1b\u7f13\u5b58\u4f18\u5148\u6a21\u5f0f\u4f1a\u5c06\u4e0a\u4e00\u8f6e agent \u5de5\u5177\u8bf7\u6c42\u548c\u5de5\u5177\u7ed3\u679c\u4f5c\u4e3a\u539f\u751f\u5386\u53f2\u6d88\u606f\u4fdd\u7559\uff0c\u4e0b\u4e00\u8f6e\u7528\u6237\u6d88\u606f\u76f4\u63a5\u8ffd\u52a0\u5728\u540e\u9762\uff08\u6682\u4e0d\u526a\u679d\uff09\u3002'
+                      }
+                    </small>
+                  </span>
+                  <span className="setting-row-control">
+                    <select
+                      className="settings-select"
+                      value={contextRetentionMode}
+                      onChange={(e) =>
+                        setContextRetentionMode(e.target.value as ContextRetentionMode)
+                      }
+                    >
+                      <option value="default">{'\u9ed8\u8ba4'}</option>
+                      <option value="cache-priority">{'\u7f13\u5b58\u4f18\u5148'}</option>
+                    </select>
+                  </span>
+                </label>
+
                 <div className="setting-row">
                   <span className="setting-row-main">
-                    <strong>本地数据存储路径</strong>
+                    <strong>{'\u672c\u5730\u6570\u636e\u5b58\u50a8\u8def\u5f84'}</strong>
                     <small>会话、配置和本地缓存的保存位置</small>
                   </span>
                   <span className="setting-row-control setting-row-control-wide">

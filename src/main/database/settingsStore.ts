@@ -59,6 +59,8 @@ export function loadSettings(): AppSettings {
     activeProviderId: kv['activeProviderId'] || '',
     systemPrompt: kv['systemPrompt'] || '',
     autoHideOnBlur: kv['autoHideOnBlur'] !== 'false',
+    contextRetentionMode:
+      kv['contextRetentionMode'] === 'cache-priority' ? 'cache-priority' : 'default',
     theme: (kv['theme'] as 'dark' | 'light') || 'dark',
     permissions,
     webSearch,
@@ -80,6 +82,7 @@ export function saveSettings(settings: AppSettings): void {
   const persist = database.transaction((s: AppSettings) => {
     upsert.run('systemPrompt', s.systemPrompt)
     upsert.run('autoHideOnBlur', String(s.autoHideOnBlur))
+    upsert.run('contextRetentionMode', s.contextRetentionMode || 'default')
     upsert.run('theme', s.theme || 'dark')
     upsert.run('activeProviderId', s.activeProviderId)
     upsert.run('permissions', JSON.stringify(s.permissions || {}))

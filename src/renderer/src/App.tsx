@@ -28,6 +28,7 @@ import {
   estimateSteeringContextTokens
 } from './utils/contextLength'
 import {
+  buildContextCompositionSegments,
   summarizeConversationTokenUsage,
   summarizePromptCacheStats
 } from './utils/contextDiagnostics'
@@ -78,6 +79,8 @@ function App(): React.JSX.Element {
     setSystemPrompt,
     autoHideOnBlur,
     setAutoHideOnBlur,
+    contextRetentionMode,
+    setContextRetentionMode,
     appStorePath,
     saveSuccess,
     theme,
@@ -230,6 +233,7 @@ function App(): React.JSX.Element {
     selectedModel,
     modelRuntimeConfig: activeModelRuntimeConfig,
     contextWindowTokens: activeModelContextWindowTokens,
+    contextRetentionMode,
     systemPrompt,
     setShowSettings: setShowSettings,
     attachedFiles,
@@ -654,6 +658,9 @@ function App(): React.JSX.Element {
     [activeProviderConfig, selectedModel]
   )
   const contextWindowTokens = contextWindowInfo.tokens
+  const activeProjectLabel = activeProject
+    ? `${activeProject.name}${activeProject.path ? ` (${activeProject.path})` : ''}`
+    : undefined
   const contextDiagnostics = useMemo(
     () => ({
       cache: summarizePromptCacheStats(activeSession?.messages || []),
@@ -662,9 +669,7 @@ function App(): React.JSX.Element {
       resourceCount: activeSession?.resources?.length || 0,
       hasSystemPrompt: systemPrompt.trim().length > 0,
       modelName: selectedModel,
-      projectLabel: activeProject
-        ? `${activeProject.name}${activeProject.path ? ` (${activeProject.path})` : ''}`
-        : undefined,
+      projectLabel: activeProjectLabel,
       customPermissionCount: Object.values(permissions || {}).filter((value) => value !== 'allow')
         .length,
       skillCount: skills.length,
@@ -672,10 +677,16 @@ function App(): React.JSX.Element {
       contextWindowSource: contextWindowInfo.source,
       conversationBaseTokens: historyContextTokenEstimate + draftAttachmentTokenEstimate,
       steeringTokens: steeringContextTokenEstimate,
-      mcpToolTokens: 0
+      mcpToolTokens: 0,
+      compositionSegments: buildContextCompositionSegments({
+        messages: activeSession?.messages || [],
+        systemPrompt,
+        projectLabel: activeProjectLabel,
+        resources: activeSession?.resources
+      })
     }),
     [
-      activeProject,
+      activeProjectLabel,
       activeSession?.messages,
       activeSession?.resources,
       contextWindowInfo.source,
@@ -760,6 +771,7 @@ function App(): React.JSX.Element {
           newProviderType={newProviderType}
           systemPrompt={systemPrompt}
           autoHideOnBlur={autoHideOnBlur}
+          contextRetentionMode={contextRetentionMode}
           appStorePath={appStorePath}
           saveSuccess={saveSuccess}
           skills={skills}
@@ -774,6 +786,7 @@ function App(): React.JSX.Element {
           setNewProviderType={setNewProviderType}
           setSystemPrompt={setSystemPrompt}
           setAutoHideOnBlur={setAutoHideOnBlur}
+          setContextRetentionMode={setContextRetentionMode}
           onSaveGlobalSettings={handleSaveGlobalSettings}
           onSaveProviderDetails={handleSaveProviderDetails}
           onAddProvider={handleAddProvider}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import {
   ApiProvider,
   AppSettings,
+  ContextRetentionMode,
   FetchedModelInfo,
   WebSearchProviderType
 } from '../../../shared/types'
@@ -27,6 +28,8 @@ export interface UseProvidersReturn {
   setSystemPrompt: React.Dispatch<React.SetStateAction<string>>
   autoHideOnBlur: boolean
   setAutoHideOnBlur: React.Dispatch<React.SetStateAction<boolean>>
+  contextRetentionMode: ContextRetentionMode
+  setContextRetentionMode: React.Dispatch<React.SetStateAction<ContextRetentionMode>>
   appStorePath: string
   saveSuccess: boolean
   theme: 'dark' | 'light'
@@ -90,6 +93,7 @@ export const useProviders = (): UseProvidersReturn => {
   const [modelContextWindows, setModelContextWindows] = useState<Record<string, number>>({})
   const [systemPrompt, setSystemPrompt] = useState('')
   const [autoHideOnBlur, setAutoHideOnBlur] = useState(true)
+  const [contextRetentionMode, setContextRetentionMode] = useState<ContextRetentionMode>('default')
   const [appStorePath, setAppStorePath] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
@@ -147,6 +151,9 @@ export const useProviders = (): UseProvidersReturn => {
 
         setSystemPrompt(upgradedSettings.systemPrompt || '')
         setAutoHideOnBlur(upgradedSettings.autoHideOnBlur !== false)
+        setContextRetentionMode(
+          upgradedSettings.contextRetentionMode === 'cache-priority' ? 'cache-priority' : 'default'
+        )
         setTheme(upgradedSettings.theme || 'dark')
         setWebSearchProvider(upgradedSettings.webSearch?.provider || 'auto')
         setWebSearchApiKey(upgradedSettings.webSearch?.apiKey || '')
@@ -199,6 +206,7 @@ export const useProviders = (): UseProvidersReturn => {
     if (savedSettings) {
       savedSettings.systemPrompt = systemPrompt
       savedSettings.autoHideOnBlur = autoHideOnBlur
+      savedSettings.contextRetentionMode = contextRetentionMode
       savedSettings.theme = theme
       savedSettings.permissions = permissions
       savedSettings.webSearch = {
@@ -429,7 +437,9 @@ export const useProviders = (): UseProvidersReturn => {
     } catch (e) {
       const err = e as Error
       console.error(err)
-      alert(`\u83b7\u53d6 ${modelId} \u7684\u4e0a\u4e0b\u6587\u957f\u5ea6\u5931\u8d25: ${err.message || err}`)
+      alert(
+        `\u83b7\u53d6 ${modelId} \u7684\u4e0a\u4e0b\u6587\u957f\u5ea6\u5931\u8d25: ${err.message || err}`
+      )
     } finally {
       setRefreshingModelContextId(null)
     }
@@ -524,6 +534,8 @@ export const useProviders = (): UseProvidersReturn => {
     setSystemPrompt,
     autoHideOnBlur,
     setAutoHideOnBlur,
+    contextRetentionMode,
+    setContextRetentionMode,
     appStorePath,
     saveSuccess,
     theme,

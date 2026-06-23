@@ -16,6 +16,9 @@ import {
   formatCacheRate
 } from '../utils/contextDiagnostics'
 import type {
+  ContextCompositionGroupKind,
+  ContextCompositionRole,
+  ContextCompositionSegment,
   ContextDiagnosticsSnapshot,
   ContextUsageBreakdown
 } from '../utils/contextDiagnostics'
@@ -59,25 +62,129 @@ const getUsageTone = (percent: number): 'ok' | 'warn' | 'danger' => {
   return 'ok'
 }
 
-const ProgressRow: React.FC<{
-  label: string
-  tokens: number
-  percent: number
-  description?: string
-}> = ({ label, tokens, percent, description }) => (
-  <div className="context-panel-progress-row">
-    <div className="context-panel-progress-head">
-      <span>{label}</span>
-      <span>
-        {formatTokens(tokens)} · {formatUsagePercent(percent)}
-      </span>
+const contextRoleLabels: Record<ContextCompositionRole, string> = {
+  system: 'system',
+  tool_call: 'tool call',
+  tool: 'tool',
+  user: 'user',
+  assistant: 'assistant'
+}
+
+const formatChars = (chars: number): string => `${Math.max(0, chars).toLocaleString()} chars`
+
+interface ContextCompositionRenderGroup {
+  id: string
+  kind?: ContextCompositionGroupKind
+  label?: string
+  segments: ContextCompositionSegment[]
+}
+
+const buildSegmentTitle = (segment: ContextCompositionSegment): string =>
+  [
+    `${contextRoleLabels[segment.role]} \u00b7 ${formatChars(segment.textLength)}`,
+    segment.label !== contextRoleLabels[segment.role] ? segment.label : undefined,
+    segment.preview
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+const buildSegmentGroups = (
+  segments: ContextCompositionSegment[]
+): ContextCompositionRenderGroup[] => {
+  const groups: ContextCompositionRenderGroup[] = []
+
+  for (const segment of segments) {
+    const id = segment.groupId || segment.id
+    const lastGroup = groups[groups.length - 1]
+
+    if (lastGroup?.id === id) {
+      lastGroup.segments.push(segment)
+      continue
+    }
+
+    groups.push({
+      id,
+      kind: segment.groupKind,
+      label: segment.groupLabel,
+      segments: [segment]
+    })
+  }
+
+  return groups
+}
+
+const buildGroupTitle = (group: ContextCompositionRenderGroup): string => {
+  const totalChars = group.segments.reduce((total, segment) => total + segment.textLength, 0)
+  const roleSummary = group.segments
+    .map((segment) => contextRoleLabels[segment.role] + ': ' + formatChars(segment.textLength))
+    .join('\n')
+
+  return [
+    (group.label || 'Context group') +
+      ' - ' +
+      group.segments.length.toLocaleString() +
+      ' segments - ' +
+      formatChars(totalChars),
+    roleSummary
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+const ContextCompositionGrid: React.FC<{ segments: ContextCompositionSegment[] }> = ({
+  segments
+}) => {
+  const totalChars = segments.reduce((total, segment) => total + segment.textLength, 0)
+  const groups = buildSegmentGroups(segments)
+
+  return (
+    <div className="context-role-composition">
+      <div className="context-role-summary">
+        <span>{segments.length.toLocaleString()} segments</span>
+        <span>{formatChars(totalChars)}</span>
+      </div>
+      <div className="context-role-cells" aria-label="Context message roles">
+        {segments.length > 0 ? (
+          groups.map((group) => {
+            const groupTitle = buildGroupTitle(group)
+            return (
+              <span
+                key={group.id}
+                className={`context-role-group kind-${group.kind || 'plain'}`}
+                title={groupTitle}
+                aria-label={groupTitle}
+                role="group"
+              >
+                {group.segments.map((segment) => {
+                  const title = buildSegmentTitle(segment)
+                  return (
+                    <span
+                      key={segment.id}
+                      className={`context-role-cell role-${segment.role}`}
+                      title={title}
+                      aria-label={title}
+                      tabIndex={0}
+                    />
+                  )
+                })}
+              </span>
+            )
+          })
+        ) : (
+          <span className="context-role-empty">No context messages</span>
+        )}
+      </div>
+      <div className="context-role-legend" aria-hidden="true">
+        {(Object.keys(contextRoleLabels) as ContextCompositionRole[]).map((role) => (
+          <span className="context-role-legend-item" key={role}>
+            <span className={`context-role-legend-dot role-${role}`} />
+            {contextRoleLabels[role]}
+          </span>
+        ))}
+      </div>
     </div>
-    <div className="context-panel-progress-track" aria-hidden="true">
-      <span style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
-    </div>
-    {description && <div className="context-panel-progress-desc">{description}</div>}
-  </div>
-)
+  )
+}
 
 const MetricGrid: React.FC<{ metrics: ContextPanelMetric[] }> = ({ metrics }) => (
   <div className="context-panel-metric-grid">
@@ -178,24 +285,7 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
               <Gauge size={14} />
               <span>上下文组成</span>
             </div>
-            <ProgressRow
-              label="Conversation"
-              tokens={usage.conversationTokens}
-              percent={usage.conversationPercent}
-              description="历史消息、当前输入和附件估算。"
-            />
-            <ProgressRow
-              label="MCP/tools"
-              tokens={usage.mcpToolTokens}
-              percent={usage.mcpToolPercent}
-              description="工具 schema 或 MCP 相关上下文。"
-            />
-            <ProgressRow
-              label="Steering files"
-              tokens={usage.steeringTokens}
-              percent={usage.steeringPercent}
-              description="系统提示、项目上下文、资源摘要。"
-            />
+            <ContextCompositionGrid segments={diagnostics.compositionSegments} />
           </section>
 
           <section className="context-panel-section">

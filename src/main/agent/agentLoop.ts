@@ -21,6 +21,7 @@ import { runForcedFinalTurn } from './forcedFinalTurnRunner'
 import { startAgentRunLifecycle } from './agentRunLifecycle'
 import { persistAgentRunCheckpoint } from './agentRunCheckpoint'
 import { createAgentEventStream } from './agentEventStream'
+import { getPromptCacheStats } from './callModel'
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
@@ -151,7 +152,11 @@ export const runAgentLoop = async (
       model: options.model,
       apiUrl: options.apiUrl,
       skillName: isSkill ? options.skill!.name : 'General Agent',
-      messages
+      messages,
+      contextRetentionMode: options.contextRetentionMode,
+      cachePriorityRetainedRuns: options.cachePriorityRetainedRuns,
+      contextWindowTokens: getEffectiveContextWindowSize(options),
+      initialActiveTools
     })
 
     const toolRegistry = getToolRegistryView()
@@ -189,6 +194,13 @@ export const runAgentLoop = async (
         strategy: 'truncate-oldest-tool'
       })
 
+      SessionLogger.logModelRequest(conversationId, {
+        step,
+        messages,
+        toolsToDeclare,
+        contextWindowTokens: contextSize
+      })
+
       // Stream assistant text as an unclassified model message until we know whether this
       // model turn becomes a tool step or the final answer. Some providers emit content
       // before tool_call deltas, so the final/step classification has to happen after the turn.
@@ -217,7 +229,11 @@ export const runAgentLoop = async (
       })
 
       messages.push(assistantMessage)
-      SessionLogger.logModelResponse(conversationId, assistantMessage)
+      SessionLogger.logModelResponse(
+        conversationId,
+        assistantMessage,
+        getPromptCacheStats(assistantMessage)
+      )
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         const toolTurn = await runToolTurn({

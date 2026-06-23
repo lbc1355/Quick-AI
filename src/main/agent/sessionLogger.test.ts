@@ -39,8 +39,21 @@ describe('SessionLogger', () => {
     expect(content).toContain('# Session Debug Log: test-session-123')
     expect(content).toContain('Run Started: `run-abc`')
     expect(content).toContain('**Model**: `gpt-4o`')
-    expect(content).toContain('You are an assistant.')
-    expect(content).toContain('Hello!')
+    expect(content).toContain('**Messages**: `2`')
+    expect(content).toContain('**Structured Log**')
+
+    const jsonlPath = join(home, 'logs', `session-${sessionId}.jsonl`)
+    expect(existsSync(jsonlPath)).toBe(true)
+    let jsonlLines = readFileSync(jsonlPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(jsonlLines[0]).toMatchObject({
+      type: 'run_start',
+      runId,
+      model: 'gpt-4o',
+      context: { messageCount: 2 }
+    })
 
     // 2. Log Step Start
     SessionLogger.logStepStart(sessionId, 1, 5)
@@ -61,10 +74,19 @@ describe('SessionLogger', () => {
       ]
     })
     content = readFileSync(logPath, 'utf8')
-    expect(content).toContain('Let me think first.')
-    expect(content).toContain('I will run a tool.')
+    expect(content).toContain('**Content chars**')
     expect(content).toContain('workspace_list_files')
-    expect(content).toContain('{"path":"."}')
+    jsonlLines = readFileSync(jsonlPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    const modelResponse = jsonlLines.find((event) => event.type === 'model_response')
+    expect(modelResponse).toMatchObject({
+      type: 'model_response',
+      contentChars: 18,
+      reasoningChars: 19
+    })
+    expect(modelResponse.toolCalls[0]).toMatchObject({ name: 'workspace_list_files' })
 
     // 4. Log Tool Execution
     SessionLogger.logToolExecution(
@@ -80,11 +102,21 @@ describe('SessionLogger', () => {
     content = readFileSync(logPath, 'utf8')
     expect(content).toContain('**Tool**: `workspace_list_files`')
     expect(content).toContain('**Call ID**: `call_1`')
-    expect(content).toContain('"path": "."')
-    expect(content).toContain('**Permission Decision**: `allow`')
     expect(content).toContain('**Status**: `success`')
     expect(content).toContain('**Duration**: `120ms`')
-    expect(content).toContain('file1.txt')
+    expect(content).not.toContain('file1.txt')
+    jsonlLines = readFileSync(jsonlPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    const toolExecution = jsonlLines.find((event) => event.type === 'tool_execution')
+    expect(toolExecution).toMatchObject({
+      toolName: 'workspace_list_files',
+      args: { path: '.' },
+      status: 'success',
+      durationMs: 120,
+      outputChars: 'file1.txt\nfile2.txt'.length
+    })
 
     // 5. Log Run End
     SessionLogger.logRunEnd(sessionId, 'completed')

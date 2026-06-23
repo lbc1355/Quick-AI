@@ -1,6 +1,7 @@
 import { AgentSkillRunOptions, ChatCompletionMessage, SessionResource } from '../../shared/types'
 import { searchToolDefinitions as defaultSearchToolDefinitions } from '../toolRegistry'
 import { ActionLog, getActionLogPath } from './actionLog'
+import { insertCachePriorityToolContext } from './cachePriorityContext'
 import {
   buildSkillMessages as defaultBuildSkillMessages,
   prepareChatAgentMessages as defaultPrepareChatAgentMessages
@@ -23,6 +24,8 @@ export interface AgentRunOptions {
   model: string
   modelRuntime?: AgentSkillRunOptions['modelRuntime']
   contextWindowTokens?: number
+  contextRetentionMode?: AgentSkillRunOptions['contextRetentionMode']
+  cachePriorityRetainedRuns?: AgentSkillRunOptions['cachePriorityRetainedRuns']
   systemPrompt?: string
   messages?: ChatCompletionMessage[]
   skill?: AgentSkillRunOptions['skill']
@@ -113,8 +116,7 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
   const buildBranchForkPrompt = dependencies.buildBranchForkPrompt || defaultBuildBranchForkPrompt
   const injectPromptBeforeLatestUser =
     dependencies.injectPromptBeforeLatestUser || defaultInjectPromptBeforeLatestUser
-  const searchToolDefinitions =
-    dependencies.searchToolDefinitions || defaultSearchToolDefinitions
+  const searchToolDefinitions = dependencies.searchToolDefinitions || defaultSearchToolDefinitions
 
   const isSkill = !!options.skill
   const toolDiscovery: AgentToolDiscovery = isSkill
@@ -162,8 +164,17 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
       resources: options.resources
     })
   } else {
+    const baseMessages =
+      options.contextRetentionMode === 'cache-priority' && options.cachePriorityRetainedRuns
+        ? insertCachePriorityToolContext(options.messages || [], {
+            sessionId: conversationId,
+            retainedRuns: options.cachePriorityRetainedRuns,
+            loadRunCheckpoint
+          })
+        : options.messages || []
+
     messages = prepareChatAgentMessages(
-      options.messages || [],
+      baseMessages,
       options.systemPrompt,
       options.resources,
       permissions,

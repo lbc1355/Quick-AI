@@ -1,19 +1,121 @@
 import { join } from 'path'
 import { existsSync, appendFileSync, mkdirSync } from 'fs'
 import { getLogsRoot } from '../paths'
-import { ChatCompletionMessage } from '../../shared/types'
+import {
+  CachePriorityRetainedRunRef,
+  ChatCompletionMessage,
+  ChatToolDeclaration,
+  ContextRetentionMode,
+  PromptCacheStats
+} from '../../shared/types'
+import { estimateMessagesTokens, estimateTokens } from '../../shared/tokenEstimator'
 
 export interface SessionLoggerStartOptions {
   model: string
   apiUrl: string
   skillName?: string
   messages: ChatCompletionMessage[]
+  contextRetentionMode?: ContextRetentionMode
+  cachePriorityRetainedRuns?: CachePriorityRetainedRunRef[]
+  contextWindowTokens?: number
+  initialActiveTools?: string[]
+}
+
+export interface SessionLoggerModelRequestOptions {
+  step: number
+  messages: ChatCompletionMessage[]
+  toolsToDeclare?: ChatToolDeclaration[]
+  contextWindowTokens: number
+}
+
+const PREVIEW_LIMIT = 120
+
+const formatNumber = (value: number | undefined): string =>
+  value !== undefined && Number.isFinite(value) ? value.toLocaleString() : 'n/a'
+
+const getMessageContentString = (message: ChatCompletionMessage): string => {
+  if (typeof message.content === 'string') return message.content
+  if (Array.isArray(message.content)) return JSON.stringify(message.content)
+  return ''
+}
+
+const truncate = (value: string, max = PREVIEW_LIMIT): string => {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  return normalized.length > max ? `${normalized.slice(0, Math.max(0, max - 3))}...` : normalized
+}
+
+const summarizeToolRefs = (message: ChatCompletionMessage): string[] => {
+  if (message.role === 'tool') {
+    return [[message.name, message.tool_call_id].filter(Boolean).join(':')].filter(Boolean)
+  }
+  return (message.tool_calls || []).map((toolCall) => `${toolCall.function.name}:${toolCall.id}`)
+}
+
+const summarizeRoleSequence = (messages: ChatCompletionMessage[]): string[] =>
+  messages.map((message) => {
+    if (message.role === 'assistant' && message.tool_calls?.length) {
+      return `assistant(tool_calls:${message.tool_calls.length})`
+    }
+    return message.role
+  })
+
+const formatRoleCounts = (messages: ChatCompletionMessage[]): Record<string, number> => {
+  const counts: Record<string, number> = {}
+  for (const message of messages) {
+    counts[message.role] = (counts[message.role] || 0) + 1
+  }
+  return counts
+}
+
+const buildContextAudit = (messages: ChatCompletionMessage[]) => {
+  const totalChars = messages.reduce(
+    (sum, message) => sum + getMessageContentString(message).length,
+    0
+  )
+  return {
+    messageCount: messages.length,
+    roleCounts: formatRoleCounts(messages),
+    roleSequence: summarizeRoleSequence(messages),
+    contentChars: totalChars,
+    estimatedTokens: estimateMessagesTokens(messages),
+    messages: messages.map((message, index) => {
+      const content = getMessageContentString(message)
+      return {
+        index,
+        role: message.role,
+        chars: content.length,
+        estimatedTokens: estimateTokens(content),
+        toolCallCount: message.tool_calls?.length || 0,
+        toolRefs: summarizeToolRefs(message),
+        preview: truncate(content)
+      }
+    })
+  }
+}
+
+const buildUsagePayload = (stats: PromptCacheStats | undefined) => {
+  if (!stats) return undefined
+  return {
+    hasCacheStats: stats.hasCacheStats !== false,
+    promptTokens: stats.promptTokens,
+    completionTokens: stats.completionTokens,
+    totalTokens: stats.totalTokens,
+    reasoningTokens: stats.reasoningTokens,
+    cacheHitTokens: stats.cacheHitTokens,
+    cacheMissTokens: stats.cacheMissTokens,
+    hitRate: stats.hitRate
+  }
 }
 
 export class SessionLogger {
   private static getSessionLogPath(sessionId: string): string {
     const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_')
     return join(getLogsRoot(), `session-${safeId}.md`)
+  }
+
+  private static getSessionJsonlPath(sessionId: string): string {
+    const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_')
+    return join(getLogsRoot(), `session-${safeId}.jsonl`)
   }
 
   private static append(sessionId: string, markdown: string): void {
@@ -35,6 +137,22 @@ export class SessionLogger {
     }
   }
 
+  private static appendJsonl(sessionId: string, event: Record<string, unknown>): void {
+    try {
+      const path = this.getSessionJsonlPath(sessionId)
+      const dir = join(path, '..')
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true })
+      }
+      appendFileSync(path, `${JSON.stringify(event)}\n`, 'utf8')
+    } catch (err) {
+      console.warn(
+        `Failed to write structured session log for ${sessionId}:`,
+        (err as Error).message
+      )
+    }
+  }
+
   private static formatTime(date: Date): string {
     const Y = date.getFullYear()
     const M = String(date.getMonth() + 1).padStart(2, '0')
@@ -46,44 +164,40 @@ export class SessionLogger {
     return `${Y}-${M}-${D} ${h}:${m}:${s}.${ms}`
   }
 
+  private static eventBase(sessionId: string, type: string): Record<string, unknown> {
+    return {
+      type,
+      sessionId,
+      timestamp: new Date().toISOString()
+    }
+  }
+
   static logRunStart(sessionId: string, runId: string, options: SessionLoggerStartOptions): void {
     const time = this.formatTime(new Date())
-    const messagesStr = options.messages.map((m, idx) => {
-      let contentStr = ''
-      if (typeof m.content === 'string') {
-        contentStr = m.content
-      } else if (Array.isArray(m.content)) {
-        contentStr = JSON.stringify(m.content, null, 2)
-      }
+    const audit = buildContextAudit(options.messages)
 
-      let toolCallsStr = ''
-      if (m.tool_calls && m.tool_calls.length > 0) {
-        toolCallsStr = '\n**Tool Calls**:\n' + m.tool_calls.map(tc => {
-          return `- ID: \`${tc.id}\`, Name: \`${tc.function.name}\`, Args: \`${tc.function.arguments}\``
-        }).join('\n')
-      }
-
-      let reasoningStr = ''
-      if (m.reasoning_content) {
-        reasoningStr = `\n**Reasoning thought**:\n> ${m.reasoning_content.replace(/\n/g, '\n> ')}`
-      }
-
-      const roleHeader = m.role === 'tool' && m.tool_call_id
-        ? `##### [Message ${idx + 1}] Role: \`tool\` (call ID: \`${m.tool_call_id}\`, name: \`${m.name || ''}\`)`
-        : `##### [Message ${idx + 1}] Role: \`${m.role}\``
-
-      return `${roleHeader}\n${reasoningStr ? reasoningStr + '\n' : ''}\`\`\`\n${contentStr}\n\`\`\`${toolCallsStr}`
-    }).join('\n\n')
+    this.appendJsonl(sessionId, {
+      ...this.eventBase(sessionId, 'run_start'),
+      runId,
+      model: options.model,
+      apiUrl: options.apiUrl,
+      mode: options.skillName || 'General Agent',
+      contextRetentionMode: options.contextRetentionMode || 'default',
+      cachePriorityRetainedRuns: options.cachePriorityRetainedRuns || [],
+      contextWindowTokens: options.contextWindowTokens,
+      initialActiveTools: options.initialActiveTools || [],
+      context: audit
+    })
 
     const md = `
 ## [${time}] Run Started: \`${runId}\`
 - **Model**: \`${options.model}\`
 - **API URL**: \`${options.apiUrl}\`
 - **Mode**: \`${options.skillName || 'General Agent'}\`
-
-### Initial Context (Messages before run)
-
-${messagesStr}
+- **Context Retention**: \`${options.contextRetentionMode || 'default'}\`
+- **Messages**: \`${audit.messageCount}\`
+- **Estimated Context Tokens**: \`${formatNumber(audit.estimatedTokens)}\`
+- **Structured Log**: \`session-${sessionId.replace(/[^a-zA-Z0-9_-]/g, '_')}.jsonl\`
 
 ---
 `
@@ -92,32 +206,60 @@ ${messagesStr}
 
   static logStepStart(sessionId: string, step: number, maxSteps: number): void {
     const time = this.formatTime(new Date())
+    this.appendJsonl(sessionId, {
+      ...this.eventBase(sessionId, 'step_start'),
+      step,
+      maxSteps
+    })
     const md = `
 ### Step ${step} / ${maxSteps} (Timestamp: ${time})
 `
     this.append(sessionId, md)
   }
 
-  static logModelResponse(sessionId: string, response: ChatCompletionMessage): void {
+  static logModelRequest(sessionId: string, options: SessionLoggerModelRequestOptions): void {
+    this.appendJsonl(sessionId, {
+      ...this.eventBase(sessionId, 'model_request'),
+      step: options.step,
+      contextWindowTokens: options.contextWindowTokens,
+      declaredTools: options.toolsToDeclare?.map((tool) => tool.function.name) || [],
+      context: buildContextAudit(options.messages)
+    })
+  }
+
+  static logModelResponse(
+    sessionId: string,
+    response: ChatCompletionMessage,
+    cacheStats?: PromptCacheStats
+  ): void {
     const time = this.formatTime(new Date())
+    const content = getMessageContentString(response)
+    const toolCalls = response.tool_calls || []
+    this.appendJsonl(sessionId, {
+      ...this.eventBase(sessionId, 'model_response'),
+      role: response.role,
+      contentChars: content.length,
+      reasoningChars: response.reasoning_content?.length || 0,
+      toolCalls: toolCalls.map((toolCall) => ({
+        id: toolCall.id,
+        name: toolCall.function.name,
+        argsChars: toolCall.function.arguments.length
+      })),
+      usage: buildUsagePayload(cacheStats),
+      preview: truncate(content)
+    })
+
     let toolCallsStr = '(none)'
-    if (response.tool_calls && response.tool_calls.length > 0) {
-      toolCallsStr = '\n' + response.tool_calls.map(tc => {
-        return `- ID: \`${tc.id}\`, Name: \`${tc.function.name}\`\n  - Arguments:\n  \`\`\`json\n  ${tc.function.arguments}\n  \`\`\``
-      }).join('\n')
+    if (toolCalls.length > 0) {
+      toolCallsStr = toolCalls.map((tc) => `\`${tc.function.name}\` (${tc.id})`).join(', ')
     }
 
     const md = `
 #### Model Response (Timestamp: ${time})
-- **Reasoning**:
-> ${response.reasoning_content ? response.reasoning_content.trim().replace(/\n/g, '\n> ') : '(none)'}
-
-- **Content**:
-\`\`\`
-${response.content || '(none)'}
-\`\`\`
-
+- **Content chars**: \`${formatNumber(content.length)}\`
+- **Reasoning chars**: \`${formatNumber(response.reasoning_content?.length || 0)}\`
 - **Tool Calls**: ${toolCallsStr}
+- **Usage / Cache**: ${cacheStats ? `prompt ${formatNumber(cacheStats.promptTokens)}, hit ${formatNumber(cacheStats.cacheHitTokens)}, miss ${formatNumber(cacheStats.cacheMissTokens)}, rate ${Number.isFinite(cacheStats.hitRate) ? `${cacheStats.hitRate}%` : 'n/a'}` : 'not returned'}
 `
     this.append(sessionId, md)
   }
@@ -133,28 +275,35 @@ ${response.content || '(none)'}
     result: string
   ): void {
     const time = this.formatTime(new Date())
+    this.appendJsonl(sessionId, {
+      ...this.eventBase(sessionId, 'tool_execution'),
+      callId,
+      toolName,
+      args,
+      permission,
+      status,
+      durationMs,
+      outputChars: result.length,
+      preview: truncate(result)
+    })
     const md = `
 #### Tool Execution (Timestamp: ${time})
 - **Tool**: \`${toolName}\`
 - **Call ID**: \`${callId}\`
-- **Arguments**:
-\`\`\`json
-${JSON.stringify(args, null, 2)}
-\`\`\`
-- **Permission Decision**: \`${permission}\`
 - **Status**: \`${status}\`
 - **Duration**: \`${durationMs}ms\`
 - **Output Size**: \`${result.length}\` characters
-- **Output**:
-\`\`\`
-${result}
-\`\`\`
 `
     this.append(sessionId, md)
   }
 
   static logRunEnd(sessionId: string, status: string, error?: string): void {
     const time = this.formatTime(new Date())
+    this.appendJsonl(sessionId, {
+      ...this.eventBase(sessionId, 'run_end'),
+      status,
+      error
+    })
     const md = `
 ### Run Finished: \`${status}\` (Timestamp: ${time})
 ${error ? `- **Error**: \`${error}\`` : ''}

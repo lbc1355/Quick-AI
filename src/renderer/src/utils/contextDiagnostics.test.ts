@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildContextCompositionSegments,
   buildContextUsageBreakdown,
   formatUsagePercent,
   getContextUsagePercent,
@@ -35,7 +36,8 @@ const baseDiagnostics = {
   contextWindowTokens: 10_000,
   conversationBaseTokens: 2_000,
   steeringTokens: 500,
-  mcpToolTokens: 300
+  mcpToolTokens: 300,
+  compositionSegments: []
 }
 
 describe('contextDiagnostics', () => {
@@ -128,6 +130,50 @@ describe('contextDiagnostics', () => {
     })
   })
 
+  it('builds role composition segments from messages and tool events', () => {
+    const segments = buildContextCompositionSegments({
+      systemPrompt: 'system prompt',
+      projectLabel: 'Quick Ai',
+      resources: [],
+      messages: [
+        { id: 'u1', role: 'user', content: 'read the file' },
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: 'done',
+          agentEvents: [
+            {
+              type: 'tool_call',
+              callId: 'call-1',
+              toolName: 'file_read',
+              args: { path: 'README.md' }
+            },
+            {
+              type: 'tool_result',
+              callId: 'call-1',
+              result: { title: 'README.md', details: 'file contents' }
+            }
+          ]
+        }
+      ]
+    })
+
+    expect(segments.map((segment) => segment.role)).toEqual([
+      'system',
+      'user',
+      'tool_call',
+      'tool',
+      'assistant'
+    ])
+    expect(segments.find((segment) => segment.role === 'tool_call')?.textLength).toBeGreaterThan(0)
+    expect(segments.find((segment) => segment.role === 'tool')?.preview).toContain('README.md')
+    expect(segments.find((segment) => segment.role === 'system')?.groupKind).toBe('system')
+    expect(segments.find((segment) => segment.role === 'user')?.groupKind).toBe('user')
+
+    const agentSegments = segments.filter((segment) => segment.groupKind === 'agent')
+    expect(agentSegments.map((segment) => segment.role)).toEqual(['tool_call', 'tool', 'assistant'])
+    expect(new Set(agentSegments.map((segment) => segment.groupId)).size).toBe(1)
+  })
   it('builds context usage percentages for the circular meter', () => {
     const usage = buildContextUsageBreakdown({
       draftTokens: 700,
@@ -152,5 +198,4 @@ describe('contextDiagnostics', () => {
     expect(formatUsagePercent(3)).toBe('3%')
     expect(formatUsagePercent(3.3)).toBe('3.3%')
   })
-
 })

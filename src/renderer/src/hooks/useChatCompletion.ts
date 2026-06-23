@@ -1,5 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Message, ModelRuntimeConfig, Project, Session, Skill, RunMode } from '../../../shared/types'
+import {
+  CachePriorityRetainedRunRef,
+  ContextRetentionMode,
+  Message,
+  ModelRuntimeConfig,
+  Project,
+  Session,
+  Skill,
+  RunMode
+} from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
 import { isRuntimeErrorAssistantMessage, prepareMessageForInlineResume } from './chatMessageEvents'
 import { createForkedSession, getRunIdsThroughMessage } from './sessionBranching'
@@ -27,6 +36,7 @@ interface UseChatCompletionProps {
   selectedModel: string
   modelRuntimeConfig?: ModelRuntimeConfig
   contextWindowTokens?: number
+  contextRetentionMode: ContextRetentionMode
   systemPrompt: string
   setShowSettings: (show: boolean) => void
   attachedFiles: Array<{ name: string; content: string; type: string }>
@@ -97,6 +107,7 @@ export const useChatCompletion = ({
   selectedModel,
   modelRuntimeConfig,
   contextWindowTokens,
+  contextRetentionMode,
   systemPrompt,
   setShowSettings,
   attachedFiles,
@@ -116,6 +127,7 @@ export const useChatCompletion = ({
     selectedModel,
     modelRuntimeConfig,
     contextWindowTokens,
+    contextRetentionMode,
     systemPrompt,
     projects
   })
@@ -126,10 +138,20 @@ export const useChatCompletion = ({
       selectedModel,
       modelRuntimeConfig,
       contextWindowTokens,
+      contextRetentionMode,
       systemPrompt,
       projects
     }
-  }, [apiKey, apiUrl, selectedModel, modelRuntimeConfig, contextWindowTokens, systemPrompt, projects])
+  }, [
+    apiKey,
+    apiUrl,
+    selectedModel,
+    modelRuntimeConfig,
+    contextWindowTokens,
+    contextRetentionMode,
+    systemPrompt,
+    projects
+  ])
 
   const isGeneratingRef = useRef(isGenerating)
   useEffect(() => {
@@ -154,6 +176,36 @@ export const useChatCompletion = ({
   useEffect(() => {
     runModeRef.current = runMode
   }, [runMode])
+
+  const getCachePriorityRetainedRuns = (
+    messages: Message[]
+  ): CachePriorityRetainedRunRef[] | undefined => {
+    if (latestRequestConfigRef.current.contextRetentionMode !== 'cache-priority') return undefined
+
+    // The main process inserts retained tool context before prepareChatAgentMessages adds
+    // the system prompt, so this index must match the outbound history messages array.
+    let apiMessageIndex = 0
+    const refs: CachePriorityRetainedRunRef[] = []
+    const seen = new Set<string>()
+
+    for (const message of messages) {
+      if (isRuntimeErrorAssistantMessage(message)) continue
+
+      if (message.role === 'assistant') {
+        const runIds = message.agentRunIds || (message.agentRunId ? [message.agentRunId] : [])
+        for (const runId of runIds) {
+          if (runId && !seen.has(runId)) {
+            seen.add(runId)
+            refs.push({ runId, assistantMessageIndex: apiMessageIndex })
+          }
+        }
+      }
+
+      apiMessageIndex++
+    }
+
+    return refs.length > 0 ? refs : undefined
+  }
 
   const resolveSessionForSend = (currentSessions: Session[]): Session => {
     const now = Date.now()
@@ -500,6 +552,10 @@ export const useChatCompletion = ({
           model: requestConfig.selectedModel,
           modelRuntime: requestConfig.modelRuntimeConfig,
           contextWindowTokens: requestConfig.contextWindowTokens,
+          contextRetentionMode: requestConfig.contextRetentionMode,
+          cachePriorityRetainedRuns: getCachePriorityRetainedRuns(
+            targetSession.messages.slice(0, -1)
+          ),
           messages: apiMessages,
           runMode: effectiveRunMode,
           resources: targetSession.resources,
@@ -578,6 +634,10 @@ export const useChatCompletion = ({
           model: requestConfig.selectedModel,
           modelRuntime: requestConfig.modelRuntimeConfig,
           contextWindowTokens: requestConfig.contextWindowTokens,
+          contextRetentionMode: requestConfig.contextRetentionMode,
+          cachePriorityRetainedRuns: getCachePriorityRetainedRuns(
+            currentSession.messages.slice(0, -1)
+          ),
           systemPrompt: requestConfig.systemPrompt,
           skill,
           userInput,
@@ -725,6 +785,10 @@ export const useChatCompletion = ({
           model: requestConfig.selectedModel,
           modelRuntime: requestConfig.modelRuntimeConfig,
           contextWindowTokens: requestConfig.contextWindowTokens,
+          contextRetentionMode: requestConfig.contextRetentionMode,
+          cachePriorityRetainedRuns: getCachePriorityRetainedRuns(
+            targetSession.messages.slice(0, -1)
+          ),
           messages: [],
           runMode: 'agent',
           resources: targetSession.resources,
