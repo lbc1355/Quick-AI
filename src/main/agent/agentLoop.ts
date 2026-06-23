@@ -21,7 +21,11 @@ import { runForcedFinalTurn } from './forcedFinalTurnRunner'
 import { startAgentRunLifecycle } from './agentRunLifecycle'
 import { persistAgentRunCheckpoint } from './agentRunCheckpoint'
 import { createAgentEventStream } from './agentEventStream'
-import { getPromptCacheStats } from './callModel'
+import {
+  captureCacheShape,
+  commitCacheShapeForSession,
+  previewCacheShapeForSession
+} from './cacheShapeDiagnostics'
 
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
@@ -194,17 +198,30 @@ export const runAgentLoop = async (
         strategy: 'truncate-oldest-tool'
       })
 
+      const cacheShape = captureCacheShape({
+        messages,
+        toolsToDeclare,
+        contextRetentionMode: options.contextRetentionMode,
+        cachePriorityRetainedRuns: options.cachePriorityRetainedRuns
+      })
+      const requestCacheDiagnostics = previewCacheShapeForSession(conversationId, cacheShape)
+
       SessionLogger.logModelRequest(conversationId, {
         step,
         messages,
         toolsToDeclare,
-        contextWindowTokens: contextSize
+        contextWindowTokens: contextSize,
+        cacheDiagnostics: requestCacheDiagnostics
       })
 
       // Stream assistant text as an unclassified model message until we know whether this
       // model turn becomes a tool step or the final answer. Some providers emit content
       // before tool_call deltas, so the final/step classification has to happen after the turn.
-      const { assistantMessage, streamedText: assistantTextBuffer } = await runModelTurn({
+      const {
+        assistantMessage,
+        streamedText: assistantTextBuffer,
+        cacheStats
+      } = await runModelTurn({
         modelConfig: {
           apiUrl: options.apiUrl,
           apiKey: options.apiKey,
@@ -225,15 +242,16 @@ export const runAgentLoop = async (
             step,
             stepId
           })
+        },
+        decorateCacheStats: (stats) => {
+          const diagnostics = commitCacheShapeForSession(conversationId, cacheShape, stats)
+          if (!stats) return undefined
+          return { ...stats, cacheDiagnostics: diagnostics }
         }
       })
 
       messages.push(assistantMessage)
-      SessionLogger.logModelResponse(
-        conversationId,
-        assistantMessage,
-        getPromptCacheStats(assistantMessage)
-      )
+      SessionLogger.logModelResponse(conversationId, assistantMessage, cacheStats)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         const toolTurn = await runToolTurn({

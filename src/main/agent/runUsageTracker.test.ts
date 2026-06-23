@@ -28,19 +28,15 @@ describe('createRunUsageTracker', () => {
   it('returns usage totals even when the provider has no cache stats', () => {
     const tracker = createRunUsageTracker()
 
-    tracker.recordModelResponse(
-      { role: 'assistant', content: 'Done.' },
-      500,
-      {
-        hasCacheStats: false,
-        promptTokens: 100,
-        completionTokens: 20,
-        reasoningTokens: 5,
-        totalTokens: 125,
-        cacheHitTokens: 0,
-        hitRate: 0
-      }
-    )
+    tracker.recordModelResponse({ role: 'assistant', content: 'Done.' }, 500, {
+      hasCacheStats: false,
+      promptTokens: 100,
+      completionTokens: 20,
+      reasoningTokens: 5,
+      totalTokens: 125,
+      cacheHitTokens: 0,
+      hitRate: 0
+    })
 
     expect(tracker.getAggregatedCacheStats()).toEqual({
       hasCacheStats: false,
@@ -57,16 +53,12 @@ describe('createRunUsageTracker', () => {
   it('infers cache miss tokens from prompt tokens when the provider omits misses', () => {
     const tracker = createRunUsageTracker()
 
-    tracker.recordModelResponse(
-      { role: 'assistant', content: 'Done.' },
-      500,
-      {
-        promptTokens: 100,
-        completionTokens: 10,
-        cacheHitTokens: 70,
-        hitRate: 70
-      }
-    )
+    tracker.recordModelResponse({ role: 'assistant', content: 'Done.' }, 500, {
+      promptTokens: 100,
+      completionTokens: 10,
+      cacheHitTokens: 70,
+      hitRate: 70
+    })
 
     expect(tracker.getAggregatedCacheStats()).toEqual({
       hasCacheStats: true,
@@ -83,28 +75,20 @@ describe('createRunUsageTracker', () => {
   it('aggregates usage and cache stats across multiple model responses', () => {
     const tracker = createRunUsageTracker()
 
-    tracker.recordModelResponse(
-      { role: 'assistant', content: 'First.' },
-      100,
-      {
-        promptTokens: 100,
-        completionTokens: 10,
-        cacheHitTokens: 50,
-        cacheMissTokens: 50,
-        hitRate: 50
-      }
-    )
-    tracker.recordModelResponse(
-      { role: 'assistant', content: 'Second.' },
-      100,
-      {
-        promptTokens: 50,
-        completionTokens: 5,
-        cacheHitTokens: 25,
-        cacheMissTokens: 25,
-        hitRate: 50
-      }
-    )
+    tracker.recordModelResponse({ role: 'assistant', content: 'First.' }, 100, {
+      promptTokens: 100,
+      completionTokens: 10,
+      cacheHitTokens: 50,
+      cacheMissTokens: 50,
+      hitRate: 50
+    })
+    tracker.recordModelResponse({ role: 'assistant', content: 'Second.' }, 100, {
+      promptTokens: 50,
+      completionTokens: 5,
+      cacheHitTokens: 25,
+      cacheMissTokens: 25,
+      hitRate: 50
+    })
 
     expect(tracker.getAggregatedCacheStats()).toEqual({
       hasCacheStats: true,
@@ -115,6 +99,31 @@ describe('createRunUsageTracker', () => {
       cacheHitTokens: 75,
       cacheMissTokens: 75,
       hitRate: 50
+    })
+  })
+  it('preserves the latest cache diagnostics on aggregated stats', () => {
+    const tracker = createRunUsageTracker()
+
+    tracker.recordModelResponse({ role: 'assistant', content: 'Done.' }, 100, {
+      promptTokens: 100,
+      cacheHitTokens: 80,
+      cacheMissTokens: 20,
+      hitRate: 80,
+      cacheDiagnostics: {
+        prefixHash: 'prefix',
+        prefixChanged: false,
+        prefixChangeReasons: [],
+        systemHash: 'system',
+        toolsHash: 'tools',
+        messageShapeHash: 'shape',
+        messageCount: 2,
+        toolSchemaTokens: 42
+      }
+    })
+
+    expect(tracker.getAggregatedCacheStats()?.cacheDiagnostics).toMatchObject({
+      prefixHash: 'prefix',
+      toolSchemaTokens: 42
     })
   })
 })

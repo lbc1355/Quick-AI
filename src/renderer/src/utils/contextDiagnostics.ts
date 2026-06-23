@@ -1,4 +1,4 @@
-import type { Message, SessionResource } from '../../../shared/types'
+import type { CacheShapeDiagnostics, Message, SessionResource } from '../../../shared/types'
 import type { ContextWindowSource } from '../../../shared/modelContext'
 import { estimateTokens } from '../../../shared/tokenEstimator'
 
@@ -24,6 +24,7 @@ export interface PromptCacheDiagnostics {
   missTokens: number
   promptTokens: number
   sampleCount: number
+  latestDiagnostics?: CacheShapeDiagnostics
 }
 
 export interface ConversationTokenDiagnostics {
@@ -290,12 +291,14 @@ export function summarizePromptCacheStats(messages: Message[]): PromptCacheDiagn
   let sampleCount = 0
   let fallbackRateTotal = 0
   let fallbackRateCount = 0
+  let latestDiagnostics: CacheShapeDiagnostics | undefined
 
   for (const message of messages) {
     const stats = message.role === 'assistant' ? message.cacheStats : undefined
     if (!stats || stats.hasCacheStats === false || !Number.isFinite(stats.hitRate)) continue
 
     latestHitRate = stats.hitRate
+    if (stats.cacheDiagnostics) latestDiagnostics = stats.cacheDiagnostics
     sampleCount += 1
     fallbackRateTotal += stats.hitRate
     fallbackRateCount += 1
@@ -329,7 +332,8 @@ export function summarizePromptCacheStats(messages: Message[]): PromptCacheDiagn
     hitTokens,
     missTokens,
     promptTokens,
-    sampleCount
+    sampleCount,
+    latestDiagnostics
   }
 }
 

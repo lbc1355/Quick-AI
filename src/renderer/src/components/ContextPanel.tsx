@@ -56,6 +56,15 @@ const formatMaybeTokens = (available: boolean, tokens: number): string =>
 
 const formatMaybeRate = (rate: number | undefined): string => formatCacheRate(rate) || '未返回'
 
+const cacheReasonLabels: Record<string, string> = {
+  system: '系统提示变化',
+  tools: '工具 schema 变化',
+  context_retention: '上下文保留模式变化',
+  message_content: '历史消息内容变化',
+  message_shape: '消息结构非追加',
+  tool_call_duplication: '工具上下文重复'
+}
+
 const getUsageTone = (percent: number): 'ok' | 'warn' | 'danger' => {
   if (percent >= 90) return 'danger'
   if (percent >= 70) return 'warn'
@@ -225,6 +234,23 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
   const tokenUsage = diagnostics.tokenUsage
   const apiUsageAvailable = tokenUsage.hasApiUsage
   const cache = diagnostics.cache
+  const cacheShapeDiagnostics = cache.latestDiagnostics
+  const cacheShapeStatus = !cacheShapeDiagnostics
+    ? '暂无诊断'
+    : cacheShapeDiagnostics.prefixChanged
+      ? '发生变化'
+      : cacheShapeDiagnostics.appendOnlyFromPrevious === false
+        ? '非追加'
+        : '稳定'
+  const cacheShapeDetail = cacheShapeDiagnostics
+    ? cacheShapeDiagnostics.prefixChangeReasons.length > 0
+      ? cacheShapeDiagnostics.prefixChangeReasons
+          .map((reason) => cacheReasonLabels[reason] || reason)
+          .join('、')
+      : cacheShapeDiagnostics.appendOnlyFromPrevious === undefined
+        ? '当前进程内首次请求'
+        : 'append-only 前缀保持稳定'
+    : undefined
   const cacheTokenTotal = cache.hitTokens + cache.missTokens
   const contextSource = diagnostics.contextWindowSource || 'default'
   const contextRingStyle = {
@@ -375,6 +401,12 @@ export const ContextPanel: React.FC<ContextPanelProps> = ({
                 label="工具权限"
                 value={`${diagnostics.customPermissionCount} 项`}
                 detail="非默认权限会进入 agent 前缀。"
+              />
+              <FactorRow
+                icon={<Gauge size={13} />}
+                label="缓存结构"
+                value={cacheShapeStatus}
+                detail={cacheShapeDetail}
               />
               <FactorRow
                 icon={<History size={13} />}

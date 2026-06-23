@@ -3,6 +3,7 @@ import { existsSync, appendFileSync, mkdirSync } from 'fs'
 import { getLogsRoot } from '../paths'
 import {
   CachePriorityRetainedRunRef,
+  CacheShapeDiagnostics,
   ChatCompletionMessage,
   ChatToolDeclaration,
   ContextRetentionMode,
@@ -26,6 +27,7 @@ export interface SessionLoggerModelRequestOptions {
   messages: ChatCompletionMessage[]
   toolsToDeclare?: ChatToolDeclaration[]
   contextWindowTokens: number
+  cacheDiagnostics?: CacheShapeDiagnostics
 }
 
 const PREVIEW_LIMIT = 120
@@ -103,7 +105,8 @@ const buildUsagePayload = (stats: PromptCacheStats | undefined) => {
     reasoningTokens: stats.reasoningTokens,
     cacheHitTokens: stats.cacheHitTokens,
     cacheMissTokens: stats.cacheMissTokens,
-    hitRate: stats.hitRate
+    hitRate: stats.hitRate,
+    cacheDiagnostics: stats.cacheDiagnostics
   }
 }
 
@@ -223,6 +226,7 @@ export class SessionLogger {
       step: options.step,
       contextWindowTokens: options.contextWindowTokens,
       declaredTools: options.toolsToDeclare?.map((tool) => tool.function.name) || [],
+      cacheDiagnostics: options.cacheDiagnostics,
       context: buildContextAudit(options.messages)
     })
   }

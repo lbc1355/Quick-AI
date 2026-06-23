@@ -47,7 +47,13 @@ describe('runModelTurn', () => {
 
     expect(result).toEqual({
       assistantMessage,
-      streamedText: 'Final content'
+      streamedText: 'Final content',
+      cacheStats: {
+        promptTokens: 10,
+        completionTokens: 2,
+        cacheHitTokens: 7,
+        hitRate: 70
+      }
     })
     expect(callModel).toHaveBeenCalledWith(
       {
@@ -69,5 +75,58 @@ describe('runModelTurn', () => {
       cacheHitTokens: 7,
       hitRate: 70
     })
+  })
+  it('decorates cache stats before recording usage', async () => {
+    const assistantMessage: ChatCompletionMessage = {
+      role: 'assistant',
+      content: 'Final content'
+    }
+    const callModel = vi.fn(async () => assistantMessage)
+    const usageTracker = createRunUsageTracker()
+    const recordSpy = vi.spyOn(usageTracker, 'recordModelResponse')
+
+    const result = await runModelTurn({
+      modelConfig: {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'key',
+        model: 'model'
+      },
+      messages: [{ role: 'user', content: 'Hello' }],
+      toolsToDeclare: [],
+      usageTracker,
+      callModel,
+      getPromptCacheStats: () => ({
+        promptTokens: 10,
+        cacheHitTokens: 7,
+        cacheMissTokens: 3,
+        hitRate: 70
+      }),
+      decorateCacheStats: (stats) =>
+        stats
+          ? {
+              ...stats,
+              cacheDiagnostics: {
+                prefixHash: 'p',
+                prefixChanged: false,
+                prefixChangeReasons: [],
+                systemHash: 's',
+                toolsHash: 't',
+                messageShapeHash: 'm',
+                messageCount: 1,
+                toolSchemaTokens: 0
+              }
+            }
+          : undefined,
+      now: vi.fn().mockReturnValueOnce(100).mockReturnValueOnce(200),
+      onReasoning: vi.fn(),
+      onContentChunk: vi.fn()
+    })
+
+    expect(result.cacheStats?.cacheDiagnostics).toMatchObject({ prefixHash: 'p' })
+    expect(recordSpy).toHaveBeenCalledWith(
+      assistantMessage,
+      100,
+      expect.objectContaining({ cacheDiagnostics: expect.objectContaining({ prefixHash: 'p' }) })
+    )
   })
 })

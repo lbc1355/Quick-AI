@@ -22,9 +22,14 @@ export function createRunUsageTracker(): RunUsageTracker {
   let totalUsageTokens = 0
   let hasCacheStats = false
   let hasUsageStats = false
+  let latestCacheDiagnostics: PromptCacheStats['cacheDiagnostics'] | undefined
 
   const addPromptCacheStats = (stats: PromptCacheStats | undefined): void => {
     if (!stats) return
+
+    if (stats.cacheDiagnostics) {
+      latestCacheDiagnostics = stats.cacheDiagnostics
+    }
 
     if (stats.promptTokens !== undefined) {
       hasUsageStats = true
@@ -93,7 +98,8 @@ export function createRunUsageTracker(): RunUsageTracker {
         hitRate:
           hasCacheStats && denominator && denominator > 0
             ? Number(((totalCacheHitTokens / denominator) * 100).toFixed(1))
-            : 0
+            : 0,
+        ...(latestCacheDiagnostics ? { cacheDiagnostics: latestCacheDiagnostics } : {})
       }
     }
   }

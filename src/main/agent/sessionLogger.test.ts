@@ -60,19 +60,56 @@ describe('SessionLogger', () => {
     content = readFileSync(logPath, 'utf8')
     expect(content).toContain('### Step 1 / 5')
 
-    // 3. Log Model Response
-    SessionLogger.logModelResponse(sessionId, {
-      role: 'assistant',
-      content: 'I will run a tool.',
-      reasoning_content: 'Let me think first.',
-      tool_calls: [
-        {
-          id: 'call_1',
-          type: 'function',
-          function: { name: 'workspace_list_files', arguments: '{"path":"."}' }
-        }
-      ]
+    // 3. Log Model Request/Response
+    SessionLogger.logModelRequest(sessionId, {
+      step: 1,
+      messages: [{ role: 'user', content: 'Hello!' }],
+      contextWindowTokens: 128000,
+      cacheDiagnostics: {
+        prefixHash: 'prefix',
+        prefixChanged: false,
+        prefixChangeReasons: [],
+        systemHash: 'system',
+        toolsHash: 'tools',
+        messageShapeHash: 'shape',
+        messageCount: 1,
+        toolSchemaTokens: 0
+      }
     })
+
+    SessionLogger.logModelResponse(
+      sessionId,
+      {
+        role: 'assistant',
+        content: 'I will run a tool.',
+        reasoning_content: 'Let me think first.',
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'workspace_list_files', arguments: '{"path":"."}' }
+          }
+        ]
+      },
+      {
+        promptTokens: 100,
+        cacheHitTokens: 80,
+        cacheMissTokens: 20,
+        hitRate: 80,
+        cacheDiagnostics: {
+          prefixHash: 'prefix',
+          prefixChanged: false,
+          prefixChangeReasons: [],
+          systemHash: 'system',
+          toolsHash: 'tools',
+          messageShapeHash: 'shape',
+          messageCount: 1,
+          toolSchemaTokens: 0,
+          cacheHitTokens: 80,
+          cacheMissTokens: 20
+        }
+      }
+    )
     content = readFileSync(logPath, 'utf8')
     expect(content).toContain('**Content chars**')
     expect(content).toContain('workspace_list_files')
@@ -80,6 +117,8 @@ describe('SessionLogger', () => {
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line))
+    const modelRequest = jsonlLines.find((event) => event.type === 'model_request')
+    expect(modelRequest.cacheDiagnostics).toMatchObject({ prefixHash: 'prefix' })
     const modelResponse = jsonlLines.find((event) => event.type === 'model_response')
     expect(modelResponse).toMatchObject({
       type: 'model_response',
@@ -87,6 +126,11 @@ describe('SessionLogger', () => {
       reasoningChars: 19
     })
     expect(modelResponse.toolCalls[0]).toMatchObject({ name: 'workspace_list_files' })
+    expect(modelResponse.usage.cacheDiagnostics).toMatchObject({
+      prefixHash: 'prefix',
+      cacheHitTokens: 80,
+      cacheMissTokens: 20
+    })
 
     // 4. Log Tool Execution
     SessionLogger.logToolExecution(

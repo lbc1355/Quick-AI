@@ -65,7 +65,17 @@ describe('contextDiagnostics', () => {
           promptTokens: 300,
           cacheHitTokens: 270,
           cacheMissTokens: 30,
-          hitRate: 90
+          hitRate: 90,
+          cacheDiagnostics: {
+            prefixHash: 'prefix',
+            prefixChanged: false,
+            prefixChangeReasons: [],
+            systemHash: 'system',
+            toolsHash: 'tools',
+            messageShapeHash: 'shape',
+            messageCount: 3,
+            toolSchemaTokens: 12
+          }
         }
       }
     ]
@@ -76,7 +86,8 @@ describe('contextDiagnostics', () => {
       hitTokens: 340,
       missTokens: 60,
       promptTokens: 400,
-      sampleCount: 2
+      sampleCount: 2,
+      latestDiagnostics: expect.objectContaining({ prefixHash: 'prefix', toolSchemaTokens: 12 })
     })
   })
 

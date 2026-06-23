@@ -12,12 +12,14 @@ export interface RunModelTurnOptions {
   onContentChunk: (content: string) => void
   callModel?: typeof callModel
   getPromptCacheStats?: (message: ChatCompletionMessage) => PromptCacheStats | undefined
+  decorateCacheStats?: (stats: PromptCacheStats | undefined) => PromptCacheStats | undefined
   now?: () => number
 }
 
 export interface RunModelTurnResult {
   assistantMessage: ChatCompletionMessage
   streamedText: string
+  cacheStats?: PromptCacheStats
 }
 
 export async function runModelTurn(options: RunModelTurnOptions): Promise<RunModelTurnResult> {
@@ -41,14 +43,16 @@ export async function runModelTurn(options: RunModelTurnOptions): Promise<RunMod
     }
   )
 
-  options.usageTracker.recordModelResponse(
-    assistantMessage,
-    now() - modelStartTime,
-    getStats(assistantMessage)
-  )
+  const rawCacheStats = getStats(assistantMessage)
+  const cacheStats = options.decorateCacheStats
+    ? options.decorateCacheStats(rawCacheStats)
+    : rawCacheStats
+
+  options.usageTracker.recordModelResponse(assistantMessage, now() - modelStartTime, cacheStats)
 
   return {
     assistantMessage,
-    streamedText
+    streamedText,
+    cacheStats
   }
 }

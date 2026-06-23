@@ -53,6 +53,40 @@ export interface AgentToolInfo {
   }
 }
 
+export type CacheShapeChangeReason =
+  | 'system'
+  | 'tools'
+  | 'context_retention'
+  | 'message_shape'
+  | 'message_content'
+  | 'tool_call_duplication'
+
+export interface CacheShapeDiagnostics {
+  prefixHash: string
+  prefixChanged: boolean
+  prefixChangeReasons: CacheShapeChangeReason[]
+  systemHash: string
+  toolsHash: string
+  messageShapeHash: string
+  messageContentHash?: string
+  contextRetentionMode?: ContextRetentionMode
+  retainedRunCount?: number
+  retainedRunHash?: string
+  messageCount: number
+  previousMessageCount?: number
+  currentMessageCount?: number
+  toolSchemaTokens: number
+  appendOnlyFromPrevious?: boolean
+  contentAppendOnlyFromPrevious?: boolean
+  firstDifferentMessageIndex?: number
+  addedMessageCount?: number
+  addedMessageChars?: number
+  addedMessageTokens?: number
+  duplicateToolCallIds?: string[]
+  cacheHitTokens?: number
+  cacheMissTokens?: number
+}
+
 export interface PromptCacheStats {
   hasCacheStats?: boolean
   promptTokens?: number
@@ -62,6 +96,7 @@ export interface PromptCacheStats {
   cacheHitTokens: number
   cacheMissTokens?: number
   hitRate: number
+  cacheDiagnostics?: CacheShapeDiagnostics
 }
 
 export interface AgentEventMetadata {
