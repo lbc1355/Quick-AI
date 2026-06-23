@@ -8,6 +8,8 @@ export interface CreateWorkspaceListResultOptions {
   globPattern: string
   matches: WorkspaceFileMatch[]
   scanTruncatedReason?: string
+  ignoredDirectories?: string[]
+  skippedIgnoredDirectories?: string[]
 }
 
 function formatModelFile(match: WorkspaceFileMatch): string {
@@ -32,19 +34,32 @@ function formatUiItem(match: WorkspaceFileMatch): {
 export function createWorkspaceListResult(
   options: CreateWorkspaceListResultOptions
 ): ToolExecutionResult {
+  const ignoreNotice = options.ignoredDirectories?.length
+    ? `Default ignored directories: ${options.ignoredDirectories.join(', ')}. Set includeIgnoredDirectories=true only when the user explicitly needs those folders.`
+    : ''
+
   let resultForModel = [
     `Root (${options.rootKind}): ${options.root}`,
+    ignoreNotice,
     options.matches.length > 0
       ? options.matches.map(formatModelFile).join('\n\n')
       : `No files found matching glob: "${options.globPattern}"`
-  ].join('\n\n')
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 
   if (options.scanTruncatedReason) {
     resultForModel += `\n\n[Warning: Scan was truncated. Reason: ${options.scanTruncatedReason}]`
   }
+  if (options.skippedIgnoredDirectories?.length) {
+    resultForModel += `\n\n[Info: Skipped ignored directories during this scan: ${options.skippedIgnoredDirectories.join(', ')}]`
+  }
 
   const summaryText =
     `Found ${options.matches.length} files in ${options.root}` +
+    (options.skippedIgnoredDirectories?.length
+      ? ` (Skipped ignored dirs: ${options.skippedIgnoredDirectories.join(', ')})`
+      : '') +
     (options.scanTruncatedReason ? ` (Scan truncated: ${options.scanTruncatedReason})` : '')
 
   return createToolResult({

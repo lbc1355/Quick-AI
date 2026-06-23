@@ -8,7 +8,7 @@ export const memoryActionTools: Record<string, ToolDefinition> = {
     name: 'list_past_actions',
     title: 'List Past Tool Actions',
     description:
-      'Browse your own tool call history for this conversation. Returns a list of recent actions (tool name, turn index, status, result summary). Use this to recall what you have already tried before repeating work or asking the user. Optionally filter by tool name, turn range, or limit.',
+      'Browse your own tool call history for this conversation. Returns a list of recent actions (tool name, turn index, status, result summary). Use this to recall what you have already tried before repeating work or asking the user. Optionally filter by exact tool name, keyword query, turn range, or limit.',
     tags: ['memory', 'history', 'actions', 'audit', 'log', '历史', '记录', '操作'],
     category: 'memory',
     risk: 'low',
@@ -20,7 +20,12 @@ export const memoryActionTools: Record<string, ToolDefinition> = {
         toolName: {
           type: 'string',
           description:
-            'Optional filter: only return actions for this tool (e.g. "fetch_url", "web_search").'
+            'Optional exact filter: only return actions for this tool (e.g. "fetch_url", "web_search").'
+        },
+        query: {
+          type: 'string',
+          description:
+            'Optional fuzzy filter across tool name, callId, status, and result summary. Use "mcp" or a server name to find older MCP calls without knowing the exact tool name.'
         },
         fromTurn: {
           type: 'number',
@@ -39,10 +44,13 @@ export const memoryActionTools: Record<string, ToolDefinition> = {
     execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
       const run = getRun(ctx.reqId)
       if (!run) {
-        throw new Error('No active agent run found - action log is only available during an agent session.')
+        throw new Error(
+          'No active agent run found - action log is only available during an agent session.'
+        )
       }
       const list = run.actionLog.list({
         toolName: typeof args.toolName === 'string' ? args.toolName : undefined,
+        query: typeof args.query === 'string' ? args.query : undefined,
         fromTurn: typeof args.fromTurn === 'number' ? args.fromTurn : undefined,
         toTurn: typeof args.toTurn === 'number' ? args.toTurn : undefined,
         limit: typeof args.limit === 'number' ? Math.min(50, Math.max(1, args.limit)) : 20

@@ -182,9 +182,9 @@ export const useChatCompletion = ({
   ): CachePriorityRetainedRunRef[] | undefined => {
     if (latestRequestConfigRef.current.contextRetentionMode !== 'cache-priority') return undefined
 
-    // The main process inserts retained tool context before prepareChatAgentMessages adds
-    // the system prompt, so this index must match the outbound history messages array.
-    let apiMessageIndex = 0
+    // The main process inserts retained tool context into the outbound message array. When the
+    // renderer prepends a system prompt to apiMessages, visible dialogue indexes are shifted by one.
+    let apiMessageIndex = latestRequestConfigRef.current.systemPrompt ? 1 : 0
     const refs: CachePriorityRetainedRunRef[] = []
     const seen = new Set<string>()
 

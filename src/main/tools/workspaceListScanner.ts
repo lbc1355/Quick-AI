@@ -16,17 +16,40 @@ export interface WorkspaceListScanOptions {
   globPattern: string
   limit: number
   signal: AbortSignal
+  includeIgnoredDirectories?: boolean
 }
 
 export interface WorkspaceListScanResult {
   matches: WorkspaceFileMatch[]
   scanTruncatedReason?: string
+  ignoredDirectories: string[]
+  skippedIgnoredDirectories: string[]
 }
 
 const MAX_FILES_SCANNED = 5000
 const MAX_DIRS_SCANNED = 1000
 const SEARCH_TIMEOUT_MS = 10000
-const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'dist', 'out', 'build'])
+export const DEFAULT_IGNORED_DIRECTORIES = [
+  '.git',
+  'node_modules',
+  'dist',
+  'out',
+  'build',
+  '.venv',
+  'venv',
+  '.env',
+  'env',
+  'site-packages',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.ruff_cache',
+  '.tox',
+  '.nox',
+  'htmlcov'
+]
+
+const IGNORED_DIRECTORIES = new Set(DEFAULT_IGNORED_DIRECTORIES)
 
 const normalizeRelativePath = (path: string): string => path.replace(/\\/g, '/')
 
@@ -40,6 +63,7 @@ export async function scanWorkspaceFiles(
 
   const globRegex = globToRegex(options.globPattern)
   const matches: WorkspaceFileMatch[] = []
+  const skippedIgnoredDirectories = new Set<string>()
 
   const walk = async (dir: string): Promise<void> => {
     if (options.signal.aborted || scanTruncatedReason) return
@@ -62,7 +86,8 @@ export async function scanWorkspaceFiles(
       const relPath = relative(options.root, resPath)
 
       if (dirent.isDirectory()) {
-        if (IGNORED_DIRECTORIES.has(dirent.name)) {
+        if (!options.includeIgnoredDirectories && IGNORED_DIRECTORIES.has(dirent.name)) {
+          skippedIgnoredDirectories.add(dirent.name)
           continue
         }
         await walk(resPath)
@@ -104,6 +129,8 @@ export async function scanWorkspaceFiles(
 
   return {
     matches,
-    scanTruncatedReason
+    scanTruncatedReason,
+    ignoredDirectories: options.includeIgnoredDirectories ? [] : [...DEFAULT_IGNORED_DIRECTORIES],
+    skippedIgnoredDirectories: [...skippedIgnoredDirectories].sort()
   }
 }

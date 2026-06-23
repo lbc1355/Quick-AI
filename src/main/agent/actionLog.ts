@@ -182,6 +182,7 @@ export class ActionLog {
   /** Return a page of summaries, newest first. */
   list(options?: {
     toolName?: string
+    query?: string
     fromTurn?: number
     toTurn?: number
     limit?: number
@@ -190,6 +191,16 @@ export class ActionLog {
 
     if (options?.toolName) {
       filtered = filtered.filter((r) => r.toolName === options.toolName)
+    }
+    const query = options?.query?.trim().toLowerCase()
+    if (query) {
+      filtered = filtered.filter((r) =>
+        [r.toolName, r.callId, r.resultStatus, r.resultSummary].some((value) =>
+          String(value || '')
+            .toLowerCase()
+            .includes(query)
+        )
+      )
     }
     if (options?.fromTurn !== undefined) {
       filtered = filtered.filter((r) => r.turnIndex >= options.fromTurn!)

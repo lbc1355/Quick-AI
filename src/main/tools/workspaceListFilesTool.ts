@@ -14,7 +14,7 @@ export const workspaceListFilesTool: ToolDefinition = {
   name: 'workspace_list_files',
   title: 'List Workspace Files',
   description:
-    'Lists files matching a glob wildcard pattern within the global workspace, current project root, or an added reference root. In project conversations, relative paths default to the project root.',
+    'Lists files matching a glob wildcard pattern within the global workspace, current project root, or an added reference root. In project conversations, relative paths default to the project root. Skips common dependency, virtual environment, cache, and coverage directories by default.',
   tags: [
     'file',
     'list',
@@ -49,6 +49,11 @@ export const workspaceListFilesTool: ToolDefinition = {
       maxResults: {
         type: 'number',
         description: 'Maximum number of file paths to return (default: 100).'
+      },
+      includeIgnoredDirectories: {
+        type: 'boolean',
+        description:
+          'Set true only when the user explicitly asks to inspect ignored folders such as .venv, venv, site-packages, __pycache__, cache, tox/nox, or coverage directories. Default false.'
       }
     },
     required: ['glob']
@@ -61,6 +66,7 @@ export const workspaceListFilesTool: ToolDefinition = {
 
     const maxResults = typeof args.maxResults === 'number' ? Math.max(1, args.maxResults) : 100
     const limit = Math.min(maxResults, 1000)
+    const includeIgnoredDirectories = args.includeIgnoredDirectories === true
 
     const requestedRoot = getRootArg(args)
     const requestedPath = typeof args.path === 'string' && args.path.trim() ? args.path : ''
@@ -84,7 +90,8 @@ export const workspaceListFilesTool: ToolDefinition = {
       root,
       globPattern,
       limit,
-      signal: ctx.signal
+      signal: ctx.signal,
+      includeIgnoredDirectories
     })
 
     if (ctx.signal.aborted) {
@@ -96,7 +103,9 @@ export const workspaceListFilesTool: ToolDefinition = {
       rootKind: rootInfo.rootKind,
       globPattern,
       matches: scanResult.matches,
-      scanTruncatedReason: scanResult.scanTruncatedReason
+      scanTruncatedReason: scanResult.scanTruncatedReason,
+      ignoredDirectories: scanResult.ignoredDirectories,
+      skippedIgnoredDirectories: scanResult.skippedIgnoredDirectories
     })
   }
 }

@@ -43,6 +43,20 @@ describe('ActionLog (in-memory)', () => {
     expect(list).toHaveLength(1)
     expect(list[0].callId).toBe('b')
   })
+  it('filters by fuzzy query across MCP tool names and summaries', () => {
+    const log = new ActionLog()
+    log.append(makeRecord({ callId: 'a', toolName: 'file_read', resultSummary: 'readme' }))
+    log.append(
+      makeRecord({
+        callId: 'b',
+        toolName: 'mcp_codebase-memory-mcp_list_projects',
+        resultSummary: 'indexed project list'
+      })
+    )
+
+    expect(log.list({ query: 'mcp' }).map((r) => r.callId)).toEqual(['b'])
+    expect(log.list({ query: 'indexed' }).map((r) => r.callId)).toEqual(['b'])
+  })
 
   it('filters by turn range', () => {
     const log = new ActionLog()
