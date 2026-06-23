@@ -12,6 +12,7 @@ import { fileMoveTool } from './fileMoveTool'
 import { fileDeleteTool } from './fileDeleteTool'
 import { workspaceSearchTool } from './workspaceSearchTool'
 import { workspaceListFilesTool } from './workspaceListFilesTool'
+import { workspaceAddRootTool } from './workspaceAddRootTool'
 
 export const fileTools: Record<string, ToolDefinition> = {
   file_read: fileReadTool,
@@ -26,5 +27,6 @@ export const fileTools: Record<string, ToolDefinition> = {
   file_delete: fileDeleteTool,
   workspace_search: workspaceSearchTool,
   workspace_list_files: workspaceListFilesTool,
+  workspace_add_root: workspaceAddRootTool,
   file_diff: fileDiffTool
 }

@@ -7,24 +7,16 @@ import { FetchUrlBudget } from './preparedToolExecutor'
 import { RetryPolicy } from './retryPolicy'
 import { AmbiguousAction } from './runCheckpoint'
 import { LoopGuard } from './loopGuard'
-import {
-  ToolPermission,
-  prepareToolCalls as defaultPrepareToolCalls
-} from './toolCallPlanning'
-import {
-  buildAgentStepPresentation as defaultBuildAgentStepPresentation
-} from './toolStepPresentation'
-import {
-  createToolStepExecutor as defaultCreateToolStepExecutor
-} from './toolStepApplicator'
-import {
-  processPreparedToolStep as defaultProcessPreparedToolStep
-} from './toolStepProcessor'
+import { ToolPermission, prepareToolCalls as defaultPrepareToolCalls } from './toolCallPlanning'
+import { buildAgentStepPresentation as defaultBuildAgentStepPresentation } from './toolStepPresentation'
+import { createToolStepExecutor as defaultCreateToolStepExecutor } from './toolStepApplicator'
+import { processPreparedToolStep as defaultProcessPreparedToolStep } from './toolStepProcessor'
 
 export interface ToolTurnRunContext {
   activeTools: Set<string>
   actionLog: ActionLog
   projectRoot?: string
+  getAdditionalRootPaths?: () => string[]
   isToolActive: (toolName: string) => boolean
   isToolApproved: (toolName: string) => boolean
   isCommandPrefixApproved: (command: string) => boolean
@@ -108,6 +100,7 @@ export async function runToolTurn(options: RunToolTurnOptions): Promise<RunToolT
     hasExecuted: (callKey) => options.runContext.hasExecuted(callKey),
     loopGuard: options.loopGuard,
     projectRoot: options.runContext.projectRoot,
+    additionalRoots: options.runContext.getAdditionalRootPaths?.() || [],
     toolRegistry: options.toolRegistry
   })
 

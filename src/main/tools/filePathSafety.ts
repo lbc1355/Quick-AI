@@ -5,14 +5,14 @@ import { ToolExecutionContext } from './types'
 import { getRun } from '../agent/AgentRunContext'
 import { getWorkspaceRoot, isSensitiveFile } from './helpers'
 
-export type FileRootKind = 'workspace' | 'project'
+export type FileRootKind = 'workspace' | 'project' | 'extra'
 export type FileRootArg = FileRootKind | undefined
 
 export const ROOT_PARAMETER = {
   type: 'string',
   enum: ['workspace', 'project'],
   description:
-    'Optional root selector. In project conversations, relative paths default to project; use "workspace" for QuickAI scratch files.'
+    'Optional root selector. In project conversations, relative paths default to project; use "workspace" for QuickAI scratch files. Additional roots are selected by absolute path after workspace_add_root.'
 }
 
 export interface SafePath {
@@ -35,6 +35,21 @@ export function getNamedRootArg(args: ToolArgs, key: string): FileRootArg {
 
 function getProjectRoot(ctx: ToolExecutionContext): string | undefined {
   return ctx.reqId ? getRun(ctx.reqId)?.projectRoot : undefined
+}
+
+function getAdditionalRoots(ctx: ToolExecutionContext): string[] {
+  return ctx.reqId ? (getRun(ctx.reqId)?.getAdditionalRootPaths() ?? []) : []
+}
+
+function getAdditionalRootForPath(
+  resolvedPath: string,
+  ctx: ToolExecutionContext
+): { root: string; rootKind: 'extra' } | undefined {
+  const roots = getAdditionalRoots(ctx)
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+  const matched = roots.find((root) => isPathInsideRoot(resolvedPath, root))
+  return matched ? { root: matched, rootKind: 'extra' } : undefined
 }
 
 export function normalizeComparablePath(filePath: string): string {
@@ -99,8 +114,12 @@ function getAccessibleRootForResolvedPath(
   if (isPathInsideRoot(resolvedPath, workspaceRoot)) {
     return { root: workspaceRoot, rootKind: 'workspace' }
   }
+  const extraRoot = getAdditionalRootForPath(resolvedPath, ctx)
+  if (extraRoot) {
+    return extraRoot
+  }
   throw new Error(
-    'Security Violation: Path is outside the global workspace and current project root.'
+    'Security Violation: Path is outside the global workspace and current project root or additional roots.'
   )
 }
 

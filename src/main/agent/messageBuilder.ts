@@ -147,12 +147,14 @@ function buildWorkspaceContextPrompt(projectRoot?: string, projectName?: string)
         'Workspace roots:',
         `- Global workspace: the private QuickAI scratch space. Use file tools with {"root":"workspace"} when you explicitly need temporary files there.`,
         `- Project root${projectName ? ` (${projectName})` : ''}: ${projectRoot}`,
-        'File tool rule: in this project conversation, relative file paths default to the Project root. Writes/edits/deletes in the Project root require user confirmation.'
+        'File tool rule: in this project conversation, relative file paths default to the Project root. Writes/edits/deletes in the Project root require user confirmation.',
+        'If the task needs files from another local project, call workspace_add_root once with that project directory, then use absolute paths under that added root.'
       ]
     : [
         'Workspace roots:',
         '- This is a free conversation with only the Global QuickAI workspace available to file tools.',
-        'File tool rule: relative file paths resolve inside the Global workspace. No project directory is attached.'
+        'File tool rule: relative file paths resolve inside the Global workspace. No project directory is attached.',
+        'If the task needs files from another local directory, call workspace_add_root once with that directory, then use absolute paths under that added root.'
       ]
   return workspaceMode.join('\n')
 }

@@ -13,6 +13,7 @@ describe('File Safety & Search Tools', () => {
   const workspaceRoot = getWorkspaceRoot()
   const testDir = join(workspaceRoot, 'temp-file-test-dir')
   const projectRoot = resolve(workspaceRoot, '..', 'quickai-filetools-project')
+  const extraRoot = resolve(workspaceRoot, '..', 'quickai-filetools-extra')
 
   // Use concatenated strings so the test file itself does not contain the literal search terms
   const queryStr = 'uniqueMatch' + 'QueryStringForTestingFileTools'
@@ -22,8 +23,10 @@ describe('File Safety & Search Tools', () => {
     // Set up a temporary folder structure within the workspace for testing
     await fs.rm(testDir, { recursive: true, force: true })
     await fs.rm(projectRoot, { recursive: true, force: true })
+    await fs.rm(extraRoot, { recursive: true, force: true })
     await fs.mkdir(testDir, { recursive: true })
     await fs.mkdir(projectRoot, { recursive: true })
+    await fs.mkdir(extraRoot, { recursive: true })
     await fs.mkdir(join(testDir, 'sub'), { recursive: true })
     await fs.mkdir(join(testDir, 'sub', 'deep'), { recursive: true })
     await fs.mkdir(join(testDir, 'node_modules'), { recursive: true })
@@ -52,6 +55,7 @@ describe('File Safety & Search Tools', () => {
     await fs.writeFile(join(testDir, 'node_modules', 'ignored.txt'), queryStr)
     await fs.writeFile(join(projectRoot, 'project-read.txt'), 'project readable content')
     await fs.writeFile(join(projectRoot, 'project-diff.txt'), queryStr)
+    await fs.writeFile(join(extraRoot, 'extra-read.txt'), 'extra readable content with extraNeedle')
   })
 
   afterAll(async () => {
@@ -113,6 +117,60 @@ describe('File Safety & Search Tools', () => {
       await expect(ToolRegistry.file_read.execute({ path: outsidePath }, context)).rejects.toThrow(
         'outside the global workspace and current project root'
       )
+    })
+
+    it('adds an extra root and permits file tools under it across runs', async () => {
+      const { createRun, destroyRun, clearSessionApprovals } =
+        await import('./agent/AgentRunContext')
+      const { ActionLog } = await import('./agent/actionLog')
+
+      const sessionId = 'test-session-extra-root'
+      const reqId = 'test-req-extra-root-1'
+      clearSessionApprovals(sessionId)
+      createRun(reqId, [], 'all', new ActionLog(), undefined, sessionId)
+
+      try {
+        const context = { reqId, signal: new AbortController().signal }
+        const addResult = await ToolRegistry.workspace_add_root.execute(
+          { path: extraRoot, label: 'Extra Project' },
+          context
+        )
+        expect(addResult.resultForModel).toContain(extraRoot)
+
+        const readResult = await ToolRegistry.file_read.execute(
+          { path: join(extraRoot, 'extra-read.txt') },
+          context
+        )
+        expect(readResult.resultForModel).toContain('extra readable content')
+        expect(readResult.resultForModel).toContain('Root (extra):')
+
+        const listResult = await ToolRegistry.workspace_list_files.execute(
+          { path: extraRoot, glob: '**/*.txt' },
+          context
+        )
+        expect(listResult.resultForModel).toContain('extra-read.txt')
+
+        const searchResult = await ToolRegistry.workspace_search.execute(
+          { path: extraRoot, query: 'extraNeedle' },
+          context
+        )
+        expect(searchResult.resultForModel).toContain('extra-read.txt')
+      } finally {
+        destroyRun(reqId)
+      }
+
+      const nextReqId = 'test-req-extra-root-2'
+      createRun(nextReqId, [], 'all', new ActionLog(), undefined, sessionId)
+      try {
+        const inheritedRead = await ToolRegistry.file_read.execute(
+          { path: join(extraRoot, 'extra-read.txt') },
+          { reqId: nextReqId, signal: new AbortController().signal }
+        )
+        expect(inheritedRead.resultForModel).toContain('extra readable content')
+      } finally {
+        destroyRun(nextReqId)
+        clearSessionApprovals(sessionId)
+      }
     })
 
     it('permits reading inside the current project root when run context is active', async () => {
@@ -1129,6 +1187,12 @@ describe('File Safety & Search Tools', () => {
       const results = searchToolDefinitions('translate markdown files')
       const names = results.map((r) => r.name)
       expect(names).toContain('workspace_list_files')
+    })
+
+    it('finds workspace_add_root using reference project queries', () => {
+      const results = searchToolDefinitions('add reference project root directory')
+      const names = results.map((r) => r.name)
+      expect(names).toContain('workspace_add_root')
     })
   })
 })

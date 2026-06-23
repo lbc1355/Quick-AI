@@ -22,11 +22,7 @@ import {
   getBranchSourceKey
 } from './utils/branchDisplay'
 import { getSessionGenerationState } from './utils/generationState'
-import {
-  estimateDraftContextTokens,
-  estimateHistoryContextTokens,
-  estimateSteeringContextTokens
-} from './utils/contextLength'
+import { estimateDraftContextTokens } from './utils/contextLength'
 import {
   buildContextCompositionSegments,
   summarizeConversationTokenUsage,
@@ -634,25 +630,10 @@ function App(): React.JSX.Element {
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
   const activeProviderName = activeProviderConfig?.name || 'No provider'
   const activeModelName = selectedModel || 'No model'
-  const steeringContextTokenEstimate = useMemo(
-    () =>
-      estimateSteeringContextTokens({
-        systemPrompt,
-        project: activeProject,
-        resources: activeSession?.resources
-      }),
-    [activeProject, activeSession?.resources, systemPrompt]
-  )
-  const historyContextTokenEstimate = useMemo(
-    () => estimateHistoryContextTokens(activeSession?.messages || []),
-    [activeSession?.messages]
-  )
   const draftAttachmentTokenEstimate = useMemo(
     () => estimateDraftContextTokens({ attachedFiles }),
     [attachedFiles]
   )
-  const contextBaseTokenEstimate =
-    steeringContextTokenEstimate + historyContextTokenEstimate + draftAttachmentTokenEstimate
   const contextWindowInfo = useMemo(
     () => getProviderModelContextWindowInfo(activeProviderConfig, selectedModel),
     [activeProviderConfig, selectedModel]
@@ -661,6 +642,26 @@ function App(): React.JSX.Element {
   const activeProjectLabel = activeProject
     ? `${activeProject.name}${activeProject.path ? ` (${activeProject.path})` : ''}`
     : undefined
+  const contextComposition = useMemo(() => {
+    const segments = buildContextCompositionSegments({
+      messages: activeSession?.messages || [],
+      systemPrompt,
+      projectLabel: activeProjectLabel,
+      resources: activeSession?.resources
+    })
+    const steeringTokens = segments
+      .filter((segment) => segment.role === 'system')
+      .reduce((total, segment) => total + segment.tokenEstimate, 0)
+    const conversationTokens = segments
+      .filter((segment) => segment.role !== 'system')
+      .reduce((total, segment) => total + segment.tokenEstimate, 0)
+
+    return { segments, steeringTokens, conversationTokens }
+  }, [activeProjectLabel, activeSession?.messages, activeSession?.resources, systemPrompt])
+  const contextBaseTokenEstimate =
+    contextComposition.steeringTokens +
+    contextComposition.conversationTokens +
+    draftAttachmentTokenEstimate
   const contextDiagnostics = useMemo(
     () => ({
       cache: summarizePromptCacheStats(activeSession?.messages || []),
@@ -675,28 +676,24 @@ function App(): React.JSX.Element {
       skillCount: skills.length,
       contextWindowTokens,
       contextWindowSource: contextWindowInfo.source,
-      conversationBaseTokens: historyContextTokenEstimate + draftAttachmentTokenEstimate,
-      steeringTokens: steeringContextTokenEstimate,
+      conversationBaseTokens: contextComposition.conversationTokens + draftAttachmentTokenEstimate,
+      steeringTokens: contextComposition.steeringTokens,
       mcpToolTokens: 0,
-      compositionSegments: buildContextCompositionSegments({
-        messages: activeSession?.messages || [],
-        systemPrompt,
-        projectLabel: activeProjectLabel,
-        resources: activeSession?.resources
-      })
+      compositionSegments: contextComposition.segments
     }),
     [
       activeProjectLabel,
       activeSession?.messages,
       activeSession?.resources,
+      contextComposition.conversationTokens,
+      contextComposition.segments,
+      contextComposition.steeringTokens,
       contextWindowInfo.source,
       contextWindowTokens,
       draftAttachmentTokenEstimate,
-      historyContextTokenEstimate,
       permissions,
       selectedModel,
       skills.length,
-      steeringContextTokenEstimate,
       systemPrompt
     ]
   )

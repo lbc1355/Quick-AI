@@ -12,6 +12,7 @@ export const SIDE_EFFECTING_TOOLS = new Set([
   'file_copy',
   'file_delete',
   'directory_create',
+  'workspace_add_root',
   'write_memory',
   'create_skill',
   'install_skill',

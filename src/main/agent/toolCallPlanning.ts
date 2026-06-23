@@ -55,6 +55,7 @@ export function prepareToolCalls(input: {
   hasExecuted: (callKey: string) => boolean
   loopGuard: LoopGuard
   projectRoot?: string
+  additionalRoots?: string[]
   toolRegistry: ToolRegistryView
 }): PreparedToolCallGroups {
   const seenFetchCallsThisTurn = new Set<string>()
@@ -90,7 +91,7 @@ export function prepareToolCalls(input: {
         toolDef.risk,
         DEFAULT_CONSTITUTION,
         runApproved,
-        { projectRoot: input.projectRoot }
+        { projectRoot: input.projectRoot, additionalRoots: input.additionalRoots }
       )
       effectivePermission = verdict.action
       if (verdict.action !== permission && verdict.reason) {

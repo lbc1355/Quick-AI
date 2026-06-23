@@ -21,8 +21,8 @@ export function createModelInfo(
   previous?: Partial<ModelInfo>
 ): ModelInfo {
   const normalizedContext =
-    normalizeContextWindowTokens(previous?.limit?.context) ??
     normalizeContextWindowTokens(contextTokens) ??
+    normalizeContextWindowTokens(previous?.limit?.context) ??
     getContextWindowInfo(modelId).tokens
 
   return {
@@ -121,12 +121,15 @@ export function getProviderModelRuntimeConfig(
     getProviderModelInfo(normalized, modelId) ||
     createModelInfo(normalized, modelId, normalized.modelContextWindows?.[modelId])
   const contextWindow =
-    normalizeContextWindowTokens(modelInfo.limit.context) ?? getContextWindowInfo(modelInfo.id).tokens
+    normalizeContextWindowTokens(normalized.modelContextWindows?.[modelInfo.id]) ??
+    normalizeContextWindowTokens(modelInfo.limit.context) ??
+    getContextWindowInfo(modelInfo.id).tokens
 
   return {
     providerId: normalized.id,
     providerType: normalized.type,
-    endpointType: modelInfo.endpointType || normalized.endpointType || getProviderEndpointType(normalized),
+    endpointType:
+      modelInfo.endpointType || normalized.endpointType || getProviderEndpointType(normalized),
     modelId: modelInfo.id,
     apiModel: modelInfo.apiId || modelInfo.id,
     displayName: modelInfo.displayName,
@@ -139,6 +142,12 @@ export function getProviderModelContextWindowInfo(
   provider: ApiProvider | undefined,
   modelId: string
 ): ContextWindowInfo {
+  const configuredContext = provider?.modelContextWindows?.[modelId]
+  const normalizedConfiguredContext = normalizeContextWindowTokens(configuredContext)
+  if (normalizedConfiguredContext) {
+    return { tokens: normalizedConfiguredContext, source: 'configured' }
+  }
+
   const catalogContext = provider?.models?.[modelId]?.limit.context
   const normalizedCatalogContext = normalizeContextWindowTokens(catalogContext)
   if (normalizedCatalogContext) {

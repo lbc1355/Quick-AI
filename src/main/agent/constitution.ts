@@ -20,6 +20,7 @@ export interface GuardVerdict {
 
 export interface GuardContext {
   projectRoot?: string
+  additionalRoots?: string[]
 }
 
 const SEVERITY: Record<GuardAction, number> = { allow: 0, ask: 1, deny: 2 }
@@ -93,7 +94,7 @@ function resolveGuardPath(
   value: string,
   context?: GuardContext,
   requestedRoot?: 'workspace' | 'project'
-): { resolvedPath: string; rootKind: 'workspace' | 'project' | 'outside' } {
+): { resolvedPath: string; rootKind: 'workspace' | 'project' | 'extra' | 'outside' } {
   const workspaceRoot = getWorkspaceRoot()
   const projectRoot = context?.projectRoot
   const defaultRoot = projectRoot && requestedRoot !== 'workspace' ? projectRoot : workspaceRoot
@@ -110,6 +111,12 @@ function resolveGuardPath(
   }
   if (isInsideRoot(resolvedPath, workspaceRoot)) {
     return { resolvedPath, rootKind: 'workspace' }
+  }
+  const extraRoot = (context?.additionalRoots || []).find((root) =>
+    isInsideRoot(resolvedPath, root)
+  )
+  if (extraRoot) {
+    return { resolvedPath, rootKind: 'extra' }
   }
   return { resolvedPath, rootKind: 'outside' }
 }
@@ -160,31 +167,38 @@ export function evaluateToolGuard(
   }
 
   // Filesystem path arguments: deny on workspace escape, ask on sensitive targets.
-  for (const key of constitution.pathArgKeys) {
-    const value = args[key]
-    if (typeof value !== 'string' || value === '') continue
-    const requestedRoot = getGuardRootArg(args, key)
-    const pathInfo = resolveGuardPath(value, context, requestedRoot)
-    if (pathInfo.rootKind === 'outside') {
-      tighten(
-        'deny',
-        `Blocked by guardrail: "${key}" ("${value}") is outside the global workspace and current project root.`
-      )
-    } else if (FILE_MUTATION_TOOLS.has(toolName) && pathInfo.rootKind === 'project') {
-      tighten(
-        'ask',
-        `Guardrail: "${toolName}" will modify the project root; confirmation required.`
-      )
-    } else if (pathInfo.rootKind === 'workspace' && pathEscapesWorkspace(value)) {
-      tighten(
-        'ask',
-        `Guardrail: "${key}" ("${value}") escapes the workspace / is outside the workspace; confirmation required.`
-      )
-    } else if (isSensitiveFileName(value)) {
-      tighten(
-        'ask',
-        `Guardrail: "${key}" ("${value}") targets a sensitive file; confirmation required.`
-      )
+  // workspace_add_root is the deliberate capability that expands the allowed root set, so its
+  // path may be outside current roots; the high-risk guard below still requires confirmation.
+  if (toolName !== 'workspace_add_root') {
+    for (const key of constitution.pathArgKeys) {
+      const value = args[key]
+      if (typeof value !== 'string' || value === '') continue
+      const requestedRoot = getGuardRootArg(args, key)
+      const pathInfo = resolveGuardPath(value, context, requestedRoot)
+      if (pathInfo.rootKind === 'outside') {
+        tighten(
+          'deny',
+          `Blocked by guardrail: "${key}" ("${value}") is outside the global workspace and current project root or additional roots.`
+        )
+      } else if (
+        FILE_MUTATION_TOOLS.has(toolName) &&
+        (pathInfo.rootKind === 'project' || pathInfo.rootKind === 'extra')
+      ) {
+        tighten(
+          'ask',
+          `Guardrail: "${toolName}" will modify the project root; confirmation required.`
+        )
+      } else if (pathInfo.rootKind === 'workspace' && pathEscapesWorkspace(value)) {
+        tighten(
+          'ask',
+          `Guardrail: "${key}" ("${value}") escapes the workspace / is outside the workspace; confirmation required.`
+        )
+      } else if (isSensitiveFileName(value)) {
+        tighten(
+          'ask',
+          `Guardrail: "${key}" ("${value}") targets a sensitive file; confirmation required.`
+        )
+      }
     }
   }
 

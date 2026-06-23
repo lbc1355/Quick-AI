@@ -1,5 +1,10 @@
+import { resolve } from 'path'
 import { describe, it, expect } from 'vitest'
-import { AgentRunContext, clearSessionApprovals } from './AgentRunContext'
+import {
+  AgentRunContext,
+  clearSessionApprovals,
+  getSessionAdditionalRoots
+} from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
 import { ActionLog } from './actionLog'
 
@@ -123,6 +128,23 @@ describe('AgentRunContext session-scoped approval inheritance', () => {
 
     const after = makeSessionRun('req-b', 'sess-reset')
     expect(after.isCommandPrefixApproved('npm install')).toBe(false)
+  })
+
+  it('carries additional roots to a later run of the same session', () => {
+    clearSessionApprovals('sess-roots')
+    const rootPath = resolve('D:/reference-project')
+    const run1 = makeSessionRun('req-root-1', 'sess-roots')
+    run1.addAdditionalRoot(rootPath, 'Reference')
+
+    expect(getSessionAdditionalRoots('sess-roots')).toMatchObject([
+      { path: rootPath, label: 'Reference' }
+    ])
+
+    const run2 = makeSessionRun('req-root-2', 'sess-roots')
+    expect(run2.getAdditionalRootPaths()).toEqual([rootPath])
+
+    clearSessionApprovals('sess-roots')
+    expect(getSessionAdditionalRoots('sess-roots')).toEqual([])
   })
 
   it('runs without a sessionId do not share approvals', () => {

@@ -1,3 +1,4 @@
+import { resolve } from 'path'
 import { PermissionManager, globalPermissionManager } from './permissionManager'
 import { ActionLog } from './actionLog'
 import { splitCommandSegments, analyzeCommand } from './commandSafety'
@@ -8,6 +9,38 @@ import { TaskItem } from '../../shared/types'
  *  sessionId — lets "allow for this task" survive across those runs instead of resetting every
  *  message. In-memory only; cleared on app restart or explicitly via clearSessionApprovals. */
 const sessionApprovals = new Map<string, { tools: Set<string>; prefixes: Set<string> }>()
+
+export interface AdditionalRoot {
+  path: string
+  label?: string
+  addedAt: number
+}
+
+const sessionAdditionalRoots = new Map<string, AdditionalRoot[]>()
+
+const normalizeRootKey = (rootPath: string): string => {
+  const resolved = resolve(rootPath).replace(/\\/g, '/').replace(/\/+$/, '')
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+const cloneAdditionalRoots = (roots: AdditionalRoot[] | undefined): AdditionalRoot[] =>
+  roots ? roots.map((root) => ({ ...root })) : []
+
+const upsertAdditionalRoot = (roots: AdditionalRoot[], entry: AdditionalRoot): AdditionalRoot => {
+  const key = normalizeRootKey(entry.path)
+  const existingIndex = roots.findIndex((root) => normalizeRootKey(root.path) === key)
+  if (existingIndex !== -1) {
+    roots[existingIndex] = {
+      ...roots[existingIndex],
+      label: entry.label || roots[existingIndex].label,
+      addedAt: roots[existingIndex].addedAt
+    }
+    return roots[existingIndex]
+  }
+
+  roots.push(entry)
+  return entry
+}
 
 function getSessionApprovals(sessionId: string): { tools: Set<string>; prefixes: Set<string> } {
   let entry = sessionApprovals.get(sessionId)
@@ -20,6 +53,11 @@ function getSessionApprovals(sessionId: string): { tools: Set<string>; prefixes:
 
 export function clearSessionApprovals(sessionId: string): void {
   sessionApprovals.delete(sessionId)
+  sessionAdditionalRoots.delete(sessionId)
+}
+
+export function getSessionAdditionalRoots(sessionId: string): AdditionalRoot[] {
+  return cloneAdditionalRoots(sessionAdditionalRoots.get(sessionId))
 }
 
 export class AgentRunContext {
@@ -42,6 +80,7 @@ export class AgentRunContext {
   readonly projectName?: string
   readonly approvedCommandPrefixes: string[] = []
   readonly approvedTools: string[] = []
+  readonly additionalRoots: AdditionalRoot[] = []
   readonly tasks: TaskItem[] = []
   private readonly permissions: PermissionManager
 
@@ -92,6 +131,8 @@ export class AgentRunContext {
         this.approvedTools.push(...prior.tools)
         this.approvedCommandPrefixes.push(...prior.prefixes)
       }
+
+      this.additionalRoots.push(...cloneAdditionalRoots(sessionAdditionalRoots.get(sessionId)))
     }
   }
 
@@ -128,6 +169,31 @@ export class AgentRunContext {
 
   isToolActive(toolName: string): boolean {
     return this.activeTools.has(toolName)
+  }
+
+  addAdditionalRoot(rootPath: string, label?: string): AdditionalRoot {
+    const entry: AdditionalRoot = {
+      path: resolve(rootPath),
+      ...(label?.trim() ? { label: label.trim() } : {}),
+      addedAt: Date.now()
+    }
+    const stored = upsertAdditionalRoot(this.additionalRoots, entry)
+
+    if (this.sessionId) {
+      const sessionRoots = sessionAdditionalRoots.get(this.sessionId) || []
+      upsertAdditionalRoot(sessionRoots, stored)
+      sessionAdditionalRoots.set(this.sessionId, sessionRoots)
+    }
+
+    return { ...stored }
+  }
+
+  getAdditionalRoots(): AdditionalRoot[] {
+    return cloneAdditionalRoots(this.additionalRoots)
+  }
+
+  getAdditionalRootPaths(): string[] {
+    return this.additionalRoots.map((root) => root.path)
   }
 
   activateTool(toolName: string): void {

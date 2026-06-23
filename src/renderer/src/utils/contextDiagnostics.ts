@@ -1,5 +1,6 @@
 import type { Message, SessionResource } from '../../../shared/types'
 import type { ContextWindowSource } from '../../../shared/modelContext'
+import { estimateTokens } from '../../../shared/tokenEstimator'
 
 export type ContextCompositionRole = 'system' | 'tool_call' | 'tool' | 'user' | 'assistant'
 export type ContextCompositionGroupKind = 'system' | 'user' | 'agent'
@@ -9,6 +10,7 @@ export interface ContextCompositionSegment {
   role: ContextCompositionRole
   label: string
   textLength: number
+  tokenEstimate: number
   preview?: string
   groupId?: string
   groupKind?: ContextCompositionGroupKind
@@ -89,7 +91,7 @@ const previewText = (value: string): string | undefined => {
 
 const pushSegment = (
   segments: ContextCompositionSegment[],
-  segment: Omit<ContextCompositionSegment, 'textLength'> & { text: string }
+  segment: Omit<ContextCompositionSegment, 'textLength' | 'tokenEstimate'> & { text: string }
 ): void => {
   const text = segment.text || ''
   const textLength = text.length
@@ -100,6 +102,7 @@ const pushSegment = (
     role: segment.role,
     label: segment.label,
     textLength,
+    tokenEstimate: estimateTokens(text),
     preview: segment.preview ?? previewText(text),
     groupId: segment.groupId,
     groupKind: segment.groupKind,

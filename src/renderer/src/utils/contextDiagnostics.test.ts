@@ -165,8 +165,13 @@ describe('contextDiagnostics', () => {
       'tool',
       'assistant'
     ])
+    expect(segments.every((segment) => segment.tokenEstimate > 0)).toBe(true)
     expect(segments.find((segment) => segment.role === 'tool_call')?.textLength).toBeGreaterThan(0)
+    expect(segments.find((segment) => segment.role === 'tool_call')?.tokenEstimate).toBeGreaterThan(
+      0
+    )
     expect(segments.find((segment) => segment.role === 'tool')?.preview).toContain('README.md')
+    expect(segments.find((segment) => segment.role === 'tool')?.tokenEstimate).toBeGreaterThan(0)
     expect(segments.find((segment) => segment.role === 'system')?.groupKind).toBe('system')
     expect(segments.find((segment) => segment.role === 'user')?.groupKind).toBe('user')
 

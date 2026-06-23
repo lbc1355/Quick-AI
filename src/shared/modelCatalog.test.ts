@@ -40,7 +40,7 @@ describe('modelCatalog', () => {
     expect(normalized.models?.['custom-32k']?.limit.context).toBe(32000)
   })
 
-  it('prefers model catalog context over legacy context window overrides', () => {
+  it('prefers user-configured context window overrides over stale model catalog context', () => {
     const normalized = normalizeProviderModelCatalog(
       provider({
         modelsList: ['glm-4.5-air'],
@@ -59,9 +59,12 @@ describe('modelCatalog', () => {
     )
 
     expect(getProviderModelContextWindowInfo(normalized, 'glm-4.5-air')).toEqual({
-      tokens: 256000,
-      source: 'model-catalog'
+      tokens: 64000,
+      source: 'configured'
     })
+    expect(getProviderModelRuntimeConfig(normalized, 'glm-4.5-air')?.contextWindowTokens).toBe(
+      64000
+    )
   })
 
   it('returns enabled models in provider list order', () => {

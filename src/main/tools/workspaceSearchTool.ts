@@ -1,14 +1,20 @@
+import { promises as fs } from 'fs'
 import { ToolArgs } from '../../shared/types'
 import { createWorkspaceSearchResult } from './workspaceSearchResult'
 import { scanWorkspaceForText } from './workspaceSearchScanner'
 import { ToolDefinition, ToolExecutionContext } from './types'
-import { ROOT_PARAMETER, chooseBaseRoot, getRootArg } from './filePathSafety'
+import {
+  ROOT_PARAMETER,
+  chooseBaseRoot,
+  getRootArg,
+  resolveExistingSafePath
+} from './filePathSafety'
 
 export const workspaceSearchTool: ToolDefinition = {
   name: 'workspace_search',
   title: 'Workspace Search',
   description:
-    'Search for text matches within files in the global workspace or current project root (skipping build/dependency folders). In project conversations, relative paths default to the project root.',
+    'Search for text matches within files in the global workspace, current project root, or an added reference root (skipping build/dependency folders). In project conversations, relative paths default to the project root.',
   tags: ['file', 'search', 'grep', 'local', 'find', 'workspace', 'content'],
   dependencies: ['file_read'],
   category: 'file',
@@ -19,6 +25,11 @@ export const workspaceSearchTool: ToolDefinition = {
     type: 'object',
     properties: {
       query: { type: 'string', description: 'The text query to search for.' },
+      path: {
+        type: 'string',
+        description:
+          'Optional directory to search. Absolute paths are allowed when they are inside workspace, project, or a root added with workspace_add_root.'
+      },
       root: ROOT_PARAMETER,
       glob: {
         type: 'string',
@@ -46,8 +57,22 @@ export const workspaceSearchTool: ToolDefinition = {
     const maxResults = typeof args.maxResults === 'number' ? Math.max(1, args.maxResults) : 100
     const limit = Math.min(maxResults, 500)
 
-    const rootInfo = chooseBaseRoot('.', ctx, getRootArg(args))
-    const root = rootInfo.root
+    const requestedRoot = getRootArg(args)
+    const requestedPath = typeof args.path === 'string' && args.path.trim() ? args.path : ''
+    let rootInfo = chooseBaseRoot('.', ctx, requestedRoot)
+    let root = rootInfo.root
+    if (requestedPath) {
+      const target = await resolveExistingSafePath(
+        requestedPath,
+        ctx,
+        'Directory path',
+        requestedRoot
+      )
+      const stats = await fs.stat(target.realPath)
+      if (!stats.isDirectory()) throw new Error('Directory path is not a directory.')
+      rootInfo = { root: target.realPath, rootKind: target.rootKind }
+      root = target.realPath
+    }
     console.log(`[workspace_search] Search root is: ${root}`)
 
     const result = await scanWorkspaceForText({
