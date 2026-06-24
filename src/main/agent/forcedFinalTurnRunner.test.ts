@@ -54,7 +54,7 @@ describe('runForcedFinalTurn', () => {
       ],
       {
         maxTokens: 8000,
-        reserveForResponse: 2000,
+        reserveForResponseRatio: 0.04,
         strategy: 'truncate-oldest-tool'
       }
     )

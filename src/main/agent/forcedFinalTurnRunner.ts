@@ -1,5 +1,8 @@
 import { ChatCompletionMessage } from '../../shared/types'
-import { trimMessagesToFit as defaultTrimMessagesToFit } from './contextManager'
+import {
+  DEFAULT_RESPONSE_RESERVE_RATIO,
+  trimMessagesToFit as defaultTrimMessagesToFit
+} from './contextManager'
 import { CallModelOptions } from './callModel'
 import { RunUsageTracker } from './runUsageTracker'
 import { runModelTurn as defaultRunModelTurn } from './modelTurnRunner'
@@ -57,7 +60,7 @@ export async function runForcedFinalTurn(
 
   const messages = trimMessagesToFit(messagesWithPrompt, {
     maxTokens: options.contextSize,
-    reserveForResponse: 2000,
+    reserveForResponseRatio: DEFAULT_RESPONSE_RESERVE_RATIO,
     strategy: 'truncate-oldest-tool'
   })
 

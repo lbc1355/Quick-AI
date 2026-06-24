@@ -68,6 +68,7 @@ export interface UseChatCompletionReturn {
   handleRegenerate: (msgIdx: number) => void
   handleResumeAgentRun: (msgIdx: number) => void
   showHelpMessage: () => Promise<void>
+  handleCompactCurrentSession: () => Promise<boolean>
   handleAbortGeneration: () => void
 }
 
@@ -87,6 +88,24 @@ interface SendMessageOptions {
   forceBranch?: boolean
 }
 
+const MANUAL_COMPACTION_KEEP_RECENT_MESSAGES = 6
+
+const formatCompactionSummaryMessage = (result: {
+  summary: string
+  compactedCount: number
+  keptCount: number
+  tokenSpeed?: number
+}): string =>
+  [
+    '### 上下文压缩摘要',
+    '',
+    `已使用模型总结前 ${result.compactedCount} 条历史消息，最近 ${result.keptCount} 条消息保留原文。`,
+    result.tokenSpeed !== undefined ? `压缩生成速度：${result.tokenSpeed} token/s。` : '',
+    '',
+    result.summary
+  ]
+    .filter(Boolean)
+    .join('\n')
 export const touchSessionInSnapshot = (
   sessions: Session[],
   sessionId: string,
@@ -349,6 +368,66 @@ export const useChatCompletion = ({
     await window.api.storeSet('sessions', updated)
   }
 
+  const handleCompactCurrentSession = async (): Promise<boolean> => {
+    const requestConfig = latestRequestConfigRef.current
+    if (isGeneratingRef.current) return false
+
+    if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
+      alert('请先在设置中填写 DeepSeek API Key。')
+      setShowSettings(true)
+      return false
+    }
+
+    const currentSessions: Session[] = sessionsRef.current.map((s) => ({
+      ...s,
+      messages: s.messages.map((m) => ({ ...m }))
+    }))
+    const currentSession = currentSessions.find((s) => s.id === activeSessionId)
+    if (!currentSession) return false
+
+    if (currentSession.messages.length <= MANUAL_COMPACTION_KEEP_RECENT_MESSAGES + 1) {
+      alert('当前对话可压缩内容不足。')
+      setInputVal('')
+      return true
+    }
+
+    setIsGeneratingLive(true)
+    setInputVal('')
+    setActiveGenerationSessionId(currentSession.id)
+
+    try {
+      const result = await window.api.compactContext({
+        apiUrl: requestConfig.apiUrl,
+        apiKey: requestConfig.apiKey,
+        model: requestConfig.selectedModel,
+        modelRuntime: requestConfig.modelRuntimeConfig,
+        messages: currentSession.messages,
+        keepRecentMessages: MANUAL_COMPACTION_KEEP_RECENT_MESSAGES
+      })
+
+      const keptMessages = currentSession.messages.slice(result.compactedCount)
+      const summaryMsg: Message = {
+        id: `compact-${Date.now()}`,
+        role: 'assistant',
+        content: formatCompactionSummaryMessage(result),
+        ...(result.tokenSpeed !== undefined ? { tokenSpeed: result.tokenSpeed } : {})
+      }
+
+      currentSession.messages = [summaryMsg, ...keptMessages]
+      currentSession.lastActiveTime = Date.now()
+      setSessions([...currentSessions])
+      sessionsRef.current = currentSessions
+      persistSessionsSnapshotSoon(currentSessions)
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err || '上下文压缩失败')
+      alert(`上下文压缩失败：${message}`)
+      return false
+    } finally {
+      setIsGeneratingLive(false)
+      setActiveGenerationSessionId(null)
+    }
+  }
   const handleSendMessage = async (
     customPrompt?: string,
     customMsgId?: string,
@@ -356,7 +435,16 @@ export const useChatCompletion = ({
   ): Promise<boolean> => {
     const requestConfig = latestRequestConfigRef.current
     const promptToSend = customPrompt !== undefined ? customPrompt : inputVal
-    if (!promptToSend.trim() && attachedFiles.length === 0 && !customPrompt) return false
+    const trimmedPrompt = promptToSend.trim()
+    if (
+      !customMsgId &&
+      customPrompt === undefined &&
+      attachedFiles.length === 0 &&
+      trimmedPrompt.toLowerCase() === '/compact'
+    ) {
+      return handleCompactCurrentSession()
+    }
+    if (!trimmedPrompt && attachedFiles.length === 0 && !customPrompt) return false
     if (isGeneratingRef.current) return false
     const effectiveRunMode: RunMode = /^\s*@\S+/.test(promptToSend) ? 'agent' : runModeRef.current
 
@@ -823,6 +911,7 @@ export const useChatCompletion = ({
     handleRegenerate,
     handleResumeAgentRun,
     showHelpMessage,
+    handleCompactCurrentSession,
     handleAbortGeneration
   }
 }

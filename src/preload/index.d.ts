@@ -6,6 +6,8 @@ import {
   AgentSkillRunOptions,
   ChatChunkData,
   ChatRunOptions,
+  ContextCompactionRequest,
+  ContextCompactionResult,
   ClearSessionCachesPayload,
   ForkSessionCachesPayload,
   McpServerStatus,
@@ -51,12 +53,9 @@ declare global {
               tool?: string
             }
       ) => void
-      respondUserChoice: (
-        reqId: string,
-        requestId: string,
-        response: UserChoiceResponse
-      ) => void
+      respondUserChoice: (reqId: string, requestId: string, response: UserChoiceResponse) => void
       abortGeneration: (reqId: string) => void
+      compactContext: (payload: ContextCompactionRequest) => Promise<ContextCompactionResult>
       clearSessionCaches: (payload: ClearSessionCachesPayload) => Promise<{ ok: boolean }>
       forkSessionCaches: (
         payload: ForkSessionCachesPayload

@@ -203,6 +203,7 @@ function App(): React.JSX.Element {
     handleRegenerate,
     handleResumeAgentRun,
     showHelpMessage,
+    handleCompactCurrentSession,
     handleAbortGeneration
   } = useChatCompletion({
     setSessions,
@@ -410,6 +411,8 @@ function App(): React.JSX.Element {
         setShowSettings(true)
       } else if (item.cmd === 'help') {
         await showHelpMessage()
+      } else if (item.cmd === 'compact') {
+        await handleCompactCurrentSession()
       } else if (item.cmd === 'exit') {
         window.api.hideWindow()
       }

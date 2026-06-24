@@ -16,6 +16,7 @@ import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
 import type { StorageSchema, WindowMode, WindowState } from '../shared/types'
 import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClient'
+import { compactContextWithModel } from './agent/contextCompactor'
 import {
   runAgentSkill,
   runGeneralAgent,
@@ -679,6 +680,9 @@ app.whenReady().then(() => {
     })
   })
 
+  ipcMain.handle('compact-context', async (_event, payload) => {
+    return compactContextWithModel(payload)
+  })
   ipcMain.on('start-chat-completion', (event, reqId, options) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && store) {

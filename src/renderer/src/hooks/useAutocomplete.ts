@@ -123,6 +123,13 @@ export const useAutocomplete = (): UseAutocompleteReturn => {
           type: 'command'
         },
         {
+          id: 'cmd-compact',
+          name: '压缩当前上下文 (Compact context)',
+          trigger: '/compact',
+          cmd: 'compact',
+          type: 'command'
+        },
+        {
           id: 'cmd-exit',
           name: '❌ 隐藏/关闭窗口 (Hide window)',
           trigger: '/exit',

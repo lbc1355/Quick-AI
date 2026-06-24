@@ -7,6 +7,8 @@ import {
   AgentSkillRunOptions,
   ChatChunkData,
   ChatRunOptions,
+  ContextCompactionRequest,
+  ContextCompactionResult,
   ClearSessionCachesPayload,
   ForkSessionCachesPayload,
   McpServerStatus,
@@ -58,12 +60,11 @@ const api = {
           tool?: string
         }
   ): void => ipcRenderer.send('respond-tool-permission', reqId, callId, approved),
-  respondUserChoice: (
-    reqId: string,
-    requestId: string,
-    response: UserChoiceResponse
-  ): void => ipcRenderer.send('respond-user-choice', reqId, requestId, response),
+  respondUserChoice: (reqId: string, requestId: string, response: UserChoiceResponse): void =>
+    ipcRenderer.send('respond-user-choice', reqId, requestId, response),
   abortGeneration: (reqId: string): void => ipcRenderer.send('abort-generation', reqId),
+  compactContext: (payload: ContextCompactionRequest): Promise<ContextCompactionResult> =>
+    ipcRenderer.invoke('compact-context', payload),
   clearSessionCaches: (payload: ClearSessionCachesPayload): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('clear-session-caches', payload),
   forkSessionCaches: (
@@ -109,8 +110,7 @@ const api = {
   writeMemoryEntry: (id: string, content: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('memory-entry-write', id, content),
   mcpGetConfig: (): Promise<string> => ipcRenderer.invoke('mcp-get-config'),
-  mcpSetConfig: (content: string): Promise<string> =>
-    ipcRenderer.invoke('mcp-set-config', content),
+  mcpSetConfig: (content: string): Promise<string> => ipcRenderer.invoke('mcp-set-config', content),
   mcpDeleteServer: (name: string): Promise<{ deleted: boolean; config: string }> =>
     ipcRenderer.invoke('mcp-delete-server', name),
   mcpGetStatus: (): Promise<McpServerStatus[]> => ipcRenderer.invoke('mcp-get-status'),

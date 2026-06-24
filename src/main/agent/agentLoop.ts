@@ -5,7 +5,8 @@ import {
   getContextWindowSize,
   normalizeContextWindowTokens,
   trimMessagesToFit,
-  getToolOutputSpilloverThreshold
+  getToolOutputSpilloverThreshold,
+  DEFAULT_RESPONSE_RESERVE_RATIO
 } from './contextManager'
 import { globalPermissionManager } from './permissionManager'
 import { DEFAULT_RETRY_POLICY } from './retryPolicy'
@@ -213,7 +214,7 @@ export const runAgentLoop = async (
       }
       messages = trimMessagesToFit(messages, {
         maxTokens: contextSize,
-        reserveForResponse: 2000,
+        reserveForResponseRatio: DEFAULT_RESPONSE_RESERVE_RATIO,
         strategy: 'truncate-oldest-tool',
         toolOutputSpilloverThreshold
       })

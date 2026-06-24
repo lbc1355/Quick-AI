@@ -542,6 +542,21 @@ export interface ChatRunOptions {
   branchOf?: { sessionId: string; messageId: string; runId?: string }
 }
 
+export interface ContextCompactionRequest {
+  apiUrl: string
+  apiKey: string
+  model: string
+  modelRuntime?: ModelRuntimeConfig
+  messages: Message[]
+  keepRecentMessages?: number
+}
+
+export interface ContextCompactionResult {
+  summary: string
+  compactedCount: number
+  keptCount: number
+  tokenSpeed?: number
+}
 export interface McpServerStatus {
   name: string
   status: 'connected' | 'connecting' | 'failed' | 'disabled'
