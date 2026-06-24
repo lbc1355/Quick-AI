@@ -1,8 +1,8 @@
 import { promises as fs } from 'fs'
-import { join, relative } from 'path'
-import { isSensitiveFile } from './helpers'
-import { isPathInsideRoot } from './filePathSafety'
 import { globToRegex } from './workspaceGlob'
+import { DEFAULT_IGNORED_DIRECTORIES, walkWorkspace } from './workspaceWalker'
+
+export { DEFAULT_IGNORED_DIRECTORIES } from './workspaceWalker'
 
 export interface WorkspaceFileMatch {
   relativePath: string
@@ -29,93 +29,33 @@ export interface WorkspaceListScanResult {
 const MAX_FILES_SCANNED = 5000
 const MAX_DIRS_SCANNED = 1000
 const SEARCH_TIMEOUT_MS = 10000
-export const DEFAULT_IGNORED_DIRECTORIES = [
-  '.git',
-  'node_modules',
-  'dist',
-  'out',
-  'build',
-  '.venv',
-  'venv',
-  '.env',
-  'env',
-  'site-packages',
-  '__pycache__',
-  '.pytest_cache',
-  '.mypy_cache',
-  '.ruff_cache',
-  '.tox',
-  '.nox',
-  'htmlcov'
-]
-
-const IGNORED_DIRECTORIES = new Set(DEFAULT_IGNORED_DIRECTORIES)
-
-const normalizeRelativePath = (path: string): string => path.replace(/\\/g, '/')
 
 export async function scanWorkspaceFiles(
   options: WorkspaceListScanOptions
 ): Promise<WorkspaceListScanResult> {
-  let filesScanned = 0
-  let dirsScanned = 0
-  const startTime = Date.now()
-  let scanTruncatedReason: string | undefined = undefined
-
   const globRegex = globToRegex(options.globPattern)
+  const startedAt = Date.now()
   const matches: WorkspaceFileMatch[] = []
   const skippedIgnoredDirectories = new Set<string>()
 
-  const walk = async (dir: string): Promise<void> => {
-    if (options.signal.aborted || scanTruncatedReason) return
-
-    if (Date.now() - startTime > SEARCH_TIMEOUT_MS) {
-      scanTruncatedReason = 'Time limit exceeded'
-      return
-    }
-
-    dirsScanned++
-    if (dirsScanned > MAX_DIRS_SCANNED) {
-      scanTruncatedReason = 'Maximum directory scan limit reached'
-      return
-    }
-
-    const dirents = await fs.readdir(dir, { withFileTypes: true })
-    for (const dirent of dirents) {
-      if (matches.length >= options.limit || scanTruncatedReason || options.signal.aborted) break
-      const resPath = join(dir, dirent.name)
-      const relPath = relative(options.root, resPath)
-
-      if (dirent.isDirectory()) {
-        if (!options.includeIgnoredDirectories && IGNORED_DIRECTORIES.has(dirent.name)) {
-          skippedIgnoredDirectories.add(dirent.name)
-          continue
-        }
-        await walk(resPath)
-        continue
-      }
-
-      filesScanned++
-      if (filesScanned > MAX_FILES_SCANNED) {
-        scanTruncatedReason = 'Maximum file scan limit reached'
-        break
-      }
-
-      if (dirent.isSymbolicLink()) continue
-
-      const normalizedRelPath = normalizeRelativePath(relPath)
-      if (!globRegex.test(normalizedRelPath)) {
-        continue
-      }
-
-      if (!isPathInsideRoot(resPath, options.root) || isSensitiveFile(resPath)) {
-        continue
-      }
-
+  const walkResult = await walkWorkspace({
+    root: options.root,
+    signal: options.signal,
+    maxFiles: MAX_FILES_SCANNED,
+    maxDirs: MAX_DIRS_SCANNED,
+    timeoutMs: SEARCH_TIMEOUT_MS,
+    startedAt,
+    ignoredDirectories: DEFAULT_IGNORED_DIRECTORIES,
+    includeIgnoredDirectories: options.includeIgnoredDirectories,
+    shouldStop: () => matches.length >= options.limit,
+    shouldVisitFile: (entry) => globRegex.test(entry.normalizedRelativePath),
+    onIgnoredDirectory: (name) => skippedIgnoredDirectories.add(name),
+    onFile: async (entry) => {
       try {
-        const stats = await fs.stat(resPath)
+        const stats = await fs.stat(entry.absolutePath)
         matches.push({
-          relativePath: normalizedRelPath,
-          absolutePath: resPath,
+          relativePath: entry.normalizedRelativePath,
+          absolutePath: entry.absolutePath,
           size: stats.size,
           modifiedTime: stats.mtime.toISOString()
         })
@@ -123,13 +63,11 @@ export async function scanWorkspaceFiles(
         // Ignore files we cannot stat.
       }
     }
-  }
-
-  await walk(options.root)
+  })
 
   return {
     matches,
-    scanTruncatedReason,
+    scanTruncatedReason: walkResult.truncatedReason,
     ignoredDirectories: options.includeIgnoredDirectories ? [] : [...DEFAULT_IGNORED_DIRECTORIES],
     skippedIgnoredDirectories: [...skippedIgnoredDirectories].sort()
   }

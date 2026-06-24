@@ -1,8 +1,7 @@
-import { join, relative } from 'path'
 import { promises as fs } from 'fs'
-import { SEARCH_IGNORE_EXTENSIONS, escapeRegExp, isSensitiveFile } from './helpers'
-import { isPathInsideRoot } from './filePathSafety'
+import { SEARCH_IGNORE_EXTENSIONS, escapeRegExp } from './helpers'
 import { globToRegex } from './workspaceGlob'
+import { walkWorkspace } from './workspaceWalker'
 
 export interface WorkspaceSearchMatch {
   relativePath: string
@@ -32,6 +31,7 @@ const MAX_DIRS_SCANNED = 1000
 const SEARCH_TIMEOUT_MS = 10000
 const MAX_SEARCH_FILE_BYTES = 512 * 1024
 const MAX_LINE_LEN = 300
+const SEARCH_IGNORED_DIRECTORIES = ['.git', 'node_modules', 'dist', 'out', 'build']
 
 const truncLine = (line: string): string =>
   line.length > MAX_LINE_LEN ? line.slice(0, MAX_LINE_LEN) + '...' : line
@@ -39,90 +39,46 @@ const truncLine = (line: string): string =>
 export async function scanWorkspaceForText(
   options: WorkspaceSearchScanOptions
 ): Promise<WorkspaceSearchScanResult> {
-  let filesScanned = 0
-  let dirsScanned = 0
-  const startTime = Date.now()
-  let scanTruncatedReason: string | undefined = undefined
-
   const searchRegex = new RegExp(escapeRegExp(options.query), options.caseSensitive ? '' : 'i')
   const globRegex = options.globPattern ? globToRegex(options.globPattern) : undefined
+  const startedAt = Date.now()
   const matches: WorkspaceSearchMatch[] = []
 
-  const walk = async (dir: string): Promise<void> => {
-    if (options.signal.aborted || scanTruncatedReason) return
-
-    const nowVal = Date.now()
-    if (nowVal - startTime > SEARCH_TIMEOUT_MS) {
-      scanTruncatedReason = 'Time limit exceeded'
-      return
-    }
-
-    dirsScanned++
-    if (dirsScanned > MAX_DIRS_SCANNED) {
-      scanTruncatedReason = 'Maximum directory scan limit reached'
-      return
-    }
-
-    const dirents = await fs.readdir(dir, { withFileTypes: true })
-    for (const dirent of dirents) {
-      if (matches.length >= options.limit || scanTruncatedReason || options.signal.aborted) break
-      const resPath = join(dir, dirent.name)
-      const relPath = relative(options.root, resPath)
-
-      if (dirent.isDirectory()) {
-        if (['.git', 'node_modules', 'dist', 'out', 'build'].includes(dirent.name)) {
-          continue
-        }
-        await walk(resPath)
-        continue
-      }
-
-      filesScanned++
-      if (filesScanned > MAX_FILES_SCANNED) {
-        scanTruncatedReason = 'Maximum file scan limit reached'
-        break
-      }
-
-      if (dirent.isSymbolicLink()) continue
-
-      if (globRegex) {
-        const normalizedRelPath = relPath.replace(/\\/g, '/')
-        if (!globRegex.test(normalizedRelPath)) {
-          continue
-        }
-      }
-
-      if (!isPathInsideRoot(resPath, options.root) || isSensitiveFile(resPath)) {
-        continue
-      }
-
-      const lowerName = dirent.name.toLowerCase()
-      if (SEARCH_IGNORE_EXTENSIONS.some((ext) => lowerName.endsWith(ext))) {
-        continue
-      }
-
+  const walkResult = await walkWorkspace({
+    root: options.root,
+    signal: options.signal,
+    maxFiles: MAX_FILES_SCANNED,
+    maxDirs: MAX_DIRS_SCANNED,
+    timeoutMs: SEARCH_TIMEOUT_MS,
+    startedAt,
+    ignoredDirectories: SEARCH_IGNORED_DIRECTORIES,
+    shouldStop: () => matches.length >= options.limit,
+    shouldVisitFile: (entry) => {
+      if (globRegex && !globRegex.test(entry.normalizedRelativePath)) return false
+      const lowerName = entry.dirent.name.toLowerCase()
+      return !SEARCH_IGNORE_EXTENSIONS.some((ext) => lowerName.endsWith(ext))
+    },
+    onFile: async (entry) => {
       try {
-        const stats = await fs.stat(resPath)
-        if (stats.size > MAX_SEARCH_FILE_BYTES) continue
+        const stats = await fs.stat(entry.absolutePath)
+        if (stats.size > MAX_SEARCH_FILE_BYTES) return
       } catch {
-        continue
+        return
       }
 
       try {
-        const content = await fs.readFile(resPath, 'utf-8')
+        const content = await fs.readFile(entry.absolutePath, 'utf-8')
         const lines = content.split(/\r?\n/)
         for (let i = 0; i < lines.length; i++) {
-          if (matches.length >= options.limit || scanTruncatedReason || options.signal.aborted) {
-            break
-          }
+          if (matches.length >= options.limit || options.signal.aborted) break
           const line = lines[i]
           if (searchRegex.test(line)) {
             const lineNumber = i + 1
             const contextBefore = lines.slice(Math.max(0, i - 1), i)
             const contextAfter = lines.slice(i + 1, Math.min(lines.length, i + 2))
             matches.push({
-              relativePath: relPath,
-              absolutePath: resPath,
+              relativePath: entry.normalizedRelativePath,
+              absolutePath: entry.absolutePath,
               lineNumber,
               lineContent: truncLine(line),
               contextBefore: contextBefore.map(truncLine),
@@ -134,12 +90,10 @@ export async function scanWorkspaceForText(
         // Ignore unreadable/binary files.
       }
     }
-  }
-
-  await walk(options.root)
+  })
 
   return {
     matches,
-    scanTruncatedReason
+    scanTruncatedReason: walkResult.truncatedReason
   }
 }

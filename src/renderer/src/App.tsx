@@ -29,25 +29,17 @@ import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
 import { ChatInputArea } from './components/ChatInputArea'
 import { UserChoicePopup } from './components/UserChoicePopup'
-import { getPopupOptions, groupAutocompleteItems } from './utils/autocompleteHelpers'
+import { groupAutocompleteItems } from './utils/autocompleteHelpers'
 import { buildMessageNavPreview } from './features/chat/messageNavigation'
 import { useMessageNavigation } from './features/chat/useMessageNavigation'
 import { useProjectNavigation } from './features/chat/useProjectNavigation'
 import { useSessionFamilyView } from './features/chat/useSessionFamilyView'
 import { useContextDiagnosticsState } from './features/chat/useContextDiagnosticsState'
-
-interface PendingPermission {
-  msgId: string
-  agentRunId: string
-  callId: string
-  toolName: string
-  args: unknown
-}
+import { usePermissionPopupController } from './features/chat/usePermissionPopupController'
 
 function App(): React.JSX.Element {
   // Navigation
   const [showSettings, setShowSettings] = useState(false)
-  const [selectedOptionIndex, setSelectedOptionIndex] = useState<number>(0)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isPanelPinned, setIsPanelPinned] = useState(false)
   const [windowState, setWindowState] = useState<WindowState>({
@@ -487,98 +479,11 @@ function App(): React.JSX.Element {
     if (handled) return
   }
 
-  // Find pending permission request in the active session
-  const getPendingPermission = (): PendingPermission | null => {
-    if (!activeSession) return null
-    for (let i = activeSession.messages.length - 1; i >= 0; i--) {
-      const msg = activeSession.messages[i]
-      if (msg.agentEvents) {
-        const pendingEvent = msg.agentEvents.find(
-          (e) => e.type === 'tool_call' && e.permissionState === 'pending'
-        )
-        if (pendingEvent && pendingEvent.type === 'tool_call') {
-          return {
-            msgId: msg.id,
-            agentRunId: msg.agentRunId || '',
-            callId: pendingEvent.callId,
-            toolName: pendingEvent.toolName,
-            args: pendingEvent.args
-          }
-        }
-      }
-    }
-    return null
-  }
-
-  const handlePermissionResponse = (
-    approved:
-      | boolean
-      | {
-          approved: boolean
-          scope?: 'prefix' | 'tool'
-          prefix?: string
-          prefixes?: string[]
-          tool?: string
-        }
-  ): void => {
-    const pending = getPendingPermission()
-    if (pending) {
-      window.api.respondToolPermission(pending.agentRunId, pending.callId, approved)
-      setTimeout(() => {
-        textareaRef.current?.focus()
-      }, 50)
-    }
-  }
-
-  // Reset selected option and manage keyboard shortcuts for pending tool execution permissions
-  const pendingPermission = getPendingPermission()
-  const pendingCallId = pendingPermission?.callId || null
-
-  const [prevCallId, setPrevCallId] = useState<string | null>(null)
-  if (pendingCallId !== prevCallId) {
-    setPrevCallId(pendingCallId)
-    setSelectedOptionIndex(0)
-  }
-
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent): void => {
-      const pending = getPendingPermission()
-      if (!pending) return
-
-      const options = getPopupOptions(pending)
-      if (options.length === 0) return
-
-      const num = parseInt(e.key, 10)
-      if (!isNaN(num) && num >= 1 && num <= options.length) {
-        e.preventDefault()
-        handlePermissionResponse(options[num - 1].payload)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSelectedOptionIndex((prev) => (prev - 1 + options.length) % options.length)
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSelectedOptionIndex((prev) => (prev + 1) % options.length)
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        if (options[selectedOptionIndex]) {
-          handlePermissionResponse(options[selectedOptionIndex].payload)
-        }
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        const denyOption = options.find((o) => {
-          if (typeof o.payload === 'boolean') return !o.payload
-          return !o.payload.approved
-        })
-        handlePermissionResponse(denyOption ? denyOption.payload : false)
-      }
-    }
-
-    window.addEventListener('keydown', handleGlobalKeyDown)
-    return () => {
-      window.removeEventListener('keydown', handleGlobalKeyDown)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSession, selectedOptionIndex])
+  const { pendingPermission, selectedOptionIndex, handlePermissionResponse } =
+    usePermissionPopupController({
+      activeSession,
+      textareaRef
+    })
 
   // Check if current active session is a clean "new session" with no message history
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0

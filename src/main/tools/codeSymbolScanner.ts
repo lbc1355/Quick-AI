@@ -1,11 +1,11 @@
-import { relative, join, extname } from 'path'
+import { extname } from 'path'
 import { promises as fs } from 'fs'
 import { ToolExecutionContext } from './types'
-import { isSensitiveFile } from './helpers'
 import type { FileRootArg } from './filePathSafety'
-import { chooseBaseRoot, isPathInsideRoot } from './filePathSafety'
+import { chooseBaseRoot } from './filePathSafety'
 import { buildSymbolDefinitionPatterns, findSymbolMatchesInContent } from './codeSymbolPatterns'
 import type { SymbolMatch } from './codeSymbolTypes'
+import { DEFAULT_IGNORED_DIRECTORIES, walkWorkspace } from './workspaceWalker'
 
 const CODE_SYMBOL_EXTENSIONS = new Set([
   '.ts',
@@ -32,32 +32,25 @@ const CODE_SYMBOL_EXTENSIONS = new Set([
   '.swift'
 ])
 
-const CODE_SYMBOL_IGNORE_DIRS = new Set([
-  '.git',
-  'node_modules',
-  'dist',
-  'out',
-  'build',
+const CODE_SYMBOL_EXTRA_IGNORED_DIRECTORIES = [
   '.next',
   '.turbo',
   'coverage',
   'target',
   'vendor',
-  '.venv',
-  'venv',
-  '__pycache__',
   'Library',
   'Temp',
   'Logs',
   'obj',
   'bin',
   '.gradle'
-])
+]
 
-const yieldToEventLoop = (): Promise<void> =>
-  new Promise((resolve) => {
-    setImmediate(resolve)
-  })
+const MAX_FILES = 2500
+const MAX_DIRS = 1200
+const SEARCH_TIMEOUT_MS = 10000
+const MAX_SYMBOL_MATCHES = 50
+const MAX_SEARCH_FILE_BYTES = 512 * 1024
 
 export async function scanWorkspaceForSymbol(
   symbol: string,
@@ -66,102 +59,52 @@ export async function scanWorkspaceForSymbol(
 ): Promise<{ matches: SymbolMatch[]; truncatedReason?: string }> {
   const rootInfo = chooseBaseRoot('.', ctx, requestedRoot)
   const root = rootInfo.root
+  const startedAt = Date.now()
   const matches: SymbolMatch[] = []
   const patterns = buildSymbolDefinitionPatterns(symbol)
-  const startTime = Date.now()
-  const MAX_FILES = 2500
-  const MAX_DIRS = 1200
-  const SEARCH_TIMEOUT_MS = 10000
-  const YIELD_EVERY_ENTRIES = 60
-  const MAX_BLOCKING_MS = 24
-  let filesScanned = 0
-  let dirsScanned = 0
-  let entriesSinceYield = 0
-  let lastYieldAt = Date.now()
   let truncatedReason: string | undefined
 
-  const yieldIfNeeded = async (): Promise<void> => {
-    entriesSinceYield++
-    if (entriesSinceYield < YIELD_EVERY_ENTRIES && Date.now() - lastYieldAt < MAX_BLOCKING_MS) {
-      return
-    }
-    entriesSinceYield = 0
-    lastYieldAt = Date.now()
-    await yieldToEventLoop()
-  }
-
-  const walk = async (dir: string): Promise<void> => {
-    if (truncatedReason || ctx.signal.aborted) return
-    await yieldIfNeeded()
-    if (Date.now() - startTime > SEARCH_TIMEOUT_MS) {
-      truncatedReason = 'Time limit exceeded'
-      return
-    }
-    dirsScanned++
-    if (dirsScanned > MAX_DIRS) {
-      truncatedReason = 'Maximum directory scan limit reached'
-      return
-    }
-
-    let dirents
-    try {
-      dirents = await fs.readdir(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-
-    for (const dirent of dirents) {
-      if (truncatedReason || ctx.signal.aborted) break
-      await yieldIfNeeded()
-      const candidatePath = join(dir, dirent.name)
-      if (dirent.isDirectory()) {
-        if (CODE_SYMBOL_IGNORE_DIRS.has(dirent.name)) {
-          continue
-        }
-        await walk(candidatePath)
-        continue
-      }
-
-      if (!dirent.isFile() || dirent.isSymbolicLink()) continue
-      const ext = extname(dirent.name).toLowerCase()
-      if (!CODE_SYMBOL_EXTENSIONS.has(ext)) continue
-      if (!isPathInsideRoot(candidatePath, root) || isSensitiveFile(candidatePath)) continue
-
-      filesScanned++
-      if (filesScanned > MAX_FILES) {
-        truncatedReason = 'Maximum file scan limit reached'
-        break
-      }
-
+  const walkResult = await walkWorkspace({
+    root,
+    signal: ctx.signal,
+    maxFiles: MAX_FILES,
+    maxDirs: MAX_DIRS,
+    timeoutMs: SEARCH_TIMEOUT_MS,
+    startedAt,
+    ignoredDirectories: [...DEFAULT_IGNORED_DIRECTORIES, ...CODE_SYMBOL_EXTRA_IGNORED_DIRECTORIES],
+    yieldEveryEntries: 60,
+    maxBlockingMs: 24,
+    shouldStop: () => matches.length >= MAX_SYMBOL_MATCHES || Boolean(truncatedReason),
+    shouldVisitFile: (entry) =>
+      CODE_SYMBOL_EXTENSIONS.has(extname(entry.dirent.name).toLowerCase()),
+    onFile: async (entry) => {
       try {
-        const stats = await fs.stat(candidatePath)
-        if (stats.size > 512 * 1024) continue
-        const content = await fs.readFile(candidatePath, 'utf-8')
-        if (!content.includes(symbol)) continue
+        const stats = await fs.stat(entry.absolutePath)
+        if (stats.size > MAX_SEARCH_FILE_BYTES) return
+        const content = await fs.readFile(entry.absolutePath, 'utf-8')
+        if (!content.includes(symbol)) return
         matches.push(
           ...findSymbolMatchesInContent(
             content,
             symbol,
             {
-              realPath: candidatePath,
-              relPath: relative(root, candidatePath).replace(/\\/g, '/'),
+              realPath: entry.absolutePath,
+              relPath: entry.normalizedRelativePath,
               root,
               rootKind: rootInfo.rootKind
             },
             patterns
           )
         )
-        if (matches.length >= 50) {
+        if (matches.length >= MAX_SYMBOL_MATCHES) {
           truncatedReason = 'Maximum symbol match limit reached'
-          break
         }
       } catch {
         // Ignore unreadable files.
       }
     }
-  }
+  })
 
-  await walk(root)
   if (ctx.signal.aborted) throw new Error('Agent execution aborted by user.')
-  return { matches, truncatedReason }
+  return { matches, truncatedReason: truncatedReason || walkResult.truncatedReason }
 }

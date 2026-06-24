@@ -5,29 +5,12 @@ import {
   getPopupOptions,
   getPermissionRequestDisplay
 } from '../utils/autocompleteHelpers'
-
-interface PendingPermission {
-  msgId: string
-  agentRunId: string
-  callId: string
-  toolName: string
-  args: unknown
-}
+import type { PendingPermission, PermissionResponsePayload } from '../features/chat/permissionTypes'
 
 interface PermissionPopupProps {
   pending: PendingPermission
   selectedOptionIndex: number
-  onResponse: (
-    payload:
-      | boolean
-      | {
-          approved: boolean
-          scope?: 'prefix' | 'tool'
-          prefix?: string
-          prefixes?: string[]
-          tool?: string
-        }
-  ) => void
+  onResponse: (payload: PermissionResponsePayload) => void
 }
 
 export const PermissionPopup: React.FC<PermissionPopupProps> = ({
