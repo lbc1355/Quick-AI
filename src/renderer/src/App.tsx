@@ -15,19 +15,11 @@ import { useSkills } from './hooks/useSkills'
 import { useUserChoiceRequest } from './hooks/useUserChoiceRequest'
 
 import {
-  buildBranchFamilyInfo,
   buildBranchChildIndex,
   getBranchDisplayInfo,
-  getBranchFamilyRootId,
   getBranchSourceKey
 } from './utils/branchDisplay'
 import { getSessionGenerationState } from './utils/generationState'
-import { estimateDraftContextTokens } from './utils/contextLength'
-import {
-  buildContextCompositionSegments,
-  summarizeConversationTokenUsage,
-  summarizePromptCacheStats
-} from './utils/contextDiagnostics'
 import {
   getProviderModelContextWindowInfo,
   getProviderModelRuntimeConfig
@@ -41,6 +33,8 @@ import { getPopupOptions, groupAutocompleteItems } from './utils/autocompleteHel
 import { buildMessageNavPreview } from './features/chat/messageNavigation'
 import { useMessageNavigation } from './features/chat/useMessageNavigation'
 import { useProjectNavigation } from './features/chat/useProjectNavigation'
+import { useSessionFamilyView } from './features/chat/useSessionFamilyView'
+import { useContextDiagnosticsState } from './features/chat/useContextDiagnosticsState'
 
 interface PendingPermission {
   msgId: string
@@ -271,70 +265,30 @@ function App(): React.JSX.Element {
   // 6. Markdown Skills hook
   const { skills, installSkill, removeSkill } = useSkills()
 
-  const activeSessionFamilyInfo = useMemo(() => {
-    if (!activeSessionId) return null
-    const rootId = getBranchFamilyRootId(activeSessionId, sessions)
-    const info = buildBranchFamilyInfo(rootId, sessions)
-    return info && info.members.length > 1 ? info : null
-  }, [activeSessionId, sessions])
-
   // Reset active task message and task panel state when active session changes using render-phase state adjustment
   const [prevSessionId, setPrevSessionId] = useState(activeSessionId)
   if (activeSessionId !== prevSessionId) {
     setPrevSessionId(activeSessionId)
   }
 
-  const isSessionFamilyViewDismissed = dismissedSessionFamilyViewForId === activeSessionId
-
-  const visibleSessionFamilyInfo = useMemo(() => {
-    const effectiveRootId = isSessionFamilyViewDismissed
-      ? sessionFamilyRootId
-      : sessionFamilyRootId || activeSessionFamilyInfo?.rootSessionId
-    if (!effectiveRootId) return null
-    const info = buildBranchFamilyInfo(effectiveRootId, sessions)
-    return info && info.members.length > 1 ? info : null
-  }, [
-    activeSessionFamilyInfo?.rootSessionId,
-    isSessionFamilyViewDismissed,
+  const {
+    visibleSessionFamilyInfo,
+    buildVisibleSessionEntries,
+    enterSessionFamilyView,
+    exitSessionFamilyView,
+    openSession
+  } = useSessionFamilyView({
+    sessions,
+    activeSessionId,
     sessionFamilyRootId,
-    sessions
-  ])
-
-  const enterSessionFamilyView = useCallback(
-    (sessionId: string): void => {
-      const rootId = getBranchFamilyRootId(sessionId, sessions)
-      const info = buildBranchFamilyInfo(rootId, sessions)
-      setSessionFamilyRootId(info && info.members.length > 1 ? rootId : null)
-      setDismissedSessionFamilyViewForId(null)
-    },
-    [sessions]
-  )
-
-  const exitSessionFamilyView = useCallback((): void => {
-    setSessionFamilyRootId(null)
-    setDismissedSessionFamilyViewForId(activeSessionId ?? null)
-  }, [activeSessionId])
-
-  const openSession = useCallback(
-    (sessionId: string, messageId?: string): void => {
-      const targetSession = sessions.find((session) => session.id === sessionId)
-      setSidebarProjectId(targetSession?.projectId ?? null)
-      if (messageId) {
-        setPendingScrollMessageId(messageId)
-      }
-      enterSessionFamilyView(sessionId)
-      setActiveSessionId(sessionId)
-      setAutocompleteItems([])
-    },
-    [
-      enterSessionFamilyView,
-      sessions,
-      setActiveSessionId,
-      setAutocompleteItems,
-      setPendingScrollMessageId
-    ]
-  )
-
+    setSessionFamilyRootId,
+    dismissedSessionFamilyViewForId,
+    setDismissedSessionFamilyViewForId,
+    setSidebarProjectId,
+    setPendingScrollMessageId,
+    setActiveSessionId,
+    setAutocompleteItems
+  })
   // Listen to window summon (focus/show) event from Main Process
   useEffect(() => {
     const handleWindowShown = (): void => {
@@ -630,73 +584,17 @@ function App(): React.JSX.Element {
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
   const activeProviderName = activeProviderConfig?.name || 'No provider'
   const activeModelName = selectedModel || 'No model'
-  const draftAttachmentTokenEstimate = useMemo(
-    () => estimateDraftContextTokens({ attachedFiles }),
-    [attachedFiles]
-  )
-  const contextWindowInfo = useMemo(
-    () => getProviderModelContextWindowInfo(activeProviderConfig, selectedModel),
-    [activeProviderConfig, selectedModel]
-  )
-  const contextWindowTokens = contextWindowInfo.tokens
-  const activeProjectLabel = activeProject
-    ? `${activeProject.name}${activeProject.path ? ` (${activeProject.path})` : ''}`
-    : undefined
-  const contextComposition = useMemo(() => {
-    const segments = buildContextCompositionSegments({
-      messages: activeSession?.messages || [],
-      systemPrompt,
-      projectLabel: activeProjectLabel,
-      resources: activeSession?.resources
-    })
-    const steeringTokens = segments
-      .filter((segment) => segment.role === 'system')
-      .reduce((total, segment) => total + segment.tokenEstimate, 0)
-    const conversationTokens = segments
-      .filter((segment) => segment.role !== 'system')
-      .reduce((total, segment) => total + segment.tokenEstimate, 0)
-
-    return { segments, steeringTokens, conversationTokens }
-  }, [activeProjectLabel, activeSession?.messages, activeSession?.resources, systemPrompt])
-  const contextBaseTokenEstimate =
-    contextComposition.steeringTokens +
-    contextComposition.conversationTokens +
-    draftAttachmentTokenEstimate
-  const contextDiagnostics = useMemo(
-    () => ({
-      cache: summarizePromptCacheStats(activeSession?.messages || []),
-      tokenUsage: summarizeConversationTokenUsage(activeSession?.messages || []),
-      messageCount: activeSession?.messages.length || 0,
-      resourceCount: activeSession?.resources?.length || 0,
-      hasSystemPrompt: systemPrompt.trim().length > 0,
-      modelName: selectedModel,
-      projectLabel: activeProjectLabel,
-      customPermissionCount: Object.values(permissions || {}).filter((value) => value !== 'allow')
-        .length,
-      skillCount: skills.length,
-      contextWindowTokens,
-      contextWindowSource: contextWindowInfo.source,
-      conversationBaseTokens: contextComposition.conversationTokens + draftAttachmentTokenEstimate,
-      steeringTokens: contextComposition.steeringTokens,
-      mcpToolTokens: 0,
-      compositionSegments: contextComposition.segments
-    }),
-    [
-      activeProjectLabel,
-      activeSession?.messages,
-      activeSession?.resources,
-      contextComposition.conversationTokens,
-      contextComposition.segments,
-      contextComposition.steeringTokens,
-      contextWindowInfo.source,
-      contextWindowTokens,
-      draftAttachmentTokenEstimate,
-      permissions,
-      selectedModel,
-      skills.length,
-      systemPrompt
-    ]
-  )
+  const { contextBaseTokenEstimate, contextDiagnostics } = useContextDiagnosticsState({
+    activeSession: activeSession ?? undefined,
+    activeProject,
+    activeProviderConfig,
+    activeModelRuntimeConfig,
+    selectedModel,
+    systemPrompt,
+    permissions,
+    skillsCount: skills.length,
+    attachedFiles
+  })
   const orderedSessions = [...sessions].sort((a, b) => {
     const aTime = a.lastActiveTime || Number(a.id)
     const bTime = b.lastActiveTime || Number(b.id)
@@ -705,12 +603,7 @@ function App(): React.JSX.Element {
   const scopedOrderedSessions = sidebarProject
     ? orderedSessions.filter((session) => session.projectId === sidebarProject.id)
     : orderedSessions.filter((session) => !session.projectId)
-  const visibleSessionEntries = visibleSessionFamilyInfo
-    ? visibleSessionFamilyInfo.members.map((familyMember) => ({
-        session: familyMember.session,
-        familyMember
-      }))
-    : scopedOrderedSessions.map((session) => ({ session, familyMember: null }))
+  const visibleSessionEntries = buildVisibleSessionEntries(scopedOrderedSessions)
   const autocompleteGroups = groupAutocompleteItems(autocompleteItems)
   const activeBranchInfo = getBranchDisplayInfo(activeSession?.branchOf, sessions, '源会话')
   const branchChildIndex = buildBranchChildIndex(sessions)
