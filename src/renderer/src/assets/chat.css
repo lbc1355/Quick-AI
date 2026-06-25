@@ -110,6 +110,7 @@
   background: #10b981;
   border-top-right-radius: 2px;
   color: #fff;
+  white-space: pre-wrap;
 }
 
 .message-bubble.assistant .message-text {

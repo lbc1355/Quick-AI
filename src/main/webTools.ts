@@ -109,7 +109,7 @@ const rewriteAcademicPaperUrl = (rawUrl: string): string => {
   return rawUrl
 }
 
-const validatePublicHttpUrl = async (rawUrl: string): Promise<URL> => {
+export const validatePublicHttpUrl = async (rawUrl: string): Promise<URL> => {
   const parsed = new URL(rawUrl)
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Only http/https URLs are allowed')
@@ -137,7 +137,7 @@ const validatePublicHttpUrl = async (rawUrl: string): Promise<URL> => {
   return parsed
 }
 
-const fetchWithCheckedRedirects = async (
+export const fetchWithCheckedRedirects = async (
   rawUrl: string,
   signal: AbortSignal,
   redirects = 0,
@@ -186,7 +186,7 @@ const readLimitedText = async (
   ) {
     throw new Error(
       `Cannot fetch binary content (${contentType || 'unknown content type'}). ` +
-        `Use an abstract/HTML page instead of a PDF. For arXiv, replace "/pdf/" with "/abs/" in the URL.`
+        `Use pdf_read with {"url":"..."} for PDF content, or fetch an abstract/HTML page when you only need metadata.`
     )
   }
 

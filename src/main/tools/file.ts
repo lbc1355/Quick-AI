@@ -3,6 +3,7 @@ import { fileDiffTool } from './fileDiff'
 import { codeSymbolTool } from './codeSymbolTool'
 import { fileReadTool } from './fileReadTool'
 import { imageReadTool } from './imageReadTool'
+import { pdfReadTool } from './pdfReadTool'
 import { fileWriteTool } from './fileWriteTool'
 import { fileEditTool } from './fileEditTool'
 import { multiEditTool } from './multiEditTool'
@@ -17,6 +18,7 @@ import { workspaceAddRootTool } from './workspaceAddRootTool'
 export const fileTools: Record<string, ToolDefinition> = {
   file_read: fileReadTool,
   image_read: imageReadTool,
+  pdf_read: pdfReadTool,
   code_symbol_read: codeSymbolTool,
   file_write: fileWriteTool,
   file_edit: fileEditTool,

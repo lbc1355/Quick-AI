@@ -72,6 +72,9 @@ export const fileReadTool: ToolDefinition = {
         `This is an image file (${extension}). Use image_read to attach it to the multimodal model context.`
       )
     }
+    if (extension === '.pdf') {
+      throw new Error('This is a PDF file. Use pdf_read to extract text content.')
+    }
 
     try {
       const stats = await fs.stat(target.realPath)

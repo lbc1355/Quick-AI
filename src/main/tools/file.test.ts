@@ -3,6 +3,84 @@ import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
 import { fileTools } from './file'
 
+const pdfParseMocks = vi.hoisted(() => ({
+  getText: vi.fn(),
+  destroy: vi.fn(),
+  PDFParse: vi.fn()
+}))
+
+const webToolsMocks = vi.hoisted(() => ({
+  fetchWithCheckedRedirects: vi.fn()
+}))
+
+vi.mock('pdf-parse', () => ({
+  PDFParse: pdfParseMocks.PDFParse
+}))
+
+vi.mock('../webTools', () => ({
+  fetchWithCheckedRedirects: webToolsMocks.fetchWithCheckedRedirects
+}))
+
+vi.mock('../resourceCache', () => ({
+  getResourceId: () => '11111111111111111111111111111111',
+  saveResourceChunk: async (
+    resourceId: string,
+    kind: string,
+    source: string,
+    title: string | undefined,
+    totalChars: number | undefined,
+    nextOffset: number | undefined,
+    chunk: { id: string; offset?: number; endOffset?: number; createdAt: number }
+  ) => ({
+    id: resourceId,
+    kind,
+    source,
+    title,
+    totalChars,
+    fetchedRanges: [{ start: chunk.offset ?? 0, end: chunk.endOffset ?? 0 }],
+    nextOffset,
+    status: nextOffset === undefined ? 'complete' : 'partial',
+    chunks: [
+      {
+        id: chunk.id,
+        offset: chunk.offset,
+        endOffset: chunk.endOffset,
+        createdAt: chunk.createdAt
+      }
+    ],
+    createdAt: 1,
+    updatedAt: 1
+  })
+}))
+const createPdfResponse = (
+  body = '%PDF-1.7 mock',
+  url = 'https://example.test/paper.pdf'
+): Response => {
+  const response = new Response(Buffer.from(body), {
+    status: 200,
+    statusText: 'OK',
+    headers: {
+      'content-type': 'application/pdf',
+      'content-length': String(Buffer.byteLength(body))
+    }
+  })
+  Object.defineProperty(response, 'url', { value: url })
+  return response
+}
+
+const createHtmlResponse = (html: string, url = 'https://publisher.test/article/123'): Response => {
+  const response = new Response(html, {
+    status: 200,
+    statusText: 'OK',
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'content-length': String(Buffer.byteLength(html))
+    }
+  })
+  Object.defineProperty(response, 'url', { value: url })
+  return response
+}
+
 const testDir = join(__dirname, '../../../temp-file-tools-test')
 
 vi.mock('electron', () => ({
@@ -33,6 +111,15 @@ describe('fileTools', () => {
       await fs.rm(testDir, { recursive: true, force: true })
     }
     await fs.mkdir(join(testDir, 'workspace', 'src'), { recursive: true })
+    pdfParseMocks.getText.mockResolvedValue({ text: 'PDF text', total: 1 })
+    pdfParseMocks.destroy.mockResolvedValue(undefined)
+    pdfParseMocks.PDFParse.mockImplementation(function () {
+      return {
+        getText: pdfParseMocks.getText,
+        destroy: pdfParseMocks.destroy
+      }
+    })
+    webToolsMocks.fetchWithCheckedRedirects.mockResolvedValue(createPdfResponse())
   })
 
   afterEach(async () => {
@@ -40,11 +127,14 @@ describe('fileTools', () => {
     else process.env.QUICKAI_HOME = originalQuickAiHome
     if (originalWorkspaceRoot === undefined) delete process.env.QUICKAI_WORKSPACE_ROOT
     else process.env.QUICKAI_WORKSPACE_ROOT = originalWorkspaceRoot
+    pdfParseMocks.getText.mockReset()
+    pdfParseMocks.destroy.mockReset()
+    pdfParseMocks.PDFParse.mockReset()
+    webToolsMocks.fetchWithCheckedRedirects.mockReset()
     if (existsSync(testDir)) {
       await fs.rm(testDir, { recursive: true, force: true })
     }
   })
-
   it('reports the total file line count in read metadata', async () => {
     await fs.writeFile(join(testDir, 'workspace', 'src', 'sample.ts'), 'one\ntwo\nthree', 'utf-8')
 
@@ -87,6 +177,98 @@ describe('fileTools', () => {
     await expect(
       fileTools.file_read.execute({ path: 'src/photo.jpg', root: 'workspace' }, executionContext)
     ).rejects.toThrow('Use image_read')
+  })
+
+  it('points PDF files from file_read to pdf_read', async () => {
+    await fs.writeFile(join(testDir, 'workspace', 'src', 'paper.pdf'), Buffer.from('%PDF-1.7'))
+
+    await expect(
+      fileTools.file_read.execute({ path: 'src/paper.pdf', root: 'workspace' }, executionContext)
+    ).rejects.toThrow('Use pdf_read')
+  })
+
+  it('extracts local PDF text and stores the visible window as a cached resource', async () => {
+    const pdfText = `Intro line
+${'A'.repeat(2200)}`
+    pdfParseMocks.getText.mockResolvedValueOnce({ text: pdfText, total: 2 })
+    await fs.writeFile(join(testDir, 'workspace', 'src', 'paper.pdf'), Buffer.from('%PDF-1.7'))
+
+    const result = await fileTools.pdf_read.execute(
+      { path: 'src/paper.pdf', root: 'workspace', maxChars: 1200 },
+      executionContext
+    )
+
+    expect(pdfParseMocks.PDFParse).toHaveBeenCalled()
+    expect(result.resultForModel).toContain('PDF: src/paper.pdf')
+    expect(result.resultForModel).toContain('Resource ID:')
+    expect(result.resultForModel).toContain('Pages: 2')
+    expect(result.resultForModel).toContain('Text window: characters 0-1200 of 2211')
+    expect(result.resultForModel).toContain('More text available')
+    expect(result.resultForModel).toContain('Intro line')
+    expect(result.resultForUi.summary).toContain('Read PDF characters 0-1200')
+  })
+
+  it('supports PDF character offsets', async () => {
+    const pdfText = `${'A'.repeat(2000)}TARGET${'B'.repeat(2000)}`
+    pdfParseMocks.getText.mockResolvedValueOnce({ text: pdfText, total: 3 })
+    await fs.writeFile(join(testDir, 'workspace', 'src', 'offset.pdf'), Buffer.from('%PDF-1.7'))
+
+    const result = await fileTools.pdf_read.execute(
+      { path: 'src/offset.pdf', root: 'workspace', offset: 2000, maxChars: 1000 },
+      executionContext
+    )
+
+    expect(result.resultForModel).toContain('Text window: characters 2000-3000 of 4006')
+    expect(result.resultForModel).toContain('TARGET')
+  })
+
+  it('downloads arXiv abstract URLs as PDF text', async () => {
+    const pdfText = `Arxiv paper text ${'C'.repeat(1200)}`
+    pdfParseMocks.getText.mockResolvedValueOnce({ text: pdfText, total: 12 })
+    webToolsMocks.fetchWithCheckedRedirects.mockResolvedValueOnce(
+      createPdfResponse('%PDF-1.7 arxiv', 'https://arxiv.org/pdf/2601.10710.pdf')
+    )
+
+    const result = await fileTools.pdf_read.execute(
+      { url: 'https://arxiv.org/abs/2601.10710', maxChars: 1000 },
+      executionContext
+    )
+
+    const [downloadUrl, _signal, _redirects, headers] =
+      webToolsMocks.fetchWithCheckedRedirects.mock.calls[0]
+    expect(downloadUrl).toBe('https://arxiv.org/pdf/2601.10710.pdf')
+    expect(headers.Accept).toContain('application/pdf')
+    expect(result.resultForModel).toContain('URL: https://arxiv.org/abs/2601.10710')
+    expect(result.resultForModel).toContain('PDF URL: https://arxiv.org/pdf/2601.10710.pdf')
+    expect(result.resultForModel).toContain('Text window: characters 0-1000 of 1217')
+    expect(result.resultForModel).toContain('Arxiv paper text')
+  })
+
+  it('discovers PDF links from non-arXiv HTML landing pages', async () => {
+    const pdfText = `Publisher paper text ${'D'.repeat(1200)}`
+    pdfParseMocks.getText.mockResolvedValueOnce({ text: pdfText, total: 9 })
+    webToolsMocks.fetchWithCheckedRedirects
+      .mockResolvedValueOnce(
+        createHtmlResponse('<html><body><a href="/downloads/paper.pdf">PDF</a></body></html>')
+      )
+      .mockResolvedValueOnce(
+        createPdfResponse('%PDF-1.7 publisher', 'https://publisher.test/downloads/paper.pdf')
+      )
+
+    const result = await fileTools.pdf_read.execute(
+      { url: 'https://publisher.test/article/123', maxChars: 1000 },
+      executionContext
+    )
+
+    expect(webToolsMocks.fetchWithCheckedRedirects.mock.calls[0][0]).toBe(
+      'https://publisher.test/article/123'
+    )
+    expect(webToolsMocks.fetchWithCheckedRedirects.mock.calls[1][0]).toBe(
+      'https://publisher.test/downloads/paper.pdf'
+    )
+    expect(result.resultForModel).toContain('URL: https://publisher.test/article/123')
+    expect(result.resultForModel).toContain('PDF URL: https://publisher.test/downloads/paper.pdf')
+    expect(result.resultForModel).toContain('Publisher paper text')
   })
 
   it('supports tail reads', async () => {

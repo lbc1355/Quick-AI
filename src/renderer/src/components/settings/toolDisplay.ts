@@ -75,6 +75,11 @@ const toolTranslations: Record<string, { title: string; description: string }> =
     title: '读取本地图片',
     description: '读取工作区或当前项目内的图片，并作为多模态视觉上下文传给模型。'
   },
+  pdf_read: {
+    title: '读取 PDF',
+    description:
+      '读取本地、公网 PDF 或含 PDF 链接的论文页面，arXiv 摘要链接会自动转 PDF，支持按字符 offset 分段继续读取。'
+  },
   inspect_environment: {
     title: '检查本机环境',
     description: '一次性读取系统、Shell、常用开发工具版本和标准目录存在情况，避免反复 shell 探测。'
