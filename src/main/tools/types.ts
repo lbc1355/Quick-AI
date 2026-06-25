@@ -1,4 +1,11 @@
-import { ToolArgs, ChatToolDeclaration, ToolResultUi, SessionResource, AgentEvent } from '../../shared/types'
+import {
+  ToolArgs,
+  ChatToolDeclaration,
+  ToolResultUi,
+  SessionResource,
+  AgentEvent,
+  ModelRuntimeConfig
+} from '../../shared/types'
 import { BrowserWindow } from 'electron'
 
 export interface ToolExecutionContext {
@@ -7,6 +14,13 @@ export interface ToolExecutionContext {
   signal: AbortSignal
   mainWindow?: BrowserWindow
   resources?: SessionResource[]
+  agentModel?: {
+    apiUrl: string
+    apiKey: string
+    model: string
+    modelRuntime?: ModelRuntimeConfig
+    contextWindowTokens?: number
+  }
   emitOutput?: (chunk: { stream: 'stdout' | 'stderr'; content: string; replace?: boolean }) => void
   emitEvent?: (event: AgentEvent) => void
 }
@@ -45,10 +59,7 @@ export interface ToolDefinition {
    * Executes the tool and returns both model-facing content and UI-facing metadata.
    * Prefer createToolResult() from ./result for new tools so frontend details stay consistent.
    */
-  execute: (
-    args: ToolArgs,
-    ctx: ToolExecutionContext
-  ) => Promise<ToolExecutionResult>
+  execute: (args: ToolArgs, ctx: ToolExecutionContext) => Promise<ToolExecutionResult>
 }
 
 export interface ToolSummary {

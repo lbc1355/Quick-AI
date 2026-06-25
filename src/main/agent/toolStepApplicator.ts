@@ -1,5 +1,5 @@
 import { AgentEvent, ChatCompletionMessage, SessionResource } from '../../shared/types'
-import { ToolDefinition, ToolModelAttachment } from '../tools/types'
+import { ToolDefinition, ToolExecutionContext, ToolModelAttachment } from '../tools/types'
 import { ToolRegistryView } from '../tools/registryView'
 import { ActionLog } from './actionLog'
 import {
@@ -36,6 +36,7 @@ export interface CreateToolStepExecutorOptions {
   onHaltRequested: () => void
   onAmbiguousAction: (action: AmbiguousAction) => void
   resources?: SessionResource[]
+  agentModel?: ToolExecutionContext['agentModel']
   mainWindow?: Parameters<ToolDefinition['execute']>[1]['mainWindow']
   emitEvent?: (event: AgentEvent) => void
   executePreparedToolCall?: typeof executePreparedToolCall
@@ -65,6 +66,7 @@ export function createToolStepExecutor(options: CreateToolStepExecutorOptions): 
       signal: options.signal,
       mainWindow: options.mainWindow,
       resources: options.resources,
+      agentModel: options.agentModel,
       retryPolicy: options.retryPolicy,
       isSideEffecting: options.isSideEffecting(toolName),
       loopGuard: options.loopGuard,

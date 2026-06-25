@@ -1,5 +1,5 @@
 import { AgentEvent, ChatCompletionMessage, SessionResource } from '../../shared/types'
-import { ToolDefinition, ToolModelAttachment } from '../tools/types'
+import { ToolDefinition, ToolExecutionContext, ToolModelAttachment } from '../tools/types'
 import { ToolRegistryView } from '../tools/registryView'
 import { ActionLog } from './actionLog'
 import { AgentToolDiscovery } from './agentRunPreparation'
@@ -46,6 +46,7 @@ export interface RunToolTurnOptions {
   stepId: string
   signal: AbortSignal
   resources?: SessionResource[]
+  agentModel?: ToolExecutionContext['agentModel']
   retryPolicy: RetryPolicy
   isSideEffecting: (toolName: string) => boolean
   loopGuard: LoopGuard
@@ -124,6 +125,7 @@ export async function runToolTurn(options: RunToolTurnOptions): Promise<RunToolT
     signal: options.signal,
     mainWindow: options.mainWindow,
     resources: options.resources,
+    agentModel: options.agentModel,
     retryPolicy: options.retryPolicy,
     isSideEffecting: (toolName) => options.isSideEffecting(toolName),
     loopGuard: options.loopGuard,

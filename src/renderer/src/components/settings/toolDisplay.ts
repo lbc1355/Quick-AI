@@ -152,6 +152,11 @@ const toolTranslations: Record<string, { title: string; description: string }> =
     title: '执行 Shell 命令',
     description: '在工作区根目录执行单条命令，并流式返回 stdout/stderr 输出。'
   },
+  subagent: {
+    title: '派生子 Agent',
+    description:
+      '把独立的读取、检索或代码巡检子任务交给隔离子 agent，默认只开放低风险读工具，完成后返回摘要给主 agent。'
+  },
   task: {
     title: '任务计划',
     description: '创建或更新当前任务清单状态，帮助 agent 跟踪复杂任务进度。'

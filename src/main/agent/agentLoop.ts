@@ -290,6 +290,13 @@ export const runAgentLoop = async (
           signal,
           mainWindow,
           resources: options.resources,
+          agentModel: {
+            apiUrl: options.apiUrl,
+            apiKey: options.apiKey,
+            model: options.model,
+            modelRuntime: options.modelRuntime,
+            contextWindowTokens: options.contextWindowTokens
+          },
           retryPolicy: DEFAULT_RETRY_POLICY,
           isSideEffecting: (toolName) => SIDE_EFFECTING_TOOLS.has(toolName),
           loopGuard,

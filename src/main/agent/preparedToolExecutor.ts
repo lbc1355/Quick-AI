@@ -1,5 +1,5 @@
 import { AgentEvent, ChatCompletionMessage, SessionResource } from '../../shared/types'
-import { ToolDefinition, ToolModelAttachment } from '../tools/types'
+import { ToolDefinition, ToolExecutionContext, ToolModelAttachment } from '../tools/types'
 import { RetryPolicy } from './retryPolicy'
 import { PreparedToolCall, getFetchUrlCallKey } from './toolCallPlanning'
 import {
@@ -46,6 +46,7 @@ export interface ExecutePreparedToolCallOptions {
   activeTools: string[]
   fetchUrlBudget: FetchUrlBudget
   resources?: SessionResource[]
+  agentModel?: ToolExecutionContext['agentModel']
   mainWindow?: Parameters<ToolDefinition['execute']>[1]['mainWindow']
   emitEvent?: (event: AgentEvent) => void
 }
@@ -177,6 +178,7 @@ export async function executePreparedToolCall(
       signal: options.signal,
       mainWindow: options.mainWindow,
       resources: options.resources,
+      agentModel: options.agentModel,
       emitEvent: options.emitEvent,
       emitOutput: ({ stream, content, replace }) => {
         if (!content) return
