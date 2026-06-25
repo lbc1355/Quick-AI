@@ -1656,7 +1656,6 @@
   .capabilities-filters label {
     flex: 1;
   }
-
 }
 
 @media (max-width: 680px) {
@@ -1968,10 +1967,14 @@
 .mcp-servers-list {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-auto-flow: row;
+  grid-auto-rows: auto;
   align-content: start;
+  align-items: start;
   gap: 10px;
   margin-top: 8px;
   padding-right: 4px;
@@ -2011,12 +2014,19 @@
   padding: 11px 12px;
   display: flex;
   flex-direction: column;
+  align-self: start;
   gap: 10px;
-  transition: all 0.2s;
+  overflow: hidden;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .mcp-server-card.expanded {
   grid-column: 1 / -1;
+  min-height: 0;
+  z-index: 1;
 }
 
 .mcp-server-card:hover {
@@ -2223,12 +2233,20 @@
 }
 
 .mcp-server-tools-tree {
+  min-height: 0;
   margin-top: 4px;
   border-top: 1px solid var(--color-border);
   padding-top: 10px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 8px;
+  overflow-x: hidden;
+}
+
+.mcp-server-card.expanded .mcp-server-tools-tree {
+  max-height: clamp(180px, calc(100vh - 360px), 380px);
+  padding-right: 4px;
+  overflow-y: auto;
 }
 
 .mcp-tool-tree-item {
@@ -2246,12 +2264,14 @@
 }
 
 .mcp-tool-title-row {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .mcp-tool-name {
+  display: block;
   min-width: 0;
   overflow: hidden;
   font-family: 'Consolas', monospace;
@@ -2286,11 +2306,22 @@
   }
 }
 
-.mcp-icon-success { color: #10b981; }
-.mcp-icon-danger { color: #ef4444; }
-.mcp-icon-warning { color: #f59e0b; }
-.mcp-icon-muted { color: var(--color-text-faint); }
-.mcp-icon-tool { color: var(--color-text-faint); flex-shrink: 0; }
+.mcp-icon-success {
+  color: #10b981;
+}
+.mcp-icon-danger {
+  color: #ef4444;
+}
+.mcp-icon-warning {
+  color: #f59e0b;
+}
+.mcp-icon-muted {
+  color: var(--color-text-faint);
+}
+.mcp-icon-tool {
+  color: var(--color-text-faint);
+  flex-shrink: 0;
+}
 
 .mcp-actions-row-top {
   display: flex;

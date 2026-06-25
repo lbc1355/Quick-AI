@@ -84,6 +84,17 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     () => contextBaseTokenEstimate + estimateDraftContextTokens({ input: inputVal })
   )
 
+  const resizeDraftTextarea = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    textarea.style.height = 'auto'
+    const maxHeight = 180
+    const nextHeight = Math.max(48, Math.min(textarea.scrollHeight, maxHeight))
+    textarea.style.height = `${nextHeight}px`
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }, [textareaRef])
+
   useEffect(() => {
     draftValueRef.current = inputVal
     setHasDraftContent(inputVal.trim().length > 0)
@@ -93,7 +104,8 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     if (textareaRef.current && textareaRef.current.value !== inputVal) {
       textareaRef.current.value = inputVal
     }
-  }, [inputVal, textareaRef])
+    resizeDraftTextarea()
+  }, [inputVal, resizeDraftTextarea, textareaRef])
 
   useEffect(() => {
     contextBaseTokenEstimateRef.current = contextBaseTokenEstimate
@@ -133,13 +145,20 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
       if (textareaRef.current && textareaRef.current.value !== value) {
         textareaRef.current.value = value
       }
+      resizeDraftTextarea()
       updateHasDraftContent(value)
       setContextTokenEstimate(
         contextBaseTokenEstimate + estimateDraftContextTokens({ input: value })
       )
       handleInputChange(value)
     },
-    [contextBaseTokenEstimate, handleInputChange, textareaRef, updateHasDraftContent]
+    [
+      contextBaseTokenEstimate,
+      handleInputChange,
+      resizeDraftTextarea,
+      textareaRef,
+      updateHasDraftContent
+    ]
   )
   const draftContextTokenEstimate = Math.max(0, contextTokenEstimate - contextBaseTokenEstimate)
   const contextUsage = buildContextUsageBreakdown({
@@ -157,10 +176,11 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     (value: string) => {
       draftValueRef.current = value
       updateHasDraftContent(value)
+      resizeDraftTextarea()
       scheduleContextMeterUpdate()
       handleInputChange(value)
     },
-    [handleInputChange, scheduleContextMeterUpdate, updateHasDraftContent]
+    [handleInputChange, resizeDraftTextarea, scheduleContextMeterUpdate, updateHasDraftContent]
   )
 
   const submitDraft = useCallback(() => {
