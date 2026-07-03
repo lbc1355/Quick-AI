@@ -74,8 +74,8 @@ const scrollContainerTo = (
   container.scrollTo({ top, behavior: effectiveBehavior })
 
   return effectiveBehavior === 'smooth'
-    ? { behavior: effectiveBehavior, resetDelay: 760, correctionDelays: [320, 720] }
-    : { behavior: effectiveBehavior, resetDelay: 120, correctionDelays: [40, 100] }
+    ? { behavior: effectiveBehavior, resetDelay: 420, correctionDelays: [] }
+    : { behavior: effectiveBehavior, resetDelay: 90, correctionDelays: [40] }
 }
 
 const scheduleScrollCorrections = (
@@ -173,7 +173,7 @@ export function useMessageNavigation({
   )
 
   const scrollToBottom = useCallback(
-    (behavior: ScrollBehavior = 'smooth'): void => {
+    (behavior: ScrollBehavior = 'auto'): void => {
       const container = messagesContainerRef.current
       if (!container) return
 
@@ -207,7 +207,7 @@ export function useMessageNavigation({
 
       const block = target.offsetHeight > container.clientHeight * 0.72 ? 'start' : 'center'
       const getTop = () => getElementScrollTop(container, target, block)
-      const result = scrollContainerTo(container, getTop(), 'smooth')
+      const result = scrollContainerTo(container, getTop(), 'auto')
       scheduleScrollCorrections(container, getTop, result.correctionDelays)
 
       finishProgrammaticScroll(container, result.resetDelay, () => {
@@ -255,7 +255,7 @@ export function useMessageNavigation({
 
     const block = target.offsetHeight > container.clientHeight * 0.72 ? 'start' : 'center'
     const getTop = () => getElementScrollTop(container, target, block)
-    const result = scrollContainerTo(container, getTop(), 'smooth')
+    const result = scrollContainerTo(container, getTop(), 'auto')
     scheduleScrollCorrections(container, getTop, result.correctionDelays)
 
     const timeoutId = window.setTimeout(() => {

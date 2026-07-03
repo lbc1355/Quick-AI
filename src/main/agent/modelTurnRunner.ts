@@ -1,5 +1,10 @@
 import { ChatCompletionMessage, ChatToolDeclaration, PromptCacheStats } from '../../shared/types'
-import { callModel, CallModelOptions, getPromptCacheStats } from './callModel'
+import {
+  callModel,
+  CallModelOptions,
+  getPromptCacheStats,
+  ToolCallStreamProgress
+} from './callModel'
 import { RunUsageTracker } from './runUsageTracker'
 
 export interface RunModelTurnOptions {
@@ -10,6 +15,7 @@ export interface RunModelTurnOptions {
   usageTracker: Pick<RunUsageTracker, 'recordModelResponse'>
   onReasoning: (content: string) => void
   onContentChunk: (content: string) => void
+  onToolCallProgress?: (progress: ToolCallStreamProgress) => void
   callModel?: typeof callModel
   getPromptCacheStats?: (message: ChatCompletionMessage) => PromptCacheStats | undefined
   decorateCacheStats?: (stats: PromptCacheStats | undefined) => PromptCacheStats | undefined
@@ -39,7 +45,8 @@ export async function runModelTurn(options: RunModelTurnOptions): Promise<RunMod
       onFinalChunk: (content) => {
         streamedText += content
         options.onContentChunk(content)
-      }
+      },
+      onToolCallProgress: options.onToolCallProgress
     }
   )
 

@@ -8,7 +8,8 @@ import {
   Check,
   AlertCircle,
   GitBranch,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react'
 import {
   parseThinkTags,
@@ -104,6 +105,116 @@ const groupConsecutiveToolCalls = (step: ParsedAgentStep): ToolEventGroup[] => {
   })
 
   return groups
+}
+
+interface ErrorAnalysis {
+  title: string
+  description: string
+  suggestion: string[]
+}
+
+const analyzeError = (errorText: string): ErrorAnalysis => {
+  const lowercaseErr = errorText.toLowerCase()
+
+  if (lowercaseErr.includes('terminated')) {
+    return {
+      title: '大模型连接超时中断 (Terminated)',
+      description:
+        '智能体在执行高负荷任务（如编写长游戏代码或进行长链思考）时消耗了过长时间，流式响应的连接中途被服务商或网络代理强行断开了。',
+      suggestion: [
+        '请在“设置”中尝试切换至更稳定的商业 API 提供商（如官方 DeepSeek 通道）以避开免费额度的连接限制；',
+        '尝试采用“分段提问”或“渐进式提示”，每次让 AI 生成一部分，以避免单次请求执行时间过长。'
+      ]
+    }
+  }
+
+  if (lowercaseErr.includes('rate limit') || lowercaseErr.includes('429')) {
+    return {
+      title: '触发模型接口限流 (Rate Limited)',
+      description: '当前请求的频次或模型配额已超过服务商的限制，API 服务商拒绝了本次访问。',
+      suggestion: [
+        '请稍等几分钟后再重试本次操作；',
+        '您可以在“设置”中临时切换至其他备用的大模型服务商。'
+      ]
+    }
+  }
+
+  if (
+    lowercaseErr.includes('unauthorized') ||
+    lowercaseErr.includes('401') ||
+    lowercaseErr.includes('api key') ||
+    lowercaseErr.includes('key is invalid')
+  ) {
+    return {
+      title: 'API 密钥验证失败 (Unauthorized)',
+      description: '向模型服务商发起接口调用时，对方服务器提示您的 API Key 无效或未授权。',
+      suggestion: [
+        '请前往“设置”面板，确认您对应提供商 the API Key 填写是否正确；',
+        '请检查该 API Key 余额是否充足或是否已被服务商封禁。'
+      ]
+    }
+  }
+
+  if (
+    lowercaseErr.includes('dns') ||
+    lowercaseErr.includes('fetch failed') ||
+    lowercaseErr.includes('connect') ||
+    lowercaseErr.includes('network error') ||
+    lowercaseErr.includes('enoent')
+  ) {
+    return {
+      title: '网络连接失败',
+      description:
+        '智能体无法连接至当前模型服务商的 API 终点（Endpoint）。可能是您的代理软件阻止了连接，或者是 API 地址填写错误。',
+      suggestion: [
+        '请检查您本地的 VPN 或代理软件设置，确保它允许 Electron/Node.js 进程发起外部连接；',
+        '请核对“设置”中 API URL 是否拼写正确（包含完整的协议和路径）。'
+      ]
+    }
+  }
+
+  const cleanMsg = errorText.replace(/^出错了：/, '')
+  return {
+    title: '执行过程中发生异常',
+    description: cleanMsg || '智能体运行中遇到了未知错误，导致本次交互异常终止。',
+    suggestion: [
+      '您可以点击下方的“重试并发送”按钮再次尝试；',
+      '如果问题持续发生，请检查控制台运行日志或配置文件。'
+    ]
+  }
+}
+
+const RuntimeErrorPanel: React.FC<{
+  content: string
+  onRetry: () => void
+}> = ({ content, onRetry }) => {
+  const analysis = useMemo(() => analyzeError(content), [content])
+
+  return (
+    <div className="runtime-error-panel">
+      <div className="runtime-error-header">
+        <AlertCircle className="runtime-error-icon" size={16} />
+        <span className="runtime-error-title">{analysis.title}</span>
+      </div>
+      <div className="runtime-error-body">
+        <div className="runtime-error-description">{analysis.description}</div>
+        <div className="runtime-error-suggestion-box">
+          <div className="runtime-error-suggestion-title">您可以尝试以下排查建议：</div>
+          <ul className="runtime-error-suggestions">
+            {analysis.suggestion.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div className="runtime-error-retry-row">
+        <button className="runtime-error-retry-btn" type="button" onClick={onRetry}>
+          <RefreshCw size={12} />
+          重试并发送
+        </button>
+      </div>
+    </div>
+  )
 }
 
 const StepToolEvents: React.FC<{
@@ -236,11 +347,25 @@ const StepProgressMessage: React.FC<{ message: string }> = ({ message }) => {
   return <div className="agent-step-progress-message">{renderMessageContent(message)}</div>
 }
 
-const StepReasoningBlock: React.FC<{ reasoning: string }> = ({ reasoning }) => {
+const StepReasoningBlock: React.FC<{
+  reasoning: string
+  autoOpen?: boolean
+  autoStateKey?: string
+}> = ({ reasoning, autoOpen = false, autoStateKey }) => {
+  const [isOpen, setIsOpen] = useState(autoOpen)
+
+  useEffect(() => {
+    setIsOpen(autoOpen)
+  }, [autoOpen, autoStateKey])
+
   if (!reasoning.trim()) return null
 
   return (
-    <details className="agent-step-reasoning">
+    <details
+      className="agent-step-reasoning"
+      open={autoOpen || isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+    >
       <summary>思考</summary>
       <div className="agent-step-reasoning-content">{reasoning}</div>
     </details>
@@ -350,6 +475,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
         ),
       [msg.agentEvents]
     )
+    const latestProgressMessage = lastProgressEvent?.message?.trim() || ''
 
     let agentStatus: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' =
       'idle'
@@ -443,6 +569,20 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       !pendingToolCall &&
       !hasActiveToolCall &&
       (parsedRun.finalAnswer.trim().length > 0 || totalToolsCount > 0)
+    const latestReasoningStep =
+      agentStatus === 'running'
+        ? [...parsedRun.steps].reverse().find((step) => step.reasoning.trim().length > 0)
+        : undefined
+    const latestReasoningKey =
+      agentStatus === 'running'
+        ? parsedRun.finalReasoning.trim().length > 0
+          ? 'final'
+          : latestReasoningStep?.id
+        : undefined
+    const reasoningAutoStateKey = `${agentStatus}:${latestReasoningKey || 'none'}`
+    const shouldAutoOpenStepReasoning = (step: ParsedAgentStep): boolean => {
+      return latestReasoningKey === step.id
+    }
 
     const activeStepTitle = useMemo(() => {
       if (activeParsedStep?.title) return activeParsedStep.title
@@ -483,11 +623,13 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     } else if (agentStatus === 'running') {
       cockpitColor = 'var(--color-status-running)'
       statusText = isGeneratingAnswer ? '正在生成回答' : `正在${activeStepTitle}`
-      opText = isGeneratingAnswer
-        ? `当前操作：正在整理结果${totalToolsCount > 0 ? `（已运行 ${totalToolsCount} 个工具）` : ''}`
-        : latestToolCall
-          ? `当前操作：${latestToolCall.purpose || formatToolDisplayText(latestToolCall.toolName, latestToolCall.args)}`
-          : '当前操作：思考分析中...'
+      opText = latestProgressMessage
+        ? `当前操作：${latestProgressMessage}`
+        : isGeneratingAnswer
+          ? `当前操作：正在整理结果${totalToolsCount > 0 ? `（已运行 ${totalToolsCount} 个工具）` : ''}`
+          : latestToolCall
+            ? `当前操作：${latestToolCall.purpose || formatToolDisplayText(latestToolCall.toolName, latestToolCall.args)}`
+            : '当前操作：思考分析中...'
       toolsSummaryText = `已耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
     } else if (agentStatus === 'completed') {
       cockpitColor = 'var(--color-status-success)'
@@ -736,7 +878,11 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                 {step.progressMessage && (
                                   <StepProgressMessage message={step.progressMessage} />
                                 )}
-                                <StepReasoningBlock reasoning={step.reasoning} />
+                                <StepReasoningBlock
+                                  reasoning={step.reasoning}
+                                  autoOpen={shouldAutoOpenStepReasoning(step)}
+                                  autoStateKey={reasoningAutoStateKey}
+                                />
                                 <StepToolEvents
                                   step={step}
                                   onOpenToolDetail={(toolCall) =>
@@ -777,7 +923,11 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                       {step.progressMessage && (
                                         <StepProgressMessage message={step.progressMessage} />
                                       )}
-                                      <StepReasoningBlock reasoning={step.reasoning} />
+                                      <StepReasoningBlock
+                                        reasoning={step.reasoning}
+                                        autoOpen={shouldAutoOpenStepReasoning(step)}
+                                        autoStateKey={reasoningAutoStateKey}
+                                      />
                                       <StepToolEvents
                                         step={step}
                                         onOpenToolDetail={(toolCall) =>
@@ -792,10 +942,22 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           </div>
                         ) : null}
 
-                        {(parsedRun.finalReasoning || parsedRun.finalAnswer) && (
+                        {(parsedRun.finalReasoning ||
+                          parsedRun.finalAnswer ||
+                          msg.isRuntimeError) && (
                           <div className="agent-event-final-text">
-                            <StepReasoningBlock reasoning={parsedRun.finalReasoning} />
-                            {renderedFinalAnswer}
+                            <StepReasoningBlock
+                              reasoning={parsedRun.finalReasoning}
+                              autoOpen={latestReasoningKey === 'final'}
+                              autoStateKey={reasoningAutoStateKey}
+                            />
+                            {parsedRun.finalAnswer ? renderedFinalAnswer : null}
+                            {msg.isRuntimeError && (
+                              <RuntimeErrorPanel
+                                content={msg.content}
+                                onRetry={() => onRegenerate(idx)}
+                              />
+                            )}
                             {(generationDurationText ||
                               msg.tokenSpeed !== undefined ||
                               cacheHitRateText) && (
@@ -844,6 +1006,11 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                     cleanContent ? (
                       msg.role === 'user' ? (
                         cleanContent
+                      ) : msg.isRuntimeError ? (
+                        <RuntimeErrorPanel
+                          content={msg.content}
+                          onRetry={() => onRegenerate(idx)}
+                        />
                       ) : (
                         <>
                           {renderedCleanContent}

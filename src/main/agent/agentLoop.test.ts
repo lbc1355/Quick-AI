@@ -1059,9 +1059,7 @@ describe('runAgentLoop', () => {
       event: expect.objectContaining({ type: 'agent_end', status: 'completed' })
     })
 
-    const emittedEvents = sendMock.mock.calls
-      .map(([, payload]) => payload.event)
-      .filter(Boolean)
+    const emittedEvents = sendMock.mock.calls.map(([, payload]) => payload.event).filter(Boolean)
     expect(emittedEvents.every((event) => event.runId === 'test-req-progress-completed')).toBe(true)
     expect(emittedEvents.map((event) => event.sequence)).toEqual([1, 2, 3, 4])
     expect(emittedEvents.every((event) => typeof event.timestamp === 'number')).toBe(true)
@@ -1084,7 +1082,10 @@ describe('runAgentLoop', () => {
             {
               id: 'tc-fetch',
               type: 'function',
-              function: { name: 'fetch_url', arguments: JSON.stringify({ url: 'https://example.com' }) }
+              function: {
+                name: 'fetch_url',
+                arguments: JSON.stringify({ url: 'https://example.com' })
+              }
             }
           ]
         }
@@ -1099,9 +1100,7 @@ describe('runAgentLoop', () => {
       messages: [{ role: 'user', content: 'Find source' }]
     })
 
-    const events = sendMock.mock.calls
-      .map(([, payload]) => payload.event)
-      .filter(Boolean)
+    const events = sendMock.mock.calls.map(([, payload]) => payload.event).filter(Boolean)
     const stepEvents = events.filter((event) => event.type === 'agent_step')
     const toolCallEvents = events.filter((event) => event.type === 'tool_call')
     const finalEvents = events.filter((event) => event.type === 'final')
@@ -1137,27 +1136,27 @@ describe('runAgentLoop', () => {
       messages: [{ role: 'user', content: 'Hello' }]
     })
 
-    const events = sendMock.mock.calls
-      .map(([, payload]) => payload.event)
-      .filter(Boolean)
+    const events = sendMock.mock.calls.map(([, payload]) => payload.event).filter(Boolean)
 
     expect(events.some((event) => event.type === 'agent_step')).toBe(false)
-    expect(events).toContainEqual(expect.objectContaining({
-      type: 'final',
-      content: 'Final only.',
-      step: 1,
-      stepId: 'test-req-final-only:step:1'
-    }))
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'final',
+        content: 'Final only.',
+        step: 1,
+        stepId: 'test-req-final-only:step:1'
+      })
+    )
   })
 
   it('streams unclassified model text before committing it as final', async () => {
     vi.mocked(callModel).mockImplementation(
       async (_options, _messages, _tools, _signal, callbacks) => {
-        callbacks?.onFinalChunk('Final ')
-        callbacks?.onFinalChunk('answer.')
+        callbacks?.onFinalChunk('line 1\n')
+        callbacks?.onFinalChunk('line 2\nline 3')
         return {
           role: 'assistant',
-          content: 'Final answer.'
+          content: 'line 1\nline 2\nline 3'
         }
       }
     )
@@ -1169,30 +1168,35 @@ describe('runAgentLoop', () => {
       messages: [{ role: 'user', content: 'Hello' }]
     })
 
-    const events = sendMock.mock.calls
-      .map(([, payload]) => payload.event)
-      .filter(Boolean)
+    const events = sendMock.mock.calls.map(([, payload]) => payload.event).filter(Boolean)
 
     expect(events.filter((event) => event.type === 'agent_message_delta')).toMatchObject([
       {
         type: 'agent_message_delta',
-        content: 'Final ',
+        content: 'line 1\n',
         step: 1,
         stepId: 'test-req-stream-final:step:1'
       },
       {
         type: 'agent_message_delta',
-        content: 'answer.',
+        content: 'line 2\nline 3',
         step: 1,
         stepId: 'test-req-stream-final:step:1'
       }
     ])
-    expect(events).toContainEqual(expect.objectContaining({
-      type: 'final',
-      content: 'Final answer.',
-      step: 1,
-      stepId: 'test-req-stream-final:step:1'
-    }))
+    expect(
+      events.some(
+        (event) => event.type === 'agent_progress' && event.message === '正在输出内容：已输出 3 行'
+      )
+    ).toBe(false)
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'final',
+        content: 'line 1\nline 2\nline 3',
+        step: 1,
+        stepId: 'test-req-stream-final:step:1'
+      })
+    )
   })
 
   it('emits agent_end max_steps on maxSteps exhaustion', async () => {
@@ -1254,7 +1258,11 @@ describe('runAgentLoop', () => {
     })
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-failed-event',
-      event: expect.objectContaining({ type: 'agent_end', status: 'failed', error: 'Model API is down' })
+      event: expect.objectContaining({
+        type: 'agent_end',
+        status: 'failed',
+        error: 'Model API is down'
+      })
     })
   })
 

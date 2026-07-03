@@ -785,7 +785,7 @@ function App(): React.JSX.Element {
               <button
                 type="button"
                 className="scroll-to-bottom-btn"
-                onClick={() => scrollToBottom('smooth')}
+                onClick={() => scrollToBottom('auto')}
                 title="滑到底部"
                 aria-label="滑到底部"
               >

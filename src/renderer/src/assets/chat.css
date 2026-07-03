@@ -1441,3 +1441,127 @@
   color: var(--color-text-title);
   font-weight: 500;
 }
+
+/* RuntimeErrorPanel Styles */
+.runtime-error-panel {
+  margin: var(--spacing-3) 0;
+  padding: var(--spacing-4);
+  border-radius: var(--rounded-lg);
+  background: var(--color-error-bg, color-mix(in srgb, var(--color-danger) 8%, transparent));
+  border: 1px solid var(--color-error-border, color-mix(in srgb, var(--color-danger) 25%, transparent));
+  color: var(--color-text);
+  font-family: inherit;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.theme-light .runtime-error-panel {
+  background: var(--color-error-bg, color-mix(in srgb, var(--color-danger) 6%, transparent));
+  border-color: var(--color-error-border, color-mix(in srgb, var(--color-danger) 20%, transparent));
+}
+
+.runtime-error-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.runtime-error-icon {
+  color: var(--color-danger);
+  flex-shrink: 0;
+}
+
+.runtime-error-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-text-title);
+}
+
+.runtime-error-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.runtime-error-description {
+  margin-bottom: var(--spacing-2);
+  opacity: 0.95;
+}
+
+.runtime-error-suggestion-box {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: var(--rounded-md);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-left: 3px solid var(--color-danger);
+}
+
+.theme-light .runtime-error-suggestion-box {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.runtime-error-suggestion-title {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: var(--spacing-1);
+  color: var(--color-text-title);
+}
+
+.runtime-error-suggestions {
+  margin: 0;
+  padding-left: var(--spacing-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.runtime-error-suggestions li {
+  list-style-type: decimal;
+  color: var(--color-text-muted);
+}
+
+.runtime-error-suggestions li strong {
+  color: var(--color-text);
+}
+
+.runtime-error-retry-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.runtime-error-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-2) var(--spacing-3);
+  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
+  color: #fff;
+  border-radius: var(--rounded-md);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-light .runtime-error-retry-btn {
+  color: var(--color-danger);
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.2);
+}
+
+.runtime-error-retry-btn:hover {
+  background: color-mix(in srgb, var(--color-danger) 28%, transparent);
+  border-color: color-mix(in srgb, var(--color-danger) 60%, transparent);
+  transform: translateY(-1px);
+}
+
+.theme-light .runtime-error-retry-btn:hover {
+  background: rgba(220, 38, 38, 0.15);
+  border-color: rgba(220, 38, 38, 0.35);
+  color: var(--color-danger);
+}
+
+.runtime-error-retry-btn:active {
+  transform: translateY(0);
+}

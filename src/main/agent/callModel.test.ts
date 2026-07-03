@@ -162,7 +162,6 @@ describe('callModel retry behavior', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
-
   it('uses explicit runtime adapter and API model id instead of guessing from URL', async () => {
     fetchMock.mockResolvedValue(
       okResponse(sseStream([sseLine({ content: 'Hello' }), 'data: [DONE]\n']))
@@ -238,6 +237,79 @@ describe('callModel retry behavior', () => {
     expect(body.tool_choice).toBeUndefined()
   })
 
+  it('reports tool call argument streaming progress', async () => {
+    const generatedLines = Array.from({ length: 80 }, (_, index) => `line ${index + 1}`).join('\\n')
+    fetchMock.mockResolvedValue(
+      okResponse(
+        sseStream([
+          sseLine({
+            tool_calls: [
+              {
+                index: 0,
+                id: 'call-write',
+                function: { name: 'file_write', arguments: '' }
+              }
+            ]
+          }),
+          sseLine({
+            tool_calls: [
+              {
+                index: 0,
+                function: { arguments: '{"path":"out.txt","content":"' }
+              }
+            ]
+          }),
+          sseLine({
+            tool_calls: [
+              {
+                index: 0,
+                function: { arguments: generatedLines }
+              }
+            ]
+          }),
+          sseLine({
+            tool_calls: [
+              {
+                index: 0,
+                function: { arguments: '"}' }
+              }
+            ]
+          }),
+          'data: [DONE]\n'
+        ])
+      )
+    )
+
+    const onToolCallProgress = vi.fn()
+    const result = await callModel(
+      { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model' },
+      [{ role: 'user', content: 'write the file' }],
+      undefined,
+      undefined,
+      { onReasoning: vi.fn(), onFinalChunk: vi.fn(), onToolCallProgress }
+    )
+
+    expect(result.tool_calls?.[0]).toMatchObject({
+      id: 'call-write',
+      function: { name: 'file_write' }
+    })
+    expect(result.tool_calls?.[0].function.arguments).toContain(generatedLines)
+    expect(onToolCallProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        index: 0,
+        id: 'call-write',
+        toolName: 'file_write',
+        argumentsLength: 0,
+        argumentsDeltaLength: 0,
+        generatedLineCount: 0
+      })
+    )
+    expect(
+      onToolCallProgress.mock.calls.some(
+        ([progress]) => progress.toolName === 'file_write' && progress.generatedLineCount >= 80
+      )
+    ).toBe(true)
+  })
   it('extracts prompt cache stats from streaming usage chunks', async () => {
     fetchMock.mockResolvedValue(
       okResponse(

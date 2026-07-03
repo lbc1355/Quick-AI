@@ -20,6 +20,37 @@ export interface CallModelOptions {
 export interface CallModelCallbacks {
   onReasoning: (content: string) => void
   onFinalChunk: (content: string) => void
+  onToolCallProgress?: (progress: ToolCallStreamProgress) => void
+}
+
+export interface ToolCallStreamProgress {
+  index: number
+  id?: string
+  toolName?: string
+  argumentsLength: number
+  argumentsDeltaLength: number
+  generatedLineCount: number
+}
+
+const TOOL_CALL_PROGRESS_CHAR_INTERVAL = 4096
+const TOOL_CALL_PROGRESS_LINE_INTERVAL = 25
+const FILE_WRITE_CONTENT_ARGUMENT_PATTERN = /"content"\s*:\s*"/
+
+const countGeneratedArgumentLines = (
+  toolName: string | undefined,
+  argumentsText: string
+): number => {
+  const contentMatch =
+    toolName === 'file_write' ? argumentsText.match(FILE_WRITE_CONTENT_ARGUMENT_PATTERN) : null
+  const source =
+    contentMatch?.index === undefined
+      ? argumentsText
+      : argumentsText.slice(contentMatch.index + contentMatch[0].length)
+  if (!source) return 0
+
+  const actualNewlines = source.match(/\r\n|\r|\n/g)?.length || 0
+  const escapedNewlines = source.match(/\\n/g)?.length || 0
+  return actualNewlines + escapedNewlines + 1
 }
 
 const promptCacheStatsByMessage = new WeakMap<ChatCompletionMessage, PromptCacheStats>()
@@ -171,7 +202,7 @@ export async function callModel(
 
   // Tracks whether any user-visible chunk (reasoning/final) has been emitted. Once true,
   // the request must NOT be retried — retrying would duplicate streamed output to the UI.
-  // Tool-call deltas have no visible side effect, so they don't block a retry.
+  // Tool-call progress is replaceable UI state, so it does not block a retry.
   let streamingStarted = false
 
   // A single network attempt: open the SSE stream, parse it, and accumulate the message.
@@ -206,6 +237,15 @@ export async function callModel(
 
     let inThinkTag = false
     let promptCacheStats: PromptCacheStats | undefined
+    const toolCallProgress = new Map<
+      number,
+      {
+        emittedStart: boolean
+        lastEmittedArgumentsLength: number
+        lastEmittedLineCount: number
+        lastToolName?: string
+      }
+    >()
 
     const emitReasoning = (content: string): void => {
       streamingStarted = true
@@ -214,6 +254,64 @@ export async function callModel(
     const emitFinal = (content: string): void => {
       streamingStarted = true
       callbacks?.onFinalChunk(content)
+    }
+    const emitToolCallProgress = (
+      index: number,
+      toolCall: NonNullable<ChatCompletionMessage['tool_calls']>[number],
+      argumentsDeltaLength: number,
+      force = false
+    ): void => {
+      if (!callbacks?.onToolCallProgress) return
+
+      const toolName = toolCall.function.name || undefined
+      if (!toolName && !toolCall.id) return
+
+      const state = toolCallProgress.get(index) || {
+        emittedStart: false,
+        lastEmittedArgumentsLength: 0,
+        lastEmittedLineCount: 0,
+        lastToolName: undefined
+      }
+      const argumentsLength = toolCall.function.arguments.length
+      const generatedLineCount = countGeneratedArgumentLines(toolName, toolCall.function.arguments)
+      const shouldEmitStart = !state.emittedStart
+      const shouldEmitToolName = Boolean(toolName && toolName !== state.lastToolName)
+      const shouldEmitArguments =
+        argumentsLength - state.lastEmittedArgumentsLength >= TOOL_CALL_PROGRESS_CHAR_INTERVAL
+      const shouldEmitLines =
+        generatedLineCount > 0 &&
+        (state.lastEmittedLineCount === 0 ||
+          generatedLineCount - state.lastEmittedLineCount >= TOOL_CALL_PROGRESS_LINE_INTERVAL)
+      const shouldEmitFinal =
+        force &&
+        (argumentsLength !== state.lastEmittedArgumentsLength ||
+          generatedLineCount !== state.lastEmittedLineCount ||
+          toolName !== state.lastToolName)
+
+      if (
+        !shouldEmitStart &&
+        !shouldEmitToolName &&
+        !shouldEmitArguments &&
+        !shouldEmitLines &&
+        !shouldEmitFinal
+      ) {
+        return
+      }
+
+      callbacks.onToolCallProgress({
+        index,
+        id: toolCall.id || undefined,
+        toolName,
+        argumentsLength,
+        argumentsDeltaLength,
+        generatedLineCount
+      })
+      toolCallProgress.set(index, {
+        emittedStart: true,
+        lastEmittedArgumentsLength: argumentsLength,
+        lastEmittedLineCount: generatedLineCount,
+        lastToolName: toolName
+      })
     }
 
     try {
@@ -268,6 +366,11 @@ export async function callModel(
                     assistantMessage.tool_calls[idx].function.arguments +=
                       tcDelta.function.arguments
                   }
+                  emitToolCallProgress(
+                    idx,
+                    assistantMessage.tool_calls[idx],
+                    tcDelta.function?.arguments?.length || 0
+                  )
                 }
               }
 
@@ -325,6 +428,12 @@ export async function callModel(
     } finally {
       reader.releaseLock()
     }
+
+    assistantMessage.tool_calls?.forEach((toolCall, index) => {
+      if (toolCall) {
+        emitToolCallProgress(index, toolCall, 0, true)
+      }
+    })
 
     if (assistantMessage.tool_calls) {
       assistantMessage.tool_calls = assistantMessage.tool_calls.filter(

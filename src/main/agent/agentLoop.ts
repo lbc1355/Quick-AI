@@ -16,6 +16,7 @@ import { SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { createToolDeclarationCache } from './toolDeclarationCache'
 import { createRunUsageTracker } from './runUsageTracker'
 import { runModelTurn } from './modelTurnRunner'
+import { ToolCallStreamProgress } from './callModel'
 import { AgentRunOptions, prepareAgentRun } from './agentRunPreparation'
 import { runToolTurn } from './toolTurnRunner'
 import { runForcedFinalTurn } from './forcedFinalTurnRunner'
@@ -42,6 +43,49 @@ const getAssistantText = (content: ChatCompletionMessage['content']): string => 
   }
   return ''
 }
+
+const formatToolCallProgressMessage = (progress: ToolCallStreamProgress): string => {
+  const toolName = progress.toolName || 'tool'
+  if (toolName === 'file_write') {
+    return `正在生成写入内容：已生成 ${progress.generatedLineCount} 行`
+  }
+  return `正在准备工具调用：${toolName}（已生成 ${progress.generatedLineCount} 行参数）`
+}
+const STREAM_OUTPUT_PROGRESS_LINE_INTERVAL = 25
+
+const countNewLines = (content: string): number => content.match(/\r\n|\r|\n/g)?.length || 0
+
+const createStreamLineProgressTracker = (
+  emitProgress: (lineCount: number) => void
+): ((content: string, force?: boolean) => void) => {
+  let hasContent = false
+  let lineCount = 0
+  let lastEmittedLineCount = 0
+
+  return (content: string, force = false): void => {
+    if (content) {
+      if (!hasContent) {
+        hasContent = true
+        lineCount = 1
+      }
+      lineCount += countNewLines(content)
+    }
+
+    if (!hasContent) return
+
+    const shouldEmitStart = lastEmittedLineCount === 0
+    const shouldEmitLines = lineCount - lastEmittedLineCount >= STREAM_OUTPUT_PROGRESS_LINE_INTERVAL
+    const shouldEmitFinal = force && lineCount !== lastEmittedLineCount
+
+    if (!shouldEmitStart && !shouldEmitLines && !shouldEmitFinal) return
+
+    lastEmittedLineCount = lineCount
+    emitProgress(lineCount)
+  }
+}
+
+const formatStreamLineProgressMessage = (label: string, lineCount: number): string =>
+  `正在输出${label}：已输出 ${lineCount} 行`
 
 const getEffectiveContextWindowSize = (options: {
   model: string
@@ -238,6 +282,20 @@ export const runAgentLoop = async (
       // Stream assistant text as an unclassified model message until we know whether this
       // model turn becomes a tool step or the final answer. Some providers emit content
       // before tool_call deltas, so the final/step classification has to happen after the turn.
+      const emitModelOutputProgress = (message: string): void => {
+        eventStream.emit({
+          type: 'agent_progress',
+          step,
+          maxSteps,
+          stepId,
+          activeTools: Array.from(runCtx.activeTools),
+          message
+        })
+      }
+
+      const reasoningLineProgress = createStreamLineProgressTracker((lineCount) => {
+        emitModelOutputProgress(formatStreamLineProgressMessage('思考', lineCount))
+      })
       const {
         assistantMessage,
         streamedText: assistantTextBuffer,
@@ -255,6 +313,7 @@ export const runAgentLoop = async (
         usageTracker,
         onReasoning: (content) => {
           eventStream.emit({ type: 'reasoning', content, step, stepId })
+          reasoningLineProgress(content)
         },
         onContentChunk: (content) => {
           eventStream.emit({
@@ -264,12 +323,24 @@ export const runAgentLoop = async (
             stepId
           })
         },
+        onToolCallProgress: (progress) => {
+          eventStream.emit({
+            type: 'agent_progress',
+            step,
+            maxSteps,
+            stepId,
+            activeTools: Array.from(runCtx.activeTools),
+            message: formatToolCallProgressMessage(progress)
+          })
+        },
         decorateCacheStats: (stats) => {
           const diagnostics = commitCacheShapeForSession(conversationId, cacheShape, stats)
           if (!stats) return undefined
           return { ...stats, cacheDiagnostics: diagnostics }
         }
       })
+
+      reasoningLineProgress('', true)
 
       messages.push(assistantMessage)
       SessionLogger.logModelResponse(conversationId, assistantMessage, cacheStats)
