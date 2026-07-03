@@ -80,9 +80,9 @@ const contextRoleLabels: Record<ContextCompositionRole, string> = {
 }
 
 const formatChars = (chars: number): string => `${Math.max(0, chars).toLocaleString()} chars`
-const formatRolePercent = (chars: number, totalChars: number): string => {
-  if (!totalChars || chars <= 0) return '0%'
-  const percent = (chars / totalChars) * 100
+const formatSharePercent = (value: number, total: number): string => {
+  if (!total || value <= 0) return '0%'
+  const percent = (value / total) * 100
   if (percent > 0 && percent < 0.1) return '<0.1%'
   const rounded = Number(percent.toFixed(1))
   return rounded % 1 === 0 ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`
@@ -97,7 +97,7 @@ interface ContextCompositionRenderGroup {
 
 const buildSegmentTitle = (segment: ContextCompositionSegment): string =>
   [
-    `${contextRoleLabels[segment.role]} \u00b7 ${formatChars(segment.textLength)}`,
+    `${contextRoleLabels[segment.role]} \u00b7 ${formatTokens(segment.tokenEstimate)} \u00b7 ${formatChars(segment.textLength)}`,
     segment.label !== contextRoleLabels[segment.role] ? segment.label : undefined,
     segment.preview
   ]
@@ -130,9 +130,17 @@ const buildSegmentGroups = (
 }
 
 const buildGroupTitle = (group: ContextCompositionRenderGroup): string => {
+  const totalTokens = group.segments.reduce((total, segment) => total + segment.tokenEstimate, 0)
   const totalChars = group.segments.reduce((total, segment) => total + segment.textLength, 0)
   const roleSummary = group.segments
-    .map((segment) => contextRoleLabels[segment.role] + ': ' + formatChars(segment.textLength))
+    .map(
+      (segment) =>
+        contextRoleLabels[segment.role] +
+        ': ' +
+        formatTokens(segment.tokenEstimate) +
+        ' / ' +
+        formatChars(segment.textLength)
+    )
     .join('\n')
 
   return [
@@ -140,6 +148,8 @@ const buildGroupTitle = (group: ContextCompositionRenderGroup): string => {
       ' - ' +
       group.segments.length.toLocaleString() +
       ' segments - ' +
+      formatTokens(totalTokens) +
+      ' - ' +
       formatChars(totalChars),
     roleSummary
   ]
@@ -150,17 +160,19 @@ const buildGroupTitle = (group: ContextCompositionRenderGroup): string => {
 const ContextCompositionGrid: React.FC<{ segments: ContextCompositionSegment[] }> = ({
   segments
 }) => {
+  const totalTokens = segments.reduce((total, segment) => total + segment.tokenEstimate, 0)
   const totalChars = segments.reduce((total, segment) => total + segment.textLength, 0)
   const roles = Object.keys(contextRoleLabels) as ContextCompositionRole[]
   const roleStats = roles.reduce(
     (stats, role) => {
-      stats[role] = { chars: 0, count: 0 }
+      stats[role] = { tokens: 0, chars: 0, count: 0 }
       return stats
     },
-    {} as Record<ContextCompositionRole, { chars: number; count: number }>
+    {} as Record<ContextCompositionRole, { tokens: number; chars: number; count: number }>
   )
 
   for (const segment of segments) {
+    roleStats[segment.role].tokens += segment.tokenEstimate
     roleStats[segment.role].chars += segment.textLength
     roleStats[segment.role].count += 1
   }
@@ -172,6 +184,7 @@ const ContextCompositionGrid: React.FC<{ segments: ContextCompositionSegment[] }
     <div className="context-role-composition">
       <div className="context-role-summary">
         <span>{segments.length.toLocaleString()} segments</span>
+        <span>{formatTokens(totalTokens)}</span>
         <span>{formatChars(totalChars)}</span>
       </div>
       <div className="context-role-cells" aria-label="Context message roles">
@@ -213,8 +226,8 @@ const ContextCompositionGrid: React.FC<{ segments: ContextCompositionSegment[] }
       <div className="context-role-legend">
         {roles.map((role) => {
           const stats = roleStats[role]
-          const percent = formatRolePercent(stats.chars, totalChars)
-          const title = `${contextRoleLabels[role]} · ${percent}\n${formatChars(stats.chars)} · ${stats.count.toLocaleString()} segments`
+          const percent = formatSharePercent(stats.tokens, totalTokens)
+          const title = `${contextRoleLabels[role]} · ${percent}\n${formatTokens(stats.tokens)} · ${formatChars(stats.chars)} · ${stats.count.toLocaleString()} segments`
 
           return (
             <span className="context-role-legend-item" key={role} title={title}>

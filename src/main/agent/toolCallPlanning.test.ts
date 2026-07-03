@@ -71,15 +71,21 @@ function plan(
 describe('getFetchUrlCallKey', () => {
   it('normalizes fetch_url offset and maxChars into a stable key', () => {
     expect(getFetchUrlCallKey({ url: 'https://example.com', offset: 3.7, maxChars: 99999 })).toBe(
-      'fetch_url:https://example.com:offset=3:maxChars=16000'
+      'fetch_url:https://example.com:mode=static:offset=3:maxChars=16000'
     )
     expect(getFetchUrlCallKey({ url: 'https://example.com' })).toBe(
-      'fetch_url:https://example.com:offset=0:maxChars=default'
+      'fetch_url:https://example.com:mode=static:offset=0:maxChars=default'
     )
   })
 
   it('returns undefined when no URL is present', () => {
     expect(getFetchUrlCallKey({ offset: 100 })).toBeUndefined()
+  })
+
+  it('includes render mode in the fetch_url key', () => {
+    expect(getFetchUrlCallKey({ url: 'https://example.com', render: true })).toBe(
+      'fetch_url:https://example.com:mode=rendered:offset=0:maxChars=default'
+    )
   })
 })
 
@@ -218,7 +224,8 @@ describe('prepareToolCalls', () => {
   it('detects duplicate fetch_url windows from prior runs and the same turn', () => {
     const prior = plan({
       toolCalls: [toolCall('fetch_url', { url: 'https://example.com', offset: 0 })],
-      hasExecuted: (key) => key === 'fetch_url:https://example.com:offset=0:maxChars=default'
+      hasExecuted: (key) =>
+        key === 'fetch_url:https://example.com:mode=static:offset=0:maxChars=default'
     })
     expect(prior.directCalls[0]).toMatchObject({
       toolName: 'fetch_url',
@@ -235,6 +242,33 @@ describe('prepareToolCalls', () => {
     expect(sameTurn.prepared[0].isDeadlock).toBe(false)
     expect(sameTurn.prepared[1]).toMatchObject({
       callId: 'tc-fetch-2',
+      isDeadlock: true,
+      classification: 'direct'
+    })
+  })
+  it('allows a rendered fetch_url window after a static fetch_url window', () => {
+    const renderedAfterStatic = plan({
+      toolCalls: [toolCall('fetch_url', { url: 'https://example.com', render: true })],
+      hasExecuted: (key) =>
+        key === 'fetch_url:https://example.com:mode=static:offset=0:maxChars=default'
+    })
+    expect(renderedAfterStatic.prepared[0]).toMatchObject({
+      toolName: 'fetch_url',
+      isDeadlock: false,
+      classification: 'direct'
+    })
+
+    const sameTurn = plan({
+      toolCalls: [
+        toolCall('fetch_url', { url: 'https://example.com' }, 'tc-fetch-static'),
+        toolCall('fetch_url', { url: 'https://example.com', render: true }, 'tc-fetch-render'),
+        toolCall('fetch_url', { url: 'https://example.com', render: true }, 'tc-fetch-render-2')
+      ]
+    })
+    expect(sameTurn.prepared[0].isDeadlock).toBe(false)
+    expect(sameTurn.prepared[1].isDeadlock).toBe(false)
+    expect(sameTurn.prepared[2]).toMatchObject({
+      callId: 'tc-fetch-render-2',
       isDeadlock: true,
       classification: 'direct'
     })

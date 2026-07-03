@@ -42,8 +42,9 @@ export const getFetchUrlCallKey = (toolArgs: ToolArgs): string | undefined => {
     rawMaxChars !== undefined && Number.isFinite(rawMaxChars)
       ? Math.min(16000, Math.max(1000, Math.floor(rawMaxChars)))
       : 'default'
+  const mode = toolArgs.render === true ? 'rendered' : 'static'
 
-  return `fetch_url:${url}:offset=${offset}:maxChars=${maxChars}`
+  return `fetch_url:${url}:mode=${mode}:offset=${offset}:maxChars=${maxChars}`
 }
 
 export function prepareToolCalls(input: {

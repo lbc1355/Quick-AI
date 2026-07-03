@@ -9,7 +9,7 @@ interface ChatComposerProps {
   contextUsageLevel: 'ok' | 'warn' | 'danger'
   contextMeterStyle: React.CSSProperties
   contextMeterLabel: string
-  onOpenContextPanel: () => void
+  onOpenContextUsage: () => void
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   pendingPermission: PendingPermission | null
   inputVal: string
@@ -31,7 +31,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   contextUsageLevel,
   contextMeterStyle,
   contextMeterLabel,
-  onOpenContextPanel,
+  onOpenContextUsage,
   textareaRef,
   pendingPermission,
   inputVal,
@@ -68,9 +68,9 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
       <button
         type="button"
         className={`input-context-meter ${contextUsageLevel}`}
-        aria-label="Open context details"
+        aria-label="Open context usage summary"
         title={contextMeterLabel}
-        onClick={onOpenContextPanel}
+        onClick={onOpenContextUsage}
       >
         <span className="context-progress-ring" style={contextMeterStyle} aria-hidden="true" />
       </button>

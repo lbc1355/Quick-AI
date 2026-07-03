@@ -88,7 +88,7 @@ describe('createToolStepExecutor', () => {
           image_url: { url: 'data:image/png;base64,abc' }
         }
       ],
-      markExecutedCallKey: 'fetch_url:https://example.com:offset=0:maxChars=default',
+      markExecutedCallKey: 'fetch_url:https://example.com:mode=static:offset=0:maxChars=default',
       outputStore: {
         callId: 'call-1',
         content: 'full output',
@@ -155,7 +155,7 @@ describe('createToolStepExecutor', () => {
     )
     expect(toolModelAttachments[1]).toHaveLength(1)
     expect(markExecuted).toHaveBeenCalledWith(
-      'fetch_url:https://example.com:offset=0:maxChars=default'
+      'fetch_url:https://example.com:mode=static:offset=0:maxChars=default'
     )
     expect(storeToolOutput).toHaveBeenCalledWith('call-1', 'full output')
     expect(activateTool).toHaveBeenCalledWith('read_tool_output')

@@ -185,7 +185,7 @@ describe('executePreparedToolCall', () => {
     ])
     expect(result.response.content).toBe('runtime output')
     expect(result.markExecutedCallKey).toBe(
-      'fetch_url:https://example.com:offset=0:maxChars=default'
+      'fetch_url:https://example.com:mode=static:offset=0:maxChars=default'
     )
     expect(result.events.map((event) => event.type)).toEqual(['tool_result', 'agent_progress'])
     expect(result.action.resultStatus).toBe('success')

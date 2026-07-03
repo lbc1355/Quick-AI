@@ -87,7 +87,11 @@ const groupConsecutiveToolCalls = (step: ParsedAgentStep): ToolEventGroup[] => {
   step.toolCalls.forEach((toolCall) => {
     const verb = getToolEventVerb(toolCall)
     const latestGroup = groups[groups.length - 1]
-    if (latestGroup && latestGroup.verb === verb) {
+    if (
+      latestGroup &&
+      latestGroup.calls[0].toolName === toolCall.toolName &&
+      latestGroup.verb === verb
+    ) {
       latestGroup.calls.push(toolCall)
       return
     }
@@ -133,8 +137,18 @@ const StepToolEvents: React.FC<{
       >
         <span className="agent-tool-event-line">
           {hasFailure && <AlertCircle size={12} className="agent-tool-failure-icon" />}
-          <span className="agent-tool-verb">{getToolEventVerb(tc)}</span>
+          <span className="agent-tool-name">{tc.toolName}</span>
           <span className="agent-tool-chip">{getToolChipText(tc)}</span>
+          {tc.result?.readStartLine !== undefined && tc.result?.readEndLine !== undefined && (
+            <span className="agent-tool-line-range">{`#L${tc.result.readStartLine}-${tc.result.readEndLine}`}</span>
+          )}
+          {tc.result?.addedLines !== undefined && (
+            <span className="agent-tool-diff-added">{`+${tc.result.addedLines}`}</span>
+          )}
+          {tc.result?.removedLines !== undefined && (
+            <span className="agent-tool-diff-removed">{`-${tc.result.removedLines}`}</span>
+          )}
+          <span className="agent-tool-verb">{getToolEventVerb(tc)}</span>
         </span>
         {failurePreview && <span className="agent-tool-failure-preview">{failurePreview}</span>}
       </button>
@@ -169,7 +183,7 @@ const StepToolEvents: React.FC<{
             >
               <ChevronRight size={12} className="agent-tool-group-caret" />
               {hasFailure && <AlertCircle size={12} className="agent-tool-failure-icon" />}
-              <span className="agent-tool-verb">{group.verb}</span>
+              <span className="agent-tool-name">{group.calls[0].toolName}</span>
               <span className="agent-tool-group-count">{group.calls.length}</span>
               {failedCallsCount > 0 && (
                 <span className="agent-tool-group-failure">{failedCallsCount} failed</span>
@@ -186,6 +200,7 @@ const StepToolEvents: React.FC<{
                   </span>
                 )}
               </span>
+              <span className="agent-tool-verb">{group.verb}</span>
             </button>
             {isExpanded && (
               <div className="agent-tool-group-items">
@@ -454,39 +469,39 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     let statusText = ''
     let opText = ''
     let toolsSummaryText = ''
-    let cockpitColor = '#94a3b8'
+    let cockpitColor = 'var(--color-status-muted)'
 
     if (pendingToolCall) {
-      cockpitColor = '#f59e0b'
+      cockpitColor = 'var(--color-status-pending)'
       statusText = `等待确认 · 正在${activeStepTitle}`
       const argsStr = formatToolArgsSummary(pendingToolCall.toolName, pendingToolCall.args)
       opText =
         pendingToolCall.toolName === 'shell'
           ? `shell 需要授权：${argsStr}`
           : `${pendingToolCall.toolName} 需要授权：${argsStr}`
-      toolsSummaryText = `已运行 ${totalToolsCount - 1} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
+      toolsSummaryText = `已耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
     } else if (agentStatus === 'running') {
-      cockpitColor = '#3b82f6'
+      cockpitColor = 'var(--color-status-running)'
       statusText = isGeneratingAnswer ? '正在生成回答' : `正在${activeStepTitle}`
       opText = isGeneratingAnswer
         ? `当前操作：正在整理结果${totalToolsCount > 0 ? `（已运行 ${totalToolsCount} 个工具）` : ''}`
         : latestToolCall
           ? `当前操作：${latestToolCall.purpose || formatToolDisplayText(latestToolCall.toolName, latestToolCall.args)}`
           : '当前操作：思考分析中...'
-      toolsSummaryText = `已运行 ${totalToolsCount} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
+      toolsSummaryText = `已耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
     } else if (agentStatus === 'completed') {
-      cockpitColor = '#10b981'
+      cockpitColor = 'var(--color-status-success)'
       statusText = '已完成'
-      opText = `共运行 ${totalToolsCount} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
+      opText = `共运行 ${totalToolsCount} 个工具 · 累计耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
       toolsSummaryText = ''
     } else if (agentStatus === 'cancelled') {
-      cockpitColor = '#f59e0b'
+      cockpitColor = 'var(--color-status-warning)'
       statusText = '已取消'
-      opText = `共运行 ${totalToolsCount} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败` : ''}`
+      opText = `共运行 ${totalToolsCount} 个工具 · 累计耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败` : ''}`
     } else if (agentStatus === 'failed' || agentStatus === 'max_steps') {
-      cockpitColor = '#ef4444'
+      cockpitColor = 'var(--color-status-danger)'
       statusText = agentStatus === 'max_steps' ? '步数上限' : '执行失败'
-      opText = `共运行 ${totalToolsCount} 个工具${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败` : ''}`
+      opText = `共运行 ${totalToolsCount} 个工具 · 累计耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败` : ''}`
     } else {
       statusText = '空闲'
       opText = `共运行 ${totalToolsCount} 个工具`
@@ -500,7 +515,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
             <div
               className="agent-inline-summary-box"
               style={{
-                borderColor: pendingToolCall ? '#f59e0b' : undefined
+                borderColor: pendingToolCall ? 'var(--color-status-pending)' : undefined
               }}
             >
               <div className="summary-header">
@@ -534,6 +549,44 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
               </div>
 
               <div className="summary-body">
+                {tasks.length > 0 &&
+                  (() => {
+                    const totalTasks = tasks.length
+                    const completedTasks = tasks.filter((t) => t.status === 'completed').length
+                    const inProgressTask = tasks.find((t) => t.status === 'in_progress')
+
+                    let currentTaskIdx = completedTasks + 1
+                    let currentTaskTitle = ''
+
+                    if (inProgressTask) {
+                      const idx = tasks.findIndex((t) => t.id === inProgressTask.id)
+                      if (idx !== -1) {
+                        currentTaskIdx = idx + 1
+                      }
+                      currentTaskTitle = inProgressTask.title
+                    } else {
+                      const pendingTask = tasks.find((t) => t.status === 'pending')
+                      if (pendingTask) {
+                        const idx = tasks.findIndex((t) => t.id === pendingTask.id)
+                        if (idx !== -1) {
+                          currentTaskIdx = idx + 1
+                        }
+                        currentTaskTitle = pendingTask.title
+                      } else {
+                        currentTaskIdx = completedTasks
+                        currentTaskTitle = tasks[tasks.length - 1]?.title || ''
+                      }
+                    }
+
+                    return (
+                      <div className="summary-task-progress-line">
+                        <span className="summary-task-progress-label">任务进度：</span>
+                        <span className="summary-task-progress-value">
+                          {currentTaskIdx}/{totalTasks} &ldquo;{currentTaskTitle}&rdquo;
+                        </span>
+                      </div>
+                    )
+                  })()}
                 <div className="summary-current-op" title={opText}>
                   {opText}
                 </div>
@@ -622,7 +675,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           onClick={() => setIsExpanded(!isExpanded)}
                           style={{
                             fontSize: '12px',
-                            color: '#60a5fa',
+                            color: 'var(--color-text-accent)',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
@@ -652,7 +705,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                             display: isExpanded ? 'block' : 'none',
                             fontSize: '12px',
                             color: 'var(--color-text-muted)',
-                            borderLeft: '2px solid rgba(96, 165, 250, 0.35)',
+                            borderLeft:
+                              '2px solid color-mix(in srgb, var(--color-primary) 35%, transparent)',
                             paddingLeft: '10px',
                             marginLeft: '4px',
                             fontStyle: 'italic',
@@ -753,7 +807,10 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                   opacity: 0.7
                                 }}
                               >
-                                <Sparkles size={10} style={{ color: '#10b981' }} />
+                                <Sparkles
+                                  size={10}
+                                  style={{ color: 'var(--color-status-success)' }}
+                                />
                                 {generationDurationText && <span>{generationDurationText}</span>}
                                 {msg.tokenSpeed !== undefined && (
                                   <>
@@ -801,7 +858,10 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                 opacity: 0.7
                               }}
                             >
-                              <Sparkles size={10} style={{ color: '#10b981' }} />
+                              <Sparkles
+                                size={10}
+                                style={{ color: 'var(--color-status-success)' }}
+                              />
                               {generationDurationText && <span>{generationDurationText}</span>}
                               {msg.tokenSpeed !== undefined && (
                                 <>

@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 import { AutocompleteItem, RunMode } from '../../../shared/types'
 import { FilePreviewList } from './FilePreviewList'
 import { PermissionPopup } from './PermissionPopup'
 import { ContextPanel } from './ContextPanel'
 import { estimateDraftContextTokens } from '../utils/contextLength'
-import { buildContextUsageBreakdown } from '../utils/contextDiagnostics'
-import type { ContextDiagnosticsSnapshot } from '../utils/contextDiagnostics'
+import { buildContextUsageBreakdown, formatUsagePercent } from '../utils/contextDiagnostics'
+import type { ContextDiagnosticsSnapshot, ContextUsageBreakdown } from '../utils/contextDiagnostics'
 import type { PendingPermission, PermissionResponsePayload } from '../features/chat/permissionTypes'
 import { AutocompleteMenu } from './chat-input/AutocompleteMenu'
 import { ChatComposer } from './chat-input/ChatComposer'
@@ -47,6 +48,85 @@ interface ChatInputAreaProps {
   handleAbortGeneration: () => void
   handleSendMessage: (promptOverride?: string) => Promise<boolean>
 }
+interface ContextUsagePopoverItem {
+  key: string
+  label: string
+  tokens: number
+  className: string
+}
+
+const formatCompactTokenCount = (tokens: number): string => {
+  const value = Math.max(0, tokens)
+  const formatScaled = (divisor: number, suffix: string): string => {
+    const scaled = Number((value / divisor).toFixed(1))
+    return `${scaled % 1 === 0 ? scaled.toFixed(0) : scaled.toFixed(1)}${suffix}`
+  }
+
+  if (value >= 1_000_000) return formatScaled(1_000_000, 'M')
+  if (value >= 1_000) return formatScaled(1_000, 'K')
+  return value.toLocaleString()
+}
+
+const ContextUsagePopover: React.FC<{
+  usage: ContextUsageBreakdown
+  items: ContextUsagePopoverItem[]
+  onClose: () => void
+  onViewReport: () => void
+}> = ({ usage, items, onClose, onViewReport }) => {
+  const visiblePercent = Math.min(100, Math.max(0, usage.totalPercent))
+
+  return (
+    <div className="context-usage-popover" role="dialog" aria-label="Context usage summary">
+      <div className="context-usage-popover-header">
+        <span className="context-usage-popover-title">Context Usage</span>
+        <span className="context-usage-popover-actions">
+          <button type="button" className="context-usage-view-report" onClick={onViewReport}>
+            View Report
+          </button>
+          <button
+            type="button"
+            className="context-usage-popover-close"
+            onClick={onClose}
+            title="Close"
+            aria-label="Close context usage summary"
+          >
+            <X size={15} />
+          </button>
+        </span>
+      </div>
+
+      <div className="context-usage-popover-summary">
+        <span>{formatUsagePercent(usage.totalPercent)} Full</span>
+        <span>
+          ~{formatCompactTokenCount(usage.totalTokens)} /{' '}
+          {formatCompactTokenCount(usage.contextWindowTokens)} Tokens
+        </span>
+      </div>
+
+      <div className="context-usage-bar" aria-hidden="true">
+        <div className="context-usage-bar-fill" style={{ width: `${visiblePercent}%` }}>
+          {items.map((item) => (
+            <span
+              key={item.key}
+              className={`context-usage-bar-segment ${item.className}`}
+              style={{ flexGrow: Math.max(1, item.tokens) }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="context-usage-breakdown">
+        {items.map((item) => (
+          <div className="context-usage-row" key={item.key}>
+            <span className={`context-usage-dot ${item.className}`} />
+            <span>{item.label}</span>
+            <strong>{formatCompactTokenCount(item.tokens)}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   autocompleteItems,
@@ -80,6 +160,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   const contextMeterTimerRef = useRef<number | null>(null)
   const [hasDraftContent, setHasDraftContent] = useState(() => inputVal.trim().length > 0)
   const [isContextPanelOpen, setIsContextPanelOpen] = useState(false)
+  const [isContextUsagePopoverOpen, setIsContextUsagePopoverOpen] = useState(false)
   const [contextTokenEstimate, setContextTokenEstimate] = useState(
     () => contextBaseTokenEstimate + estimateDraftContextTokens({ input: inputVal })
   )
@@ -121,6 +202,19 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!isContextUsagePopoverOpen) return
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setIsContextUsagePopoverOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isContextUsagePopoverOpen])
 
   const updateHasDraftContent = useCallback((value: string) => {
     const next = value.trim().length > 0
@@ -171,6 +265,61 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     '--context-progress-angle': `${contextUsage.totalPercent * 3.6}deg`
   } as React.CSSProperties
   const contextMeterLabel = `上下文 ${contextUsage.totalTokens.toLocaleString()} / ${contextUsage.contextWindowTokens.toLocaleString()} tokens`
+  const roleTokenTotals = contextDiagnostics.compositionSegments.reduce<Record<string, number>>(
+    (totals, segment) => {
+      totals[segment.role] = (totals[segment.role] || 0) + segment.tokenEstimate
+      return totals
+    },
+    {}
+  )
+  const contextUsageItems: ContextUsagePopoverItem[] = [
+    {
+      key: 'system',
+      label: 'System prompt',
+      tokens: contextUsage.steeringTokens,
+      className: 'usage-system'
+    },
+    {
+      key: 'tool-call',
+      label: 'Tool calls',
+      tokens: roleTokenTotals.tool_call || 0,
+      className: 'usage-tool-call'
+    },
+    {
+      key: 'tool-output',
+      label: 'Tool output',
+      tokens: roleTokenTotals.tool || 0,
+      className: 'usage-tool-output'
+    },
+    {
+      key: 'user',
+      label: 'User messages',
+      tokens: (roleTokenTotals.user || 0) + draftContextTokenEstimate,
+      className: 'usage-user'
+    },
+    {
+      key: 'assistant',
+      label: 'Assistant',
+      tokens: roleTokenTotals.assistant || 0,
+      className: 'usage-assistant'
+    },
+    {
+      key: 'mcp',
+      label: 'MCP',
+      tokens: contextUsage.mcpToolTokens,
+      className: 'usage-mcp'
+    }
+  ].filter((item) => item.tokens > 0)
+  const accountedContextTokens = contextUsageItems.reduce((total, item) => total + item.tokens, 0)
+  const otherContextTokens = Math.max(0, contextUsage.totalTokens - accountedContextTokens)
+  if (otherContextTokens > 0) {
+    contextUsageItems.push({
+      key: 'other',
+      label: 'Other context',
+      tokens: otherContextTokens,
+      className: 'usage-other'
+    })
+  }
 
   const updateDraftValue = useCallback(
     (value: string) => {
@@ -203,6 +352,10 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   }
 
   const canSend = hasDraftContent || attachedFiles.length > 0
+  const openContextReport = useCallback(() => {
+    setIsContextUsagePopoverOpen(false)
+    setIsContextPanelOpen(true)
+  }, [])
 
   return (
     <>
@@ -226,6 +379,15 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           />
         )}
 
+        {isContextUsagePopoverOpen && (
+          <ContextUsagePopover
+            usage={contextUsage}
+            items={contextUsageItems}
+            onClose={() => setIsContextUsagePopoverOpen(false)}
+            onViewReport={openContextReport}
+          />
+        )}
+
         {pendingPermission && (
           <PermissionPopup
             pending={pendingPermission}
@@ -240,7 +402,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           contextUsageLevel={contextUsageLevel}
           contextMeterStyle={contextMeterStyle}
           contextMeterLabel={contextMeterLabel}
-          onOpenContextPanel={() => setIsContextPanelOpen(true)}
+          onOpenContextUsage={() => setIsContextUsagePopoverOpen((open) => !open)}
           textareaRef={textareaRef}
           pendingPermission={pendingPermission}
           inputVal={inputVal}

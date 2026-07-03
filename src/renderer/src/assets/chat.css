@@ -448,6 +448,177 @@
   --context-progress-color: var(--color-danger);
 }
 
+.context-usage-popover {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  z-index: 40;
+  width: min(960px, calc(100% - 68px));
+  padding: 14px;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--rounded-lg);
+  background: var(--color-panel);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.32);
+  color: var(--color-text);
+}
+
+.context-usage-popover-header,
+.context-usage-popover-summary,
+.context-usage-row {
+  display: flex;
+  align-items: center;
+}
+
+.context-usage-popover-header,
+.context-usage-popover-summary {
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.context-usage-popover-title {
+  color: var(--color-text-title);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.context-usage-popover-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.context-usage-view-report,
+.context-usage-popover-close {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.context-usage-view-report {
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.context-usage-view-report:hover,
+.context-usage-view-report:focus-visible {
+  color: var(--color-text-title);
+  outline: none;
+}
+
+.context-usage-popover-close {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--rounded-sm);
+}
+
+.context-usage-popover-close:hover,
+.context-usage-popover-close:focus-visible {
+  background: var(--color-card-bg-hover);
+  color: var(--color-text-title);
+  outline: none;
+}
+
+.context-usage-popover-summary {
+  margin-top: 16px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.context-usage-bar {
+  height: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: var(--rounded-pill);
+  background: color-mix(in srgb, var(--color-text-muted) 24%, transparent);
+}
+
+.context-usage-bar-fill {
+  height: 100%;
+  display: flex;
+  min-width: 2px;
+  gap: 2px;
+}
+
+.context-usage-bar-segment {
+  min-width: 2px;
+  height: 100%;
+  flex-basis: 0;
+}
+
+.context-usage-breakdown {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.context-usage-row {
+  gap: 10px;
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.context-usage-row span:nth-child(2) {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.context-usage-row strong {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.context-usage-dot {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border-radius: var(--rounded-xs);
+}
+
+.context-usage-dot.usage-system,
+.context-usage-bar-segment.usage-system {
+  background: #c4b5fd;
+}
+
+.context-usage-dot.usage-tool-call,
+.context-usage-bar-segment.usage-tool-call {
+  background: #fde68a;
+}
+
+.context-usage-dot.usage-tool-output,
+.context-usage-bar-segment.usage-tool-output {
+  background: #99f6e4;
+}
+
+.context-usage-dot.usage-user,
+.context-usage-bar-segment.usage-user {
+  background: #bfdbfe;
+}
+
+.context-usage-dot.usage-assistant,
+.context-usage-bar-segment.usage-assistant {
+  background: #bbf7d0;
+}
+
+.context-usage-dot.usage-mcp,
+.context-usage-bar-segment.usage-mcp {
+  background: #f0abfc;
+}
+
+.context-usage-dot.usage-other,
+.context-usage-bar-segment.usage-other {
+  background: #d4d4d8;
+}
+
 .context-panel-backdrop {
   position: fixed;
   inset: 0;
@@ -1188,6 +1359,8 @@
 .summary-body {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
   gap: 4px;
   border-top: 1px solid rgba(128, 128, 128, 0.1);
   padding-top: 6px;
@@ -1248,4 +1421,23 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Agent Summary Box Compact Task Progress Line Styles */
+.summary-task-progress-line {
+  font-size: 11.5px;
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-1);
+  text-align: center;
+  width: 100%;
+}
+
+.summary-task-progress-label {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.summary-task-progress-value {
+  color: var(--color-text-title);
+  font-weight: 500;
 }
