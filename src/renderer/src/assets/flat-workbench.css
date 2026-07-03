@@ -1706,9 +1706,6 @@ body {
   right: 34px;
   max-width: 960px;
   margin: 0 auto;
-  border-color: #333333;
-  border-radius: var(--rounded-lg);
-  background: #202020;
 }
 
 .command-group-label {
