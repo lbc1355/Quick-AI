@@ -31,6 +31,17 @@ export interface PreparedToolCallGroups {
   blockedCalls: PreparedToolCall[]
 }
 
+export const getShellApprovalCommand = (
+  toolName: string,
+  toolArgs: ToolArgs
+): string | undefined => {
+  if (toolName === 'shell' && typeof toolArgs.command === 'string') return toolArgs.command
+  if (toolName === 'shell_background_start' && typeof toolArgs.command === 'string') {
+    return toolArgs.command
+  }
+  return undefined
+}
+
 export const getFetchUrlCallKey = (toolArgs: ToolArgs): string | undefined => {
   const url = typeof toolArgs.url === 'string' ? toolArgs.url : ''
   if (!url) return undefined
@@ -101,13 +112,10 @@ export function prepareToolCalls(input: {
     }
 
     if (effectivePermission === 'ask') {
+      const shellApprovalCommand = getShellApprovalCommand(toolName, args)
       if (input.isToolApproved(toolName)) {
         effectivePermission = 'allow'
-      } else if (
-        toolName === 'shell' &&
-        typeof args.command === 'string' &&
-        input.isCommandPrefixApproved(args.command)
-      ) {
+      } else if (shellApprovalCommand && input.isCommandPrefixApproved(shellApprovalCommand)) {
         effectivePermission = 'allow'
       }
     }

@@ -515,7 +515,13 @@ function App(): React.JSX.Element {
   const autocompleteGroups = groupAutocompleteItems(autocompleteItems)
   const activeBranchInfo = getBranchDisplayInfo(activeSession?.branchOf, sessions, '源会话')
   const branchChildIndex = buildBranchChildIndex(sessions)
-
+  const userMessageNavItems = useMemo(
+    () =>
+      activeSession?.messages
+        .map((msg, idx) => ({ msg, idx }))
+        .filter(({ msg }) => msg.role === 'user') || [],
+    [activeSession?.messages]
+  )
   return (
     <div
       className={`app-container ${theme === 'light' ? 'theme-light' : ''} ${
@@ -752,23 +758,21 @@ function App(): React.JSX.Element {
               </div>
             )}
 
-            {!isNewSessionEmpty && activeSession?.messages.length ? (
-              <nav className="message-minimap" aria-label="消息导航">
-                {activeSession.messages.map((msg, idx) => {
-                  const isLastMessage = idx === activeSession.messages.length - 1
+            {!isNewSessionEmpty && userMessageNavItems.length ? (
+              <nav className="message-minimap" aria-label="用户消息导航">
+                {userMessageNavItems.map(({ msg, idx }) => {
                   const isActive = activeMessageNavId === msg.id
-                  const roleLabel = msg.role === 'user' ? '用户' : '助手'
                   const preview = buildMessageNavPreview(msg.content, msg.files)
-                  const tooltipLabel = `${roleLabel} #${idx + 1}`
+                  const tooltipLabel = `用户 #${idx + 1}`
 
                   return (
                     <button
                       key={msg.id}
                       type="button"
-                      className={`message-minimap-item ${msg.role} ${isActive ? 'active' : ''}`}
+                      className={`message-minimap-item user ${isActive ? 'active' : ''}`}
                       data-label={tooltipLabel}
                       data-preview={preview}
-                      onClick={() => scrollToMessage(msg.id, isLastMessage)}
+                      onClick={() => scrollToMessage(msg.id)}
                       title={`${tooltipLabel}：${preview}`}
                       aria-label={`${tooltipLabel}：${preview}`}
                     />

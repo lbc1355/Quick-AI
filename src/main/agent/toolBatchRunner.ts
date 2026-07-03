@@ -1,5 +1,5 @@
 import { AgentEvent, ChatCompletionMessage } from '../../shared/types'
-import { PreparedToolCall } from './toolCallPlanning'
+import { PreparedToolCall, getShellApprovalCommand } from './toolCallPlanning'
 
 export type ExecutePreparedTool = (
   prep: PreparedToolCall,
@@ -62,10 +62,10 @@ export async function runPreparedToolBatch(
 
     let isApproved = false
     const isToolApproved = options.isToolApproved(toolName)
-    const isCmdApproved =
-      toolName === 'shell' &&
-      typeof toolArgs.command === 'string' &&
-      options.isCommandPrefixApproved(toolArgs.command)
+    const shellApprovalCommand = getShellApprovalCommand(toolName, toolArgs)
+    const isCmdApproved = shellApprovalCommand
+      ? options.isCommandPrefixApproved(shellApprovalCommand)
+      : false
 
     if (isToolApproved || isCmdApproved) {
       isApproved = true

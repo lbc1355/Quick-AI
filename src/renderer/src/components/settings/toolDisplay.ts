@@ -152,6 +152,22 @@ const toolTranslations: Record<string, { title: string; description: string }> =
     title: '执行 Shell 命令',
     description: '在工作区根目录执行单条命令，并流式返回 stdout/stderr 输出。'
   },
+  shell_background_start: {
+    title: '后台启动 Shell 命令',
+    description: '启动开发服务器、watcher、npm run dev 等长时间运行命令，立即返回后台进程 ID。'
+  },
+  shell_background_read: {
+    title: '读取后台 Shell 输出',
+    description: '按后台进程 ID 读取已缓冲的 stdout/stderr 日志，支持 offset 分页。'
+  },
+  shell_background_stop: {
+    title: '停止后台 Shell 进程',
+    description: '按后台进程 ID 停止命令；Windows 下会终止进程树，避免 dev server 残留。'
+  },
+  shell_background_list: {
+    title: '列出后台 Shell 进程',
+    description: '列出当前应用会话中启动过的后台 Shell 进程、状态、PID 和输出大小。'
+  },
   subagent: {
     title: '派生子 Agent',
     description:

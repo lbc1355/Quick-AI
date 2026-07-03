@@ -74,7 +74,11 @@ export function getPermissionRequestDisplay(
   toolName: string,
   args: unknown
 ): PermissionRequestDisplay {
-  if (toolName === 'shell' && args && typeof args === 'object') {
+  if (
+    (toolName === 'shell' || toolName === 'shell_background_start') &&
+    args &&
+    typeof args === 'object'
+  ) {
     const command = (args as Record<string, unknown>).command
     if (typeof command === 'string' && command.trim()) {
       return describeShellCommand(command.trim())
@@ -177,7 +181,11 @@ export function getPopupOptions(
     }
   ]
 
-  if (pending.toolName === 'shell' && pending.args && typeof pending.args === 'object') {
+  if (
+    (pending.toolName === 'shell' || pending.toolName === 'shell_background_start') &&
+    pending.args &&
+    typeof pending.args === 'object'
+  ) {
     const argsObj = pending.args as Record<string, unknown>
     const command = typeof argsObj.command === 'string' ? argsObj.command : ''
     const segmentPrefixes = getSegmentPrefixes(command)

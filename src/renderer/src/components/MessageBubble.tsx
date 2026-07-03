@@ -508,7 +508,11 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     }
 
     return (
-      <div className={`message-row-shell ${msg.role}`} data-message-id={msg.id}>
+      <div
+        className={`message-row-shell ${msg.role}`}
+        data-message-id={msg.id}
+        data-message-role={msg.role}
+      >
         {/* 1. Collapsible logs area for structured events */}
         {hasStructuredEvents &&
           (agentStatus !== 'completed' || isGenerating || pendingToolCall) && (

@@ -14,6 +14,86 @@ interface UseMessageNavigationArgs {
   isCurrentSessionGenerating: boolean
 }
 
+const SCROLL_ALIGNMENT_MARGIN = 24
+const LONG_SCROLL_DISTANCE = 16000
+
+const getAllMessageNodes = (container: HTMLDivElement): HTMLElement[] =>
+  Array.from(container.querySelectorAll<HTMLElement>('[data-message-id]'))
+
+const getNavigationMessageNodes = (container: HTMLDivElement): HTMLElement[] =>
+  Array.from(container.querySelectorAll<HTMLElement>('[data-message-id][data-message-role="user"]'))
+
+const findMessageNode = (container: HTMLDivElement, messageId: string): HTMLElement | undefined =>
+  getAllMessageNodes(container).find((node) => node.dataset.messageId === messageId)
+
+const getLastUserMessageId = (session: Session | null | undefined): string | null => {
+  const messages = session?.messages || []
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === 'user') return messages[index].id
+  }
+  return null
+}
+
+const clampScrollTop = (container: HTMLDivElement, top: number): number => {
+  const maxTop = Math.max(0, container.scrollHeight - container.clientHeight)
+  return Math.min(maxTop, Math.max(0, top))
+}
+
+const getElementScrollTop = (
+  container: HTMLDivElement,
+  target: HTMLElement,
+  block: 'center' | 'start' = 'center'
+): number => {
+  const containerRect = container.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  const targetTop = targetRect.top - containerRect.top + container.scrollTop
+
+  if (block === 'start' || targetRect.height > container.clientHeight * 0.72) {
+    return clampScrollTop(container, targetTop - SCROLL_ALIGNMENT_MARGIN)
+  }
+
+  const centerOffset = Math.max(
+    SCROLL_ALIGNMENT_MARGIN,
+    (container.clientHeight - targetRect.height) / 2
+  )
+  return clampScrollTop(container, targetTop - centerOffset)
+}
+
+const getBottomScrollTop = (container: HTMLDivElement): number =>
+  Math.max(0, container.scrollHeight - container.clientHeight)
+
+const scrollContainerTo = (
+  container: HTMLDivElement,
+  top: number,
+  behavior: ScrollBehavior
+): { behavior: ScrollBehavior; resetDelay: number; correctionDelays: number[] } => {
+  const distance = Math.abs(container.scrollTop - top)
+  const effectiveBehavior: ScrollBehavior =
+    behavior === 'smooth' && distance <= LONG_SCROLL_DISTANCE ? 'smooth' : 'auto'
+
+  container.scrollTo({ top, behavior: effectiveBehavior })
+
+  return effectiveBehavior === 'smooth'
+    ? { behavior: effectiveBehavior, resetDelay: 760, correctionDelays: [320, 720] }
+    : { behavior: effectiveBehavior, resetDelay: 120, correctionDelays: [40, 100] }
+}
+
+const scheduleScrollCorrections = (
+  container: HTMLDivElement,
+  getTop: () => number,
+  delays: number[]
+): void => {
+  delays.forEach((delay) => {
+    window.setTimeout(() => {
+      if (!container.isConnected) return
+      const top = getTop()
+      if (Math.abs(container.scrollTop - top) > 2) {
+        container.scrollTo({ top, behavior: 'auto' })
+      }
+    }, delay)
+  })
+}
+
 export function useMessageNavigation({
   activeSession,
   isCurrentSessionGenerating
@@ -26,7 +106,7 @@ export function useMessageNavigation({
   pendingScrollMessageId: string | null
   setPendingScrollMessageId: Dispatch<SetStateAction<string | null>>
   scrollToBottom: (behavior?: ScrollBehavior) => void
-  scrollToMessage: (messageId: string, isLastMessage?: boolean) => void
+  scrollToMessage: (messageId: string) => void
   handleScroll: () => void
 } {
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -52,9 +132,7 @@ export function useMessageNavigation({
   }, [isCurrentSessionGenerating])
 
   const updateMessageNavigationState = useCallback((container: HTMLDivElement): void => {
-    const messageNodes = Array.from(
-      container.querySelectorAll<HTMLElement>('[data-message-id]')
-    )
+    const messageNodes = getNavigationMessageNodes(container)
     if (messageNodes.length === 0) {
       setActiveMessageNavId(null)
       return
@@ -72,11 +150,27 @@ export function useMessageNavigation({
     const containerTop = container.getBoundingClientRect().top
     const targetY = containerTop + Math.min(Math.max(container.clientHeight * 0.28, 120), 240)
     const activeNode =
-      messageNodes.find((node) => node.getBoundingClientRect().bottom >= targetY) ||
-      messageNodes[0]
+      messageNodes.find((node) => node.getBoundingClientRect().bottom >= targetY) || messageNodes[0]
 
     setActiveMessageNavId(activeNode.dataset.messageId || null)
   }, [])
+
+  const finishProgrammaticScroll = useCallback(
+    (container: HTMLDivElement, delay: number, after?: () => void): void => {
+      window.setTimeout(() => {
+        isProgrammaticScrollRef.current = false
+        after?.()
+        if (container.isConnected) {
+          const isAtBottom =
+            container.scrollHeight - container.scrollTop - container.clientHeight <= 60
+          shouldAutoScrollRef.current = isAtBottom
+          setShowScrollToBottom(!isAtBottom)
+          updateMessageNavigationState(container)
+        }
+      }, delay)
+    },
+    [updateMessageNavigationState]
+  )
 
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = 'smooth'): void => {
@@ -85,98 +179,97 @@ export function useMessageNavigation({
 
       shouldAutoScrollRef.current = true
       setShowScrollToBottom(false)
-      const lastMessage = activeSession?.messages[activeSession.messages.length - 1]
-      setActiveMessageNavId(lastMessage?.id || null)
+      setActiveMessageNavId(getLastUserMessageId(activeSession))
       isProgrammaticScrollRef.current = true
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior
-      })
 
-      const resetDelay = behavior === 'smooth' ? 500 : 60
-      window.setTimeout(() => {
-        isProgrammaticScrollRef.current = false
-      }, resetDelay)
+      const getTop = () => getBottomScrollTop(container)
+      const result = scrollContainerTo(container, getTop(), behavior)
+      scheduleScrollCorrections(container, getTop, result.correctionDelays)
+      finishProgrammaticScroll(container, result.resetDelay)
     },
-    [activeSession?.messages]
+    [activeSession, finishProgrammaticScroll]
   )
 
   const scrollToMessage = useCallback(
-    (messageId: string, isLastMessage = false): void => {
-      if (isLastMessage) {
-        scrollToBottom('smooth')
-        return
-      }
-
+    (messageId: string): void => {
       const container = messagesContainerRef.current
       if (!container) return
 
-      const target = Array.from(
-        container.querySelectorAll<HTMLElement>('[data-message-id]')
-      ).find((node) => node.dataset.messageId === messageId)
+      const target = findMessageNode(container, messageId)
       if (!target) return
 
       shouldAutoScrollRef.current = false
       setShowScrollToBottom(true)
-      setActiveMessageNavId(messageId)
+      if (target.dataset.messageRole === 'user') {
+        setActiveMessageNavId(messageId)
+      }
       isProgrammaticScrollRef.current = true
-      target.scrollIntoView({ block: 'center', behavior: 'smooth' })
 
-      window.setTimeout(() => {
-        isProgrammaticScrollRef.current = false
-        updateMessageNavigationState(container)
-      }, 500)
+      const block = target.offsetHeight > container.clientHeight * 0.72 ? 'start' : 'center'
+      const getTop = () => getElementScrollTop(container, target, block)
+      const result = scrollContainerTo(container, getTop(), 'smooth')
+      scheduleScrollCorrections(container, getTop, result.correctionDelays)
+
+      finishProgrammaticScroll(container, result.resetDelay, () => {
+        if (target.dataset.messageRole === 'user') {
+          setActiveMessageNavId(messageId)
+        }
+      })
     },
-    [scrollToBottom, updateMessageNavigationState]
+    [finishProgrammaticScroll]
   )
 
   useEffect(() => {
     if (shouldAutoScrollRef.current) {
       const container = messagesContainerRef.current
       if (container) {
-        const lastMessage = activeSession?.messages[activeSession.messages.length - 1]
-        setActiveMessageNavId(lastMessage?.id || null)
+        setActiveMessageNavId(getLastUserMessageId(activeSession))
         const behavior = isCurrentSessionGenerating ? 'auto' : 'smooth'
-        if (behavior === 'smooth') {
-          isProgrammaticScrollRef.current = true
-          container.scrollTo({
-            top: container.scrollHeight,
-            behavior: 'smooth'
-          })
-          const timeoutId = setTimeout(() => {
-            isProgrammaticScrollRef.current = false
-          }, 500)
-          setShowScrollToBottom(false)
-          return () => clearTimeout(timeoutId)
-        } else {
-          container.scrollTop = container.scrollHeight
-          setShowScrollToBottom(false)
-        }
+        isProgrammaticScrollRef.current = true
+        const getTop = () => getBottomScrollTop(container)
+        const result = scrollContainerTo(container, getTop(), behavior)
+        scheduleScrollCorrections(container, getTop, result.correctionDelays)
+        setShowScrollToBottom(false)
+        const timeoutId = window.setTimeout(() => {
+          isProgrammaticScrollRef.current = false
+          updateMessageNavigationState(container)
+        }, result.resetDelay)
+        return () => clearTimeout(timeoutId)
       }
     }
     return undefined
-  }, [activeSession?.id, activeSession?.messages, isCurrentSessionGenerating])
+  }, [activeSession, isCurrentSessionGenerating, updateMessageNavigationState])
 
   useEffect(() => {
     if (!pendingScrollMessageId) return
 
     const container = messagesContainerRef.current
-    const target = container?.querySelector<HTMLElement>(
-      `[data-message-id="${pendingScrollMessageId}"]`
-    )
-    if (!target) return
+    const target = container ? findMessageNode(container, pendingScrollMessageId) : undefined
+    if (!container || !target) return
 
     shouldAutoScrollRef.current = false
-    setActiveMessageNavId(pendingScrollMessageId)
+    if (target.dataset.messageRole === 'user') {
+      setActiveMessageNavId(pendingScrollMessageId)
+    }
     isProgrammaticScrollRef.current = true
-    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
 
-    const timeoutId = setTimeout(() => {
+    const block = target.offsetHeight > container.clientHeight * 0.72 ? 'start' : 'center'
+    const getTop = () => getElementScrollTop(container, target, block)
+    const result = scrollContainerTo(container, getTop(), 'smooth')
+    scheduleScrollCorrections(container, getTop, result.correctionDelays)
+
+    const timeoutId = window.setTimeout(() => {
       isProgrammaticScrollRef.current = false
       setPendingScrollMessageId(null)
-    }, 500)
+      updateMessageNavigationState(container)
+    }, result.resetDelay)
     return () => clearTimeout(timeoutId)
-  }, [activeSession?.id, activeSession?.messages.length, pendingScrollMessageId])
+  }, [
+    activeSession?.id,
+    activeSession?.messages.length,
+    pendingScrollMessageId,
+    updateMessageNavigationState
+  ])
 
   useEffect(() => {
     const container = messagesContainerRef.current
@@ -186,10 +279,8 @@ export function useMessageNavigation({
     const observer = new ResizeObserver(() => {
       if (shouldAutoScrollRef.current && isCurrentSessionGenerating) {
         isProgrammaticScrollRef.current = true
-        container.scrollTop = container.scrollHeight
-        const messageNodes = Array.from(
-          container.querySelectorAll<HTMLElement>('[data-message-id]')
-        )
+        container.scrollTop = getBottomScrollTop(container)
+        const messageNodes = getNavigationMessageNodes(container)
         setActiveMessageNavId(messageNodes[messageNodes.length - 1]?.dataset.messageId || null)
         setTimeout(() => {
           isProgrammaticScrollRef.current = false

@@ -1,9 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { ToolRegistry, getWorkspaceRoot } from './toolRegistry'
 import { decodeShellOutputForDisplay } from './tools/shell'
+import { clearBackgroundShellProcessesForTests } from './tools/backgroundShell'
 
 describe('Shell Tool Execution', () => {
   const workspaceRoot = getWorkspaceRoot()
+  const nodeEvalCommand = (script: string): string =>
+    `"${process.execPath}" -e ${JSON.stringify(script)}`
+  afterEach(async () => {
+    await clearBackgroundShellProcessesForTests()
+  })
 
   it('decodes legacy Windows code page output for display', () => {
     const gbkBytes = Buffer.from([0xd6, 0xd0, 0xce, 0xc4])
@@ -69,6 +75,39 @@ describe('Shell Tool Execution', () => {
     )
   })
 
+  it('starts long-running commands in the background and reads output later', async () => {
+    const context = { reqId: 'test-req', signal: new AbortController().signal }
+    const startedAt = Date.now()
+
+    const start = await ToolRegistry.shell_background_start.execute(
+      {
+        command: nodeEvalCommand("console.log('background ready'); setTimeout(() => {}, 5000)"),
+        waitMs: 200,
+        maxChars: 2000
+      },
+      context
+    )
+
+    expect(Date.now() - startedAt).toBeLessThan(2000)
+    expect(start.resultForModel).toContain('background ready')
+    const processId = start.resultForModel.match(/Background ID: (\S+)/)?.[1]
+    expect(processId).toBeDefined()
+
+    const list = await ToolRegistry.shell_background_list.execute({}, context)
+    expect(list.resultForModel).toContain(processId!)
+
+    const read = await ToolRegistry.shell_background_read.execute(
+      { processId, maxChars: 2000 },
+      context
+    )
+    expect(read.resultForModel).toContain('background ready')
+
+    const stop = await ToolRegistry.shell_background_stop.execute(
+      { processId, maxChars: 2000 },
+      context
+    )
+    expect(stop.resultForModel).toContain(`Background ID: ${processId}`)
+  })
   it('handles cancellation via AbortSignal', async () => {
     const controller = new AbortController()
     const context = { reqId: 'test-req', signal: controller.signal }
