@@ -194,14 +194,14 @@
   bottom: 100%;
   left: 16px;
   right: 16px;
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-2);
   background: var(--color-bg-main);
   border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: var(--rounded-lg);
+  padding: 10px var(--spacing-3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-2);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   z-index: 100;
   box-sizing: border-box;
@@ -274,7 +274,7 @@
 .permission-popup-details span {
   background: var(--color-bg-main);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--rounded-sm);
   padding: 2px 6px;
 }
 
@@ -285,7 +285,7 @@
   background: var(--color-bg-main);
   border: 1px solid var(--color-code-block-border);
   padding: 6px 10px;
-  border-radius: 5px;
+  border-radius: var(--rounded-sm);
   word-break: break-all;
   max-height: 60px;
   overflow-y: auto;
