@@ -13,6 +13,7 @@ import {
   findStringOccurrences
 } from './fileEditEngine'
 import { ToolDefinition, ToolExecutionContext } from './types'
+import { getDiffStats } from './fileDiff'
 
 export const fileEditTool: ToolDefinition = {
   name: 'file_edit',
@@ -133,12 +134,15 @@ export const fileEditTool: ToolDefinition = {
 
     const count = editResult.replacements
     const diff = buildShortUnifiedDiff(content, newContent)
+    const stats = getDiffStats(content.split(/\r?\n/), newContent.split(/\r?\n/))
 
     return {
       resultForModel: `Successfully edited ${target.relPath}: replaced ${count} occurrence(s).\nRoot (${target.rootKind}): ${target.root}\n\nDiff:\n${diff}`,
       resultForUi: {
         title: `Edit File: ${target.relPath}`,
-        summary: `Replaced ${count} occurrence(s) in ${target.relPath}`
+        summary: `Replaced ${count} occurrence(s) in ${target.relPath}`,
+        addedLines: stats.added,
+        removedLines: stats.removed
       }
     }
   }

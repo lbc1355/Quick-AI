@@ -34,11 +34,13 @@ export const PermissionPopup: React.FC<PermissionPopupProps> = ({
           <span className="permission-popup-action">{display.action}</span>
         </div>
         {display.target && <div className="permission-popup-target">{display.target}</div>}
-        {display.details.length > 0 && (
+        {display.details.filter((detail) => detail !== display.code).length > 0 && (
           <div className="permission-popup-details">
-            {display.details.map((detail, index) => (
-              <span key={index}>{detail}</span>
-            ))}
+            {display.details
+              .filter((detail) => detail !== display.code)
+              .map((detail, index) => (
+                <span key={index}>{detail}</span>
+              ))}
           </div>
         )}
         {display.code && <div className="permission-popup-code">{display.code}</div>}

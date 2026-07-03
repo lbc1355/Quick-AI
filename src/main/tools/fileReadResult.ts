@@ -33,6 +33,8 @@ export function createFileReadResult(options: CreateFileReadResultOptions): Tool
     resultForModel,
     title: `Read File: ${target.relPath}`,
     url: fileUrl,
-    summary: `Read lines ${window.startLine}-${window.endLine} of ${totalLines} in ${target.rootKind} ${target.root}`
+    summary: `Read lines ${window.startLine}-${window.endLine} of ${totalLines} in ${target.rootKind} ${target.root}`,
+    readStartLine: window.startLine,
+    readEndLine: window.endLine
   })
 }

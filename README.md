@@ -6,19 +6,22 @@
 
 ## ✨ 核心特性
 
-- 🎯 **唤醒即用**：支持 `Alt+/` 全局快捷键在屏幕正上方 Spotlight 位置瞬时召唤或隐藏窗口，支持失焦自动隐藏及置顶锁定。
+- 🎯 **唤醒即用**：支持 `Alt+/` 全局快捷键在屏幕正上方 Spotlight 位置瞬时召唤或隐藏窗口，支持失焦自动隐藏及置顶锁定。支持 `/` 指令、`@` 技能与模型服务商、`#` 历史会话的前端智能自动补全。
 - 🤖 **ReAct Agent 智能体**：内置 ReAct（Reasoning + Acting）思考循环，支持自主调用多达 15+ 种系统、文件和网络工具。
-- 🔄 **分支会话派生 (Branching)**：随时可在历史对话中编辑或重新生成消息。系统会自动创建克隆分支会话，并同步复制历史执行状态与运行切片。
-- ⏳ **故障中断恢复 (Resume)**：当 Agent 由于网络或模型限制中断时，支持通过 `RunCheckpoint` 自动在线恢复执行，无需重复运行有副作用的成功工具。
-- 💾 **本地 SQLite 关系型存储**：数据全量迁移至 SQLite 并开启 WAL 性能优化模式，支持完整的多表级联删除与网页缓存分块持久化。
+- 🔌 **模型上下文协议 (MCP) 集成**：内置 stdio 传输协议的 MCP 客户端，支持通过配置文件 `mcp.json` 或设置界面动态接入外部 MCP 服务端，无限扩展智能体工具箱。
+- 🧩 **渐进式技能系统 (Skill Package)**：支持通过 Markdown 格式的 Skill 文件夹（包含 `SKILL.md`、`agents/quickai.yaml` 界面元数据及辅助脚本/参考文档）来定义和导入智能体专属技能，具备按需渐进式加载机制。
+- 🔄 **分支会话派生 (Branching)**：随时可在历史对话中编辑或重新生成消息。系统会自动创建克隆分支会话，并同步复制历史执行状态、行动日志与运行切片，确保分支探索无副作用。
+- ⏳ **故障中断恢复 (Resume)**：当 Agent 由于网络、模型限制或人工中止中断时，支持通过 `RunCheckpoint` 自动在线恢复执行，无需重复运行有副作用的成功工具。
+- 💾 **本地 SQLite 关系型存储**：数据全量迁移至 SQLite 并开启 WAL 性能优化模式，支持完整的多表级联删除与网页缓存分块持久化，性能卓越。
 - 📚 **Git 长期记忆系统**：支持自动 Git 版本控制的长期 Markdown 记忆体系，提供 `always.md` 静态注入、按需 Task Group 加载，保障记忆的历史可追溯性。
-- 🔍 **安全纵深防御**：内置防路径逃逸、敏感配置拦截、词法 Shell 命令危险度扫描、DNS 解析防内网 SSRF 探测等多重安全策略。
+- 📁 **多模态与文件解析**：原生支持拖拽或粘贴图片及 PDF 附件，内置 `imageReadTool` 图片解析及 `pdfReadTool` 文本提取工具。
+- 🔍 **安全纵深防御**：内置防路径逃逸、敏感文件（如 `.env`, `.pem`）读取升级强阻断、词法 Shell 命令危险度评级与黑名单防御、DNS 解析防内网 SSRF 探测等多重安全防御宪法。
 
 ---
 
 ## 🛠️ 技术架构
 
-欲了解详细的主进程设计、数据流向、IPC 通道结构以及安全宪法设计，请阅读项目完整的 **[ARCHITECTURE.md (技术架构文档)](file:///d:/Git/Quick%20Ai/ARCHITECTURE.md)**。
+欲了解详细的主进程设计、数据流向、SQLite 表结构、IPC 通道结构以及安全宪法设计，请阅读项目完整的 **[ARCHITECTURE.md (技术架构文档)](file:///d:/Git/Quick%20Ai/ARCHITECTURE.md)**。
 
 ---
 
@@ -39,7 +42,15 @@ $ npm install
 $ npm run dev
 ```
 
-### 3. 应用构建打包
+### 3. 运行单元与集成测试
+
+项目拥有 560+ 个覆盖完整的自动化测试，使用 Vitest 框架运行：
+
+```bash
+$ npm run test
+```
+
+### 4. 应用构建打包
 
 根据运行的操作系统构建原生安装包：
 
@@ -58,9 +69,15 @@ $ npm run build:linux
 
 ## 📂 目录结构说明
 
-- `src/main/`：基于 Node.js 运行的主进程。包含数据库持久化、网络分块缓存、模块化工具集、Git 长期记忆与 Agent 主循环驱动。
+- `src/main/`：基于 Node.js 运行的主进程。包含 SQLite 数据库持久化、网络分块缓存、模块化工具集、MCP 客户端管理器、Git 长期记忆与 Agent 主循环驱动。
+  - `src/main/agent/`：Agent 执行引擎（ReAct Loop、思考解析、运行时切片、提示词编排等）。
+  - `src/main/database/`：SQLite 持久化存储与 JSON 数据迁移逻辑。
+  - `src/main/memory/`：长期记忆的文件管理与自动 Git 版本控制。
+  - `src/main/tools/`：模块化动态工具箱。
 - `src/preload/`：预加载桥接层。通过 `contextBridge` 实现安全的进程级通信与有限能力隔离。
-- `src/renderer/src/`：React 渲染进程前端界面。包含 UI 状态机骨架、 Spotlight 指令自动补全、文件拖拽粘贴与多服务商配置面板。
+- `src/renderer/src/`：React 渲染进程前端界面。
+  - `src/renderer/src/components/`：UI 组件（Spotlight 补全输入框、Task 步骤面板、MCP/Skill 管理器面板等）。
+  - `src/renderer/src/hooks/`：状态管理与业务 Hook（分支派生、会话列表、模型服务商配置等）。
 - `src/shared/`：三端共享的 TypeScript 契约接口与事件类型系统。
 
 ---

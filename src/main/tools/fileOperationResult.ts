@@ -9,7 +9,9 @@ export function toFileUrl(realPath: string): string {
 export function createFileWriteResult(
   target: SafePath,
   sizeBytes: number,
-  existed: boolean
+  existed: boolean,
+  addedLines?: number,
+  removedLines?: number
 ): ToolExecutionResult {
   const resultForModel = `Successfully wrote file: ${target.relPath}\nRoot (${target.rootKind}): ${target.root}\nSize: ${sizeBytes} bytes\nPath: ${target.realPath}`
 
@@ -17,7 +19,9 @@ export function createFileWriteResult(
     resultForModel,
     title: `Write File: ${target.relPath}`,
     url: toFileUrl(target.realPath),
-    summary: `Wrote ${sizeBytes} bytes to ${target.relPath} (${existed ? 'overwrote' : 'created'}) in ${target.rootKind} ${target.root}`
+    summary: `Wrote ${sizeBytes} bytes to ${target.relPath} (${existed ? 'overwrote' : 'created'}) in ${target.rootKind} ${target.root}`,
+    addedLines,
+    removedLines
   })
 }
 

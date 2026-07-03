@@ -14,6 +14,7 @@ import {
   type ExactStringEdit
 } from './fileEditEngine'
 import { ToolDefinition, ToolExecutionContext } from './types'
+import { getDiffStats } from './fileDiff'
 
 export const multiEditTool: ToolDefinition = {
   name: 'multi_edit',
@@ -146,12 +147,15 @@ export const multiEditTool: ToolDefinition = {
 
     runCtx?.markFileSeen(target.realPath)
     const diff = buildShortUnifiedDiff(content, working)
+    const stats = getDiffStats(content.split(/\r?\n/), working.split(/\r?\n/))
 
     return {
       resultForModel: `Successfully applied ${edits.length} edit(s) to ${target.relPath}: ${totalReplacements} total replacement(s).\nRoot (${target.rootKind}): ${target.root}\n\nDiff:\n${diff}`,
       resultForUi: {
         title: `Multi-Edit File: ${target.relPath}`,
-        summary: `Applied ${edits.length} edit(s) (${totalReplacements} replacement(s)) in ${target.relPath}`
+        summary: `Applied ${edits.length} edit(s) (${totalReplacements} replacement(s)) in ${target.relPath}`,
+        addedLines: stats.added,
+        removedLines: stats.removed
       }
     }
   }

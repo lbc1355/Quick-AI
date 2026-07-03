@@ -81,11 +81,35 @@ export function getPermissionRequestDisplay(
     }
   }
 
+  let target: string | undefined = undefined
+  if (args && typeof args === 'object' && args !== null) {
+    const obj = args as Record<string, unknown>
+    const possibleTargets = [
+      'path',
+      'Path',
+      'targetFile',
+      'TargetFile',
+      'absolutePath',
+      'AbsolutePath',
+      'url',
+      'Url',
+      'target',
+      'Target'
+    ]
+    for (const key of possibleTargets) {
+      if (typeof obj[key] === 'string' && obj[key]) {
+        target = obj[key] as string
+        break
+      }
+    }
+  }
+
   const argsText = getArgsText(toolName, args)
   return {
     question: '是否允许执行这个工具？',
     toolLabel: toolName,
     action: `调用工具：${toolName}`,
+    target,
     details: argsText ? [argsText] : [],
     code: argsText
   }

@@ -14,6 +14,10 @@ export interface CreateToolResultOptions {
   includeModelResultInDetails?: boolean
   callId?: string
   detailsLimit?: number
+  addedLines?: number
+  removedLines?: number
+  readStartLine?: number
+  readEndLine?: number
 }
 
 export interface CreateRawToolResultOptions
@@ -103,7 +107,11 @@ export function buildToolResultUi(options: CreateToolResultOptions): ToolResultU
           limit: options.detailsLimit
         })
       : undefined,
-    items: options.items
+    items: options.items,
+    addedLines: options.addedLines,
+    removedLines: options.removedLines,
+    readStartLine: options.readStartLine,
+    readEndLine: options.readEndLine
   }
 }
 

@@ -5,6 +5,7 @@ import { getRun } from '../agent/AgentRunContext'
 import { ROOT_PARAMETER, getRootArg, resolveTargetSafePath } from './filePathSafety'
 import { createFileWriteResult } from './fileOperationResult'
 import { ToolDefinition, ToolExecutionContext } from './types'
+import { getDiffStats } from './fileDiff'
 
 export const fileWriteTool: ToolDefinition = {
   name: 'file_write',
@@ -79,11 +80,17 @@ export const fileWriteTool: ToolDefinition = {
     }
 
     let exists = false
+    let oldContent = ''
     try {
       const stats = await fs.stat(target.realPath)
       exists = true
       if (stats.isDirectory()) {
         throw new Error('Target path is a directory, not a file.')
+      }
+      try {
+        oldContent = await fs.readFile(target.realPath, 'utf-8')
+      } catch {
+        // ignore read error
       }
     } catch {
       // If file doesn't exist, stat throws ENOENT, which is expected.
@@ -109,6 +116,10 @@ export const fileWriteTool: ToolDefinition = {
     // Writing establishes known content, so subsequent surgical edits in this run are allowed.
     if (ctx.reqId) getRun(ctx.reqId)?.markFileSeen(target.realPath)
 
-    return createFileWriteResult(target, contentBuffer.length, exists)
+    const stats = exists
+      ? getDiffStats(oldContent.split(/\r?\n/), content.split(/\r?\n/))
+      : { added: content.split(/\r?\n/).length, removed: 0 }
+
+    return createFileWriteResult(target, contentBuffer.length, exists, stats.added, stats.removed)
   }
 }

@@ -9,6 +9,10 @@ export interface ToolResultUi {
     snippet?: string
     source?: string
   }>
+  addedLines?: number
+  removedLines?: number
+  readStartLine?: number
+  readEndLine?: number
 }
 
 export interface UserChoiceOption {

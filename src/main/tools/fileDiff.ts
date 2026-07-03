@@ -10,7 +10,7 @@ import {
   resolveExistingSafePath
 } from './filePathSafety'
 
-export { generateUnifiedDiff } from './fileDiffAlgorithm'
+export { generateUnifiedDiff, getDiffStats } from './fileDiffAlgorithm'
 
 export const fileDiffTool: ToolDefinition = {
   name: 'file_diff',
