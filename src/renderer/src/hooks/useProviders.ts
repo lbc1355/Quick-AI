@@ -204,7 +204,10 @@ export const useProviders = (): UseProvidersReturn => {
     if (activeProviderId && providers.length > 0) {
       const activeProv = providers.find((p) => p.id === activeProviderId)
       if (activeProv) {
-        setApiKey(activeProv.apiKey || '')
+        const withKeys = normalizeProviderApiKeys(activeProv)
+        setApiKeys(withKeys.apiKeys || [])
+        setActiveApiKeyId(withKeys.activeApiKeyId || '')
+        setApiKey(getActiveProviderApiKey(withKeys))
         setApiUrl(activeProv.apiUrl || '')
         setSelectedModel(activeProv.model || '')
         setModelsList(activeProv.modelsList || [])
