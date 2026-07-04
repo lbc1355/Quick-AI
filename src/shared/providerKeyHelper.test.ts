@@ -106,4 +106,23 @@ describe('providerKeyHelper', () => {
     const synced = syncProviderLegacyApiKey(provider)
     expect(synced.apiKey).toBe('val-2')
   })
+
+  it('should strictly return empty string if activeApiKeyId is not found in apiKeys', () => {
+    const provider = {
+      id: 'test-prov',
+      name: 'Test',
+      type: 'custom',
+      apiKey: 'sk-legacy',
+      apiKeys: [
+        { id: 'key-1', name: 'Key 1', value: 'val-1' }
+      ],
+      activeApiKeyId: 'non-existent-key-id',
+      apiUrl: 'https://test.api',
+      model: 'test-model',
+      modelsList: []
+    } as ApiProvider
+
+    const activeKey = getActiveProviderApiKey(provider)
+    expect(activeKey).toBe('')
+  })
 })

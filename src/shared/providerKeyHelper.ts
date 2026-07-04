@@ -22,13 +22,13 @@ export function normalizeProviderApiKeys(provider: Partial<ApiProvider>): ApiPro
   return cloned
 }
 
-/**
- * 获取服务商当前启用的 API Key 文本值
- */
 export function getActiveProviderApiKey(provider: Partial<ApiProvider>): string {
   const normalized = normalizeProviderApiKeys(provider)
-  const activeKey = normalized.apiKeys?.find((k) => k.id === normalized.activeApiKeyId)
-  return activeKey ? activeKey.value : normalized.apiKey || ''
+  if (normalized.apiKeys && normalized.apiKeys.length > 0) {
+    const activeKey = normalized.apiKeys.find((k) => k.id === normalized.activeApiKeyId)
+    return activeKey ? activeKey.value : ''
+  }
+  return ''
 }
 
 /**
