@@ -1,11 +1,10 @@
-import React from 'react'
-import { ArrowLeft, Plus, RefreshCw, X } from 'lucide-react'
-import { ApiProvider } from '../../../shared/types'
+import React, { useState } from 'react'
+import { ArrowLeft, Plus, RefreshCw, X, Eye, EyeOff, Trash2 } from 'lucide-react'
+import { ApiProvider, ApiKeyItem } from '../../../shared/types'
 import { getContextWindowInfo } from '../../../shared/modelContext'
 
 interface ProviderEditorProps {
   provider: ApiProvider | undefined
-  apiKey: string
   apiUrl: string
   selectedModel: string
   modelsList: string[]
@@ -17,7 +16,6 @@ interface ProviderEditorProps {
   onSave: () => void
   onCancel: () => void
   onChangeName: (name: string) => void
-  onChangeApiKey: (apiKey: string) => void
   onChangeApiUrl: (apiUrl: string) => void
   onChangeSelectedModel: (model: string) => void
   onChangeManualModelInput: (val: string) => void
@@ -27,13 +25,19 @@ interface ProviderEditorProps {
   onRefreshModelContext: (modelId: string) => void
   onRemoveModel: (modelId: string) => void
   onChangeModelContextWindow: (modelId: string, value: string) => void
+  apiKeys: ApiKeyItem[]
+  activeApiKeyId: string
+  onSelectApiKey: (id: string) => void
+  onChangeApiKeyItemName: (id: string, name: string) => void
+  onChangeApiKeyValue: (id: string, value: string) => void
+  onAddApiKey: () => void
+  onDeleteApiKey: (id: string) => void
 }
 
 const formatContextTokens = (tokens: number): string => `${tokens.toLocaleString()} tokens`
 
 export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   provider,
-  apiKey,
   apiUrl,
   selectedModel,
   modelsList,
@@ -45,7 +49,6 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   onSave,
   onCancel,
   onChangeName,
-  onChangeApiKey,
   onChangeApiUrl,
   onChangeSelectedModel,
   onChangeManualModelInput,
@@ -54,8 +57,23 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   onFetchModels,
   onRefreshModelContext,
   onRemoveModel,
-  onChangeModelContextWindow
+  onChangeModelContextWindow,
+  apiKeys,
+  activeApiKeyId,
+  onSelectApiKey,
+  onChangeApiKeyItemName,
+  onChangeApiKeyValue,
+  onAddApiKey,
+  onDeleteApiKey
 }) => {
+  const [visibleKeyIds, setVisibleKeyIds] = useState<Record<string, boolean>>({})
+
+  const toggleKeyVisibility = (id: string) => {
+    setVisibleKeyIds((prev) => ({
+      ...prev,
+      [id]: !prev[id]
+    }))
+  }
   if (!provider) return null
 
   return (
@@ -84,16 +102,75 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
             />
           </label>
 
-          <label className="settings-field">
-            <span className="settings-label">API Key</span>
-            <input
-              type="password"
-              className="settings-input"
-              placeholder="sk-..."
-              value={apiKey}
-              onChange={(e) => onChangeApiKey(e.target.value)}
-            />
-          </label>
+          <div className="settings-field api-keys-management-field">
+            <div className="api-keys-management-header">
+              <span className="settings-label">API Key 管理</span>
+              <button
+                type="button"
+                className="settings-secondary-btn icon-left add-key-btn"
+                onClick={onAddApiKey}
+              >
+                <Plus size={12} />
+                <span>添加 Key</span>
+              </button>
+            </div>
+
+            <div className="api-keys-list">
+              {apiKeys.map((keyItem) => {
+                const isSelected = activeApiKeyId === keyItem.id
+                const isVisible = visibleKeyIds[keyItem.id] || false
+
+                return (
+                  <div key={keyItem.id} className={`api-key-row ${isSelected ? 'active' : ''}`}>
+                    <div className="api-key-select" title="启用该 Key">
+                      <input
+                        type="radio"
+                        name="activeProviderKey"
+                        checked={isSelected}
+                        onChange={() => onSelectApiKey(keyItem.id)}
+                      />
+                    </div>
+
+                    <input
+                      type="text"
+                      className="settings-input api-key-name-input"
+                      placeholder="Key 名称"
+                      value={keyItem.name}
+                      onChange={(e) => onChangeApiKeyItemName(keyItem.id, e.target.value)}
+                    />
+
+                    <div className="api-key-value-wrapper">
+                      <input
+                        type={isVisible ? 'text' : 'password'}
+                        className="settings-input api-key-value-input"
+                        placeholder="sk-..."
+                        value={keyItem.value}
+                        onChange={(e) => onChangeApiKeyValue(keyItem.id, e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="api-key-action-btn toggle-visibility-btn"
+                        onClick={() => toggleKeyVisibility(keyItem.id)}
+                        title={isVisible ? '隐藏' : '显示'}
+                      >
+                        {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="api-key-action-btn delete-key-btn"
+                      onClick={() => onDeleteApiKey(keyItem.id)}
+                      disabled={apiKeys.length <= 1}
+                      title="删除该 Key"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
 
           <label className="settings-field">
             <span className="settings-label">API Base URL</span>

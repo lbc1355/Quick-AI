@@ -1,5 +1,9 @@
 import { ApiProvider, AppSettings } from '../../shared/types'
 import { normalizeProviderModelCatalog } from '../../shared/modelCatalog'
+import {
+  normalizeProviderApiKeys,
+  getActiveProviderApiKey
+} from '../../shared/providerKeyHelper'
 import { getDb } from './connection'
 
 export function loadSettings(): AppSettings {
@@ -19,6 +23,8 @@ export function loadSettings(): AppSettings {
     name: string
     type: string
     apiKey: string
+    apiKeys?: string
+    activeApiKeyId?: string
     apiUrl: string
     model: string
     modelsList: string
@@ -42,12 +48,21 @@ export function loadSettings(): AppSettings {
   }
 
   return {
-    providers: providers.map((p) =>
-      normalizeProviderModelCatalog({
+    providers: providers.map((p) => {
+      let parsedApiKeys = []
+      try {
+        parsedApiKeys = JSON.parse(p.apiKeys || '[]')
+      } catch {
+        // ignore
+      }
+
+      const normalizedCatalog = normalizeProviderModelCatalog({
         id: p.id,
         name: p.name,
         type: p.type as ApiProvider['type'],
         apiKey: p.apiKey,
+        apiKeys: parsedApiKeys,
+        activeApiKeyId: p.activeApiKeyId || undefined,
         apiUrl: p.apiUrl,
         model: p.model,
         modelsList: JSON.parse(p.modelsList || '[]'),
@@ -55,7 +70,9 @@ export function loadSettings(): AppSettings {
         endpointType: (p.endpointType || undefined) as ApiProvider['endpointType'],
         models: JSON.parse(p.models || '{}')
       })
-    ),
+
+      return normalizeProviderApiKeys(normalizedCatalog)
+    }),
     activeProviderId: kv['activeProviderId'] || '',
     systemPrompt: kv['systemPrompt'] || '',
     autoHideOnBlur: kv['autoHideOnBlur'] !== 'false',
@@ -73,7 +90,7 @@ export function saveSettings(settings: AppSettings): void {
   const upsert = database.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
   const deleteProviders = database.prepare('DELETE FROM providers')
   const insert = database.prepare(
-    'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
 
   // Wrap the whole save in a single transaction: turns N independent fsync-per-statement
@@ -93,17 +110,22 @@ export function saveSettings(settings: AppSettings): void {
     deleteProviders.run()
     for (const p of s.providers) {
       const normalized = normalizeProviderModelCatalog(p)
+      const withKeys = normalizeProviderApiKeys(normalized)
+      const activeKeyVal = getActiveProviderApiKey(withKeys)
+
       insert.run(
-        normalized.id,
-        normalized.name,
-        normalized.type,
-        normalized.apiKey || '',
-        normalized.apiUrl,
-        normalized.model,
-        JSON.stringify(normalized.modelsList || []),
-        JSON.stringify(normalized.modelContextWindows || {}),
-        normalized.endpointType || null,
-        JSON.stringify(normalized.models || {})
+        withKeys.id,
+        withKeys.name,
+        withKeys.type,
+        activeKeyVal,
+        withKeys.apiUrl,
+        withKeys.model,
+        JSON.stringify(withKeys.modelsList || []),
+        JSON.stringify(withKeys.modelContextWindows || {}),
+        withKeys.endpointType || null,
+        JSON.stringify(withKeys.models || {}),
+        JSON.stringify(withKeys.apiKeys || []),
+        withKeys.activeApiKeyId || null
       )
     }
   })

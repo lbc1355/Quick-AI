@@ -309,11 +309,19 @@ export interface ModelInfo {
   enabled: boolean
 }
 
+export interface ApiKeyItem {
+  id: string
+  name: string
+  value: string
+}
+
 export interface ApiProvider {
   id: string
   name: string
   type: 'opencode' | 'deepseek' | 'kimi' | 'ollama' | 'glm' | 'mimo' | 'custom'
   apiKey: string
+  apiKeys?: ApiKeyItem[]
+  activeApiKeyId?: string
   apiUrl: string
   model: string
   modelsList: string[]

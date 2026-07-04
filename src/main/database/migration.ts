@@ -3,6 +3,10 @@ import { existsSync, readFileSync, readdirSync, renameSync, unlinkSync } from 'f
 import { join } from 'path'
 import { StorageSchema } from '../../shared/types'
 import { normalizeProviderModelCatalog } from '../../shared/modelCatalog'
+import {
+  normalizeProviderApiKeys,
+  getActiveProviderApiKey
+} from '../../shared/providerKeyHelper'
 
 export function migrateFromJson(database: Database.Database, dataDir: string): void {
   const storePath = join(dataDir, 'quickai_store.json')
@@ -55,22 +59,26 @@ function migrateStore(database: Database.Database, storePath: string): void {
       if (settings.providers && settings.providers.length > 0) {
         const insertProvider = database.prepare(
           `INSERT OR REPLACE INTO providers
-           (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         for (const p of settings.providers) {
           const normalized = normalizeProviderModelCatalog(p)
+          const withKeys = normalizeProviderApiKeys(normalized)
+          const activeKeyVal = getActiveProviderApiKey(withKeys)
           insertProvider.run(
-            normalized.id,
-            normalized.name,
-            normalized.type || 'custom',
-            normalized.apiKey || '',
-            normalized.apiUrl,
-            normalized.model,
-            JSON.stringify(normalized.modelsList || []),
-            JSON.stringify(normalized.modelContextWindows || {}),
-            normalized.endpointType || null,
-            JSON.stringify(normalized.models || {})
+            withKeys.id,
+            withKeys.name,
+            withKeys.type || 'custom',
+            activeKeyVal,
+            withKeys.apiUrl,
+            withKeys.model,
+            JSON.stringify(withKeys.modelsList || []),
+            JSON.stringify(withKeys.modelContextWindows || {}),
+            withKeys.endpointType || null,
+            JSON.stringify(withKeys.models || {}),
+            JSON.stringify(withKeys.apiKeys || []),
+            withKeys.activeApiKeyId || null
           )
         }
       }

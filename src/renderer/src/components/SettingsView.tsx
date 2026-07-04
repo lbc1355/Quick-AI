@@ -5,7 +5,8 @@ import {
   ContextRetentionMode,
   Skill,
   SkillInstallPayload,
-  WebSearchProviderType
+  WebSearchProviderType,
+  ApiKeyItem
 } from '../../../shared/types'
 import { ProviderList } from './ProviderList'
 import { ProviderEditor } from './ProviderEditor'
@@ -26,7 +27,6 @@ interface SettingsViewProps {
   editingProviderId: string
   activeProviderId: string
   providers: ApiProvider[]
-  apiKey: string
   apiUrl: string
   selectedModel: string
   modelsList: string[]
@@ -47,7 +47,6 @@ interface SettingsViewProps {
   activeSessionId: string | null
 
   setIsEditingProviderDetail: (val: boolean) => void
-  setApiKey: (val: string) => void
   setSelectedModel: (val: string) => void
   setManualModelInput: (val: string) => void
   setFetchModelsUrl: (val: string) => void
@@ -79,6 +78,13 @@ interface SettingsViewProps {
   setWebSearchProvider: (val: WebSearchProviderType) => void
   webSearchApiKey: string
   setWebSearchApiKey: (val: string) => void
+  apiKeys: ApiKeyItem[]
+  activeApiKeyId: string
+  onSelectApiKey: (id: string) => void
+  onChangeApiKeyItemName: (id: string, name: string) => void
+  onChangeApiKeyValue: (id: string, value: string) => void
+  onAddApiKey: () => void
+  onDeleteApiKey: (id: string) => void
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -86,7 +92,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   editingProviderId,
   activeProviderId,
   providers,
-  apiKey,
   apiUrl,
   selectedModel,
   modelsList,
@@ -107,7 +112,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   activeSessionId,
 
   setIsEditingProviderDetail,
-  setApiKey,
   setSelectedModel,
   setManualModelInput,
   setFetchModelsUrl,
@@ -138,7 +142,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   webSearchProvider,
   setWebSearchProvider,
   webSearchApiKey,
-  setWebSearchApiKey
+  setWebSearchApiKey,
+  apiKeys,
+  activeApiKeyId,
+  onSelectApiKey,
+  onChangeApiKeyItemName,
+  onChangeApiKeyValue,
+  onAddApiKey,
+  onDeleteApiKey
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>('providers')
   const [agentTools, setAgentTools] = useState<AgentToolInfo[]>([])
@@ -178,7 +189,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="settings-container">
         <ProviderEditor
           provider={currentEditingProvider}
-          apiKey={apiKey}
           apiUrl={apiUrl}
           selectedModel={selectedModel}
           modelsList={modelsList}
@@ -190,7 +200,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           onSave={onSaveProviderDetails}
           onCancel={() => setIsEditingProviderDetail(false)}
           onChangeName={onChangeEditingProviderName}
-          onChangeApiKey={setApiKey}
           onChangeApiUrl={onChangeEditingProviderApiUrl}
           onChangeSelectedModel={setSelectedModel}
           onChangeManualModelInput={setManualModelInput}
@@ -200,6 +209,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           onRefreshModelContext={onRefreshModelContext}
           onRemoveModel={onRemoveModel}
           onChangeModelContextWindow={onChangeModelContextWindow}
+          apiKeys={apiKeys}
+          activeApiKeyId={activeApiKeyId}
+          onSelectApiKey={onSelectApiKey}
+          onChangeApiKeyItemName={onChangeApiKeyItemName}
+          onChangeApiKeyValue={onChangeApiKeyValue}
+          onAddApiKey={onAddApiKey}
+          onDeleteApiKey={onDeleteApiKey}
         />
       </div>
     )

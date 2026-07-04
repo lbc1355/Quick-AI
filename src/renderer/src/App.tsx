@@ -51,7 +51,6 @@ function App(): React.JSX.Element {
   // 1. Providers hook
   const {
     apiKey,
-    setApiKey,
     apiUrl,
     selectedModel,
     setSelectedModel,
@@ -107,7 +106,14 @@ function App(): React.JSX.Element {
     webSearchProvider,
     setWebSearchProvider,
     webSearchApiKey,
-    setWebSearchApiKey
+    setWebSearchApiKey,
+    apiKeys,
+    activeApiKeyId,
+    handleSelectApiKey,
+    handleChangeApiKeyItemName,
+    handleChangeApiKeyValue,
+    handleAddApiKey,
+    handleDeleteApiKey
   } = useProviders()
 
   // Close settings panel and restore local editor states
@@ -561,7 +567,6 @@ function App(): React.JSX.Element {
           editingProviderId={editingProviderId}
           activeProviderId={activeProviderId}
           providers={providers}
-          apiKey={apiKey}
           apiUrl={apiUrl}
           selectedModel={selectedModel}
           modelsList={modelsList}
@@ -581,7 +586,6 @@ function App(): React.JSX.Element {
           skills={skills}
           activeSessionId={activeSessionId}
           setIsEditingProviderDetail={setIsEditingProviderDetail}
-          setApiKey={setApiKey}
           setSelectedModel={setSelectedModel}
           setManualModelInput={setManualModelInput}
           setFetchModelsUrl={setFetchModelsUrl}
@@ -616,6 +620,13 @@ function App(): React.JSX.Element {
           setWebSearchProvider={setWebSearchProvider}
           webSearchApiKey={webSearchApiKey}
           setWebSearchApiKey={setWebSearchApiKey}
+          apiKeys={apiKeys}
+          activeApiKeyId={activeApiKeyId}
+          onSelectApiKey={handleSelectApiKey}
+          onChangeApiKeyItemName={handleChangeApiKeyItemName}
+          onChangeApiKeyValue={handleChangeApiKeyValue}
+          onAddApiKey={handleAddApiKey}
+          onDeleteApiKey={handleDeleteApiKey}
         />
       ) : (
         <div className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>

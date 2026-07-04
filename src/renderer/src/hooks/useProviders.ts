@@ -4,13 +4,18 @@ import {
   AppSettings,
   ContextRetentionMode,
   FetchedModelInfo,
-  WebSearchProviderType
+  WebSearchProviderType,
+  ApiKeyItem
 } from '../../../shared/types'
 import { normalizeContextWindowTokens } from '../../../shared/modelContext'
 import {
   normalizeProviderModelCatalog,
   normalizeProvidersModelCatalog
 } from '../../../shared/modelCatalog'
+import {
+  normalizeProviderApiKeys,
+  getActiveProviderApiKey
+} from '../../../shared/providerKeyHelper'
 import { ensureCoreProviderPresets, getProviderPreset } from '../utils/providerPresets'
 
 export interface UseProvidersReturn {
@@ -58,6 +63,15 @@ export interface UseProvidersReturn {
   fetchedModels: FetchedModelInfo[]
   showModelsModal: boolean
   setShowModelsModal: React.Dispatch<React.SetStateAction<boolean>>
+  apiKeys: ApiKeyItem[]
+  setApiKeys: React.Dispatch<React.SetStateAction<ApiKeyItem[]>>
+  activeApiKeyId: string
+  setActiveApiKeyId: React.Dispatch<React.SetStateAction<string>>
+  handleSelectApiKey: (id: string) => void
+  handleChangeApiKeyItemName: (id: string, name: string) => void
+  handleChangeApiKeyValue: (id: string, value: string) => void
+  handleAddApiKey: () => void
+  handleDeleteApiKey: (id: string) => void
   handleApiUrlChange: (newUrl: string) => void
   handleSaveGlobalSettings: () => Promise<void>
   handleSaveProviderDetails: () => Promise<void>
@@ -106,6 +120,10 @@ export const useProviders = (): UseProvidersReturn => {
   const [activeProviderId, setActiveProviderId] = useState<string>('')
   const [editingProviderId, setEditingProviderId] = useState<string>('')
   const [isEditingProviderDetail, setIsEditingProviderDetail] = useState(false)
+
+  // API keys editing states
+  const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([])
+  const [activeApiKeyId, setActiveApiKeyId] = useState<string>('')
 
   // Add provider form states
   const [showAddForm, setShowAddForm] = useState(false)
@@ -248,11 +266,17 @@ export const useProviders = (): UseProvidersReturn => {
     }
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
     if (savedSettings) {
+      // Find the active key value to sync legacy apiKey string
+      const currentActiveKey = apiKeys.find((k) => k.id === activeApiKeyId)
+      const activeKeyVal = currentActiveKey ? currentActiveKey.value : ''
+
       savedSettings.providers = providers.map((p) => {
         if (p.id === editingProviderId) {
           return normalizeProviderModelCatalog({
             ...p,
-            apiKey,
+            apiKey: activeKeyVal,
+            apiKeys,
+            activeApiKeyId,
             apiUrl,
             model: selectedModel,
             modelsList,
@@ -282,7 +306,8 @@ export const useProviders = (): UseProvidersReturn => {
       modelsList: preset ? [...preset.modelsList] : [],
       modelContextWindows: {}
     })
-    const updated = [...providers, newProv]
+    const withKeys = normalizeProviderApiKeys(newProv)
+    const updated = [...providers, withKeys]
     setProviders(updated)
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
     if (savedSettings) {
@@ -292,6 +317,8 @@ export const useProviders = (): UseProvidersReturn => {
 
     // Switch editing to the new provider and open the edit sub-page
     setEditingProviderId(newId)
+    setApiKeys(withKeys.apiKeys || [])
+    setActiveApiKeyId(withKeys.activeApiKeyId || '')
     setApiKey('')
     setApiUrl(preset ? preset.apiUrl : '')
     setSelectedModel(preset ? preset.defaultModel : '')
@@ -306,7 +333,10 @@ export const useProviders = (): UseProvidersReturn => {
     setEditingProviderId(id)
     const target = providers.find((p) => p.id === id)
     if (target) {
-      setApiKey(target.apiKey || '')
+      const withKeys = normalizeProviderApiKeys(target)
+      setApiKeys(withKeys.apiKeys || [])
+      setActiveApiKeyId(withKeys.activeApiKeyId || '')
+      setApiKey(getActiveProviderApiKey(withKeys))
       setApiUrl(target.apiUrl || '')
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
@@ -324,7 +354,10 @@ export const useProviders = (): UseProvidersReturn => {
     setEditingProviderId(id)
     const target = providers.find((p) => p.id === id)
     if (target) {
-      setApiKey(target.apiKey || '')
+      const withKeys = normalizeProviderApiKeys(target)
+      setApiKeys(withKeys.apiKeys || [])
+      setActiveApiKeyId(withKeys.activeApiKeyId || '')
+      setApiKey(getActiveProviderApiKey(withKeys))
       setApiUrl(target.apiUrl || '')
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
@@ -345,7 +378,10 @@ export const useProviders = (): UseProvidersReturn => {
       setActiveProviderId(nextActiveId)
       setEditingProviderId(nextActiveId)
       const target = updated[0]
-      setApiKey(target.apiKey || '')
+      const withKeys = normalizeProviderApiKeys(target)
+      setApiKeys(withKeys.apiKeys || [])
+      setActiveApiKeyId(withKeys.activeApiKeyId || '')
+      setApiKey(getActiveProviderApiKey(withKeys))
       setApiUrl(target.apiUrl || '')
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
@@ -358,6 +394,49 @@ export const useProviders = (): UseProvidersReturn => {
       savedSettings.providers = updated
       savedSettings.activeProviderId = nextActiveId
       await window.api.storeSet('settings', savedSettings)
+    }
+  }
+
+  // API key management functions
+  const handleSelectApiKey = (id: string) => {
+    setActiveApiKeyId(id)
+    const selected = apiKeys.find((k) => k.id === id)
+    if (selected) {
+      setApiKey(selected.value)
+    }
+  }
+
+  const handleChangeApiKeyItemName = (id: string, name: string) => {
+    setApiKeys((prev) => prev.map((k) => (k.id === id ? { ...k, name } : k)))
+  }
+
+  const handleChangeApiKeyValue = (id: string, value: string) => {
+    setApiKeys((prev) => {
+      const updated = prev.map((k) => (k.id === id ? { ...k, value } : k))
+      if (id === activeApiKeyId) {
+        setApiKey(value)
+      }
+      return updated
+    })
+  }
+
+  const handleAddApiKey = () => {
+    const newId = `key-${Date.now()}`
+    const newKeys = [...apiKeys, { id: newId, name: `Key ${apiKeys.length + 1}`, value: '' }]
+    setApiKeys(newKeys)
+    if (!activeApiKeyId || activeApiKeyId === '') {
+      setActiveApiKeyId(newId)
+    }
+  }
+
+  const handleDeleteApiKey = (id: string) => {
+    if (apiKeys.length <= 1) return
+    const updated = apiKeys.filter((k) => k.id !== id)
+    setApiKeys(updated)
+    if (activeApiKeyId === id) {
+      const nextActiveId = updated[0].id
+      setActiveApiKeyId(nextActiveId)
+      setApiKey(updated[0].value)
     }
   }
 
@@ -564,6 +643,15 @@ export const useProviders = (): UseProvidersReturn => {
     fetchedModels,
     showModelsModal,
     setShowModelsModal,
+    apiKeys,
+    setApiKeys,
+    activeApiKeyId,
+    setActiveApiKeyId,
+    handleSelectApiKey,
+    handleChangeApiKeyItemName,
+    handleChangeApiKeyValue,
+    handleAddApiKey,
+    handleDeleteApiKey,
     handleApiUrlChange,
     handleSaveGlobalSettings,
     handleSaveProviderDetails,
