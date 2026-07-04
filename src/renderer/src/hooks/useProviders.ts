@@ -149,7 +149,9 @@ export const useProviders = (): UseProvidersReturn => {
           await window.api.storeSet('settings', upgradedSettings)
         }
 
-        const loadedProviders = normalizeProvidersModelCatalog(upgradedSettings.providers || [])
+        const loadedProviders = normalizeProvidersModelCatalog(
+          upgradedSettings.providers || []
+        ).map((p) => normalizeProviderApiKeys(p))
         const loadedActiveId = upgradedSettings.activeProviderId || ''
         setProviders(loadedProviders)
         setActiveProviderId(loadedActiveId)
@@ -159,7 +161,7 @@ export const useProviders = (): UseProvidersReturn => {
         const activeProv =
           loadedProviders.find((p) => p.id === loadedActiveId) || loadedProviders[0]
         if (activeProv) {
-          setApiKey(activeProv.apiKey || '')
+          setApiKey(getActiveProviderApiKey(activeProv))
           setApiUrl(activeProv.apiUrl || '')
           setSelectedModel(activeProv.model || '')
           setModelsList(activeProv.modelsList || [])

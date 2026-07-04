@@ -5,14 +5,21 @@ import { ApiProvider } from './types'
  * 如果 apiKeys 为空但存在老 apiKey，则初始化一个默认 Key
  */
 export function normalizeProviderApiKeys(provider: Partial<ApiProvider>): ApiProvider {
-  const apiKeys = provider.apiKeys || []
+  const cloned = { ...provider } as ApiProvider
+  const apiKeys = provider.apiKeys ? [...provider.apiKeys] : []
+
   if (apiKeys.length === 0 && provider.apiKey) {
-    provider.apiKeys = [{ id: 'default', name: '默认 Key', value: provider.apiKey }]
-    provider.activeApiKeyId = 'default'
-  } else if (apiKeys.length > 0 && !provider.activeApiKeyId) {
-    provider.activeApiKeyId = apiKeys[0].id
+    cloned.apiKeys = [{ id: 'default', name: '默认 Key', value: provider.apiKey }]
+    cloned.activeApiKeyId = 'default'
+  } else if (apiKeys.length > 0) {
+    cloned.apiKeys = apiKeys
+    if (!provider.activeApiKeyId) {
+      cloned.activeApiKeyId = apiKeys[0].id
+    }
+  } else {
+    cloned.apiKeys = []
   }
-  return provider as ApiProvider
+  return cloned
 }
 
 /**
@@ -28,6 +35,7 @@ export function getActiveProviderApiKey(provider: Partial<ApiProvider>): string 
  * 将服务商当前的 legacy apiKey 与选中的 active key 值进行同步
  */
 export function syncProviderLegacyApiKey(provider: ApiProvider): ApiProvider {
-  provider.apiKey = getActiveProviderApiKey(provider)
-  return provider
+  const cloned = normalizeProviderApiKeys(provider)
+  cloned.apiKey = getActiveProviderApiKey(cloned)
+  return cloned
 }
