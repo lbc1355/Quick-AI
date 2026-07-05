@@ -234,7 +234,7 @@ const StepToolEvents: React.FC<{
     }))
   }
 
-  const renderToolEvent = (tc: ParsedToolCall): React.ReactNode => {
+  const renderToolEvent = (tc: ParsedToolCall, hideName = false): React.ReactNode => {
     const isFocused = tc.status === 'running' || tc.status === 'pending'
     const failurePreview = getToolFailurePreview(tc)
     const hasFailure = Boolean(failurePreview)
@@ -248,7 +248,7 @@ const StepToolEvents: React.FC<{
       >
         <span className="agent-tool-event-line">
           {hasFailure && <AlertCircle size={12} className="agent-tool-failure-icon" />}
-          <span className="agent-tool-name">{tc.toolName}</span>
+          {!hideName && <span className="agent-tool-name">{tc.toolName}</span>}
           <span className="agent-tool-chip">{getToolChipText(tc)}</span>
           {tc.result?.readStartLine !== undefined && tc.result?.readEndLine !== undefined && (
             <span className="agent-tool-line-range">{`#L${tc.result.readStartLine}-${tc.result.readEndLine}`}</span>
@@ -279,7 +279,6 @@ const StepToolEvents: React.FC<{
         )
         const groupStatus = hasFailure ? 'failed' : isFocused ? 'running' : 'completed'
         const isExpanded = expandedGroups[group.id] ?? isFocused
-        const previewCalls = group.calls.slice(0, 3)
         const failedCallsCount = group.calls.filter(
           (tc) => tc.status === 'failed' || tc.status === 'denied'
         ).length
@@ -299,23 +298,11 @@ const StepToolEvents: React.FC<{
               {failedCallsCount > 0 && (
                 <span className="agent-tool-group-failure">{failedCallsCount} failed</span>
               )}
-              <span className="agent-tool-group-preview">
-                {previewCalls.map((tc) => (
-                  <span key={tc.callId} className="agent-tool-chip compact">
-                    {getToolChipText(tc)}
-                  </span>
-                ))}
-                {group.calls.length > previewCalls.length && (
-                  <span className="agent-tool-group-more">
-                    +{group.calls.length - previewCalls.length}
-                  </span>
-                )}
-              </span>
               <span className="agent-tool-verb">{group.verb}</span>
             </button>
             {isExpanded && (
               <div className="agent-tool-group-items">
-                {group.calls.map((tc) => renderToolEvent(tc))}
+                {group.calls.map((tc) => renderToolEvent(tc, true))}
               </div>
             )}
           </div>

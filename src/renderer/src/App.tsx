@@ -24,6 +24,7 @@ import {
   getProviderModelContextWindowInfo,
   getProviderModelRuntimeConfig
 } from '../../shared/modelCatalog'
+import { getActiveProviderApiKey } from '../../shared/providerKeyHelper'
 
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
@@ -50,7 +51,6 @@ function App(): React.JSX.Element {
 
   // 1. Providers hook
   const {
-    apiKey,
     apiUrl,
     selectedModel,
     setSelectedModel,
@@ -126,13 +126,25 @@ function App(): React.JSX.Element {
     () => providers.find((provider) => provider.id === activeProviderId),
     [activeProviderId, providers]
   )
+  const runningModelName = useMemo(
+    () => activeProviderConfig?.model || '',
+    [activeProviderConfig]
+  )
+  const runningApiKey = useMemo(
+    () => activeProviderConfig ? getActiveProviderApiKey(activeProviderConfig) : '',
+    [activeProviderConfig]
+  )
+  const runningApiUrl = useMemo(
+    () => activeProviderConfig?.apiUrl || '',
+    [activeProviderConfig]
+  )
   const activeModelRuntimeConfig = useMemo(
-    () => getProviderModelRuntimeConfig(activeProviderConfig, selectedModel),
-    [activeProviderConfig, selectedModel]
+    () => getProviderModelRuntimeConfig(activeProviderConfig, runningModelName),
+    [activeProviderConfig, runningModelName]
   )
   const activeModelContextWindowTokens =
     activeModelRuntimeConfig?.contextWindowTokens ??
-    getProviderModelContextWindowInfo(activeProviderConfig, selectedModel).tokens
+    getProviderModelContextWindowInfo(activeProviderConfig, runningModelName).tokens
 
   // 2. Sessions hook
   const {
@@ -217,9 +229,9 @@ function App(): React.JSX.Element {
     activeSessionId,
     sessionsRef,
     projects,
-    apiKey,
-    apiUrl,
-    selectedModel,
+    apiKey: runningApiKey,
+    apiUrl: runningApiUrl,
+    selectedModel: runningModelName,
     modelRuntimeConfig: activeModelRuntimeConfig,
     contextWindowTokens: activeModelContextWindowTokens,
     contextRetentionMode,
@@ -497,13 +509,12 @@ function App(): React.JSX.Element {
   // Check if current active session is a clean "new session" with no message history
   const isNewSessionEmpty = activeSession && activeSession.messages.length === 0
   const activeProviderName = activeProviderConfig?.name || 'No provider'
-  const activeModelName = selectedModel || 'No model'
   const { contextBaseTokenEstimate, contextDiagnostics } = useContextDiagnosticsState({
     activeSession: activeSession ?? undefined,
     activeProject,
     activeProviderConfig,
     activeModelRuntimeConfig,
-    selectedModel,
+    selectedModel: runningModelName,
     systemPrompt,
     permissions,
     skillsCount: skills.length,
@@ -557,7 +568,7 @@ function App(): React.JSX.Element {
         isGenerating={isGenerating}
         providers={providers}
         activeProviderId={activeProviderId}
-        selectedModel={selectedModel}
+        selectedModel={runningModelName}
       />
 
       {/* Main Content Area */}
@@ -642,7 +653,7 @@ function App(): React.JSX.Element {
             visibleSessionEntries={visibleSessionEntries}
             isGenerating={isGenerating}
             activeProviderName={activeProviderName}
-            activeModelName={activeModelName}
+            activeModelName={runningModelName}
             onAddProject={handleAddProject}
             onOpenProject={(projectId) => void openProject(projectId)}
             onOpenFreeConversations={() => void openFreeConversations()}
