@@ -318,7 +318,7 @@ export interface ApiKeyItem {
 export interface ApiProvider {
   id: string
   name: string
-  type: 'opencode' | 'deepseek' | 'kimi' | 'ollama' | 'glm' | 'mimo' | 'custom'
+  type: 'opencode' | 'deepseek' | 'kimi' | 'ollama' | 'glm' | 'mimo' | 'step' | 'custom'
   apiKey: string
   apiKeys?: ApiKeyItem[]
   activeApiKeyId?: string

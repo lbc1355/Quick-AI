@@ -78,4 +78,15 @@ describe('providerPresets', () => {
     expect(changed).toBe(true)
     expect(repaired.providers[0].models?.['deepseek-v4-flash-free']?.limit.context).toBe(128000)
   })
+
+  it('builds step preset provider correctly', () => {
+    const preset = getProviderPreset('step')
+    expect(preset).toBeDefined()
+    expect(preset?.name).toBe('阶跃星辰')
+    expect(preset?.apiUrl).toBe('https://api.stepfun.ai/v1')
+
+    const provider = buildProviderFromPreset(preset!)
+    expect(provider.modelsList).toContain('step-1-8k')
+    expect(provider.models?.['step-1-8k']).toBeDefined()
+  })
 })

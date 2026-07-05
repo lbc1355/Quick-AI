@@ -9,9 +9,9 @@ export interface ProviderPreset {
   defaultModel: string
 }
 
-export const PROVIDER_PRESET_VERSION = 2
+export const PROVIDER_PRESET_VERSION = 3
 
-const CORE_PROVIDER_TYPES: ApiProvider['type'][] = ['opencode', 'glm', 'kimi', 'mimo']
+const CORE_PROVIDER_TYPES: ApiProvider['type'][] = ['opencode', 'glm', 'kimi', 'mimo', 'step']
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
@@ -55,6 +55,13 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     apiUrl: 'http://localhost:11434/v1',
     modelsList: ['deepseek-r1:8b', 'llama3'],
     defaultModel: 'deepseek-r1:8b'
+  },
+  {
+    type: 'step',
+    name: '阶跃星辰',
+    apiUrl: 'https://api.stepfun.ai/v1',
+    modelsList: ['step-1-8k', 'step-1-32k', 'step-1-128k', 'step-2-16k'],
+    defaultModel: 'step-1-8k'
   },
   {
     type: 'custom',

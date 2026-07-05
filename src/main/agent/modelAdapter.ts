@@ -147,6 +147,10 @@ const glmAdapter: ModelAdapter = {
 
 const mimoAdapter = createStrictOpenAiCompatibleAdapter('mimo')
 
+// ---- StepFun adapter ----
+
+const stepAdapter = createStrictOpenAiCompatibleAdapter('step')
+
 // ---- Ollama adapter ----
 
 const ollamaAdapter: ModelAdapter = {
@@ -174,7 +178,8 @@ const ADAPTERS: Record<string, ModelAdapter> = {
   kimi: kimiAdapter,
   glm: glmAdapter,
   ollama: ollamaAdapter,
-  mimo: mimoAdapter
+  mimo: mimoAdapter,
+  step: stepAdapter
 }
 
 /**
@@ -190,6 +195,7 @@ export function detectProvider(apiUrl: string): ModelAdapter {
   if (url.includes('bigmodel') || url.includes('glm') || url.includes('zhipu')) return glmAdapter
   if (url.includes('ollama') || url.includes(':11434')) return ollamaAdapter
   if (url.includes('mimo') || url.includes('xiaomi')) return mimoAdapter
+  if (url.includes('stepfun') || url.includes('step.ai')) return stepAdapter
   return openaiAdapter
 }
 
