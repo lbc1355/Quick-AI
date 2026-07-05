@@ -59,9 +59,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     type: 'step',
     name: '阶跃星辰',
-    apiUrl: 'https://api.stepfun.com/v1',
-    modelsList: ['step-1-8k', 'step-1-32k', 'step-1-128k', 'step-2-16k'],
-    defaultModel: 'step-1-8k'
+    apiUrl: 'https://api.stepfun.com/step_plan/v1',
+    modelsList: ['step-3.7-flash', 'step-3.5-flash', 'step-router-v1', 'step-1-8k', 'step-1-32k', 'step-1-128k', 'step-2-16k'],
+    defaultModel: 'step-3.7-flash'
   },
   {
     type: 'custom',

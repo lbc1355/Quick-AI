@@ -147,9 +147,21 @@ const glmAdapter: ModelAdapter = {
 
 const mimoAdapter = createStrictOpenAiCompatibleAdapter('mimo')
 
-// ---- StepFun adapter ----
-
-const stepAdapter = createStrictOpenAiCompatibleAdapter('step')
+const stepAdapter: ModelAdapter = {
+  name: 'step',
+  supportsStreamUsage: true,
+  sanitizeMessages: sanitizeStrictOpenAiCompatibleMessages,
+  sanitizeBody: (body) => {
+    const model = String(body.model || '').toLowerCase()
+    if (model.includes('flash') || model.includes('r-mini') || model.includes('reason')) {
+      return {
+        ...body,
+        reasoning_format: 'deepseek-style'
+      }
+    }
+    return body
+  }
+}
 
 // ---- Ollama adapter ----
 
@@ -195,7 +207,7 @@ export function detectProvider(apiUrl: string): ModelAdapter {
   if (url.includes('bigmodel') || url.includes('glm') || url.includes('zhipu')) return glmAdapter
   if (url.includes('ollama') || url.includes(':11434')) return ollamaAdapter
   if (url.includes('mimo') || url.includes('xiaomi')) return mimoAdapter
-  if (url.includes('stepfun') || url.includes('step.ai')) return stepAdapter
+  if (url.includes('stepfun') || url.includes('step.ai') || url.includes('step_plan')) return stepAdapter
   return openaiAdapter
 }
 

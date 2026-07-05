@@ -83,10 +83,10 @@ describe('providerPresets', () => {
     const preset = getProviderPreset('step')
     expect(preset).toBeDefined()
     expect(preset?.name).toBe('阶跃星辰')
-    expect(preset?.apiUrl).toBe('https://api.stepfun.com/v1')
+    expect(preset?.apiUrl).toBe('https://api.stepfun.com/step_plan/v1')
 
     const provider = buildProviderFromPreset(preset!)
-    expect(provider.modelsList).toContain('step-1-8k')
-    expect(provider.models?.['step-1-8k']).toBeDefined()
+    expect(provider.modelsList).toContain('step-3.7-flash')
+    expect(provider.models?.['step-3.7-flash']).toBeDefined()
   })
 })
