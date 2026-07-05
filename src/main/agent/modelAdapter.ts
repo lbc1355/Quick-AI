@@ -153,7 +153,12 @@ const stepAdapter: ModelAdapter = {
   sanitizeMessages: sanitizeStrictOpenAiCompatibleMessages,
   sanitizeBody: (body) => {
     const model = String(body.model || '').toLowerCase()
-    if (model.includes('flash') || model.includes('r-mini') || model.includes('reason')) {
+    if (
+      model.includes('flash') ||
+      model.includes('r-mini') ||
+      model.includes('reason') ||
+      model.includes('router')
+    ) {
       return {
         ...body,
         reasoning_format: 'deepseek-style'
