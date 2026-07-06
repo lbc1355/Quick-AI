@@ -667,7 +667,6 @@ function App(): React.JSX.Element {
             setSessionFamilyRootId={setSessionFamilyRootId}
             setDismissedSessionFamilyViewForId={setDismissedSessionFamilyViewForId}
             setAutocompleteItems={setAutocompleteItems as (items: never[]) => void}
-            onOpenBgShellManager={() => setShowBgShellManager(true)}
           />
 
           <section className="conversation-panel">
@@ -848,6 +847,7 @@ function App(): React.JSX.Element {
               isOtherSessionGenerating={isOtherSessionGenerating}
               handleAbortGeneration={handleAbortGeneration}
               handleSendMessage={handleSendMessage}
+              onOpenBgShellManager={() => setShowBgShellManager(true)}
             />
           </section>
         </div>
@@ -855,7 +855,10 @@ function App(): React.JSX.Element {
 
       {/* Background Shell Processes Manager pop-up */}
       {showBgShellManager && (
-        <BgShellManagerModal onClose={() => setShowBgShellManager(false)} />
+        <BgShellManagerModal
+          sessionId={activeSessionId}
+          onClose={() => setShowBgShellManager(false)}
+        />
       )}
 
       {/* Models Selection Pop-up Modal */}

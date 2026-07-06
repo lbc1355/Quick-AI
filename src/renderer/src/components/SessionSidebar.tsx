@@ -8,8 +8,7 @@ import {
   ChevronRight,
   Folder,
   FolderPlus,
-  MessageSquarePlus,
-  Terminal
+  MessageSquarePlus
 } from 'lucide-react'
 import { Project, Session } from '../../../shared/types'
 import {
@@ -46,7 +45,6 @@ interface SessionSidebarProps {
   setSessionFamilyRootId: (id: string | null) => void
   setDismissedSessionFamilyViewForId: (id: string | null) => void
   setAutocompleteItems: (items: never[]) => void
-  onOpenBgShellManager: () => void
 }
 
 export const SessionSidebar: React.FC<SessionSidebarProps> = ({
@@ -72,8 +70,7 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
   openSession,
   setSessionFamilyRootId,
   setDismissedSessionFamilyViewForId,
-  setAutocompleteItems,
-  onOpenBgShellManager
+  setAutocompleteItems
 }) => {
   const freeSessionCount = sessions.filter((session) => !session.projectId).length
   const startNewSession = (): void => {
@@ -103,16 +100,6 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
               title="返回全部对话"
             >
               <ArrowLeft size={14} />
-            </button>
-          )}
-          {!isSidebarCollapsed && (
-            <button
-              type="button"
-              className="sidebar-icon-btn"
-              onClick={onOpenBgShellManager}
-              title="后台进程管理"
-            >
-              <Terminal size={14} />
             </button>
           )}
           <button

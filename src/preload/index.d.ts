@@ -74,7 +74,7 @@ declare global {
       mcpDeleteServer: (name: string) => Promise<{ deleted: boolean; config: string }>
       mcpGetStatus: () => Promise<McpServerStatus[]>
       mcpOpenConfig: () => Promise<void>
-      bgShellList: () => Promise<Array<{
+      bgShellList: (sessionId?: string) => Promise<Array<{
         id: string
         command: string
         status: string

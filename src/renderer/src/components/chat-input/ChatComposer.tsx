@@ -1,5 +1,5 @@
 import React from 'react'
-import { Paperclip, Send, Sparkles, Square } from 'lucide-react'
+import { Paperclip, Send, Sparkles, Square, Terminal } from 'lucide-react'
 import type { RunMode } from '../../../../shared/types'
 import type { PendingPermission } from '../../features/chat/permissionTypes'
 
@@ -23,6 +23,7 @@ interface ChatComposerProps {
   canSend: boolean
   handleAbortGeneration: () => void
   onSubmitDraft: () => void
+  onOpenBgShellManager: () => void
 }
 
 export const ChatComposer: React.FC<ChatComposerProps> = ({
@@ -44,7 +45,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   isOtherSessionGenerating,
   canSend,
   handleAbortGeneration,
-  onSubmitDraft
+  onSubmitDraft,
+  onOpenBgShellManager
 }) => {
   return (
     <div className="input-container">
@@ -65,6 +67,15 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           onClick={() => window.api.setFilePickerActive(true)}
         />
       </label>
+      <button
+        type="button"
+        className="input-action-btn"
+        onClick={onOpenBgShellManager}
+        title="后台进程管理"
+        style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+      >
+        <Terminal size={16} />
+      </button>
       <button
         type="button"
         className={`input-context-meter ${contextUsageLevel}`}

@@ -11,10 +11,11 @@ interface BgShellInfo {
 }
 
 interface BgShellManagerModalProps {
+  sessionId?: string
   onClose: () => void
 }
 
-export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ onClose }) => {
+export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ sessionId, onClose }) => {
   const [processes, setProcesses] = useState<BgShellInfo[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [logs, setLogs] = useState<string>('')
@@ -25,7 +26,7 @@ export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ onClos
   const fetchList = async (silent = false): Promise<void> => {
     if (!silent) setIsLoadingList(true)
     try {
-      const list = await window.api.bgShellList()
+      const list = await window.api.bgShellList(sessionId)
       setProcesses(list)
       if (list.length > 0 && !selectedId) {
         setSelectedId(list[0].id)
@@ -74,7 +75,7 @@ export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ onClos
       fetchList(true)
     }, 3000)
     return () => clearInterval(timer)
-  }, [])
+  }, [sessionId])
 
   useEffect(() => {
     if (!selectedId) {

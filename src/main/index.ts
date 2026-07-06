@@ -634,8 +634,8 @@ app.whenReady().then(() => {
   })
 
   // IPC handlers for background shells control
-  ipcMain.handle('bg-shell-list', () => {
-    return getBackgroundShells()
+  ipcMain.handle('bg-shell-list', (_event, sessionId) => {
+    return getBackgroundShells(typeof sessionId === 'string' ? sessionId : undefined)
   })
 
   ipcMain.handle('bg-shell-read-log', (_event, id) => {

@@ -27,6 +27,7 @@ interface BackgroundShellRun {
   outputBaseOffset: number
   totalOutputChars: number
   fallbackEncoding: string
+  sessionId?: string
 }
 
 const BACKGROUND_SHELL_MAX_BUFFER_CHARS = 512 * 1024
@@ -172,7 +173,7 @@ const formatOutputWindow = (
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-function startBackgroundShell(command: string, cwd: string): BackgroundShellRun {
+function startBackgroundShell(command: string, cwd: string, sessionId?: string): BackgroundShellRun {
   const child = spawn(command, {
     cwd,
     shell: true,
@@ -193,7 +194,8 @@ function startBackgroundShell(command: string, cwd: string): BackgroundShellRun 
     output: '',
     outputBaseOffset: 0,
     totalOutputChars: 0,
-    fallbackEncoding: getShellFallbackEncoding()
+    fallbackEncoding: getShellFallbackEncoding(),
+    sessionId
   }
 
   runs.set(run.id, run)
@@ -297,7 +299,9 @@ export async function executeBackgroundShellStart(
   }
 
   const cwd = getBackgroundShellRoot(ctx)
-  const run = startBackgroundShell(command, cwd)
+  const runCtx = ctx.reqId ? getRun(ctx.reqId) : undefined
+  const sessionId = runCtx?.sessionId
+  const run = startBackgroundShell(command, cwd, sessionId)
   const waitMs = clampNumber(args.waitMs, DEFAULT_START_WAIT_MS, 0, MAX_START_WAIT_MS)
   if (waitMs > 0) {
     await wait(waitMs)
@@ -387,16 +391,22 @@ export interface BackgroundShellInfo {
   pid?: number
   createdAt: number
   totalOutputChars: number
+  sessionId?: string
 }
 
-export function getBackgroundShells(): BackgroundShellInfo[] {
-  return Array.from(runs.values()).map((run) => ({
+export function getBackgroundShells(sessionId?: string): BackgroundShellInfo[] {
+  let list = Array.from(runs.values())
+  if (sessionId) {
+    list = list.filter((run) => run.sessionId === sessionId)
+  }
+  return list.map((run) => ({
     id: run.id,
     command: run.command,
     status: run.status,
     pid: run.pid,
     createdAt: run.createdAt,
-    totalOutputChars: run.totalOutputChars
+    totalOutputChars: run.totalOutputChars,
+    sessionId: run.sessionId
   }))
 }
 
