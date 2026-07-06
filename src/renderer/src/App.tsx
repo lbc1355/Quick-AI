@@ -159,7 +159,9 @@ function App(): React.JSX.Element {
     handleNewSession,
     handleClearCurrentSession,
     handleDeleteSession,
-    syncSessionsRef
+    syncSessionsRef,
+    draftSession,
+    setDraftSession
   } = useSessions()
   const [sessionFamilyRootId, setSessionFamilyRootId] = useState<string | null>(null)
   const [dismissedSessionFamilyViewForId, setDismissedSessionFamilyViewForId] = useState<
@@ -240,7 +242,9 @@ function App(): React.JSX.Element {
     systemPrompt,
     setShowSettings: setShowSettings,
     attachedFiles,
-    setAttachedFiles
+    setAttachedFiles,
+    draftSession,
+    setDraftSession
   })
 
   const { pendingUserChoice, handleUserChoiceResponse } = useUserChoiceRequest({

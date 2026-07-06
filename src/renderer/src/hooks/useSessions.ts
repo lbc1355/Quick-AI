@@ -65,6 +65,8 @@ export interface UseSessionsReturn {
   activeSessionId: string
   setActiveSessionId: React.Dispatch<React.SetStateAction<string>>
   activeSession: Session | undefined
+  draftSession: Session | null
+  setDraftSession: React.Dispatch<React.SetStateAction<Session | null>>
   handleNewSession: (options?: { projectId?: string; onCreated?: () => void }) => Promise<Session>
   handleClearCurrentSession: () => Promise<void>
   handleDeleteSession: (targetSessionId: string) => Promise<void>
@@ -74,6 +76,7 @@ export interface UseSessionsReturn {
 export const useSessions = (): UseSessionsReturn => {
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string>('')
+  const [draftSession, setDraftSession] = useState<Session | null>(null)
 
   // Track latest sessions state in a ref to avoid stale closures in async handlers
   const sessionsRef = useRef<Session[]>([])
@@ -84,6 +87,13 @@ export const useSessions = (): UseSessionsReturn => {
   const syncSessionsRef = (currentSessions: Session[]): void => {
     sessionsRef.current = currentSessions
   }
+
+  // Auto clear draft session when switching to a persisted session
+  useEffect(() => {
+    if (activeSessionId && sessions.some((s) => s.id === activeSessionId)) {
+      setDraftSession(null)
+    }
+  }, [activeSessionId, sessions])
 
   // Load sessions from storage on startup
   useEffect(() => {
@@ -106,16 +116,16 @@ export const useSessions = (): UseSessionsReturn => {
           messages: [],
           lastActiveTime: Date.now()
         }
-        const updated = [defaultSession]
-        setSessions(updated)
+        setDraftSession(defaultSession)
         setActiveSessionId(defaultSession.id)
-        await window.api.storeSet('sessions', updated)
       }
     }
     loadSessions()
   }, [])
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId)
+  const activeSession =
+    sessions.find((s) => s.id === activeSessionId) ||
+    (draftSession && draftSession.id === activeSessionId ? draftSession : undefined)
 
   const handleNewSession = async (
     options: { projectId?: string; onCreated?: () => void } = {}
@@ -127,10 +137,8 @@ export const useSessions = (): UseSessionsReturn => {
       lastActiveTime: Date.now(),
       projectId: options.projectId
     }
-    const updated = [newSession, ...sessions]
-    setSessions(updated)
+    setDraftSession(newSession)
     setActiveSessionId(newSession.id)
-    await window.api.storeSet('sessions', updated)
     options.onCreated?.()
     return newSession
   }
@@ -164,17 +172,22 @@ export const useSessions = (): UseSessionsReturn => {
       await clearCachesFor(targetSessionId, computeOrphanResourceIds(target, survivors))
     }
 
-    let updated = sessions.filter((s) => s.id !== targetSessionId)
+    const updated = sessions.filter((s) => s.id !== targetSessionId)
     if (activeSessionId === targetSessionId) {
-      const newSession: Session = {
-        id: Date.now().toString(),
-        title: '新对话',
-        messages: [],
-        lastActiveTime: Date.now(),
-        projectId: target?.projectId
+      if (updated.length > 0) {
+        setActiveSessionId(updated[0].id)
+        setDraftSession(null)
+      } else {
+        const newSession: Session = {
+          id: Date.now().toString(),
+          title: '新对话',
+          messages: [],
+          lastActiveTime: Date.now(),
+          projectId: target?.projectId
+        }
+        setDraftSession(newSession)
+        setActiveSessionId(newSession.id)
       }
-      updated = [newSession, ...updated]
-      setActiveSessionId(newSession.id)
     }
     setSessions(updated)
     await window.api.storeSet('sessions', updated)
@@ -187,6 +200,8 @@ export const useSessions = (): UseSessionsReturn => {
     activeSessionId,
     setActiveSessionId,
     activeSession,
+    draftSession,
+    setDraftSession,
     handleNewSession,
     handleClearCurrentSession,
     handleDeleteSession,

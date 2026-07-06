@@ -43,6 +43,8 @@ interface UseChatCompletionProps {
   setAttachedFiles: React.Dispatch<
     React.SetStateAction<Array<{ name: string; content: string; type: string }>>
   >
+  draftSession: Session | null
+  setDraftSession: React.Dispatch<React.SetStateAction<Session | null>>
 }
 
 export interface UseChatCompletionReturn {
@@ -130,9 +132,15 @@ export const useChatCompletion = ({
   systemPrompt,
   setShowSettings,
   attachedFiles,
-  setAttachedFiles
+  setAttachedFiles,
+  draftSession,
+  setDraftSession
 }: UseChatCompletionProps): UseChatCompletionReturn => {
   const [inputVal, setInputVal] = useState('')
+  const draftSessionRef = useRef<Session | null>(null)
+  useEffect(() => {
+    draftSessionRef.current = draftSession
+  }, [draftSession])
   const [isGenerating, setIsGenerating] = useState(false)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
@@ -232,14 +240,22 @@ export const useChatCompletion = ({
 
     if (currentSession) return currentSession
 
+    const baseSession =
+      draftSessionRef.current && draftSessionRef.current.id === activeSessionId
+        ? draftSessionRef.current
+        : {
+            id: activeSessionId || now.toString(),
+            title: '新对话',
+            messages: [],
+            lastActiveTime: now
+          }
+
     const newSession: Session = {
-      id: now.toString(),
-      title: 'New chat',
-      messages: [],
+      ...baseSession,
       lastActiveTime: now
     }
     currentSessions.unshift(newSession)
-    setActiveSessionId(newSession.id)
+    setDraftSession(null)
     return newSession
   }
 
