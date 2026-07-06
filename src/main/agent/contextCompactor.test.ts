@@ -24,7 +24,8 @@ describe('contextCompactor', () => {
         apiKey: 'key',
         model: 'model-a',
         messages,
-        keepRecentMessages: 4
+        keepRecentMessages: 4,
+        systemPrompt: 'my-custom-system-prompt'
       },
       { callModel, now: () => 1000 }
     )
@@ -37,10 +38,10 @@ describe('contextCompactor', () => {
     expect(callModel).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'model-a' }),
       expect.arrayContaining([
-        expect.objectContaining({ role: 'system' }),
+        expect.objectContaining({ role: 'system', content: 'my-custom-system-prompt' }),
         expect.objectContaining({
           role: 'user',
-          content: expect.stringContaining('<old-conversation>')
+          content: expect.stringContaining('【系统指令：请根据以上对话历史，进行上下文压缩和摘要】')
         })
       ]),
       undefined,

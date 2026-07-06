@@ -243,6 +243,7 @@ export interface Message {
   forkedFrom?: { sessionId: string; messageId: string; runId?: string }
   tokenSpeed?: number
   cacheStats?: PromptCacheStats
+  isCompactionSummary?: boolean
 }
 
 export interface ChatCompletionMessage {
@@ -588,6 +589,7 @@ export interface ContextCompactionRequest {
   modelRuntime?: ModelRuntimeConfig
   messages: Message[]
   keepRecentMessages?: number
+  systemPrompt?: string
 }
 
 export interface ContextCompactionResult {

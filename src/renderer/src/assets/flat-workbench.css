@@ -2371,7 +2371,7 @@ body {
   height: min(520px, calc(100vh - 48px));
   background-color: var(--color-panel);
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--rounded-md);
+  border-radius: var(--rounded-lg);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -2380,7 +2380,7 @@ body {
 }
 
 .bg-shell-header {
-  padding: 8px 12px;
+  padding: var(--spacing-2) var(--spacing-3);
   border-bottom: 1px solid var(--color-border);
   background-color: var(--color-bg-header);
   display: flex;
@@ -2452,7 +2452,7 @@ body {
 }
 
 .bg-shell-item {
-  padding: 6px 12px;
+  padding: var(--spacing-2) var(--spacing-3);
   border-bottom: 1px solid var(--color-border);
   cursor: pointer;
   transition: all 0.1s ease;
@@ -2554,7 +2554,7 @@ body {
 }
 
 .bg-shell-terminal-header {
-  padding: 6px 12px;
+  padding: var(--spacing-2) var(--spacing-3);
   border-bottom: 1px solid var(--color-border);
   background-color: var(--color-bg-header);
   display: flex;

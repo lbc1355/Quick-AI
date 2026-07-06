@@ -204,10 +204,23 @@ export const useChatCompletion = ({
     runModeRef.current = runMode
   }, [runMode])
 
+  const getMessagesForLLM = (messages: Message[]): Message[] => {
+    let startIndex = 0
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].isCompactionSummary) {
+        startIndex = i
+        break
+      }
+    }
+    return messages.slice(startIndex)
+  }
+
   const getCachePriorityRetainedRuns = (
     messages: Message[]
   ): CachePriorityRetainedRunRef[] | undefined => {
     if (latestRequestConfigRef.current.contextRetentionMode !== 'cache-priority') return undefined
+
+    const messagesToProcess = getMessagesForLLM(messages)
 
     // The main process inserts retained tool context into the outbound message array. When the
     // renderer prepends a system prompt to apiMessages, visible dialogue indexes are shifted by one.
@@ -215,7 +228,7 @@ export const useChatCompletion = ({
     const refs: CachePriorityRetainedRunRef[] = []
     const seen = new Set<string>()
 
-    for (const message of messages) {
+    for (const message of messagesToProcess) {
       if (isRuntimeErrorAssistantMessage(message)) continue
 
       if (message.role === 'assistant') {
@@ -411,25 +424,54 @@ export const useChatCompletion = ({
     setInputVal('')
     setActiveGenerationSessionId(currentSession.id)
 
+    const tempMsg: Message = {
+      id: 'temp-compaction-placeholder',
+      role: 'assistant',
+      content: '正在压缩历史对话上下文，请稍候...',
+      agentEvents: [
+        {
+          type: 'agent_step',
+          stepId: 'step-compaction',
+          step: 1,
+          maxSteps: 1,
+          title: '上下文压缩',
+          message: '正在分析对话历史并生成压缩摘要...',
+          status: 'running'
+        }
+      ]
+    }
+
+    currentSession.messages.push(tempMsg)
+    setSessions([...currentSessions])
+    sessionsRef.current = currentSessions
+
     try {
       const result = await window.api.compactContext({
         apiUrl: requestConfig.apiUrl,
         apiKey: requestConfig.apiKey,
         model: requestConfig.selectedModel,
         modelRuntime: requestConfig.modelRuntimeConfig,
-        messages: currentSession.messages,
-        keepRecentMessages: MANUAL_COMPACTION_KEEP_RECENT_MESSAGES
+        messages: currentSession.messages.filter((m) => m.id !== 'temp-compaction-placeholder'),
+        keepRecentMessages: MANUAL_COMPACTION_KEEP_RECENT_MESSAGES,
+        systemPrompt: requestConfig.systemPrompt
       })
 
+      // Remove the temporary placeholder before inserting the summaryMsg
+      currentSession.messages = currentSession.messages.filter(
+        (m) => m.id !== 'temp-compaction-placeholder'
+      )
+
+      const compactedMessages = currentSession.messages.slice(0, result.compactedCount)
       const keptMessages = currentSession.messages.slice(result.compactedCount)
       const summaryMsg: Message = {
         id: `compact-${Date.now()}`,
         role: 'assistant',
         content: formatCompactionSummaryMessage(result),
+        isCompactionSummary: true,
         ...(result.tokenSpeed !== undefined ? { tokenSpeed: result.tokenSpeed } : {})
       }
 
-      currentSession.messages = [summaryMsg, ...keptMessages]
+      currentSession.messages = [...compactedMessages, summaryMsg, ...keptMessages]
       currentSession.lastActiveTime = Date.now()
       setSessions([...currentSessions])
       sessionsRef.current = currentSessions
@@ -440,8 +482,13 @@ export const useChatCompletion = ({
       alert(`上下文压缩失败：${message}`)
       return false
     } finally {
+      currentSession.messages = currentSession.messages.filter(
+        (m) => m.id !== 'temp-compaction-placeholder'
+      )
       setIsGeneratingLive(false)
       setActiveGenerationSessionId(null)
+      setSessions([...currentSessions])
+      sessionsRef.current = currentSessions
     }
   }
   const handleSendMessage = async (
@@ -600,7 +647,9 @@ export const useChatCompletion = ({
       apiMessages.push({ role: 'system', content: requestConfig.systemPrompt })
     }
 
-    targetSession.messages.slice(0, -1).forEach((msg) => {
+    const messagesToProcess = getMessagesForLLM(targetSession.messages.slice(0, -1))
+
+    messagesToProcess.forEach((msg) => {
       if (isRuntimeErrorAssistantMessage(msg)) return
 
       let content:

@@ -13,34 +13,6 @@ export const DEFAULT_COMPACTION_KEEP_RECENT_MESSAGES = 6
 const MAX_MESSAGE_CHARS = 12000
 const MAX_TRANSCRIPT_CHARS = 180000
 
-const COMPACTION_SYSTEM_PROMPT = `You are an anchored context summarization assistant for coding sessions.
-
-Summarize only the conversation history you are given. The newest turns are kept verbatim outside your summary, so focus on the older context that still matters for continuing the work.
-
-If the transcript includes a previous compaction summary, treat it as the current anchored summary. Update it with the new history by preserving still-true details, removing stale details, and merging in new facts.
-
-Keep exact file paths, symbols, commands, tool findings, user preferences, open questions, and unfinished tasks when known. Prefer terse bullets over paragraphs.
-
-Do not answer the user's task. Do not mention that you are summarizing or compacting. Respond in the same language as the conversation.`
-
-const COMPACTION_USER_PROMPT = `请将下面的旧对话压缩成一条可继续工作的上下文摘要。
-
-要求：
-- 保留用户目标、明确偏好、已经做过的代码改动、关键文件路径、命令、错误、测试结果、工具结论、未完成事项。
-- 去掉寒暄、重复推理、已经失效的细节。
-- 最近消息会原样保留在摘要后面，所以不要复述最近消息，除非它们对旧上下文的承接很关键。
-- 输出 Markdown，使用以下结构：
-
-## 上下文摘要
-## 已完成
-## 当前状态
-## 关键事实与约束
-## 待办与风险
-
-<old-conversation>
-{{TRANSCRIPT}}
-</old-conversation>`
-
 const normalizeText = (value: string): string => value.replace(/\r\n/g, '\n').trim()
 
 const truncateText = (value: string, maxChars: number): string => {
@@ -130,16 +102,50 @@ export async function compactContextWithModel(
     throw new Error('当前对话可压缩内容不足。')
   }
 
+  const COMPACTION_USER_PROMPT_IN_LINE = `【系统指令：请根据以上对话历史，进行上下文压缩和摘要】
+
+你是一个上下文压缩助手。请根据上面的全部对话历史，压缩并生成一条可继续工作的上下文摘要。
+要求：
+- 保留用户目标、明确偏好、已经做过的代码改动、关键文件路径、命令、错误、测试结果、工具结论、待办与风险。
+- 去掉寒暄、重复推理、已经失效的细节。
+- 最近消息会原样保留在摘要后面，所以不需要复述最近的消息。
+- 请直接输出 Markdown 格式的摘要，使用以下结构，并保持小标题完全一致：
+
+## 上下文摘要
+## 已完成
+## 当前状态
+## 关键事实与约束
+## 待办与风险
+
+请直接开始输出，不要包含任何多余的前言、解释或对话句式。`
+
   const callModelFn = dependencies.callModel || callModel
   const oldMessages = request.messages.slice(0, compactedCount)
-  const transcript = buildCompactionTranscript(oldMessages)
-  const messages: ChatCompletionMessage[] = [
-    { role: 'system', content: COMPACTION_SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: COMPACTION_USER_PROMPT.replace('{{TRANSCRIPT}}', transcript)
+
+  const messages: ChatCompletionMessage[] = []
+  if (request.systemPrompt) {
+    messages.push({ role: 'system', content: request.systemPrompt })
+  }
+
+  oldMessages.forEach((msg) => {
+    if (msg.isRuntimeError) return
+    let content = msg.content
+    if (msg.files && msg.files.length > 0) {
+      const textParts = [msg.content]
+      msg.files.forEach((f) => {
+        if (f.type !== 'image') {
+          textParts.push(`\n[参考文件: ${f.name}]\n${f.content}`)
+        }
+      })
+      content = textParts.join('\n')
     }
-  ]
+    messages.push({ role: msg.role, content })
+  })
+
+  messages.push({
+    role: 'user',
+    content: COMPACTION_USER_PROMPT_IN_LINE
+  })
 
   let streamed = ''
   const start = dependencies.now?.() ?? Date.now()
