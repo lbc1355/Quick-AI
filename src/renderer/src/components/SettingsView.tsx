@@ -6,7 +6,8 @@ import {
   Skill,
   SkillInstallPayload,
   WebSearchProviderType,
-  ApiKeyItem
+  ApiKeyItem,
+  ProviderApiFormat
 } from '../../../shared/types'
 import { ProviderList } from './ProviderList'
 import { ProviderEditor } from './ProviderEditor'
@@ -85,6 +86,7 @@ interface SettingsViewProps {
   onChangeApiKeyValue: (id: string, value: string) => void
   onAddApiKey: () => void
   onDeleteApiKey: (id: string) => void
+  onChangeEditingProviderApiFormat: (format: ProviderApiFormat) => void
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -149,7 +151,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onChangeApiKeyItemName,
   onChangeApiKeyValue,
   onAddApiKey,
-  onDeleteApiKey
+  onDeleteApiKey,
+  onChangeEditingProviderApiFormat
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>('providers')
   const [agentTools, setAgentTools] = useState<AgentToolInfo[]>([])
@@ -216,6 +219,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           onChangeApiKeyValue={onChangeApiKeyValue}
           onAddApiKey={onAddApiKey}
           onDeleteApiKey={onDeleteApiKey}
+          onChangeApiFormat={onChangeEditingProviderApiFormat}
         />
       </div>
     )

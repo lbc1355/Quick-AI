@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { ArrowLeft, Plus, RefreshCw, X, Eye, EyeOff, Trash2 } from 'lucide-react'
-import { ApiProvider, ApiKeyItem } from '../../../shared/types'
+import { ApiProvider, ApiKeyItem, ProviderApiFormat } from '../../../shared/types'
 import { getContextWindowInfo } from '../../../shared/modelContext'
 
 interface ProviderEditorProps {
@@ -32,6 +32,7 @@ interface ProviderEditorProps {
   onChangeApiKeyValue: (id: string, value: string) => void
   onAddApiKey: () => void
   onDeleteApiKey: (id: string) => void
+  onChangeApiFormat?: (format: ProviderApiFormat) => void
 }
 
 const formatContextTokens = (tokens: number): string => `${tokens.toLocaleString()} tokens`
@@ -64,7 +65,8 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   onChangeApiKeyItemName,
   onChangeApiKeyValue,
   onAddApiKey,
-  onDeleteApiKey
+  onDeleteApiKey,
+  onChangeApiFormat
 }) => {
   const [visibleKeyIds, setVisibleKeyIds] = useState<Record<string, boolean>>({})
 
@@ -182,6 +184,20 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
               onChange={(e) => onChangeApiUrl(e.target.value)}
             />
           </label>
+
+          {provider.type === 'custom' && (
+            <label className="settings-field">
+              <span className="settings-label">接口格式</span>
+              <select
+                className="settings-select"
+                value={provider.apiFormat || 'chat-completions'}
+                onChange={(e) => onChangeApiFormat?.(e.target.value as ProviderApiFormat)}
+              >
+                <option value="chat-completions">Chat Completions / OpenAI Compatible</option>
+                <option value="responses">Responses API</option>
+              </select>
+            </label>
+          )}
 
           <label className="settings-field">
             <span className="settings-label">当前模型</span>

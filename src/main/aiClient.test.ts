@@ -43,4 +43,16 @@ describe('fetchModels', () => {
       { id: 'model-b' }
     ])
   })
+
+  it('throws descriptive error when response body is not JSON', async () => {
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => '<!doctype html><html><body>Error</body></html>'
+    } as unknown as Response)
+
+    await expect(fetchModels('https://api.example.com/v1/models', '')).rejects.toThrow(
+      'Failed to parse models response as JSON. Response body starts with: "<!doctype html><html><body>Error</body></html>"'
+    )
+  })
 })

@@ -18,8 +18,8 @@ export function createSchema(database: Database.Database): void {
       modelContextWindows TEXT NOT NULL DEFAULT '{}',
       endpointType TEXT,
       models TEXT NOT NULL DEFAULT '{}',
-      apiKeys TEXT NOT NULL DEFAULT '[]',
-      activeApiKeyId TEXT
+      activeApiKeyId TEXT,
+      apiFormat TEXT
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
@@ -137,6 +137,7 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'providers', 'models', "TEXT NOT NULL DEFAULT '{}'")
   ensureColumn(database, 'providers', 'apiKeys', "TEXT NOT NULL DEFAULT '[]'")
   ensureColumn(database, 'providers', 'activeApiKeyId', 'TEXT')
+  ensureColumn(database, 'providers', 'apiFormat', 'TEXT')
   ensureColumn(database, 'skills', 'entryPath', 'TEXT')
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")

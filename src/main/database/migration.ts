@@ -59,8 +59,8 @@ function migrateStore(database: Database.Database, storePath: string): void {
       if (settings.providers && settings.providers.length > 0) {
         const insertProvider = database.prepare(
           `INSERT OR REPLACE INTO providers
-           (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId, apiFormat)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         for (const p of settings.providers) {
           const normalized = normalizeProviderModelCatalog(p)
@@ -78,7 +78,8 @@ function migrateStore(database: Database.Database, storePath: string): void {
             withKeys.endpointType || null,
             JSON.stringify(withKeys.models || {}),
             JSON.stringify(withKeys.apiKeys || []),
-            withKeys.activeApiKeyId || null
+            withKeys.activeApiKeyId || null,
+            withKeys.apiFormat || null
           )
         }
       }

@@ -15,7 +15,7 @@ export function getProviderEndpointType(
 }
 
 export function createModelInfo(
-  provider: Pick<ApiProvider, 'id' | 'type' | 'endpointType'>,
+  provider: Pick<ApiProvider, 'id' | 'type' | 'endpointType' | 'apiFormat'>,
   modelId: string,
   contextTokens?: number,
   previous?: Partial<ModelInfo>
@@ -36,7 +36,8 @@ export function createModelInfo(
       context: normalizedContext,
       ...(previous?.limit?.output ? { output: previous.limit.output } : {})
     },
-    enabled: previous?.enabled ?? true
+    enabled: previous?.enabled ?? true,
+    apiFormat: previous?.apiFormat
   }
 }
 
@@ -130,6 +131,7 @@ export function getProviderModelRuntimeConfig(
     providerType: normalized.type,
     endpointType:
       modelInfo.endpointType || normalized.endpointType || getProviderEndpointType(normalized),
+    apiFormat: modelInfo.apiFormat ?? normalized.apiFormat ?? 'chat-completions',
     modelId: modelInfo.id,
     apiModel: modelInfo.apiId || modelInfo.id,
     displayName: modelInfo.displayName,

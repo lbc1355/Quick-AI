@@ -630,6 +630,11 @@ function App(): React.JSX.Element {
               prev.map((p) => (p.id === editingProviderId ? { ...p, name } : p))
             )
           }}
+          onChangeEditingProviderApiFormat={(apiFormat) => {
+            setProviders((prev) =>
+              prev.map((p) => (p.id === editingProviderId ? { ...p, apiFormat } : p))
+            )
+          }}
           onChangeEditingProviderApiUrl={handleApiUrlChange}
           permissions={permissions}
           onChangeToolPermission={onChangeToolPermission}

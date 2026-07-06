@@ -1,5 +1,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest'
 import { callModel, getPromptCacheStats, prepareMessagesForModel } from './callModel'
+import { chatMessagesToResponsesInput } from './responsesAdapter'
+import { ChatCompletionMessage } from '../../shared/types'
 
 const encoder = new TextEncoder()
 
@@ -343,5 +345,102 @@ describe('callModel retry behavior', () => {
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
     expect(body.stream_options).toEqual({ include_usage: true })
+  })
+})
+
+describe('Responses API Compatibility', () => {
+  let fetchMock: Mock
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('correctly maps chat messages to Responses input format', () => {
+    const messages: ChatCompletionMessage[] = [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'Hi there!', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"NYC"}' } }] },
+      { role: 'tool', tool_call_id: 'call_1', content: 'Rainy' }
+    ]
+    const { instructions, input } = chatMessagesToResponsesInput(messages)
+    expect(instructions).toBe('You are a helpful assistant.')
+    expect(input).toHaveLength(4)
+    expect(input[0]).toEqual({ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Hello' }] })
+    expect(input[1]).toEqual({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Hi there!' }] })
+    expect(input[2]).toEqual({ type: 'function_call', call_id: 'call_1', name: 'get_weather', arguments: '{"city":"NYC"}' })
+    expect(input[3]).toEqual({ type: 'function_call_output', call_id: 'call_1', output: 'Rainy' })
+  })
+
+  it('routes to callResponsesModel and streams text/reasoning correctly', async () => {
+    const responseStream = sseStream([
+      'event: response.output_text.delta\ndata: {"delta":"Hello"}\n',
+      'event: response.reasoning_summary_text.delta\ndata: {"delta":"Thinking"}\n',
+      'event: response.completed\ndata: {"response":{"usage":{"prompt_tokens":100,"prompt_cache_hit_tokens":40}}}\n',
+      'data: [DONE]\n'
+    ])
+    fetchMock.mockResolvedValue(okResponse(responseStream))
+
+    const onFinalChunk = vi.fn()
+    const onReasoning = vi.fn()
+
+    const result = await callModel(
+      { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model', apiFormat: 'responses' },
+      [{ role: 'user', content: 'hi' }],
+      undefined,
+      undefined,
+      { onReasoning, onFinalChunk }
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.example.com/responses')
+    expect(result.content).toBe('Hello')
+    expect(result.reasoning_content).toBe('Thinking')
+    expect(onFinalChunk).toHaveBeenCalledWith('Hello')
+    expect(onReasoning).toHaveBeenCalledWith('Thinking')
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.store).toBe(false)
+    expect(body.model).toBe('test-model')
+
+    expect(getPromptCacheStats(result)).toEqual({
+      hasCacheStats: true,
+      promptTokens: 100,
+      completionTokens: undefined,
+      totalTokens: undefined,
+      reasoningTokens: undefined,
+      cacheHitTokens: 40,
+      cacheMissTokens: 60,
+      hitRate: 40
+    })
+  })
+
+  it('accumulates streamed function calls correctly', async () => {
+    const responseStream = sseStream([
+      'event: response.output_item.added\ndata: {"item":{"id":"fc_99","call_id":"call_99","type":"function_call","name":"file_write"}}\n',
+      'event: response.function_call_arguments.delta\ndata: {"item_id":"fc_99","delta":"{\\"pa"}\n',
+      'event: response.function_call_arguments.delta\ndata: {"item_id":"fc_99","delta":"th\\":\\"a.txt\\"}"}\n',
+      'event: response.function_call_arguments.done\ndata: {"item_id":"fc_99","arguments":"{\\"path\\":\\"a.txt\\"}"}\n',
+      'data: [DONE]\n'
+    ])
+    fetchMock.mockResolvedValue(okResponse(responseStream))
+
+    const result = await callModel(
+      { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model', apiFormat: 'responses' },
+      [{ role: 'user', content: 'hi' }],
+      [{ type: 'function', function: { name: 'file_write', description: 'desc', parameters: { type: 'object', properties: {} } } }]
+    )
+
+    expect(result.tool_calls).toBeDefined()
+    expect(result.tool_calls).toHaveLength(1)
+    expect(result.tool_calls![0]).toEqual({
+      id: 'call_99',
+      type: 'function',
+      function: { name: 'file_write', arguments: '{"path":"a.txt"}' }
+    })
   })
 })

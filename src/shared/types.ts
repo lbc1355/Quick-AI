@@ -321,6 +321,8 @@ export interface Project {
 
 export type ProviderEndpointType = 'openai-compatible' | 'ollama-openai' | 'custom'
 
+export type ProviderApiFormat = 'chat-completions' | 'responses'
+
 export type ModelCapability = 'text' | 'vision' | 'tools' | 'reasoning'
 
 export interface ModelInfo {
@@ -335,6 +337,7 @@ export interface ModelInfo {
     output?: number
   }
   enabled: boolean
+  apiFormat?: ProviderApiFormat
 }
 
 export interface ApiKeyItem {
@@ -356,6 +359,7 @@ export interface ApiProvider {
   modelContextWindows?: Record<string, number>
   endpointType?: ProviderEndpointType
   models?: Record<string, ModelInfo>
+  apiFormat?: ProviderApiFormat
 }
 
 export interface ModelRuntimeConfig {
@@ -367,6 +371,7 @@ export interface ModelRuntimeConfig {
   displayName?: string
   capabilities?: ModelCapability[]
   contextWindowTokens?: number
+  apiFormat?: ProviderApiFormat
 }
 
 export interface FetchedModelInfo {

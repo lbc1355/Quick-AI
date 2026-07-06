@@ -125,6 +125,7 @@ describe('modelCatalog', () => {
       providerId: 'provider-glm',
       providerType: 'glm',
       endpointType: 'openai-compatible',
+      apiFormat: 'chat-completions',
       modelId: 'friendly-name',
       apiModel: 'real-api-model',
       displayName: undefined,
@@ -144,5 +145,48 @@ describe('modelCatalog', () => {
       apiModel: 'custom-32k',
       contextWindowTokens: 32000
     })
+  })
+
+  it('resolves apiFormat from provider level or model level override correctly', () => {
+    const customProvider = provider({
+      type: 'custom',
+      apiFormat: 'responses',
+      modelsList: ['my-model'],
+      models: {
+        'my-model': {
+          id: 'my-model',
+          apiId: 'my-model',
+          providerId: 'provider-glm',
+          endpointType: 'openai-compatible',
+          limit: { context: 32000 },
+          enabled: true
+        },
+        'override-model': {
+          id: 'override-model',
+          apiId: 'override-model',
+          providerId: 'provider-glm',
+          endpointType: 'openai-compatible',
+          limit: { context: 32000 },
+          enabled: true,
+          apiFormat: 'chat-completions'
+        }
+      }
+    })
+
+    const runtime1 = getProviderModelRuntimeConfig(customProvider, 'my-model')
+    expect(runtime1?.apiFormat).toBe('responses')
+
+    // Propagated to uncatalogued models as well
+    const runtimeUncatalogued = getProviderModelRuntimeConfig(customProvider, 'uncatalogued-model')
+    expect(runtimeUncatalogued?.apiFormat).toBe('responses')
+
+    // Model override takes precedence
+    const runtimeOverride = getProviderModelRuntimeConfig(customProvider, 'override-model')
+    expect(runtimeOverride?.apiFormat).toBe('chat-completions')
+
+    // Change provider-level format and see it reflect on runtime config
+    customProvider.apiFormat = 'chat-completions'
+    const runtimeUpdated = getProviderModelRuntimeConfig(customProvider, 'my-model')
+    expect(runtimeUpdated?.apiFormat).toBe('chat-completions')
   })
 })
