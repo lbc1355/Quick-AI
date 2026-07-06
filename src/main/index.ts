@@ -45,6 +45,11 @@ import { McpManager } from './mcpManager'
 import { registerHtmlRenderer } from './webRenderer'
 import { ensureSystemSkills, watchSkillFolders } from './skillManager'
 import { getToolRegistryView } from './toolRegistry'
+import {
+  getBackgroundShells,
+  readBackgroundShellLog,
+  stopBackgroundShell
+} from './tools/backgroundShell'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -625,6 +630,22 @@ app.whenReady().then(() => {
       throw new Error('memory-entry-write requires string id and content')
     }
     await writeMemoryEntry(id, content)
+    return { ok: true }
+  })
+
+  // IPC handlers for background shells control
+  ipcMain.handle('bg-shell-list', () => {
+    return getBackgroundShells()
+  })
+
+  ipcMain.handle('bg-shell-read-log', (_event, id) => {
+    if (typeof id !== 'string') throw new Error('bg-shell-read-log requires string id')
+    return readBackgroundShellLog(id)
+  })
+
+  ipcMain.handle('bg-shell-stop', async (_event, id) => {
+    if (typeof id !== 'string') throw new Error('bg-shell-stop requires string id')
+    await stopBackgroundShell(id)
     return { ok: true }
   })
 

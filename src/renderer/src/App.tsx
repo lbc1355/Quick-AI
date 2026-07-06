@@ -28,6 +28,7 @@ import { getActiveProviderApiKey } from '../../shared/providerKeyHelper'
 
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
+import { BgShellManagerModal } from './components/BgShellManagerModal'
 import { ChatInputArea } from './components/ChatInputArea'
 import { UserChoicePopup } from './components/UserChoicePopup'
 import { groupAutocompleteItems } from './utils/autocompleteHelpers'
@@ -41,6 +42,7 @@ import { usePermissionPopupController } from './features/chat/usePermissionPopup
 function App(): React.JSX.Element {
   // Navigation
   const [showSettings, setShowSettings] = useState(false)
+  const [showBgShellManager, setShowBgShellManager] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isPanelPinned, setIsPanelPinned] = useState(false)
   const [windowState, setWindowState] = useState<WindowState>({
@@ -665,6 +667,7 @@ function App(): React.JSX.Element {
             setSessionFamilyRootId={setSessionFamilyRootId}
             setDismissedSessionFamilyViewForId={setDismissedSessionFamilyViewForId}
             setAutocompleteItems={setAutocompleteItems as (items: never[]) => void}
+            onOpenBgShellManager={() => setShowBgShellManager(true)}
           />
 
           <section className="conversation-panel">
@@ -848,6 +851,11 @@ function App(): React.JSX.Element {
             />
           </section>
         </div>
+      )}
+
+      {/* Background Shell Processes Manager pop-up */}
+      {showBgShellManager && (
+        <BgShellManagerModal onClose={() => setShowBgShellManager(false)} />
       )}
 
       {/* Models Selection Pop-up Modal */}

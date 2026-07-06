@@ -379,3 +379,42 @@ export async function clearBackgroundShellProcessesForTests(): Promise<void> {
   )
   runs.clear()
 }
+
+export interface BackgroundShellInfo {
+  id: string
+  command: string
+  status: BackgroundShellStatus
+  pid?: number
+  createdAt: number
+  totalOutputChars: number
+}
+
+export function getBackgroundShells(): BackgroundShellInfo[] {
+  return Array.from(runs.values()).map((run) => ({
+    id: run.id,
+    command: run.command,
+    status: run.status,
+    pid: run.pid,
+    createdAt: run.createdAt,
+    totalOutputChars: run.totalOutputChars
+  }))
+}
+
+export function readBackgroundShellLog(id: string): { output: string; status: string; totalOutputChars: number } {
+  const run = runs.get(id)
+  if (!run) throw new Error(`Process ${id} not found`)
+  return {
+    output: run.output,
+    status: run.status,
+    totalOutputChars: run.totalOutputChars
+  }
+}
+
+export async function stopBackgroundShell(id: string): Promise<void> {
+  const run = runs.get(id)
+  if (!run) throw new Error(`Process ${id} not found`)
+  if (run.status === 'running') {
+    await stopProcessTree(run)
+    await waitForProcessClose(run, STOP_WAIT_MS)
+  }
+}

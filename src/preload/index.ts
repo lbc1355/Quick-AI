@@ -114,7 +114,10 @@ const api = {
   mcpDeleteServer: (name: string): Promise<{ deleted: boolean; config: string }> =>
     ipcRenderer.invoke('mcp-delete-server', name),
   mcpGetStatus: (): Promise<McpServerStatus[]> => ipcRenderer.invoke('mcp-get-status'),
-  mcpOpenConfig: (): Promise<void> => ipcRenderer.invoke('mcp-open-config')
+  mcpOpenConfig: (): Promise<void> => ipcRenderer.invoke('mcp-open-config'),
+  bgShellList: (): Promise<any[]> => ipcRenderer.invoke('bg-shell-list'),
+  bgShellReadLog: (id: string): Promise<any> => ipcRenderer.invoke('bg-shell-read-log', id),
+  bgShellStop: (id: string): Promise<void> => ipcRenderer.invoke('bg-shell-stop', id)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
