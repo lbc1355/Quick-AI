@@ -2356,36 +2356,37 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: fadeIn 0.15s ease-out;
 }
 
 .bg-shell-dialog {
-  width: min(960px, calc(100vw - 32px));
-  height: min(640px, calc(100vh - 48px));
+  width: min(840px, calc(100vw - 32px));
+  height: min(520px, calc(100vh - 48px));
   background-color: var(--color-panel);
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--rounded-lg);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  border-radius: var(--rounded-md);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: scaleIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .bg-shell-header {
-  padding: var(--spacing-3) var(--spacing-4);
+  padding: 8px 12px;
   border-bottom: 1px solid var(--color-border);
   background-color: var(--color-bg-header);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 38px;
 }
 
 .bg-shell-header-title {
@@ -2395,24 +2396,24 @@ body {
 }
 
 .bg-shell-header-title h2 {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-text-title);
   margin: 0;
 }
 
 .bg-shell-header-title span {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--color-text-faint);
   background-color: var(--color-inline-code-bg);
-  padding: 2px 6px;
-  border-radius: var(--rounded-pill);
+  padding: 1px 5px;
+  border-radius: var(--rounded-sm);
 }
 
 .bg-shell-header-actions {
   display: flex;
   align-items: center;
-  gap: var(--spacing-3);
+  gap: 6px;
 }
 
 .bg-shell-icon-btn {
@@ -2423,11 +2424,11 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: var(--spacing-1);
-  border-radius: var(--rounded-md);
-  transition: all 0.15s ease;
-  width: 28px;
-  height: 28px;
+  border-radius: var(--rounded-xs);
+  transition: all 0.1s ease;
+  width: 22px;
+  height: 22px;
+  padding: 0;
 }
 
 .bg-shell-icon-btn:hover {
@@ -2442,7 +2443,7 @@ body {
 }
 
 .bg-shell-sidebar {
-  width: 280px;
+  width: 240px;
   border-right: 1px solid var(--color-border);
   background-color: var(--color-bg-darker);
   display: flex;
@@ -2451,14 +2452,15 @@ body {
 }
 
 .bg-shell-item {
-  padding: var(--spacing-3);
+  padding: 6px 12px;
   border-bottom: 1px solid var(--color-border);
   cursor: pointer;
-  transition: all 0.15s ease;
-  border-left: 3px solid transparent;
+  transition: all 0.1s ease;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
 }
 
 .bg-shell-item:hover {
@@ -2467,64 +2469,69 @@ body {
 
 .bg-shell-item.selected {
   background-color: var(--color-card-bg-hover);
-  border-left-color: var(--color-primary);
 }
 
-.bg-shell-item-title-row {
+.bg-shell-item-left {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.bg-shell-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.bg-shell-status-dot.running {
+  background-color: var(--color-success);
+  box-shadow: 0 0 6px var(--color-success);
+}
+
+.bg-shell-status-dot.stopped {
+  background-color: var(--color-text-faint);
+}
+
+.bg-shell-status-dot.error {
+  background-color: var(--color-danger);
+  box-shadow: 0 0 6px var(--color-danger);
+}
+
+.bg-shell-status-dot.exited {
+  background-color: var(--color-text-faint);
 }
 
 .bg-shell-item-id {
   font-family: Consolas, monospace;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-title);
+  flex-shrink: 0;
 }
 
 .bg-shell-item.selected .bg-shell-item-id {
   color: var(--color-primary);
-}
-
-.bg-shell-item-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: var(--rounded-xs);
   font-weight: 600;
 }
 
-.bg-shell-item-badge.running {
-  background-color: color-mix(in srgb, var(--color-success) 12%, transparent);
-  color: var(--color-success);
-}
-
-.bg-shell-item-badge.stopped {
-  background-color: color-mix(in srgb, var(--color-status-muted, #94a3b8) 12%, transparent);
-  color: var(--color-status-muted, #94a3b8);
-}
-
-.bg-shell-item-badge.error {
-  background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
-  color: var(--color-danger);
-}
-
-.bg-shell-item-command {
-  font-size: 11px;
-  color: var(--color-text-muted);
+.bg-shell-item-cmd-preview {
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  color: var(--color-text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: Consolas, monospace;
+  flex: 1;
 }
 
-.bg-shell-item-meta {
+.bg-shell-item-pid {
+  font-family: Consolas, monospace;
   font-size: 10px;
   color: var(--color-text-faint);
-  display: flex;
-  justify-content: space-between;
-  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 .bg-shell-content {
@@ -2542,34 +2549,36 @@ body {
   align-items: center;
   justify-content: center;
   color: var(--color-text-faint);
-  gap: var(--spacing-3);
+  gap: var(--spacing-2);
   background-color: var(--color-panel);
 }
 
 .bg-shell-terminal-header {
-  padding: var(--spacing-2) var(--spacing-4);
+  padding: 6px 12px;
   border-bottom: 1px solid var(--color-border);
   background-color: var(--color-bg-header);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 38px;
 }
 
 .bg-shell-terminal-info {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   min-width: 0;
-  gap: 2px;
+  gap: 12px;
 }
 
 .bg-shell-terminal-command {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-text-title);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: Consolas, monospace;
+  max-width: 320px;
 }
 
 .bg-shell-terminal-meta {
@@ -2578,22 +2587,23 @@ body {
 }
 
 .bg-shell-terminate-btn {
-  background-color: var(--color-danger);
-  border: none;
-  color: #fff !important;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+  color: var(--color-danger) !important;
   cursor: pointer;
-  padding: 6px 12px;
-  border-radius: var(--rounded-md);
+  padding: 3px 8px;
+  border-radius: var(--rounded-xs);
   display: inline-flex;
   align-items: center;
-  gap: var(--spacing-1);
-  font-size: 12px;
-  font-weight: 600;
-  transition: opacity 0.15s ease;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.12s ease;
 }
 
 .bg-shell-terminate-btn:hover {
-  opacity: 0.9;
+  background-color: color-mix(in srgb, var(--color-danger) 8%, transparent);
+  border-color: var(--color-danger);
 }
 
 .bg-shell-terminal-container {
@@ -2608,7 +2618,7 @@ body {
   flex: 1;
   overflow: auto;
   margin: 0;
-  padding: var(--spacing-4);
+  padding: var(--spacing-3);
   color: var(--color-code-block-text);
   font-family: Consolas, 'SFMono-Regular', monospace;
   font-size: 12px;
@@ -2619,16 +2629,16 @@ body {
 
 .bg-shell-terminal-loading {
   position: absolute;
-  top: var(--spacing-3);
-  right: var(--spacing-3);
+  top: 8px;
+  right: 12px;
   background-color: rgba(0, 0, 0, 0.7);
-  padding: 4px 8px;
+  padding: 3px 6px;
   border-radius: var(--rounded-xs);
   color: #aaa;
-  font-size: 10px;
+  font-size: 9px;
   display: flex;
   align-items: center;
-  gap: var(--spacing-1);
+  gap: 4px;
 }
 
 @keyframes fadeIn {
@@ -2637,7 +2647,7 @@ body {
 }
 
 @keyframes scaleIn {
-  from { transform: scale(0.97); opacity: 0; }
+  from { transform: scale(0.98); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
 

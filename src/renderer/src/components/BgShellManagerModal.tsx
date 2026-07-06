@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Terminal, Power, RefreshCw, Layers } from 'lucide-react'
+import { X, Terminal, Power, RefreshCw, Layers, Info } from 'lucide-react'
 
 interface BgShellInfo {
   id: string
@@ -18,6 +18,9 @@ interface BgShellManagerModalProps {
 export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ sessionId, onClose }) => {
   const [processes, setProcesses] = useState<BgShellInfo[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selectedIdRef = useRef<string | null>(null)
+  selectedIdRef.current = selectedId
+
   const [logs, setLogs] = useState<string>('')
   const [isLoadingList, setIsLoadingList] = useState(false)
   const [isLoadingLogs, setIsLoadingLogs] = useState(false)
@@ -28,8 +31,11 @@ export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ sessio
     try {
       const list = await window.api.bgShellList(sessionId)
       setProcesses(list)
-      if (list.length > 0 && !selectedId) {
-        setSelectedId(list[0].id)
+      const currentSelected = selectedIdRef.current
+      if (list.length > 0) {
+        if (!currentSelected || !list.some((p) => p.id === currentSelected)) {
+          setSelectedId(list[0].id)
+        }
       }
     } catch (e) {
       console.error('Failed to fetch background processes', e)
@@ -140,37 +146,20 @@ export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ sessio
             ) : (
               processes.map((proc) => {
                 const isSelected = proc.id === selectedId
-                const isRunning = proc.status === 'running'
-                const isError = proc.status === 'error'
                 return (
                   <div
                     key={proc.id}
                     onClick={() => setSelectedId(proc.id)}
                     className={`bg-shell-item ${isSelected ? 'selected' : ''}`}
                   >
-                    <div className="bg-shell-item-title-row">
+                    <div className="bg-shell-item-left">
+                      <span className={`bg-shell-status-dot ${proc.status}`} />
                       <span className="bg-shell-item-id">{proc.id}</span>
-                      <span
-                        className={`bg-shell-item-badge ${
-                          isRunning ? 'running' : isError ? 'error' : 'stopped'
-                        }`}
-                      >
-                        {isRunning
-                          ? '运行中'
-                          : proc.status === 'stopped'
-                            ? '已停止'
-                            : proc.status === 'exited'
-                              ? '已退出'
-                              : '异常'}
+                      <span className="bg-shell-item-cmd-preview" title={proc.command}>
+                        {proc.command}
                       </span>
                     </div>
-                    <div className="bg-shell-item-command" title={proc.command}>
-                      {proc.command}
-                    </div>
-                    <div className="bg-shell-item-meta">
-                      <span>PID: {proc.pid ?? 'n/a'}</span>
-                      <span>{new Date(proc.createdAt).toLocaleTimeString()}</span>
-                    </div>
+                    <span className="bg-shell-item-pid">PID: {proc.pid ?? 'n/a'}</span>
                   </div>
                 )
               })
@@ -184,12 +173,24 @@ export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ sessio
                 {/* Terminal Control Bar */}
                 <div className="bg-shell-terminal-header">
                   <div className="bg-shell-terminal-info">
-                    <div className="bg-shell-terminal-command" title={selectedProcess.command}>
-                      {selectedProcess.command}
+                    <div className="bg-shell-terminal-command">
+                      工作目录: {selectedProcess.id}
                     </div>
                     <span className="bg-shell-terminal-meta">
-                      工作目录: {selectedProcess.id} · 创建于{' '}
+                      PID: {selectedProcess.pid ?? 'n/a'} · 创建于{' '}
                       {new Date(selectedProcess.createdAt).toLocaleString()}
+                      <span
+                        title={selectedProcess.command}
+                        style={{
+                          marginLeft: '8px',
+                          cursor: 'help',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          verticalAlign: 'middle'
+                        }}
+                      >
+                        <Info size={11} style={{ opacity: 0.6 }} />
+                      </span>
                     </span>
                   </div>
                   {selectedProcess.status === 'running' && (
@@ -197,9 +198,9 @@ export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ sessio
                       type="button"
                       className="bg-shell-terminate-btn"
                       onClick={() => handleStop(selectedProcess.id)}
+                      title="终止进程"
                     >
-                      <Power size={13} />
-                      终止进程
+                      <Power size={14} />
                     </button>
                   )}
                 </div>
