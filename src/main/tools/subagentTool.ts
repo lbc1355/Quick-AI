@@ -7,6 +7,7 @@ export interface SubagentToolRequest {
   context?: string
   tools?: string[]
   maxSteps: number
+  label?: string
 }
 
 const DEFAULT_MAX_STEPS = 4
@@ -40,7 +41,8 @@ export function normalizeSubagentRequest(args: ToolArgs): SubagentToolRequest {
     task,
     context: toTrimmedString(args.context),
     tools: normalizeToolNames(args.tools),
-    maxSteps: normalizeMaxSteps(args.maxSteps)
+    maxSteps: normalizeMaxSteps(args.maxSteps),
+    label: toTrimmedString(args.label)
   }
 }
 
@@ -84,6 +86,10 @@ export const subagentTool: ToolDefinition = {
       maxSteps: {
         type: 'number',
         description: 'Maximum model/tool iterations for the subagent. Default 4, maximum 8.'
+      },
+      label: {
+        type: 'string',
+        description: 'Optional short role/label for this subagent, e.g. "General", "Research", "Coder".'
       }
     },
     required: ['task']

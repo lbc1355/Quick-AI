@@ -25,6 +25,7 @@ import { runToolTurn } from './toolTurnRunner'
 
 const DEFAULT_SUBAGENT_TOOLS = [
   'file_read',
+  'image_read',
   'code_symbol_read',
   'workspace_search',
   'workspace_list_files',
@@ -40,7 +41,8 @@ const DEFAULT_SUBAGENT_TOOLS = [
   'read_tool_output',
   'inspect_environment',
   'list_memory',
-  'read_memory'
+  'read_memory',
+  'list_skills'
 ]
 
 const BLOCKED_SUBAGENT_TOOLS = new Set([
@@ -263,108 +265,202 @@ export async function runSubagentTask(
   let modelTurns = 0
   let halted = false
 
-  for (let step = 1; step <= request.maxSteps; step++) {
-    if (ctx.signal.aborted) throw new Error('Subagent execution aborted.')
-    messages = trimMessagesToFit(messages, {
-      maxTokens: contextWindow,
-      reserveForResponseRatio: DEFAULT_RESPONSE_RESERVE_RATIO,
-      strategy: 'truncate-oldest-tool',
-      toolOutputSpilloverThreshold: outputSpilloverThreshold
-    })
+  const subagentId = ctx.callId || `subagent-${startedAt}-${Math.random().toString(36).substring(2, 11)}`
 
-    const assistantMessage = await callModelFn(
-      {
-        apiUrl: ctx.agentModel.apiUrl,
-        apiKey: ctx.agentModel.apiKey,
-        model: ctx.agentModel.model,
-        modelRuntime: ctx.agentModel.modelRuntime
-      },
-      messages,
-      toolDeclarations.length > 0 ? toolDeclarations : undefined,
-      ctx.signal
-    )
-    modelTurns++
-    messages.push(assistantMessage)
+  ctx.emitEvent?.({
+    type: 'subagent_start',
+    subagentId,
+    parentToolCallId: ctx.callId || '',
+    label: request.label || (request.tools ? 'Custom' : 'General'),
+    task: request.task,
+    tools: toolNames,
+    maxSteps: request.maxSteps
+  })
 
-    const toolCalls = assistantMessage.tool_calls || []
-    if (toolCalls.length === 0) {
-      finalAnswer = getMessageText(assistantMessage.content)
-      break
-    }
+  let runStatus: 'completed' | 'failed' | 'cancelled' | 'max_steps' = 'failed'
+  let runErrorMsg: string | undefined
 
-    const toolTurn = await runToolTurnFn({
-      assistantMessage,
-      assistantTextBuffer: getMessageText(assistantMessage.content),
-      toolDiscovery: 'static',
-      skillTools: toolNames,
-      permissions: childPermissions,
-      toolRegistry: registry,
-      reqId: ctx.reqId,
-      conversationId: parentRun.sessionId || ctx.reqId,
-      step,
-      maxSteps: request.maxSteps,
-      stepId: `${ctx.callId || ctx.reqId}:subagent:${step}`,
-      signal: ctx.signal,
-      resources: ctx.resources,
-      agentModel: ctx.agentModel,
-      retryPolicy: DEFAULT_RETRY_POLICY,
-      isSideEffecting: (toolName) => SIDE_EFFECTING_TOOLS.has(toolName),
-      loopGuard,
-      outputSpilloverThreshold,
-      fetchUrlBudget,
-      runContext: {
-        activeTools,
-        actionLog: parentRun.actionLog,
-        projectRoot: parentRun.projectRoot,
-        getAdditionalRootPaths: () => parentRun.getAdditionalRootPaths(),
-        isToolActive: (toolName) => activeTools.has(toolName),
-        isToolApproved: (toolName) => parentRun.isToolApproved(toolName),
-        isCommandPrefixApproved: (command) => parentRun.isCommandPrefixApproved(command),
-        hasExecuted: (callKey) => executedCalls.has(callKey),
-        markExecuted: (callKey) => executedCalls.add(callKey),
-        storeToolOutput: (callId, text) => parentRun.storeToolOutput(callId, text),
-        activateTool: (toolName) => activeTools.add(toolName)
-      },
-      emitEvent: () => undefined,
-      requestPermission: async () => false
-    })
-
-    messages.push(...toolTurn.messagesToAppend)
-    for (const toolMessage of toolTurn.messagesToAppend) {
-      if (toolMessage.role !== 'tool') continue
-      observations.push({
-        step,
-        name: toolMessage.name || 'tool',
-        content: typeof toolMessage.content === 'string' ? toolMessage.content : ''
+  try {
+    for (let step = 1; step <= request.maxSteps; step++) {
+      if (ctx.signal.aborted) throw new Error('Subagent execution aborted.')
+      messages = trimMessagesToFit(messages, {
+        maxTokens: contextWindow,
+        reserveForResponseRatio: DEFAULT_RESPONSE_RESERVE_RATIO,
+        strategy: 'truncate-oldest-tool',
+        toolOutputSpilloverThreshold: outputSpilloverThreshold
       })
+
+      const assistantMessage = await callModelFn(
+        {
+          apiUrl: ctx.agentModel.apiUrl,
+          apiKey: ctx.agentModel.apiKey,
+          model: ctx.agentModel.model,
+          modelRuntime: ctx.agentModel.modelRuntime
+        },
+        messages,
+        toolDeclarations.length > 0 ? toolDeclarations : undefined,
+        ctx.signal,
+        {
+          onReasoning: (content) => {
+            ctx.emitEvent?.({
+              type: 'subagent_event',
+              subagentId,
+              event: {
+                type: 'reasoning',
+                content,
+                step,
+                stepId: `${ctx.callId || ctx.reqId}:subagent:${step}`
+              }
+            })
+          },
+          onFinalChunk: (content) => {
+            ctx.emitEvent?.({
+              type: 'subagent_event',
+              subagentId,
+              event: {
+                type: 'agent_message_delta',
+                content,
+                step,
+                stepId: `${ctx.callId || ctx.reqId}:subagent:${step}`
+              }
+            })
+          }
+        }
+      )
+      modelTurns++
+      messages.push(assistantMessage)
+
+      const toolCalls = assistantMessage.tool_calls || []
+      if (toolCalls.length === 0) {
+        finalAnswer = getMessageText(assistantMessage.content)
+        runStatus = 'completed'
+        break
+      }
+
+      const toolTurn = await runToolTurnFn({
+        assistantMessage,
+        assistantTextBuffer: getMessageText(assistantMessage.content),
+        toolDiscovery: 'static',
+        skillTools: toolNames,
+        permissions: childPermissions,
+        toolRegistry: registry,
+        reqId: ctx.reqId,
+        conversationId: parentRun.sessionId || ctx.reqId,
+        step,
+        maxSteps: request.maxSteps,
+        stepId: `${ctx.callId || ctx.reqId}:subagent:${step}`,
+        signal: ctx.signal,
+        resources: ctx.resources,
+        agentModel: ctx.agentModel,
+        retryPolicy: DEFAULT_RETRY_POLICY,
+        isSideEffecting: (toolName) => SIDE_EFFECTING_TOOLS.has(toolName),
+        loopGuard,
+        outputSpilloverThreshold,
+        fetchUrlBudget,
+        runContext: {
+          activeTools,
+          actionLog: parentRun.actionLog,
+          projectRoot: parentRun.projectRoot,
+          getAdditionalRootPaths: () => parentRun.getAdditionalRootPaths(),
+          isToolActive: (toolName) => activeTools.has(toolName),
+          isToolApproved: (toolName) => parentRun.isToolApproved(toolName),
+          isCommandPrefixApproved: (command) => parentRun.isCommandPrefixApproved(command),
+          hasExecuted: (callKey) => executedCalls.has(callKey),
+          markExecuted: (callKey) => executedCalls.add(callKey),
+          storeToolOutput: (callId, text) => parentRun.storeToolOutput(callId, text),
+          activateTool: (toolName) => activeTools.add(toolName)
+        },
+        emitEvent: (innerEvent) => {
+          ctx.emitEvent?.({
+            type: 'subagent_event',
+            subagentId,
+            event: innerEvent as any
+          })
+        },
+        requestPermission: async () => false
+      })
+
+      messages.push(...toolTurn.messagesToAppend)
+      for (const toolMessage of toolTurn.messagesToAppend) {
+        if (toolMessage.role !== 'tool') continue
+        observations.push({
+          step,
+          name: toolMessage.name || 'tool',
+          content: typeof toolMessage.content === 'string' ? toolMessage.content : ''
+        })
+      }
+
+      if (toolTurn.haltRequested) {
+        halted = true
+        break
+      }
     }
 
-    if (toolTurn.haltRequested) {
-      halted = true
-      break
+    if (!finalAnswer) {
+      messages.push({
+        role: 'user',
+        content: halted
+          ? 'Tool use was halted. Provide the best final subagent report now without calling more tools.'
+          : 'The subagent step limit was reached. Provide the best final subagent report now without calling more tools.'
+      })
+      const finalMessage = await callModelFn(
+        {
+          apiUrl: ctx.agentModel.apiUrl,
+          apiKey: ctx.agentModel.apiKey,
+          model: ctx.agentModel.model,
+          modelRuntime: ctx.agentModel.modelRuntime
+        },
+        messages,
+        undefined,
+        ctx.signal,
+        {
+          onReasoning: (content) => {
+            ctx.emitEvent?.({
+              type: 'subagent_event',
+              subagentId,
+              event: {
+                type: 'reasoning',
+                content,
+                step: request.maxSteps,
+                stepId: `${ctx.callId || ctx.reqId}:subagent:final`
+              }
+            })
+          },
+          onFinalChunk: (content) => {
+            ctx.emitEvent?.({
+              type: 'subagent_event',
+              subagentId,
+              event: {
+                type: 'agent_message_delta',
+                content,
+                step: request.maxSteps,
+                stepId: `${ctx.callId || ctx.reqId}:subagent:final`
+              }
+            })
+          }
+        }
+      )
+      modelTurns++
+      finalAnswer = getMessageText(finalMessage.content) || '[Subagent produced no final text.]'
+      runStatus = halted ? 'failed' : 'max_steps'
     }
-  }
-
-  if (!finalAnswer) {
-    messages.push({
-      role: 'user',
-      content: halted
-        ? 'Tool use was halted. Provide the best final subagent report now without calling more tools.'
-        : 'The subagent step limit was reached. Provide the best final subagent report now without calling more tools.'
+  } catch (error) {
+    if (ctx.signal?.aborted || (error instanceof Error && error.message.includes('aborted'))) {
+      runStatus = 'cancelled'
+    } else {
+      runStatus = 'failed'
+    }
+    runErrorMsg = error instanceof Error ? error.message : String(error)
+    throw error
+  } finally {
+    ctx.emitEvent?.({
+      type: 'subagent_end',
+      subagentId,
+      status: runStatus,
+      finalAnswer,
+      error: runErrorMsg,
+      durationMs: now() - startedAt
     })
-    const finalMessage = await callModelFn(
-      {
-        apiUrl: ctx.agentModel.apiUrl,
-        apiKey: ctx.agentModel.apiKey,
-        model: ctx.agentModel.model,
-        modelRuntime: ctx.agentModel.modelRuntime
-      },
-      messages,
-      undefined,
-      ctx.signal
-    )
-    modelTurns++
-    finalAnswer = getMessageText(finalMessage.content) || '[Subagent produced no final text.]'
   }
 
   return formatResult({

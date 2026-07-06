@@ -192,6 +192,33 @@ export type AgentEvent =
       type: 'task_update'
       tasks: TaskItem[]
     }>
+  | WithAgentEventMetadata<{
+      type: 'subagent_start'
+      subagentId: string
+      parentToolCallId: string
+      label: string
+      task: string
+      tools?: string[]
+      maxSteps: number
+    }>
+  | WithAgentEventMetadata<{
+      type: 'subagent_event'
+      subagentId: string
+      event: SubagentInnerEvent
+    }>
+  | WithAgentEventMetadata<{
+      type: 'subagent_end'
+      subagentId: string
+      status: 'completed' | 'failed' | 'cancelled' | 'max_steps'
+      finalAnswer?: string
+      error?: string
+      durationMs?: number
+    }>
+
+export type SubagentInnerEvent = Exclude<
+  AgentEvent,
+  { type: 'subagent_start' | 'subagent_event' | 'subagent_end' }
+>
 
 export interface TaskItem {
   id: string

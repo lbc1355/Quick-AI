@@ -21,6 +21,8 @@ import {
 } from '../utils/messageFormat'
 import { shortBranchRunId, type BranchChildInfo } from '../utils/branchDisplay'
 import { MessageActions } from './message/MessageActions'
+import { SubagentRunCard, SubagentRunState } from './SubagentRunCard'
+import { SubagentRunPanel } from './SubagentRunPanel'
 import { ToolDetailModal } from './message/ToolDetailModal'
 import {
   formatCacheHitRate,
@@ -217,7 +219,7 @@ const RuntimeErrorPanel: React.FC<{
   )
 }
 
-const StepToolEvents: React.FC<{
+export const StepToolEvents: React.FC<{
   step: ParsedAgentStep
   onOpenToolDetail: (toolCall: ParsedToolCall) => void
 }> = ({ step, onOpenToolDetail }) => {
@@ -319,7 +321,7 @@ const getSystemGeneratedProgressText = (message: string): string | null => {
   return `即将调用工具：${match[1].trim()}`
 }
 
-const StepProgressMessage: React.FC<{ message: string }> = ({ message }) => {
+export const StepProgressMessage: React.FC<{ message: string }> = ({ message }) => {
   const systemText = getSystemGeneratedProgressText(message)
 
   if (systemText) {
@@ -334,7 +336,7 @@ const StepProgressMessage: React.FC<{ message: string }> = ({ message }) => {
   return <div className="agent-step-progress-message">{renderMessageContent(message)}</div>
 }
 
-const StepReasoningBlock: React.FC<{
+export const StepReasoningBlock: React.FC<{
   reasoning: string
   autoOpen?: boolean
   autoStateKey?: string
@@ -357,6 +359,28 @@ const StepReasoningBlock: React.FC<{
       <div className="agent-step-reasoning-content">{reasoning}</div>
     </details>
   )
+}
+
+export function parseSubagentRuns(events?: AgentEvent[]): SubagentRunState[] {
+  if (!events) return []
+  const runsMap: Record<string, SubagentRunState> = {}
+  const order: string[] = []
+
+  for (const ev of events) {
+    if (ev.type === 'subagent_start') {
+      runsMap[ev.subagentId] = { info: ev, events: [], status: 'running' }
+      order.push(ev.subagentId)
+    } else if (ev.type === 'subagent_event' && runsMap[ev.subagentId]) {
+      runsMap[ev.subagentId].events.push(ev.event)
+    } else if (ev.type === 'subagent_end' && runsMap[ev.subagentId]) {
+      runsMap[ev.subagentId].status = ev.status
+      runsMap[ev.subagentId].finalAnswer = ev.finalAnswer
+      runsMap[ev.subagentId].error = ev.error
+      runsMap[ev.subagentId].durationMs = ev.durationMs
+    }
+  }
+
+  return order.map((id) => runsMap[id])
 }
 
 interface MessageBubbleProps {
@@ -392,6 +416,14 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onChangeEditingText
   }) => {
     const [isExpanded, setIsExpanded] = useState(true)
+    const [activeSubagentId, setActiveSubagentId] = useState<string | null>(null)
+    const subagents = useMemo(() => {
+      return parseSubagentRuns(msg.agentEvents)
+    }, [msg.agentEvents])
+    const activeSubagent = useMemo(() => {
+      if (!activeSubagentId) return null
+      return subagents.find((s) => s.info.subagentId === activeSubagentId) || null
+    }, [subagents, activeSubagentId])
     const { content: displayContent, reasoning: displayReasoning } = useMemo(
       () => parseThinkTags(msg.content, msg.reasoning_content),
       [msg.content, msg.reasoning_content]
@@ -733,6 +765,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
           (displayReasoning && !hasStructuredEvents) ||
           msg.role === 'user' ||
           (isGenerating && !displayReasoning && !hasLogs) ||
+          agentStatus === 'failed' ||
+          agentStatus === 'cancelled' ||
+          msg.isRuntimeError ||
           ((hasStructuredEvents || parsedRun.steps.length > 0) &&
             (parsedRun.steps.length > 0 || parsedRun.finalAnswer || isGenerating))) && (
           <div className={`message-bubble ${msg.role}`}>
@@ -929,9 +964,30 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           </div>
                         ) : null}
 
+                        {subagents.length > 0 && (
+                          <div
+                            className="agent-subagents-list"
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px',
+                              margin: '8px 0'
+                            }}
+                          >
+                            {subagents.map((subagent) => (
+                              <SubagentRunCard
+                                key={subagent.info.subagentId}
+                                subagent={subagent}
+                                onClick={() => setActiveSubagentId(subagent.info.subagentId)}
+                              />
+                            ))}
+                          </div>
+                        )}
+
                         {(parsedRun.finalReasoning ||
                           parsedRun.finalAnswer ||
-                          msg.isRuntimeError) && (
+                          msg.isRuntimeError ||
+                          agentEndEvent?.error) && (
                           <div className="agent-event-final-text">
                             <StepReasoningBlock
                               reasoning={parsedRun.finalReasoning}
@@ -942,6 +998,12 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                             {msg.isRuntimeError && (
                               <RuntimeErrorPanel
                                 content={msg.content}
+                                onRetry={() => onRegenerate(idx)}
+                              />
+                            )}
+                            {!msg.isRuntimeError && agentEndEvent?.error && (
+                              <RuntimeErrorPanel
+                                content={agentEndEvent.error}
                                 onRetry={() => onRegenerate(idx)}
                               />
                             )}
@@ -1111,6 +1173,12 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
           <ToolDetailModal
             toolCall={selectedToolCall}
             onClose={() => setSelectedToolCallId(null)}
+          />
+        )}
+        {activeSubagent && (
+          <SubagentRunPanel
+            subagent={activeSubagent}
+            onClose={() => setActiveSubagentId(null)}
           />
         )}
       </div>
