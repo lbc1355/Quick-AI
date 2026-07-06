@@ -50,32 +50,55 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 }) => {
   return (
     <div className="input-container">
-      <label
-        htmlFor="file-input"
-        className="input-action-btn"
-        title="上传文件 (支持拖拽/粘贴图片)"
-        style={{ cursor: 'pointer' }}
+      <div
+        style={{
+          gridColumn: '1',
+          gridRow: '2',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          alignSelf: 'center'
+        }}
       >
-        <Paperclip size={16} />
-        <input
-          ref={fileInputRef}
-          id="file-input"
-          type="file"
-          style={{ display: 'none' }}
-          multiple
-          onChange={handleFileChange}
-          onClick={() => window.api.setFilePickerActive(true)}
-        />
-      </label>
-      <button
-        type="button"
-        className="input-action-btn"
-        onClick={onOpenBgShellManager}
-        title="后台进程管理"
-        style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
-      >
-        <Terminal size={16} />
-      </button>
+        <label
+          htmlFor="file-input"
+          className="input-action-btn"
+          title="上传文件 (支持拖拽/粘贴图片)"
+          style={{
+            cursor: 'pointer',
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Paperclip size={16} />
+          <input
+            ref={fileInputRef}
+            id="file-input"
+            type="file"
+            style={{ display: 'none' }}
+            multiple
+            onChange={handleFileChange}
+            onClick={() => window.api.setFilePickerActive(true)}
+          />
+        </label>
+        <button
+          type="button"
+          className="input-action-btn"
+          onClick={onOpenBgShellManager}
+          title="后台进程管理"
+          style={{
+            cursor: 'pointer',
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
+          <Terminal size={16} />
+        </button>
+      </div>
       <button
         type="button"
         className={`input-context-meter ${contextUsageLevel}`}
