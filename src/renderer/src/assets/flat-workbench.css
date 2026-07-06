@@ -2348,3 +2348,296 @@ body {
     max-width: min(76%, 460px);
   }
 }
+
+/* Background Shell Manager Modal Design */
+.bg-shell-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bg-shell-dialog {
+  width: min(960px, calc(100vw - 32px));
+  height: min(640px, calc(100vh - 48px));
+  background-color: var(--color-panel);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bg-shell-header {
+  padding: var(--spacing-3) var(--spacing-4);
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-header);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bg-shell-header-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.bg-shell-header-title h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-title);
+  margin: 0;
+}
+
+.bg-shell-header-title span {
+  font-size: 11px;
+  color: var(--color-text-faint);
+  background-color: var(--color-inline-code-bg);
+  padding: 2px 6px;
+  border-radius: var(--rounded-pill);
+}
+
+.bg-shell-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.bg-shell-icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-1);
+  border-radius: var(--rounded-md);
+  transition: all 0.15s ease;
+  width: 28px;
+  height: 28px;
+}
+
+.bg-shell-icon-btn:hover {
+  background-color: var(--color-card-bg-hover);
+  color: var(--color-text-title);
+}
+
+.bg-shell-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.bg-shell-sidebar {
+  width: 280px;
+  border-right: 1px solid var(--color-border);
+  background-color: var(--color-bg-darker);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.bg-shell-item {
+  padding: var(--spacing-3);
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-left: 3px solid transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bg-shell-item:hover {
+  background-color: var(--color-card-bg-hover);
+}
+
+.bg-shell-item.selected {
+  background-color: var(--color-card-bg-hover);
+  border-left-color: var(--color-primary);
+}
+
+.bg-shell-item-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bg-shell-item-id {
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-title);
+}
+
+.bg-shell-item.selected .bg-shell-item-id {
+  color: var(--color-primary);
+}
+
+.bg-shell-item-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--rounded-xs);
+  font-weight: 600;
+}
+
+.bg-shell-item-badge.running {
+  background-color: color-mix(in srgb, var(--color-success) 12%, transparent);
+  color: var(--color-success);
+}
+
+.bg-shell-item-badge.stopped {
+  background-color: color-mix(in srgb, var(--color-status-muted, #94a3b8) 12%, transparent);
+  color: var(--color-status-muted, #94a3b8);
+}
+
+.bg-shell-item-badge.error {
+  background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
+}
+
+.bg-shell-item-command {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: Consolas, monospace;
+}
+
+.bg-shell-item-meta {
+  font-size: 10px;
+  color: var(--color-text-faint);
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.bg-shell-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--color-code-block-bg);
+}
+
+.bg-shell-content-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-faint);
+  gap: var(--spacing-3);
+  background-color: var(--color-panel);
+}
+
+.bg-shell-terminal-header {
+  padding: var(--spacing-2) var(--spacing-4);
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-header);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bg-shell-terminal-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.bg-shell-terminal-command {
+  font-size: 12px;
+  color: var(--color-text-title);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: Consolas, monospace;
+}
+
+.bg-shell-terminal-meta {
+  font-size: 10px;
+  color: var(--color-text-faint);
+}
+
+.bg-shell-terminate-btn {
+  background-color: var(--color-danger);
+  border: none;
+  color: #fff !important;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: var(--rounded-md);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  font-size: 12px;
+  font-weight: 600;
+  transition: opacity 0.15s ease;
+}
+
+.bg-shell-terminate-btn:hover {
+  opacity: 0.9;
+}
+
+.bg-shell-terminal-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.bg-shell-terminal-screen {
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: var(--spacing-4);
+  color: var(--color-code-block-text);
+  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.bg-shell-terminal-loading {
+  position: absolute;
+  top: var(--spacing-3);
+  right: var(--spacing-3);
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 4px 8px;
+  border-radius: var(--rounded-xs);
+  color: #aaa;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.97); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
