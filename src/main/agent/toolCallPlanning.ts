@@ -36,9 +36,6 @@ export const getShellApprovalCommand = (
   toolArgs: ToolArgs
 ): string | undefined => {
   if (toolName === 'shell' && typeof toolArgs.command === 'string') return toolArgs.command
-  if (toolName === 'shell_background_start' && typeof toolArgs.command === 'string') {
-    return toolArgs.command
-  }
   return undefined
 }
 

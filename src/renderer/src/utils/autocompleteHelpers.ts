@@ -75,7 +75,7 @@ export function getPermissionRequestDisplay(
   args: unknown
 ): PermissionRequestDisplay {
   if (
-    (toolName === 'shell' || toolName === 'shell_background_start') &&
+    toolName === 'shell' &&
     args &&
     typeof args === 'object'
   ) {
@@ -182,7 +182,7 @@ export function getPopupOptions(
   ]
 
   if (
-    (pending.toolName === 'shell' || pending.toolName === 'shell_background_start') &&
+    pending.toolName === 'shell' &&
     pending.args &&
     typeof pending.args === 'object'
   ) {

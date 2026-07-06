@@ -79,9 +79,10 @@ describe('Shell Tool Execution', () => {
     const context = { reqId: 'test-req', signal: new AbortController().signal }
     const startedAt = Date.now()
 
-    const start = await ToolRegistry.shell_background_start.execute(
+    const start = await ToolRegistry.shell.execute(
       {
         command: nodeEvalCommand("console.log('background ready'); setTimeout(() => {}, 5000)"),
+        background: true,
         waitMs: 200,
         maxChars: 2000
       },

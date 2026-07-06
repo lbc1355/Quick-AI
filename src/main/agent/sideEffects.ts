@@ -5,7 +5,6 @@ import { SideEffectEntry, SideEffectKind, SideEffectReversibility } from './runM
 
 export const SIDE_EFFECTING_TOOLS = new Set([
   'shell',
-  'shell_background_start',
   'shell_background_stop',
   'file_write',
   'file_edit',
@@ -65,7 +64,7 @@ export const buildSideEffectEntry = (
   const filesTouched: string[] = []
   const command = typeof args.command === 'string' ? args.command : undefined
 
-  if (toolName === 'shell' || toolName === 'shell_background_start') {
+  if (toolName === 'shell') {
     kind = 'shell'
     reversibility = getShellReversibility(command || '', status)
   } else if (toolName === 'shell_background_stop') {

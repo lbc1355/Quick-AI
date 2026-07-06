@@ -22,7 +22,21 @@ export const shellTools: Record<string, ToolDefinition> = {
     parameters: {
       type: 'object',
       properties: {
-        command: { type: 'string', description: 'The command to run.' }
+        command: { type: 'string', description: 'The command to run.' },
+        background: {
+          type: 'boolean',
+          description:
+            'Optional. If true, starts the command in the background and returns a background processId immediately. Use this for dev servers, watchers, long-running processes (e.g. npm run dev). Defaults to false.'
+        },
+        waitMs: {
+          type: 'number',
+          description:
+            'Optional (only applicable when background is true). Initial wait in milliseconds to capture startup output before returning. Defaults to 500, max 5000.'
+        },
+        maxChars: {
+          type: 'number',
+          description: 'Optional (only applicable when background is true). Max startup output characters to return. Defaults to 16000.'
+        }
       },
       required: ['command']
     },
@@ -44,36 +58,12 @@ export const shellTools: Record<string, ToolDefinition> = {
         }
       }
 
+      if (args.background === true) {
+        return executeBackgroundShellStart(args, ctx)
+      }
+
       return executeShellCommand(command, ctx)
     }
-  },
-  shell_background_start: {
-    name: 'shell_background_start',
-    title: 'Start Background Shell Command',
-    description:
-      'Starts a long-running shell command in the project/workspace root and returns immediately with a background processId. Use this for dev servers, watchers, and commands such as npm run dev; read output with shell_background_read and stop it with shell_background_stop.',
-    tags: ['shell', 'background', 'start', 'server', 'watcher', 'npm', 'dev'],
-    category: 'shell',
-    risk: 'high',
-    implemented: true,
-    discoverable: true,
-    parameters: {
-      type: 'object',
-      properties: {
-        command: { type: 'string', description: 'The long-running command to start.' },
-        waitMs: {
-          type: 'number',
-          description:
-            'Optional initial wait in milliseconds to capture startup output before returning. Defaults to 500, max 5000.'
-        },
-        maxChars: {
-          type: 'number',
-          description: 'Optional max startup output characters to return. Defaults to 16000.'
-        }
-      },
-      required: ['command']
-    },
-    execute: executeBackgroundShellStart
   },
   shell_background_read: {
     name: 'shell_background_read',
