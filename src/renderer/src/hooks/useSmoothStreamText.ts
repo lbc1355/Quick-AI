@@ -48,68 +48,31 @@ const cancelFrame = (id: number): void => {
 
 export const useSmoothStreamText = (targetText: string, active: boolean): string => {
   const [displayedText, setDisplayedText] = useState(targetText)
-  const previousTargetRef = useRef(targetText)
-  const displayedRef = useRef(targetText)
-  const queueRef = useRef<string[]>([])
+  const pendingTargetRef = useRef(targetText)
   const frameRef = useRef<number | null>(null)
 
   useEffect(() => {
-    displayedRef.current = displayedText
-  }, [displayedText])
+    pendingTargetRef.current = targetText
 
-  useEffect(() => {
     if (!active) {
       if (frameRef.current !== null) {
         cancelFrame(frameRef.current)
         frameRef.current = null
       }
-      queueRef.current = []
-      previousTargetRef.current = targetText
-      displayedRef.current = targetText
       setDisplayedText(targetText)
       return undefined
     }
 
-    const previousTarget = previousTargetRef.current
-    if (targetText === previousTarget) return undefined
-
-    if (!targetText.startsWith(previousTarget)) {
-      queueRef.current = []
-      previousTargetRef.current = targetText
-      displayedRef.current = targetText
-      setDisplayedText(targetText)
+    if (frameRef.current !== null) {
       return undefined
     }
-
-    queueRef.current.push(...segmentGraphemes(targetText.slice(previousTarget.length)))
-    previousTargetRef.current = targetText
 
     const flush = (): void => {
       frameRef.current = null
-      const queue = queueRef.current
-
-      if (queue.length === 0) {
-        if (displayedRef.current !== previousTargetRef.current) {
-          displayedRef.current = previousTargetRef.current
-          setDisplayedText(previousTargetRef.current)
-        }
-        return
-      }
-
-      const take = Math.min(getSmoothStreamBatchSize(queue.length), queue.length)
-      const chunk = queue.splice(0, take).join('')
-      const nextDisplayed = displayedRef.current + chunk
-      displayedRef.current = nextDisplayed
-      setDisplayedText(nextDisplayed)
-
-      if (queue.length > 0) {
-        frameRef.current = scheduleFrame(flush)
-      }
+      setDisplayedText(pendingTargetRef.current)
     }
 
-    if (frameRef.current === null) {
-      frameRef.current = scheduleFrame(flush)
-    }
+    frameRef.current = scheduleFrame(flush)
 
     return undefined
   }, [active, targetText])
