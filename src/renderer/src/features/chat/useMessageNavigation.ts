@@ -182,7 +182,7 @@ export function useMessageNavigation({
       setActiveMessageNavId(getLastUserMessageId(activeSession))
       isProgrammaticScrollRef.current = true
 
-      const getTop = () => getBottomScrollTop(container)
+      const getTop = (): number => getBottomScrollTop(container)
       const result = scrollContainerTo(container, getTop(), behavior)
       scheduleScrollCorrections(container, getTop, result.correctionDelays)
       finishProgrammaticScroll(container, result.resetDelay)
@@ -206,7 +206,7 @@ export function useMessageNavigation({
       isProgrammaticScrollRef.current = true
 
       const block = target.offsetHeight > container.clientHeight * 0.72 ? 'start' : 'center'
-      const getTop = () => getElementScrollTop(container, target, block)
+      const getTop = (): number => getElementScrollTop(container, target, block)
       const result = scrollContainerTo(container, getTop(), 'auto')
       scheduleScrollCorrections(container, getTop, result.correctionDelays)
 
@@ -226,7 +226,7 @@ export function useMessageNavigation({
         setActiveMessageNavId(getLastUserMessageId(activeSession))
         const behavior = isCurrentSessionGenerating ? 'auto' : 'smooth'
         isProgrammaticScrollRef.current = true
-        const getTop = () => getBottomScrollTop(container)
+        const getTop = (): number => getBottomScrollTop(container)
         const result = scrollContainerTo(container, getTop(), behavior)
         scheduleScrollCorrections(container, getTop, result.correctionDelays)
         setShowScrollToBottom(false)
@@ -254,7 +254,7 @@ export function useMessageNavigation({
     isProgrammaticScrollRef.current = true
 
     const block = target.offsetHeight > container.clientHeight * 0.72 ? 'start' : 'center'
-    const getTop = () => getElementScrollTop(container, target, block)
+    const getTop = (): number => getElementScrollTop(container, target, block)
     const result = scrollContainerTo(container, getTop(), 'auto')
     scheduleScrollCorrections(container, getTop, result.correctionDelays)
 

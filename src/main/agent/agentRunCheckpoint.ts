@@ -3,10 +3,7 @@ import {
   ACTION_HISTORY_RESUME_LIMIT,
   cloneMessagesForCheckpoint as defaultCloneMessagesForCheckpoint
 } from './resumePrompts'
-import {
-  AmbiguousAction,
-  saveRunCheckpoint as defaultSaveRunCheckpoint
-} from './runCheckpoint'
+import { AmbiguousAction, saveRunCheckpoint as defaultSaveRunCheckpoint } from './runCheckpoint'
 import { appendRunCheckpoint as defaultAppendRunCheckpoint } from './runManifest'
 
 export interface PersistAgentRunCheckpointDependencies {

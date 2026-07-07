@@ -203,7 +203,11 @@ describe('branch fork helpers', () => {
       branchOf: { sessionId: 'source', messageId: 'u2' }
     })
     expect(forked.messages.map((m) => m.content)).toEqual(['one', 'one', 'edited two'])
-    expect(forked.messages.map((m) => m.id)).toEqual(['u1-fork-branch', 'a1-fork-branch', 'u2-fork-branch'])
+    expect(forked.messages.map((m) => m.id)).toEqual([
+      'u1-fork-branch',
+      'a1-fork-branch',
+      'u2-fork-branch'
+    ])
     expect(forked.resources?.map((r) => r.id)).toEqual(['old'])
   })
 })

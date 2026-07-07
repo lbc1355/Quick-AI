@@ -52,7 +52,7 @@ export async function runPreparedToolBatch(
   options: RunPreparedToolBatchOptions
 ): Promise<RunPreparedToolBatchResult> {
   const toolResponses = new Array<ChatCompletionMessage | undefined>(options.toolCallCount)
-  const emitToolCall = (prep: PreparedToolCall, state: 'pending' | 'approved' | 'denied') => {
+  const emitToolCall = (prep: PreparedToolCall, state: 'pending' | 'approved' | 'denied'): void => {
     options.emitEvent(createToolCallEvent(prep, state, options.step, options.stepId))
   }
 

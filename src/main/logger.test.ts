@@ -46,7 +46,7 @@ describe('Logger class', () => {
   it('rotates log files when size exceeds threshold', () => {
     const logName = 'rotate.log'
     const logPath = join(home, 'logs', logName)
-    
+
     // Create logger with a very small size threshold (5 bytes) so any write triggers rotation
     const logger = new Logger(logName, 5)
 

@@ -3,7 +3,7 @@ import { projectCachedResourceReadWindow } from './cachedResourceTools'
 
 const makeChunk = (
   overrides: Partial<Parameters<typeof projectCachedResourceReadWindow>[0]> = {}
-) => ({
+): Parameters<typeof projectCachedResourceReadWindow>[0] => ({
   text: '0123456789abcdef',
   offset: 0,
   endOffset: 16,

@@ -8,7 +8,7 @@ import { ApiProvider } from './types'
 
 describe('providerKeyHelper', () => {
   it('should normalize old provider data with apiKey into apiKeys', () => {
-    const rawProvider = {
+    const rawProvider: ApiProvider = {
       id: 'test-prov',
       name: 'Test',
       type: 'custom',
@@ -16,7 +16,7 @@ describe('providerKeyHelper', () => {
       apiUrl: 'https://test.api',
       model: 'test-model',
       modelsList: []
-    } as any as ApiProvider
+    }
 
     const normalized = normalizeProviderApiKeys(rawProvider)
     expect(normalized.apiKeys).toBeDefined()
@@ -113,9 +113,7 @@ describe('providerKeyHelper', () => {
       name: 'Test',
       type: 'custom',
       apiKey: 'sk-legacy',
-      apiKeys: [
-        { id: 'key-1', name: 'Key 1', value: 'val-1' }
-      ],
+      apiKeys: [{ id: 'key-1', name: 'Key 1', value: 'val-1' }],
       activeApiKeyId: 'non-existent-key-id',
       apiUrl: 'https://test.api',
       model: 'test-model',

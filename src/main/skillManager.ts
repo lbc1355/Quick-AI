@@ -399,7 +399,7 @@ export function getSkillCandidateDirectories(): string[] {
       addUniqueDir(dirs, seen, join(ws, 'skills'))
       addUniqueDir(dirs, seen, join(ws, '.quickai', 'skills'))
     }
-  } catch (err) {
+  } catch {
     // Ignore context errors in path resolution
   }
 

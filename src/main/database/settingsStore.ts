@@ -1,9 +1,6 @@
 import { ApiProvider, AppSettings, ProviderApiFormat } from '../../shared/types'
 import { normalizeProviderModelCatalog } from '../../shared/modelCatalog'
-import {
-  normalizeProviderApiKeys,
-  getActiveProviderApiKey
-} from '../../shared/providerKeyHelper'
+import { normalizeProviderApiKeys, getActiveProviderApiKey } from '../../shared/providerKeyHelper'
 import { getDb } from './connection'
 
 export function loadSettings(): AppSettings {

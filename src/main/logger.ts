@@ -6,9 +6,9 @@ export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
 
 const LEVEL_COLORS = {
   DEBUG: '\x1b[90m', // Gray
-  INFO: '\x1b[32m',  // Green
-  WARN: '\x1b[33m',  // Yellow
-  ERROR: '\x1b[31m'  // Red
+  INFO: '\x1b[32m', // Green
+  WARN: '\x1b[33m', // Yellow
+  ERROR: '\x1b[31m' // Red
 }
 const COLOR_RESET = '\x1b[0m'
 
@@ -67,11 +67,15 @@ export class Logger {
     const timestamp = formatTimestamp(new Date())
     let formattedMessage = message
     if (args.length > 0) {
-      formattedMessage += ' ' + args.map(arg => {
-        if (arg instanceof Error) return arg.stack || arg.message
-        if (typeof arg === 'object') return JSON.stringify(arg)
-        return String(arg)
-      }).join(' ')
+      formattedMessage +=
+        ' ' +
+        args
+          .map((arg) => {
+            if (arg instanceof Error) return arg.stack || arg.message
+            if (typeof arg === 'object') return JSON.stringify(arg)
+            return String(arg)
+          })
+          .join(' ')
     }
 
     const fileLine = `[${timestamp}] [${level}] [${category}] ${formattedMessage}\n`

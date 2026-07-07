@@ -173,7 +173,11 @@ const formatOutputWindow = (
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-function startBackgroundShell(command: string, cwd: string, sessionId?: string): BackgroundShellRun {
+function startBackgroundShell(
+  command: string,
+  cwd: string,
+  sessionId?: string
+): BackgroundShellRun {
   const child = spawn(command, {
     cwd,
     shell: true,
@@ -410,7 +414,11 @@ export function getBackgroundShells(sessionId?: string): BackgroundShellInfo[] {
   }))
 }
 
-export function readBackgroundShellLog(id: string): { output: string; status: string; totalOutputChars: number } {
+export function readBackgroundShellLog(id: string): {
+  output: string
+  status: string
+  totalOutputChars: number
+} {
   const run = runs.get(id)
   if (!run) throw new Error(`Process ${id} not found`)
   return {

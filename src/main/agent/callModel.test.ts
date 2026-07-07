@@ -364,15 +364,38 @@ describe('Responses API Compatibility', () => {
     const messages: ChatCompletionMessage[] = [
       { role: 'system', content: 'You are a helpful assistant.' },
       { role: 'user', content: 'Hello' },
-      { role: 'assistant', content: 'Hi there!', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'get_weather', arguments: '{"city":"NYC"}' } }] },
+      {
+        role: 'assistant',
+        content: 'Hi there!',
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'get_weather', arguments: '{"city":"NYC"}' }
+          }
+        ]
+      },
       { role: 'tool', tool_call_id: 'call_1', content: 'Rainy' }
     ]
     const { instructions, input } = chatMessagesToResponsesInput(messages)
     expect(instructions).toBe('You are a helpful assistant.')
     expect(input).toHaveLength(4)
-    expect(input[0]).toEqual({ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Hello' }] })
-    expect(input[1]).toEqual({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Hi there!' }] })
-    expect(input[2]).toEqual({ type: 'function_call', call_id: 'call_1', name: 'get_weather', arguments: '{"city":"NYC"}' })
+    expect(input[0]).toEqual({
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_text', text: 'Hello' }]
+    })
+    expect(input[1]).toEqual({
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'output_text', text: 'Hi there!' }]
+    })
+    expect(input[2]).toEqual({
+      type: 'function_call',
+      call_id: 'call_1',
+      name: 'get_weather',
+      arguments: '{"city":"NYC"}'
+    })
     expect(input[3]).toEqual({ type: 'function_call_output', call_id: 'call_1', output: 'Rainy' })
   })
 
@@ -389,7 +412,12 @@ describe('Responses API Compatibility', () => {
     const onReasoning = vi.fn()
 
     const result = await callModel(
-      { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model', apiFormat: 'responses' },
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'k',
+        model: 'test-model',
+        apiFormat: 'responses'
+      },
       [{ role: 'user', content: 'hi' }],
       undefined,
       undefined,
@@ -430,9 +458,23 @@ describe('Responses API Compatibility', () => {
     fetchMock.mockResolvedValue(okResponse(responseStream))
 
     const result = await callModel(
-      { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model', apiFormat: 'responses' },
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'k',
+        model: 'test-model',
+        apiFormat: 'responses'
+      },
       [{ role: 'user', content: 'hi' }],
-      [{ type: 'function', function: { name: 'file_write', description: 'desc', parameters: { type: 'object', properties: {} } } }]
+      [
+        {
+          type: 'function',
+          function: {
+            name: 'file_write',
+            description: 'desc',
+            parameters: { type: 'object', properties: {} }
+          }
+        }
+      ]
     )
 
     expect(result.tool_calls).toBeDefined()

@@ -21,7 +21,10 @@ describe('workspaceSearchTool', () => {
     }
     await fs.mkdir(join(testDir, 'workspace', 'src'), { recursive: true })
     await fs.mkdir(join(testDir, 'workspace', 'node_modules'), { recursive: true })
-    await fs.writeFile(join(testDir, 'workspace', 'src', 'main.ts'), 'const value = "search-needle"\n')
+    await fs.writeFile(
+      join(testDir, 'workspace', 'src', 'main.ts'),
+      'const value = "search-needle"\n'
+    )
     await fs.writeFile(join(testDir, 'workspace', 'node_modules', 'ignored.ts'), 'search-needle\n')
   })
 

@@ -44,8 +44,9 @@ describe('fileMoveTool', () => {
     )
 
     await expect(fs.stat(join(testDir, 'workspace', 'source.txt'))).rejects.toThrow()
-    await expect(fs.readFile(join(testDir, 'workspace', 'nested', 'moved.txt'), 'utf-8'))
-      .resolves.toBe('move source')
+    await expect(
+      fs.readFile(join(testDir, 'workspace', 'nested', 'moved.txt'), 'utf-8')
+    ).resolves.toBe('move source')
     expect(result.resultForModel).toContain('Moved path:')
     expect(result.resultForUi.title).toBe('Move Path: source.txt')
     expect(result.resultForUi.summary).toContain('Moved source.txt to nested/moved.txt')

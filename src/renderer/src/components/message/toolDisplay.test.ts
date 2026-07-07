@@ -17,9 +17,9 @@ describe('toolDisplay', () => {
   })
 
   it('summarizes file paths by the final path segments', () => {
-    expect(formatToolArgsSummary('file_read', { path: 'D:\\Git\\Quick Ai\\src\\main\\index.ts' })).toBe(
-      '.../main/index.ts'
-    )
+    expect(
+      formatToolArgsSummary('file_read', { path: 'D:\\Git\\Quick Ai\\src\\main\\index.ts' })
+    ).toBe('.../main/index.ts')
   })
 
   it('summarizes search queries and URLs', () => {

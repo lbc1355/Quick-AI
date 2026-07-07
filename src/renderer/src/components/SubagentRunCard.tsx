@@ -1,5 +1,12 @@
 import React from 'react'
-import { Loader2, CheckCircle2, XCircle, AlertTriangle, AlertCircle, ExternalLink } from 'lucide-react'
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  AlertCircle,
+  ExternalLink
+} from 'lucide-react'
 import { SubagentInnerEvent } from '../../../shared/types'
 
 export interface SubagentRunState {
@@ -93,7 +100,8 @@ export const SubagentRunCard: React.FC<SubagentRunCardProps> = ({ subagent, onCl
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.borderColor = 'var(--color-primary)'
-        e.currentTarget.style.background = 'color-mix(in srgb, var(--color-primary) 5%, var(--color-card-bg))'
+        e.currentTarget.style.background =
+          'color-mix(in srgb, var(--color-primary) 5%, var(--color-card-bg))'
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = 'var(--color-border)'
@@ -141,7 +149,10 @@ export const SubagentRunCard: React.FC<SubagentRunCardProps> = ({ subagent, onCl
         <span>{getStatusText()}</span>
       </span>
 
-      <ExternalLink size={12} style={{ color: 'var(--color-text-muted)', marginLeft: '2px', opacity: 0.7 }} />
+      <ExternalLink
+        size={12}
+        style={{ color: 'var(--color-text-muted)', marginLeft: '2px', opacity: 0.7 }}
+      />
     </button>
   )
 }

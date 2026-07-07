@@ -113,7 +113,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
         .trim()
         .split(/[。\n]/)[0]
         .trim()
-      const clean = firstLine.replace(/[\*#_``\[\]]/g, '').trim()
+      const clean = firstLine.replace(/[*#_`[\]]/g, '').trim()
       if (clean.length > 0) {
         return clean.length > 30 ? clean.substring(0, 30) + '...' : clean
       }
@@ -125,8 +125,15 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
     return '思考分析中...'
   }
 
-  const getStepDescription = (toolName: string, args: any): string => {
-    const argsObj = args && typeof args === 'object' ? args : null
+  const getArgsRecord = (args: unknown): Record<string, unknown> | null =>
+    args && typeof args === 'object' && !Array.isArray(args)
+      ? (args as Record<string, unknown>)
+      : null
+
+  const toText = (value: unknown): string => (typeof value === 'string' ? value : '')
+
+  const getStepDescription = (toolName: string, args: unknown): string => {
+    const argsObj = getArgsRecord(args)
     const name = toolName.toLowerCase()
 
     const truncate = (text: string, maxLen: number = 32): string => {
@@ -135,7 +142,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
       return text.substring(0, maxLen) + '...'
     }
 
-    const getFileLabel = (val: any): string => {
+    const getFileLabel = (val: unknown): string => {
       if (typeof val !== 'string') return ''
       const parts = val.replace(/\\/g, '/').split('/')
       if (parts.length > 2) {
@@ -168,7 +175,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
     }
 
     if (name.includes('command') || name.includes('shell') || name.includes('run')) {
-      const cmd = argsObj?.CommandLine || argsObj?.command || argsObj?.cmd
+      const cmd = toText(argsObj?.CommandLine || argsObj?.command || argsObj?.cmd)
       return `执行命令: ${cmd ? truncate(cmd) : ''}`
     }
 
@@ -178,7 +185,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
       name.includes('web') ||
       name.includes('google')
     ) {
-      const query = argsObj?.query || argsObj?.q
+      const query = toText(argsObj?.query || argsObj?.q)
       return `网络搜索: ${query ? truncate(query) : ''}`
     }
 
@@ -196,7 +203,7 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
     }
 
     if (name.includes('memory')) {
-      const target = argsObj?.target || argsObj?.group_name || argsObj?.groupName
+      const target = toText(argsObj?.target || argsObj?.group_name || argsObj?.groupName)
       if (name.includes('write')) return `写入记忆: ${target || ''}`
       if (name.includes('delete')) return `删除记忆: ${target || ''}`
       return `读取记忆: ${target || ''}`
@@ -243,7 +250,9 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
     return <HelpCircle size={12} />
   }
 
-  const getStatusStyles = (status: ParsedToolCall['status']) => {
+  const getStatusStyles = (
+    status: ParsedToolCall['status']
+  ): { color: string; border: string; background: string } => {
     switch (status) {
       case 'completed':
         return {
@@ -279,16 +288,18 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
     }
   }
 
-  const getShellCommandArg = (toolName: string, args: any): string => {
-    if (!args || typeof args !== 'object') return ''
+  const getShellCommandArg = (toolName: string, args: unknown): string => {
+    const argsObj = getArgsRecord(args)
+    if (!argsObj) return ''
     const name = toolName.toLowerCase()
     if (!name.includes('command') && !name.includes('shell') && !name.includes('run')) return ''
-    const cmd = args.CommandLine || args.command || args.cmd
+    const cmd = argsObj.CommandLine || argsObj.command || argsObj.cmd
     return typeof cmd === 'string' ? cmd : ''
   }
 
-  const renderArgs = (toolName: string, args: any) => {
-    if (!args || typeof args !== 'object') return null
+  const renderArgs = (toolName: string, args: unknown): React.ReactNode => {
+    const argsObj = getArgsRecord(args)
+    if (!argsObj) return null
     const shellCommand = getShellCommandArg(toolName, args)
     return (
       <div className="timeline-args-section">
@@ -297,13 +308,13 @@ export const TaskPanel: React.FC<TaskPanelProps> = ({
           调用参数
         </span>
         <pre className="timeline-pre-code">
-          <code>{shellCommand || JSON.stringify(args, null, 2)}</code>
+          <code>{shellCommand || JSON.stringify(argsObj, null, 2)}</code>
         </pre>
       </div>
     )
   }
 
-  const renderResult = (node: ParsedToolCall) => {
+  const renderResult = (node: ParsedToolCall): React.ReactNode => {
     if (node.error) {
       return (
         <div className="timeline-error-section">

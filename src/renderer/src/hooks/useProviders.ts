@@ -406,7 +406,7 @@ export const useProviders = (): UseProvidersReturn => {
   }
 
   // API key management functions
-  const handleSelectApiKey = (id: string) => {
+  const handleSelectApiKey = (id: string): void => {
     setActiveApiKeyId(id)
     const selected = apiKeys.find((k) => k.id === id)
     if (selected) {
@@ -414,11 +414,11 @@ export const useProviders = (): UseProvidersReturn => {
     }
   }
 
-  const handleChangeApiKeyItemName = (id: string, name: string) => {
+  const handleChangeApiKeyItemName = (id: string, name: string): void => {
     setApiKeys((prev) => prev.map((k) => (k.id === id ? { ...k, name } : k)))
   }
 
-  const handleChangeApiKeyValue = (id: string, value: string) => {
+  const handleChangeApiKeyValue = (id: string, value: string): void => {
     setApiKeys((prev) => {
       const updated = prev.map((k) => (k.id === id ? { ...k, value } : k))
       if (id === activeApiKeyId) {
@@ -428,7 +428,7 @@ export const useProviders = (): UseProvidersReturn => {
     })
   }
 
-  const handleAddApiKey = () => {
+  const handleAddApiKey = (): void => {
     const newId = `key-${Date.now()}`
     const newKeys = [...apiKeys, { id: newId, name: `Key ${apiKeys.length + 1}`, value: '' }]
     setApiKeys(newKeys)
@@ -437,7 +437,7 @@ export const useProviders = (): UseProvidersReturn => {
     }
   }
 
-  const handleDeleteApiKey = (id: string) => {
+  const handleDeleteApiKey = (id: string): void => {
     if (apiKeys.length <= 1) return
     const updated = apiKeys.filter((k) => k.id !== id)
     setApiKeys(updated)

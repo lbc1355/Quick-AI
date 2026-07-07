@@ -3,11 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { PreparedToolCall } from './toolCallPlanning'
 import { buildAgentStepPresentation } from './toolStepPresentation'
 
-const call = (
-  toolName: string,
-  purpose?: string,
-  index = 0
-): PreparedToolCall => ({
+const call = (toolName: string, purpose?: string, index = 0): PreparedToolCall => ({
   index,
   toolCall: {
     id: `call-${index}`,
@@ -29,10 +25,9 @@ const call = (
 
 describe('buildAgentStepPresentation', () => {
   it('uses visible assistant text for the step message and a compact title', () => {
-    const result = buildAgentStepPresentation(
-      '我先读取 README。\n然后分析入口。',
-      [call('file_read', '读取 README')]
-    )
+    const result = buildAgentStepPresentation('我先读取 README。\n然后分析入口。', [
+      call('file_read', '读取 README')
+    ])
 
     expect(result).toEqual({
       title: '我先读取 README',

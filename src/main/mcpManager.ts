@@ -30,6 +30,46 @@ export interface McpConfig {
 
 import { McpServerStatus } from '../shared/types'
 
+const defaultMcpParameters = (): ToolDefinition['parameters'] => ({
+  type: 'object',
+  properties: {}
+})
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const isMcpServerConfig = (value: unknown): value is McpServerConfig =>
+  isRecord(value) && typeof value.command === 'string'
+
+const toToolParameterProperties = (value: unknown): ToolDefinition['parameters']['properties'] => {
+  if (!isRecord(value)) return {}
+
+  const properties: ToolDefinition['parameters']['properties'] = {}
+  for (const [key, property] of Object.entries(value)) {
+    if (!isRecord(property) || typeof property.type !== 'string') continue
+    properties[key] = {
+      type: property.type,
+      description: typeof property.description === 'string' ? property.description : undefined,
+      enum: Array.isArray(property.enum)
+        ? property.enum.filter((item): item is string => typeof item === 'string')
+        : undefined,
+      items: isRecord(property.items) ? property.items : undefined
+    }
+  }
+  return properties
+}
+
+const toToolParameters = (value: unknown): ToolDefinition['parameters'] => {
+  if (!isRecord(value) || value.type !== 'object') return defaultMcpParameters()
+  return {
+    type: 'object',
+    properties: toToolParameterProperties(value.properties),
+    required: Array.isArray(value.required)
+      ? value.required.filter((item): item is string => typeof item === 'string')
+      : undefined
+  }
+}
+
 class McpManagerImpl {
   private configPath: string = ''
   private clients = new Map<string, Client>()
@@ -37,7 +77,7 @@ class McpManagerImpl {
   private statuses = new Map<string, McpServerStatus>()
   private registeredToolNames = new Set<string>()
 
-  init() {
+  init(): void {
     this.configPath = join(getQuickAiRoot(), 'mcp.json')
     logger.info('MCP', `Initializing MCP Manager with config: ${this.configPath}`)
 
@@ -113,8 +153,8 @@ class McpManagerImpl {
         // Form 2: Direct map of server-name to server config, e.g. { "arxiv-agent": { "command": "..." } }
         // Filter to make sure each value is an object that contains a "command" property
         for (const [key, val] of Object.entries(input)) {
-          if (val && typeof val === 'object' && ('command' in (val as any))) {
-            inputServers[key] = val as McpServerConfig
+          if (isMcpServerConfig(val)) {
+            inputServers[key] = val
           }
         }
       }
@@ -297,17 +337,14 @@ class McpManagerImpl {
         source: 'mcp',
         implemented: true,
         discoverable: true,
-        parameters: (tool.inputSchema as any) || {
-          type: 'object',
-          properties: {}
-        },
-        execute: async (args, _ctx) => {
+        parameters: toToolParameters(tool.inputSchema),
+        execute: async (args) => {
           logger.info('MCP', `Executing tool "${tool.name}" on server "${name}"`)
           try {
-            const result = (await client.callTool({
+            const result = await client.callTool({
               name: tool.name,
               arguments: args
-            })) as any
+            })
 
             return createMcpToolResult({
               serverName: name,
@@ -316,7 +353,10 @@ class McpManagerImpl {
             })
           } catch (err) {
             const errorMsg = (err as Error).message || String(err)
-            logger.error('MCP', `Error executing tool "${tool.name}" on server "${name}": ${errorMsg}`)
+            logger.error(
+              'MCP',
+              `Error executing tool "${tool.name}" on server "${name}": ${errorMsg}`
+            )
             return createToolResult({
               resultForModel: `Error executing MCP tool: ${errorMsg}`,
               title: `MCP Tool Call Failed: ${name} / ${tool.name}`,
@@ -330,7 +370,10 @@ class McpManagerImpl {
       this.registeredToolNames.add(modelName)
     }
 
-    logger.info('MCP', `Connected to server "${name}" successfully. Registered ${tools.length} tools.`)
+    logger.info(
+      'MCP',
+      `Connected to server "${name}" successfully. Registered ${tools.length} tools.`
+    )
   }
 
   async shutdown(): Promise<void> {
@@ -359,7 +402,7 @@ class McpManagerImpl {
     return Array.from(this.statuses.values())
   }
 
-  openConfigFolder() {
+  openConfigFolder(): void {
     try {
       shell.showItemInFolder(this.configPath)
     } catch (err) {

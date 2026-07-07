@@ -174,20 +174,22 @@ export async function fetchModels(fetchUrl: string, apiKey: string): Promise<Fet
     if (!response.ok) {
       throw new Error(`Fetch failed: ${response.status} ${response.statusText}`)
     }
-    
+
     let data: FetchModelsResponse | ModelItem[] | string[]
     if (typeof response.text === 'function') {
       const text = await response.text()
       try {
         data = JSON.parse(text) as FetchModelsResponse | ModelItem[] | string[]
-      } catch (parseError) {
+      } catch {
         const snippet = text.trim().slice(0, 100)
-        throw new Error(`Failed to parse models response as JSON. Response body starts with: "${snippet}"`)
+        throw new Error(
+          `Failed to parse models response as JSON. Response body starts with: "${snippet}"`
+        )
       }
     } else {
       data = (await response.json()) as FetchModelsResponse | ModelItem[] | string[]
     }
-    
+
     let models: FetchedModelInfo[] = []
 
     if (data && typeof data === 'object') {

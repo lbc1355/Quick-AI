@@ -31,9 +31,7 @@ const normalizeParameters = (
   parameters: ToolDefinition['parameters']
 ): ToolDefinition['parameters'] => {
   const raw =
-    parameters && typeof parameters === 'object'
-      ? (parameters as Record<string, unknown>)
-      : {}
+    parameters && typeof parameters === 'object' ? (parameters as Record<string, unknown>) : {}
   const rawProperties = raw.properties
   const properties =
     rawProperties && typeof rawProperties === 'object' && !Array.isArray(rawProperties)
@@ -56,7 +54,9 @@ export function normalizeToolDefinition(definition: ToolDefinition): ToolDefinit
   const description = normalizeText(definition.description, 'description')
 
   if (!isOneOf(definition.category, TOOL_CATEGORIES)) {
-    throw new Error(`Tool definition "${name}" has invalid category: ${String(definition.category)}`)
+    throw new Error(
+      `Tool definition "${name}" has invalid category: ${String(definition.category)}`
+    )
   }
   if (!isOneOf(definition.risk, TOOL_RISKS)) {
     throw new Error(`Tool definition "${name}" has invalid risk: ${String(definition.risk)}`)

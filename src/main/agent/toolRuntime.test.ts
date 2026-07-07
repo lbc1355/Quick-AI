@@ -115,9 +115,11 @@ describe('tool runtime helpers', () => {
   })
 
   it('converts thrown tool errors into failure runtime results', async () => {
-    const tool = makeTool(vi.fn(async () => {
-      throw new Error('boom')
-    }))
+    const tool = makeTool(
+      vi.fn(async () => {
+        throw new Error('boom')
+      })
+    )
 
     const result = await executeRuntimeToolCall({
       toolName: 'test_tool',
@@ -223,16 +225,19 @@ describe('tool runtime helpers', () => {
           toolName: 'file_edit',
           args: { path: 'src/main.ts' },
           errorMessage: 'Agent execution aborted by user.',
-          errorContent: '[Ambiguous Side Effect - inspect state before repeating] Agent execution aborted by user.',
+          errorContent:
+            '[Ambiguous Side Effect - inspect state before repeating] Agent execution aborted by user.',
           status: 'ambiguous'
         }),
         errorMessage: 'Agent execution aborted by user.',
-        errorContent: '[Ambiguous Side Effect - inspect state before repeating] Agent execution aborted by user.',
+        errorContent:
+          '[Ambiguous Side Effect - inspect state before repeating] Agent execution aborted by user.',
         response: {
           role: 'tool',
           tool_call_id: 'call-4',
           name: 'file_edit',
-          content: '[Ambiguous Side Effect - inspect state before repeating] Agent execution aborted by user.'
+          content:
+            '[Ambiguous Side Effect - inspect state before repeating] Agent execution aborted by user.'
         }
       },
       toolName: 'file_edit',

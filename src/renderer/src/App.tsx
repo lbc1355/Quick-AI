@@ -87,18 +87,12 @@ function App(): React.JSX.Element {
     () => providers.find((provider) => provider.id === activeProviderId),
     [activeProviderId, providers]
   )
-  const runningModelName = useMemo(
-    () => activeProviderConfig?.model || '',
-    [activeProviderConfig]
-  )
+  const runningModelName = useMemo(() => activeProviderConfig?.model || '', [activeProviderConfig])
   const runningApiKey = useMemo(
-    () => activeProviderConfig ? getActiveProviderApiKey(activeProviderConfig) : '',
+    () => (activeProviderConfig ? getActiveProviderApiKey(activeProviderConfig) : ''),
     [activeProviderConfig]
   )
-  const runningApiUrl = useMemo(
-    () => activeProviderConfig?.apiUrl || '',
-    [activeProviderConfig]
-  )
+  const runningApiUrl = useMemo(() => activeProviderConfig?.apiUrl || '', [activeProviderConfig])
   const activeModelRuntimeConfig = useMemo(
     () => getProviderModelRuntimeConfig(activeProviderConfig, runningModelName),
     [activeProviderConfig, runningModelName]

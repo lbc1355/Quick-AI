@@ -114,11 +114,7 @@ export const fileEditTool: ToolDefinition = {
       )
     }
 
-    const editResult = applyStringEdit(
-      content,
-      { oldString, newString, replaceAll },
-      occurrences
-    )
+    const editResult = applyStringEdit(content, { oldString, newString, replaceAll }, occurrences)
     const newContent = editResult.content
 
     assertMutationWithinSizeLimit(newContent)

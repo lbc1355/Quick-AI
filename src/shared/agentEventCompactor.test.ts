@@ -41,16 +41,51 @@ describe('compactAgentEvents', () => {
 
   it('keeps only the latest progress event per step by default', () => {
     const events: AgentEvent[] = [
-      { type: 'agent_progress', step: 1, maxSteps: 3, stepId: 'step-1', activeTools: ['a'], sequence: 1 },
+      {
+        type: 'agent_progress',
+        step: 1,
+        maxSteps: 3,
+        stepId: 'step-1',
+        activeTools: ['a'],
+        sequence: 1
+      },
       { type: 'tool_call', callId: 'call-1', toolName: 'a', args: {}, sequence: 2 },
-      { type: 'agent_progress', step: 1, maxSteps: 3, stepId: 'step-1', activeTools: ['a', 'b'], sequence: 3 },
-      { type: 'agent_progress', step: 2, maxSteps: 3, stepId: 'step-2', activeTools: ['c'], sequence: 4 }
+      {
+        type: 'agent_progress',
+        step: 1,
+        maxSteps: 3,
+        stepId: 'step-1',
+        activeTools: ['a', 'b'],
+        sequence: 3
+      },
+      {
+        type: 'agent_progress',
+        step: 2,
+        maxSteps: 3,
+        stepId: 'step-2',
+        activeTools: ['c'],
+        sequence: 4
+      }
     ]
 
     expect(compactAgentEvents(events)).toEqual([
       { type: 'tool_call', callId: 'call-1', toolName: 'a', args: {}, sequence: 2 },
-      { type: 'agent_progress', step: 1, maxSteps: 3, stepId: 'step-1', activeTools: ['a', 'b'], sequence: 3 },
-      { type: 'agent_progress', step: 2, maxSteps: 3, stepId: 'step-2', activeTools: ['c'], sequence: 4 }
+      {
+        type: 'agent_progress',
+        step: 1,
+        maxSteps: 3,
+        stepId: 'step-1',
+        activeTools: ['a', 'b'],
+        sequence: 3
+      },
+      {
+        type: 'agent_progress',
+        step: 2,
+        maxSteps: 3,
+        stepId: 'step-2',
+        activeTools: ['c'],
+        sequence: 4
+      }
     ])
   })
 
@@ -70,9 +105,21 @@ describe('compactAgentEvents', () => {
   it('keeps the latest task update and latest tool call state', () => {
     const events: AgentEvent[] = [
       { type: 'task_update', tasks: [{ id: '1', title: 'Read', status: 'pending' }] },
-      { type: 'tool_call', callId: 'call-1', toolName: 'shell', args: {}, permissionState: 'pending' },
+      {
+        type: 'tool_call',
+        callId: 'call-1',
+        toolName: 'shell',
+        args: {},
+        permissionState: 'pending'
+      },
       { type: 'task_update', tasks: [{ id: '1', title: 'Read', status: 'completed' }] },
-      { type: 'tool_call', callId: 'call-1', toolName: 'shell', args: {}, permissionState: 'approved' }
+      {
+        type: 'tool_call',
+        callId: 'call-1',
+        toolName: 'shell',
+        args: {},
+        permissionState: 'approved'
+      }
     ]
 
     expect(compactAgentEvents(events)).toEqual([

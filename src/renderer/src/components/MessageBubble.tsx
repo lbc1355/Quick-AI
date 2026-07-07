@@ -1,4 +1,3 @@
-/* eslint-disable react/display-name, react/prop-types */
 import React, { useState, useEffect, useMemo } from 'react'
 import { Message, AgentEvent } from '../../../shared/types'
 import {
@@ -1176,10 +1175,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
           />
         )}
         {activeSubagent && (
-          <SubagentRunPanel
-            subagent={activeSubagent}
-            onClose={() => setActiveSubagentId(null)}
-          />
+          <SubagentRunPanel subagent={activeSubagent} onClose={() => setActiveSubagentId(null)} />
         )}
       </div>
     )
@@ -1209,3 +1205,5 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     return true
   }
 )
+
+MessageBubble.displayName = 'MessageBubble'

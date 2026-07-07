@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { resolveSubagentTools } from '../agent/subagentRunner'
 import { normalizeSubagentRequest } from './subagentTool'
+import { ToolRegistryView } from './registryView'
 import { ToolDefinition } from './types'
 
 const makeTool = (name: string, overrides: Partial<ToolDefinition> = {}): ToolDefinition => ({
@@ -17,7 +18,7 @@ const makeTool = (name: string, overrides: Partial<ToolDefinition> = {}): ToolDe
   ...overrides
 })
 
-const registryOf = (tools: ToolDefinition[]) => ({
+const registryOf = (tools: ToolDefinition[]): ToolRegistryView => ({
   get: (name: string) => tools.find((tool) => tool.name === name),
   list: () => tools
 })

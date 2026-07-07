@@ -2512,7 +2512,7 @@
   cursor: pointer;
 }
 
-.api-key-select input[type="radio"] {
+.api-key-select input[type='radio'] {
   cursor: pointer;
   margin: 0;
   accent-color: var(--color-primary);
@@ -2582,4 +2582,3 @@
   background: rgba(239, 68, 68, 0.1) !important;
   color: #ef4444 !important;
 }
-

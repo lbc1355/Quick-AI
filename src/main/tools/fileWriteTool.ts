@@ -12,19 +12,7 @@ export const fileWriteTool: ToolDefinition = {
   title: 'Write File',
   description:
     'Writes content to a local file. Files inside the workspace are written directly, while files outside the workspace require user approval.',
-  tags: [
-    'file',
-    'write',
-    'local',
-    'save',
-    '文件',
-    '写入',
-    '保存',
-    '修改',
-    '编辑',
-    '创建',
-    '翻译'
-  ],
+  tags: ['file', 'write', 'local', 'save', '文件', '写入', '保存', '修改', '编辑', '创建', '翻译'],
   category: 'file',
   risk: 'medium',
   implemented: true,

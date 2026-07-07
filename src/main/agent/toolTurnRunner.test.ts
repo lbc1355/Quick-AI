@@ -5,10 +5,13 @@ import { ActionLog } from './actionLog'
 import { LoopGuard } from './loopGuard'
 import { DEFAULT_RETRY_POLICY } from './retryPolicy'
 import { runToolTurn, ToolTurnRunContext } from './toolTurnRunner'
-import { PreparedToolCall } from './toolCallPlanning'
+import { PreparedToolCall, prepareToolCalls as realPrepareToolCalls } from './toolCallPlanning'
 import { ToolRegistryView } from '../tools/registryView'
 
-const rawToolCall = (id: string, name: string): NonNullable<ChatCompletionMessage['tool_calls']>[number] => ({
+const rawToolCall = (
+  id: string,
+  name: string
+): NonNullable<ChatCompletionMessage['tool_calls']>[number] => ({
   id,
   type: 'function',
   function: {
@@ -71,7 +74,7 @@ describe('runToolTurn', () => {
       reason: 'interrupted',
       timestamp: 1
     }
-    const prepareToolCalls = vi.fn(() => ({
+    const prepareToolCalls = vi.fn<typeof realPrepareToolCalls>(() => ({
       prepared: [direct, ask],
       askCalls: [ask],
       directCalls: [direct],
@@ -124,7 +127,9 @@ describe('runToolTurn', () => {
       }
     })
 
-    const prepareInput = (prepareToolCalls.mock.calls[0] as any)[0]
+    const prepareInput = prepareToolCalls.mock.calls[0]![0] as Parameters<
+      typeof realPrepareToolCalls
+    >[0]
     expect(prepareInput.toolCalls).toBe(assistantMessage.tool_calls)
     expect(prepareInput.isToolWhitelisted('file_read')).toBe(true)
     expect(prepareInput.isToolWhitelisted('shell')).toBe(false)

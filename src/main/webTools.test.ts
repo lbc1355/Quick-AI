@@ -178,7 +178,11 @@ describe('webSearchDetailed providers', () => {
     })
 
     expect(out.provider).toBe('brave')
-    expect(out.results[0]).toMatchObject({ title: 'Brave A', url: 'https://x.test', source: 'Brave' })
+    expect(out.results[0]).toMatchObject({
+      title: 'Brave A',
+      url: 'https://x.test',
+      source: 'Brave'
+    })
     // HTML tags stripped from description
     expect(out.results[0].snippet).toBe('desc a')
   })

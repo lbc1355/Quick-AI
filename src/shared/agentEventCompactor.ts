@@ -17,10 +17,13 @@ const appendLatestProgress = (
   event: Extract<AgentEvent, { type: 'agent_progress' }>
 ): AgentEvent[] => {
   const key = getProgressKey(event)
-  return [...compacted.filter((existing) => {
-    if (existing.type !== 'agent_progress') return true
-    return getProgressKey(existing) !== key
-  }), event]
+  return [
+    ...compacted.filter((existing) => {
+      if (existing.type !== 'agent_progress') return true
+      return getProgressKey(existing) !== key
+    }),
+    event
+  ]
 }
 
 export function compactAgentEvents(

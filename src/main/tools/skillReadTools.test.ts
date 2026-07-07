@@ -22,9 +22,7 @@ describe('skill read tools', () => {
     const tools = createSkillReadTools({
       loadSkills: () => [
         makeSkill({
-          packageFiles: [
-            { path: 'references/notes.md', content: 'Reference details', size: 17 }
-          ]
+          packageFiles: [{ path: 'references/notes.md', content: 'Reference details', size: 17 }]
         })
       ]
     })

@@ -163,5 +163,4 @@ describeWithSqlite('session branch metadata persistence', () => {
       { type: 'task_update', tasks: [{ id: '1', title: 'Read', status: 'completed' }] }
     ])
   })
-
 })

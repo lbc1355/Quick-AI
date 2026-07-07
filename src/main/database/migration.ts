@@ -3,10 +3,7 @@ import { existsSync, readFileSync, readdirSync, renameSync, unlinkSync } from 'f
 import { join } from 'path'
 import { StorageSchema } from '../../shared/types'
 import { normalizeProviderModelCatalog } from '../../shared/modelCatalog'
-import {
-  normalizeProviderApiKeys,
-  getActiveProviderApiKey
-} from '../../shared/providerKeyHelper'
+import { normalizeProviderApiKeys, getActiveProviderApiKey } from '../../shared/providerKeyHelper'
 
 export function migrateFromJson(database: Database.Database, dataDir: string): void {
   const storePath = join(dataDir, 'quickai_store.json')

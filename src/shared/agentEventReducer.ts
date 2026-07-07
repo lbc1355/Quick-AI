@@ -1,9 +1,6 @@
 import { AgentEvent, Message } from './types'
 
-const withLatestEventMetadata = <T extends AgentEvent>(
-  previous: T,
-  incoming: AgentEvent
-): T => ({
+const withLatestEventMetadata = <T extends AgentEvent>(previous: T, incoming: AgentEvent): T => ({
   ...previous,
   runId: incoming.runId ?? previous.runId,
   sequence: incoming.sequence ?? previous.sequence,

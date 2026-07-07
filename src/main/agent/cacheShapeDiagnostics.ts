@@ -34,6 +34,20 @@ export interface CaptureCacheShapeOptions {
   cachePriorityRetainedRuns?: CachePriorityRetainedRunRef[]
 }
 
+interface NormalizedToolDeclaration {
+  name: string
+  description: string
+  parameters: ChatToolDeclaration['function']['parameters']
+}
+
+interface NormalizedMessageForHash {
+  role: string
+  content: ChatCompletionMessage['content'] | null
+  name?: string
+  tool_call_id?: string
+  tool_calls: NonNullable<ChatCompletionMessage['tool_calls']>
+}
+
 const stableStringify = (value: unknown): string => {
   if (value === null) return 'null'
   if (value === undefined) return 'undefined'
@@ -60,7 +74,9 @@ const systemPromptText = (messages: ChatCompletionMessage[]): string =>
     .map(messageContentText)
     .join('\n')
 
-const normalizeToolDeclarations = (toolsToDeclare: ChatToolDeclaration[] | undefined) =>
+const normalizeToolDeclarations = (
+  toolsToDeclare: ChatToolDeclaration[] | undefined
+): NormalizedToolDeclaration[] =>
   (toolsToDeclare || [])
     .map((tool) => ({
       name: tool.function.name,
@@ -85,7 +101,7 @@ const buildRoleShape = (messages: ChatCompletionMessage[]): string[] =>
     return message.role
   })
 
-const normalizeMessageForHash = (message: ChatCompletionMessage) => ({
+const normalizeMessageForHash = (message: ChatCompletionMessage): NormalizedMessageForHash => ({
   role: message.role,
   content: message.content ?? null,
   name: message.name,

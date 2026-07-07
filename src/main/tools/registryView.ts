@@ -5,9 +5,7 @@ export interface ToolRegistryView {
   list(): ToolDefinition[]
 }
 
-export type ToolRegistrySource =
-  | ToolRegistryView
-  | Record<string, ToolDefinition | undefined>
+export type ToolRegistrySource = ToolRegistryView | Record<string, ToolDefinition | undefined>
 
 const isRegistryView = (source: ToolRegistrySource): source is ToolRegistryView =>
   typeof (source as ToolRegistryView).get === 'function' &&

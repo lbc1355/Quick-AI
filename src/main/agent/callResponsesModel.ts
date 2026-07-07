@@ -1,8 +1,4 @@
-import {
-  ChatCompletionMessage,
-  ChatToolDeclaration,
-  PromptCacheStats
-} from '../../shared/types'
+import { ChatCompletionMessage, ChatToolDeclaration, PromptCacheStats } from '../../shared/types'
 import { DEFAULT_RETRY_POLICY, isRetryableError } from './retryPolicy'
 import {
   CallModelCallbacks,
@@ -16,6 +12,10 @@ import {
   TOOL_CALL_PROGRESS_LINE_INTERVAL
 } from './callModel'
 import { chatMessagesToResponsesInput, chatToolsToResponsesTools } from './responsesAdapter'
+
+interface FatalMarkedError extends Error {
+  isFatal?: boolean
+}
 
 export async function callResponsesModel(
   options: CallModelOptions,
@@ -188,17 +188,13 @@ export async function callResponsesModel(
                   assistantMessage.content += text
                   emitFinal(text)
                 }
-              }
-
-              else if (type === 'response.reasoning_summary_text.delta') {
+              } else if (type === 'response.reasoning_summary_text.delta') {
                 const text = json.delta
                 if (text) {
                   assistantMessage.reasoning_content += text
                   emitReasoning(text)
                 }
-              }
-
-              else if (
+              } else if (
                 type === 'response.function_call_arguments.delta' ||
                 type === 'response.function_call.arguments.delta'
               ) {
@@ -224,9 +220,7 @@ export async function callResponsesModel(
                     emitToolCallProgress(idx, toolCalls[idx], delta.length)
                   }
                 }
-              }
-
-              else if (type === 'response.function_call_arguments.done') {
+              } else if (type === 'response.function_call_arguments.done') {
                 const itemId = json.item_id
                 const finalArguments = json.arguments
                 if (itemId && finalArguments !== undefined) {
@@ -237,9 +231,7 @@ export async function callResponsesModel(
                     emitToolCallProgress(idx, toolCalls[idx], 0, true)
                   }
                 }
-              }
-
-              else if (type === 'response.output_item.added') {
+              } else if (type === 'response.output_item.added') {
                 const item = json.item
                 if (item && item.type === 'function_call') {
                   const itemId = item.id // fc_xxx
@@ -262,9 +254,7 @@ export async function callResponsesModel(
                     emitToolCallProgress(idx, assistantMessage.tool_calls[idx], 0)
                   }
                 }
-              }
-
-              else if (
+              } else if (
                 type === 'response.function_call.created' ||
                 type === 'response.function_call_arguments.created'
               ) {
@@ -285,27 +275,23 @@ export async function callResponsesModel(
                   itemIdToIndex.set(itemId, idx)
                   emitToolCallProgress(idx, assistantMessage.tool_calls[idx], 0)
                 }
-              }
-
-              else if (type === 'response.completed' || type === 'response.done') {
+              } else if (type === 'response.completed' || type === 'response.done') {
                 const usageStats = extractPromptCacheStats(json.response?.usage)
                 if (usageStats) {
                   promptCacheStats = usageStats
                 }
-              }
-
-              else if (type === 'response.failed' || type === 'error') {
+              } else if (type === 'response.failed' || type === 'error') {
                 const errMsg =
                   json.error?.message ||
                   json.response?.error?.message ||
                   json.response?.status_details?.error?.message ||
                   'Responses API failed'
-                const err = new Error(errMsg)
-                ;(err as any).isFatal = true
+                const err = new Error(errMsg) as FatalMarkedError
+                err.isFatal = true
                 throw err
               }
             } catch (e) {
-              if (e instanceof Error && (e as any).isFatal) {
+              if (e instanceof Error && (e as FatalMarkedError).isFatal) {
                 throw e
               }
             }

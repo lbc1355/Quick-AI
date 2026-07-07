@@ -1,7 +1,12 @@
 import React, { useState, useMemo } from 'react'
 import { X } from 'lucide-react'
-import { Message } from '../../../shared/types'
-import { parseAgentSteps, renderMessageContent, ParsedToolCall, ParsedAgentStep } from '../utils/messageFormat'
+import { AgentEvent, Message } from '../../../shared/types'
+import {
+  parseAgentSteps,
+  renderMessageContent,
+  ParsedToolCall,
+  ParsedAgentStep
+} from '../utils/messageFormat'
 import { StepProgressMessage, StepReasoningBlock, StepToolEvents } from './MessageBubble'
 import { SubagentRunState } from './SubagentRunCard'
 import { ToolDetailModal } from './message/ToolDetailModal'
@@ -15,7 +20,10 @@ const SubagentStepBlock = React.memo<{
       <div className={`agent-step-block ${step.status}`}>
         {step.progressMessage && <StepProgressMessage message={step.progressMessage} />}
         <StepReasoningBlock reasoning={step.reasoning} autoOpen={true} />
-        <StepToolEvents step={step} onOpenToolDetail={(toolCall) => onOpenToolDetail(toolCall.callId)} />
+        <StepToolEvents
+          step={step}
+          onOpenToolDetail={(toolCall) => onOpenToolDetail(toolCall.callId)}
+        />
       </div>
     )
   },
@@ -28,6 +36,7 @@ const SubagentStepBlock = React.memo<{
     )
   }
 )
+SubagentStepBlock.displayName = 'SubagentStepBlock'
 
 interface SubagentRunPanelProps {
   subagent: SubagentRunState
@@ -44,10 +53,7 @@ const getShortTaskTitle = (task: string): string => {
   return `${clean.substring(0, 40)}...`
 }
 
-export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({
-  subagent,
-  onClose
-}) => {
+export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, onClose }) => {
   const [selectedToolCallId, setSelectedToolCallId] = useState<string | null>(null)
 
   const virtualMessage = useMemo((): Message => {
@@ -55,7 +61,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({
       id: subagent.info.subagentId,
       role: 'assistant',
       content: subagent.finalAnswer || '',
-      agentEvents: subagent.events as any
+      agentEvents: subagent.events as AgentEvent[]
     }
   }, [subagent])
 
@@ -203,11 +209,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({
         {/* Timeline / Tool steps */}
         <div className="agent-structured-steps-area" style={{ flex: '0 0 auto' }}>
           {parsedRun.steps.map((step) => (
-            <SubagentStepBlock
-              key={step.id}
-              step={step}
-              onOpenToolDetail={setSelectedToolCallId}
-            />
+            <SubagentStepBlock key={step.id} step={step} onOpenToolDetail={setSelectedToolCallId} />
           ))}
         </div>
 
@@ -256,11 +258,15 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <span>
-              迭代步数: <strong style={{ color: 'var(--color-text)' }}>{parsedRun.steps.length}</strong> / {subagent.info.maxSteps}
+              迭代步数:{' '}
+              <strong style={{ color: 'var(--color-text)' }}>{parsedRun.steps.length}</strong> /{' '}
+              {subagent.info.maxSteps}
             </span>
             {parsedRun.totalToolsCount > 0 && (
               <span>
-                工具调用: <strong style={{ color: 'var(--color-text)' }}>{parsedRun.totalToolsCount}</strong> 次
+                工具调用:{' '}
+                <strong style={{ color: 'var(--color-text)' }}>{parsedRun.totalToolsCount}</strong>{' '}
+                次
                 {parsedRun.failedToolsCount > 0 && (
                   <span style={{ color: 'var(--color-danger)', marginLeft: '4px' }}>
                     ({parsedRun.failedToolsCount} 次失败)
@@ -270,7 +276,10 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({
             )}
             {subagent.durationMs !== undefined && (
               <span>
-                执行耗时: <strong style={{ color: 'var(--color-text)' }}>{(subagent.durationMs / 1000).toFixed(2)}s</strong>
+                执行耗时:{' '}
+                <strong style={{ color: 'var(--color-text)' }}>
+                  {(subagent.durationMs / 1000).toFixed(2)}s
+                </strong>
               </span>
             )}
           </div>
@@ -305,10 +314,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({
 
       {/* Tool details overlay modal */}
       {selectedToolCall && (
-        <ToolDetailModal
-          toolCall={selectedToolCall}
-          onClose={() => setSelectedToolCallId(null)}
-        />
+        <ToolDetailModal toolCall={selectedToolCall} onClose={() => setSelectedToolCallId(null)} />
       )}
     </div>
   )

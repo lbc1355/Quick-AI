@@ -1,5 +1,12 @@
 import { ChatCompletionMessage, ChatToolDeclaration } from '../../shared/types'
 
+export interface ResponsesToolDeclaration {
+  type: 'function'
+  name: string
+  description: string
+  parameters: ChatToolDeclaration['function']['parameters']
+}
+
 export interface ResponsesInputItem {
   type: 'message' | 'function_call' | 'function_call_output'
   role?: 'user' | 'assistant'
@@ -28,8 +35,7 @@ export function chatMessagesToResponsesInput(messages: ChatCompletionMessage[]):
 
     if (msg.role === 'user') {
       const content: Array<
-        | { type: 'input_text'; text: string }
-        | { type: 'input_image'; image_url: string }
+        { type: 'input_text'; text: string } | { type: 'input_image'; image_url: string }
       > = []
       if (typeof msg.content === 'string') {
         content.push({ type: 'input_text', text: msg.content })
@@ -94,18 +100,15 @@ export function chatMessagesToResponsesInput(messages: ChatCompletionMessage[]):
   return { instructions, input }
 }
 
-export function chatToolsToResponsesTools(tools?: ChatToolDeclaration[]): any[] | undefined {
+export function chatToolsToResponsesTools(
+  tools?: ChatToolDeclaration[]
+): ResponsesToolDeclaration[] | undefined {
   if (!tools || tools.length === 0) return undefined
   // Responses API tools parameter is flat: { type: 'function', name, description, parameters }
-  return tools.map((tool) => {
-    if (tool.type === 'function') {
-      return {
-        type: 'function',
-        name: tool.function.name,
-        description: tool.function.description,
-        parameters: tool.function.parameters
-      }
-    }
-    return tool
-  })
+  return tools.map((tool) => ({
+    type: 'function',
+    name: tool.function.name,
+    description: tool.function.description,
+    parameters: tool.function.parameters
+  }))
 }

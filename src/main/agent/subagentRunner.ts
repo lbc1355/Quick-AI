@@ -1,4 +1,4 @@
-import { ChatCompletionMessage } from '../../shared/types'
+import { ChatCompletionMessage, SubagentInnerEvent } from '../../shared/types'
 import { getToolRegistryView } from '../toolRegistry'
 import { createToolResult } from '../tools/result'
 import {
@@ -256,7 +256,8 @@ export async function runSubagentTask(
   let modelTurns = 0
   let halted = false
 
-  const subagentId = ctx.callId || `subagent-${startedAt}-${Math.random().toString(36).substring(2, 11)}`
+  const subagentId =
+    ctx.callId || `subagent-${startedAt}-${Math.random().toString(36).substring(2, 11)}`
 
   ctx.emitEvent?.({
     type: 'subagent_start',
@@ -365,7 +366,7 @@ export async function runSubagentTask(
           ctx.emitEvent?.({
             type: 'subagent_event',
             subagentId,
-            event: innerEvent as any
+            event: innerEvent as SubagentInnerEvent
           })
         },
         requestPermission: async () => false

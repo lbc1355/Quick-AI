@@ -117,12 +117,7 @@ export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ sessio
             >
               <RefreshCw size={14} className={isLoadingList ? 'spin' : ''} />
             </button>
-            <button
-              type="button"
-              className="bg-shell-icon-btn"
-              onClick={onClose}
-              title="关闭窗口"
-            >
+            <button type="button" className="bg-shell-icon-btn" onClick={onClose} title="关闭窗口">
               <X size={16} />
             </button>
           </div>
@@ -173,9 +168,7 @@ export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ sessio
                 {/* Terminal Control Bar */}
                 <div className="bg-shell-terminal-header">
                   <div className="bg-shell-terminal-info">
-                    <div className="bg-shell-terminal-command">
-                      工作目录: {selectedProcess.id}
-                    </div>
+                    <div className="bg-shell-terminal-command">工作目录: {selectedProcess.id}</div>
                     <span className="bg-shell-terminal-meta">
                       PID: {selectedProcess.pid ?? 'n/a'} · 创建于{' '}
                       {new Date(selectedProcess.createdAt).toLocaleString()}

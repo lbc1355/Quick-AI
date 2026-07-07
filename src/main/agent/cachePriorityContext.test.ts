@@ -254,7 +254,7 @@ describe('cache-priority native tool context', () => {
       { role: 'tool', tool_call_id: 'image-1', name: 'image_read', content: 'image result' },
       {
         role: 'user',
-        content: [{ type: 'text', text: 'Visual context from image_read: image result' }] as any
+        content: [{ type: 'text', text: 'Visual context from image_read: image result' }]
       },
       {
         role: 'assistant',

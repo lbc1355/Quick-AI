@@ -26,7 +26,6 @@ vi.mock('./memoryGit', () => ({
 
 let home: string
 
-
 beforeEach(() => {
   home = join(tmpdir(), `quickai-memstore-${Date.now()}-${Math.floor(Math.random() * 1e6)}`)
   process.env.QUICKAI_HOME = home

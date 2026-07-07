@@ -9,11 +9,13 @@ const pathMock = vi.hoisted(() => ({
   root: `${process.cwd()}/.test-quickai`
 }))
 
-const mcpMockState = vi.hoisted((): { callToolResult: { content: Array<Record<string, unknown>> } } => ({
-  callToolResult: {
-    content: [{ type: 'text', text: 'mocked tool response' }]
-  }
-}))
+const mcpMockState = vi.hoisted(
+  (): { callToolResult: { content: Array<Record<string, unknown>> } } => ({
+    callToolResult: {
+      content: [{ type: 'text', text: 'mocked tool response' }]
+    }
+  })
+)
 
 vi.mock('./paths', () => ({
   getQuickAiRoot: () => pathMock.root,
@@ -54,7 +56,6 @@ vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => {
   }
 })
 
-
 describe('McpManager', () => {
   const configPath = join(getQuickAiRoot(), 'mcp.json')
 
@@ -84,7 +85,7 @@ describe('McpManager', () => {
     expect(existsSync(configPath)).toBe(false)
     McpManager.init()
     expect(existsSync(configPath)).toBe(true)
-    
+
     const content = JSON.parse(readFileSync(configPath, 'utf-8'))
     expect(content).toHaveProperty('servers')
     expect(content.servers).toEqual({})
@@ -106,9 +107,9 @@ describe('McpManager', () => {
         }
       }
     }
-    
+
     writeFileSync(configPath, JSON.stringify(mockConfig, null, 2), 'utf-8')
-    
+
     McpManager.init()
     // Wait for connects to finish
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -135,7 +136,10 @@ describe('McpManager', () => {
     expect(toolDef?.risk).toBe('medium')
 
     // Test execution mapping
-    const executionResult = await toolDef?.execute({ inputVal: 'test' }, { reqId: 'test-req', signal: new AbortController().signal })
+    const executionResult = await toolDef?.execute(
+      { inputVal: 'test' },
+      { reqId: 'test-req', signal: new AbortController().signal }
+    )
     expect(executionResult?.resultForModel).toBe('mocked tool response')
     expect(executionResult?.resultForUi.title).toBe('MCP Tool Call: git / test_tool')
   })
@@ -194,7 +198,7 @@ describe('McpManager', () => {
         }
       }
     }
-    
+
     writeFileSync(configPath, JSON.stringify(mockConfig, null, 2), 'utf-8')
     McpManager.init()
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -203,7 +207,7 @@ describe('McpManager', () => {
     const srv = statuses.find((s) => s.name === 'nodeSrv')
     expect(srv).toBeDefined()
     expect(srv?.status).toBe('connected')
-    
+
     const registry = getToolRegistry()
     expect(registry.has('mcp_nodeSrv_test_tool')).toBe(true)
   })

@@ -35,7 +35,8 @@ export const shellTools: Record<string, ToolDefinition> = {
         },
         maxChars: {
           type: 'number',
-          description: 'Optional (only applicable when background is true). Max startup output characters to return. Defaults to 16000.'
+          description:
+            'Optional (only applicable when background is true). Max startup output characters to return. Defaults to 16000.'
         }
       },
       required: ['command']

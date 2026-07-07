@@ -1,8 +1,4 @@
-import {
-  ChatCompletionMessage,
-  ChatToolDeclaration,
-  PromptCacheStats
-} from '../../shared/types'
+import { ChatCompletionMessage, ChatToolDeclaration, PromptCacheStats } from '../../shared/types'
 import { DEFAULT_RETRY_POLICY, isRetryableError } from './retryPolicy'
 import {
   CallModelCallbacks,

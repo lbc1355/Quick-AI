@@ -6,3 +6,5 @@ out
 *.log*
 .test_action_logs/
 *.tsbuildinfo
+.codebase-memory
+.playwright-mcp/

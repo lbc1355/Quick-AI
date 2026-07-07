@@ -50,9 +50,7 @@ export interface AgentRunLifecycle {
   destroy: () => void
 }
 
-export function startAgentRunLifecycle(
-  options: StartAgentRunLifecycleOptions
-): AgentRunLifecycle {
+export function startAgentRunLifecycle(options: StartAgentRunLifecycleOptions): AgentRunLifecycle {
   const dependencies = options.dependencies || {}
   const createRun = dependencies.createRun || defaultCreateRun
   const destroyRun = dependencies.destroyRun || defaultDestroyRun

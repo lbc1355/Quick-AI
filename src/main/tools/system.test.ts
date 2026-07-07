@@ -334,7 +334,7 @@ describe('systemTools.list_skills', () => {
 })
 
 describe('systemTools.task', () => {
-  const executionContext = (reqId: string) => ({
+  const executionContext = (reqId: string): ToolExecutionContext => ({
     reqId,
     signal: new AbortController().signal,
     host: undefined
@@ -353,6 +353,7 @@ describe('systemTools.task', () => {
     createRun(reqId, ['task'], 'all', new ActionLog())
 
     const result = await systemTools.task.execute(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       '创建示例skill以展示skill创建过程' as any,
       executionContext(reqId)
     )

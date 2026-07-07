@@ -43,8 +43,9 @@ describe('fileCopyTool', () => {
       executionContext
     )
 
-    await expect(fs.readFile(join(testDir, 'workspace', 'nested', 'copied.txt'), 'utf-8'))
-      .resolves.toBe('copy source')
+    await expect(
+      fs.readFile(join(testDir, 'workspace', 'nested', 'copied.txt'), 'utf-8')
+    ).resolves.toBe('copy source')
     expect(result.resultForModel).toContain('Copied file:')
     expect(result.resultForUi.title).toBe('Copy File: source.txt')
     expect(result.resultForUi.summary).toContain('Copied source.txt to nested/copied.txt')

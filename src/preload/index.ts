@@ -21,6 +21,21 @@ import {
   WindowState
 } from '../shared/types'
 
+interface BackgroundShellInfo {
+  id: string
+  command: string
+  status: string
+  pid?: number
+  createdAt: number
+  totalOutputChars: number
+}
+
+interface BackgroundShellLog {
+  output: string
+  status: string
+  totalOutputChars: number
+}
+
 // Custom APIs for renderer
 const api = {
   storeGet: <K extends StoreKey>(key: K): Promise<StoreValue<K>> =>
@@ -115,8 +130,10 @@ const api = {
     ipcRenderer.invoke('mcp-delete-server', name),
   mcpGetStatus: (): Promise<McpServerStatus[]> => ipcRenderer.invoke('mcp-get-status'),
   mcpOpenConfig: (): Promise<void> => ipcRenderer.invoke('mcp-open-config'),
-  bgShellList: (sessionId?: string): Promise<any[]> => ipcRenderer.invoke('bg-shell-list', sessionId),
-  bgShellReadLog: (id: string): Promise<any> => ipcRenderer.invoke('bg-shell-read-log', id),
+  bgShellList: (sessionId?: string): Promise<BackgroundShellInfo[]> =>
+    ipcRenderer.invoke('bg-shell-list', sessionId),
+  bgShellReadLog: (id: string): Promise<BackgroundShellLog> =>
+    ipcRenderer.invoke('bg-shell-read-log', id),
   bgShellStop: (id: string): Promise<void> => ipcRenderer.invoke('bg-shell-stop', id)
 }
 

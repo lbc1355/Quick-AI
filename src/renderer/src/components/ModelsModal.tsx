@@ -59,9 +59,7 @@ export const ModelsModal: React.FC<ModelsModalProps> = ({
           />
         </div>
         <div className="modal-body">
-          {filteredModels.length === 0 && (
-            <div className="modal-empty-state">{TEXT.empty}</div>
-          )}
+          {filteredModels.length === 0 && <div className="modal-empty-state">{TEXT.empty}</div>}
           {filteredModels.map((model) => {
             const isAdded = modelsList.includes(model.id)
             return (

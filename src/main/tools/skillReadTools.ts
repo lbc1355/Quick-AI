@@ -113,7 +113,9 @@ export function createSkillReadTools(
         const skills = options.loadSkills()
         const skill = resolveSkill(skills, name)
         if (!skill) {
-          throw new Error(`Skill "${name}" not found. Call list_skills to inspect installed skills.`)
+          throw new Error(
+            `Skill "${name}" not found. Call list_skills to inspect installed skills.`
+          )
         }
 
         const resource = resolveSkillResource(skill, path)
@@ -145,7 +147,9 @@ export function createSkillReadTools(
 
         return createSkillResult({
           resultForModel: `Skill Resource: ${skill.id}\nPath: ${resource.path}\nChars: ${offset}-${endOffset} of ${full.length}${
-            nextOffset !== undefined ? `\nMore available: call again with offset=${nextOffset}.` : ''
+            nextOffset !== undefined
+              ? `\nMore available: call again with offset=${nextOffset}.`
+              : ''
           }\n\nContent:\n${slice}`,
           title: `Skill Resource: ${resource.path}`,
           summary: `${skill.id} chars ${offset}-${endOffset}`

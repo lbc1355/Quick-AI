@@ -33,6 +33,37 @@ export interface SessionLoggerModelRequestOptions {
 
 const PREVIEW_LIMIT = 120
 
+interface ContextAuditMessage {
+  index: number
+  role: string
+  chars: number
+  estimatedTokens: number
+  toolCallCount: number
+  toolRefs: string[]
+  preview: string
+}
+
+interface ContextAudit {
+  messageCount: number
+  roleCounts: Record<string, number>
+  roleSequence: string[]
+  contentChars: number
+  estimatedTokens: number
+  messages: ContextAuditMessage[]
+}
+
+interface UsagePayload {
+  hasCacheStats: boolean
+  promptTokens?: number
+  completionTokens?: number
+  totalTokens?: number
+  reasoningTokens?: number
+  cacheHitTokens?: number
+  cacheMissTokens?: number
+  hitRate?: number
+  cacheDiagnostics?: CacheShapeDiagnostics
+}
+
 const formatNumber = (value: number | undefined): string =>
   value !== undefined && Number.isFinite(value) ? value.toLocaleString() : 'n/a'
 
@@ -70,7 +101,7 @@ const formatRoleCounts = (messages: ChatCompletionMessage[]): Record<string, num
   return counts
 }
 
-const buildContextAudit = (messages: ChatCompletionMessage[]) => {
+const buildContextAudit = (messages: ChatCompletionMessage[]): ContextAudit => {
   const totalChars = messages.reduce(
     (sum, message) => sum + getMessageContentString(message).length,
     0
@@ -96,7 +127,7 @@ const buildContextAudit = (messages: ChatCompletionMessage[]) => {
   }
 }
 
-const buildUsagePayload = (stats: PromptCacheStats | undefined) => {
+const buildUsagePayload = (stats: PromptCacheStats | undefined): UsagePayload | undefined => {
   if (!stats) return undefined
   return {
     hasCacheStats: stats.hasCacheStats !== false,

@@ -25,7 +25,7 @@ const LOW_SIGNAL_PATH_SEGMENTS = new Set([
   'demos'
 ])
 
-const LOW_SIGNAL_FILE_PATTERN = /\.(?:test|spec|fixture|mock|stories)\.[^.\/\\]+$/i
+const LOW_SIGNAL_FILE_PATTERN = /\.(?:test|spec|fixture|mock|stories)\.[^./\\]+$/i
 
 const KIND_SCORES: Record<string, number> = {
   class: 36,

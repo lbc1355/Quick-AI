@@ -66,7 +66,6 @@ export const MemoryManager: React.FC<MemoryManagerProps> = () => {
 
   useEffect(() => {
     // Mount-time async load; state is set only after the IPC await resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadEntries().catch(console.error)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

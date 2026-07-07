@@ -161,7 +161,7 @@ describe('processPreparedToolStep', () => {
       content: [
         {
           type: 'text',
-          text: 'Visual context from image_read: 1 image(s) attached. Analyze the attached image content directly when it is relevant to the user\'s request.'
+          text: "Visual context from image_read: 1 image(s) attached. Analyze the attached image content directly when it is relevant to the user's request."
         },
         image
       ]

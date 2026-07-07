@@ -89,7 +89,8 @@ export const subagentTool: ToolDefinition = {
       },
       label: {
         type: 'string',
-        description: 'Optional short role/label for this subagent, e.g. "General", "Research", "Coder".'
+        description:
+          'Optional short role/label for this subagent, e.g. "General", "Research", "Coder".'
       }
     },
     required: ['task']

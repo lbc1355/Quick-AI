@@ -12,8 +12,20 @@ describe('replayAgentEvents', () => {
       { type: 'reasoning', content: 'files', runId: 'run-1', sequence: 3 },
       { type: 'agent_message_delta', content: 'working ', step: 1, stepId: 'step-1', sequence: 4 },
       { type: 'agent_message_delta', content: 'draft', step: 1, stepId: 'step-1', sequence: 5 },
-      { type: 'tool_output_delta', callId: 'shell-1', stream: 'stdout', content: 'line 1', sequence: 6 },
-      { type: 'tool_output_delta', callId: 'shell-1', stream: 'stdout', content: '\nline 2', sequence: 7 },
+      {
+        type: 'tool_output_delta',
+        callId: 'shell-1',
+        stream: 'stdout',
+        content: 'line 1',
+        sequence: 6
+      },
+      {
+        type: 'tool_output_delta',
+        callId: 'shell-1',
+        stream: 'stdout',
+        content: '\nline 2',
+        sequence: 7
+      },
       { type: 'final', content: 'Final ', sequence: 8 },
       { type: 'final', content: 'answer', sequence: 9 },
       { type: 'agent_end', status: 'completed', sequence: 10 }
@@ -43,16 +55,38 @@ describe('replayAgentEvents', () => {
 
   it('replays compacted tool state and task updates', () => {
     const compacted = compactAgentEvents([
-      { type: 'tool_call', callId: 'call-1', toolName: 'file_read', args: {}, permissionState: 'pending', sequence: 1 },
-      { type: 'task_update', tasks: [{ id: '1', title: 'Read file', status: 'pending' }], sequence: 2 },
-      { type: 'tool_call', callId: 'call-1', toolName: 'file_read', args: {}, permissionState: 'approved', sequence: 3 },
+      {
+        type: 'tool_call',
+        callId: 'call-1',
+        toolName: 'file_read',
+        args: {},
+        permissionState: 'pending',
+        sequence: 1
+      },
+      {
+        type: 'task_update',
+        tasks: [{ id: '1', title: 'Read file', status: 'pending' }],
+        sequence: 2
+      },
+      {
+        type: 'tool_call',
+        callId: 'call-1',
+        toolName: 'file_read',
+        args: {},
+        permissionState: 'approved',
+        sequence: 3
+      },
       {
         type: 'tool_result',
         callId: 'call-1',
         result: { title: 'Read File', summary: 'Loaded src/main.ts' },
         sequence: 4
       },
-      { type: 'task_update', tasks: [{ id: '1', title: 'Read file', status: 'completed' }], sequence: 5 },
+      {
+        type: 'task_update',
+        tasks: [{ id: '1', title: 'Read file', status: 'completed' }],
+        sequence: 5
+      },
       { type: 'agent_end', status: 'completed', sequence: 6 }
     ])
 
@@ -76,7 +110,11 @@ describe('replayAgentEvents', () => {
         result: { title: 'Read File', summary: 'Loaded src/main.ts' },
         sequence: 4
       },
-      { type: 'task_update', tasks: [{ id: '1', title: 'Read file', status: 'completed' }], sequence: 5 },
+      {
+        type: 'task_update',
+        tasks: [{ id: '1', title: 'Read file', status: 'completed' }],
+        sequence: 5
+      },
       { type: 'agent_end', status: 'completed', sequence: 6 }
     ])
   })

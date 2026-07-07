@@ -212,7 +212,8 @@ export function detectProvider(apiUrl: string): ModelAdapter {
   if (url.includes('bigmodel') || url.includes('glm') || url.includes('zhipu')) return glmAdapter
   if (url.includes('ollama') || url.includes(':11434')) return ollamaAdapter
   if (url.includes('mimo') || url.includes('xiaomi')) return mimoAdapter
-  if (url.includes('stepfun') || url.includes('step.ai') || url.includes('step_plan')) return stepAdapter
+  if (url.includes('stepfun') || url.includes('step.ai') || url.includes('step_plan'))
+    return stepAdapter
   return openaiAdapter
 }
 

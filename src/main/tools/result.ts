@@ -21,8 +21,10 @@ export interface CreateToolResultOptions {
   readEndLine?: number
 }
 
-export interface CreateRawToolResultOptions
-  extends Omit<CreateToolResultOptions, 'resultForModel' | 'details'> {
+export interface CreateRawToolResultOptions extends Omit<
+  CreateToolResultOptions,
+  'resultForModel' | 'details'
+> {
   rawOutput: unknown
   details?: string
 }
