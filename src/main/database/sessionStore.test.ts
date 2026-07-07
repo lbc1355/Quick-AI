@@ -169,4 +169,33 @@ describeWithSqlite('saveSessions incremental persistence', () => {
     const files = loadSessions().find((s) => s.id === 'a')?.messages[0].files
     expect(files).toEqual([{ name: 'b.txt', content: 'BBB', type: 'text' }])
   })
+
+  it('round-trips message errorPayload', () => {
+    const errorPayload = {
+      message: 'DNS lookup failed',
+      category: 'network' as const,
+      source: 'model_api' as const,
+      rawError: 'Error: getaddrinfo ENOTFOUND api.deepseek.com',
+      timestamp: 123456789
+    }
+    const session = makeSession('err-session', {
+      messages: [
+        {
+          id: 'err-m1',
+          role: 'assistant',
+          content: 'Failed to fetch',
+          isRuntimeError: true,
+          errorPayload
+        }
+      ]
+    })
+    saveSessions([session])
+    closeDb()
+
+    const loaded = loadSessions()
+    const found = loaded.find((s) => s.id === 'err-session')
+    expect(found).toBeDefined()
+    expect(found!.messages).toHaveLength(1)
+    expect(found!.messages[0].errorPayload).toEqual(errorPayload)
+  })
 })

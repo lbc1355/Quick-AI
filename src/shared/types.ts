@@ -1,3 +1,5 @@
+import { RuntimeErrorPayload } from './runtimeErrors'
+
 export interface ToolResultUi {
   title?: string
   url?: string
@@ -243,6 +245,7 @@ export interface Message {
   forkedFrom?: { sessionId: string; messageId: string; runId?: string }
   tokenSpeed?: number
   cacheStats?: PromptCacheStats
+  errorPayload?: RuntimeErrorPayload
   isCompactionSummary?: boolean
 }
 
@@ -523,6 +526,7 @@ export interface ChatChunkData {
   done?: boolean
   cancelled?: boolean
   error?: string
+  errorPayload?: RuntimeErrorPayload
   event?: AgentEvent
   tokenSpeed?: number
   cacheStats?: PromptCacheStats

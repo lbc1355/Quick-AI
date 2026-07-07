@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { ChatCompletionMessage, FetchedModelInfo, ModelRuntimeConfig } from '../shared/types'
+import { normalizeRuntimeError } from '../shared/runtimeErrors'
 import { callModel, getPromptCacheStats } from './agent/callModel'
 import { loadMemoryContextPrompt } from './agent/memoryContext'
 import { injectMemoryContext } from './agent/memoryPrompts'
@@ -97,7 +98,12 @@ export async function handleChatCompletion(
       mainWindow.webContents.send('chat-chunk', { reqId, cancelled: true, done: true })
     } else {
       console.error('Chat Completion Main process error:', err)
-      mainWindow.webContents.send('chat-chunk', { reqId, error: err.message || '网络连接失败' })
+      const payload = normalizeRuntimeError(err, 'model_api')
+      mainWindow.webContents.send('chat-chunk', {
+        reqId,
+        error: err.message || '网络连接失败',
+        errorPayload: payload
+      })
     }
   } finally {
     activeChatSessions.delete(reqId)

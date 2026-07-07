@@ -23,7 +23,7 @@ export function loadSessions(): Session[] {
   // cost grew with total message count; this keeps it to a constant number of round-trips.
   const allMsgRows = database
     .prepare(
-      'SELECT id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, cacheStats, createdAt FROM messages ORDER BY createdAt ASC'
+      'SELECT id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, cacheStats, errorPayload, createdAt FROM messages ORDER BY createdAt ASC'
     )
     .all() as Array<{
     id: string
@@ -38,6 +38,7 @@ export function loadSessions(): Session[] {
     isBranchFork: number | null
     tokenSpeed: number | null
     cacheStats: string | null
+    errorPayload: string | null
     createdAt: number
   }>
 
@@ -80,6 +81,15 @@ export function loadSessions(): Session[] {
       }
     }
 
+    let errorPayload = undefined
+    if (m.errorPayload) {
+      try {
+        errorPayload = JSON.parse(m.errorPayload)
+      } catch {
+        // ignore
+      }
+    }
+
     const message: Message = {
       id: m.id,
       role: m.role as Message['role'],
@@ -92,7 +102,8 @@ export function loadSessions(): Session[] {
       isBranchFork: m.isBranchFork === 1 || (m.isBranchFork == null && !!forkedFrom) || undefined,
       files: fileRows && fileRows.length > 0 ? fileRows : undefined,
       tokenSpeed: m.tokenSpeed || undefined,
-      cacheStats
+      cacheStats,
+      errorPayload
     }
 
     const list = messagesBySession.get(m.sessionId)
@@ -177,6 +188,7 @@ export function computeSessionHash(session: Session): string {
       isBranchFork: m.isBranchFork ? 1 : 0,
       tokenSpeed: m.tokenSpeed || null,
       cacheStats: m.cacheStats ?? null,
+      errorPayload: m.errorPayload ? JSON.stringify(m.errorPayload) : null,
       files: (m.files ?? []).map((f) => ({ name: f.name, content: f.content, type: f.type }))
     }))
   }
@@ -236,8 +248,8 @@ export function saveSessions(sessions: Session[]): void {
   const deleteSession = database.prepare('DELETE FROM sessions WHERE id = ?')
   const deleteMessages = database.prepare('DELETE FROM messages WHERE sessionId = ?')
   const insertMessage = database.prepare(
-    `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, cacheStats, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, cacheStats, errorPayload, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const insertFile = database.prepare(
     'INSERT INTO message_files (messageId, name, content, type) VALUES (?, ?, ?, ?)'
@@ -282,6 +294,7 @@ export function saveSessions(sessions: Session[]): void {
             msg.isBranchFork ? 1 : 0,
             msg.tokenSpeed || null,
             msg.cacheStats ? JSON.stringify(msg.cacheStats) : null,
+            msg.errorPayload ? JSON.stringify(msg.errorPayload) : null,
             parseInt(msg.id) || Date.now()
           )
           if (msg.files && msg.files.length > 0) {

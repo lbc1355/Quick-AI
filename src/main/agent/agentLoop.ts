@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { AgentEvent, ModelRuntimeConfig } from '../../shared/types'
+import { normalizeRuntimeError } from '../../shared/runtimeErrors'
 import { AgentHostActions } from '../tools/types'
 import { getToolRegistryView } from '../toolRegistry'
 import {
@@ -444,9 +445,11 @@ export const runAgentLoop = async (
       mainWindow.webContents.send('chat-chunk', buildDoneChunk({ cancelled: true }))
     } else {
       setRunEnd('failed', err.message || 'Agent Loop failed')
+      const payload = normalizeRuntimeError(err, 'agent')
       mainWindow.webContents.send('chat-chunk', {
         reqId,
-        error: err.message || 'Agent Loop failed'
+        error: err.message || 'Agent Loop failed',
+        errorPayload: payload
       })
       mainWindow.webContents.send('chat-chunk', buildDoneChunk())
     }

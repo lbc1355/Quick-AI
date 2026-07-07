@@ -1252,10 +1252,13 @@ describe('runAgentLoop', () => {
       messages: [{ role: 'user', content: 'Hello' }]
     })
 
-    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
-      reqId: 'test-req-failed-event',
-      error: 'Model API is down'
-    })
+    expect(sendMock).toHaveBeenCalledWith(
+      'chat-chunk',
+      expect.objectContaining({
+        reqId: 'test-req-failed-event',
+        error: 'Model API is down'
+      })
+    )
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-failed-event',
       event: expect.objectContaining({

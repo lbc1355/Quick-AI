@@ -51,6 +51,7 @@ export function createSchema(database: Database.Database): void {
       isBranchFork      INTEGER NOT NULL DEFAULT 0,
       tokenSpeed        REAL,
       cacheStats        TEXT,
+      errorPayload      TEXT,
       createdAt         INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(sessionId);
@@ -134,6 +135,7 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'messages', 'agentRunIds', "TEXT DEFAULT '[]'")
   ensureColumn(database, 'messages', 'tokenSpeed', 'REAL')
   ensureColumn(database, 'messages', 'cacheStats', 'TEXT')
+  ensureColumn(database, 'messages', 'errorPayload', 'TEXT')
   ensureColumn(database, 'providers', 'modelContextWindows', "TEXT NOT NULL DEFAULT '{}'")
   ensureColumn(database, 'providers', 'endpointType', 'TEXT')
   ensureColumn(database, 'providers', 'models', "TEXT NOT NULL DEFAULT '{}'")

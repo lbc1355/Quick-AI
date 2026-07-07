@@ -1,6 +1,8 @@
 import React from 'react'
 import { ChatChunkData, Message, Session } from '../../../shared/types'
 import { applyAgentEventToMessage, mergeResourceUpdate } from './chatMessageEvents'
+import { applyRuntimeErrorToMessage } from '../features/errors/runtimeErrorMessage'
+import { normalizeRuntimeError } from '../../../shared/runtimeErrors'
 
 type UpdateMessageById = (
   msgId: string,
@@ -22,21 +24,6 @@ interface StartStreamingRunOptions {
   setActiveReqId: React.Dispatch<React.SetStateAction<string | null>>
   persistActiveSession: (sessionId?: string) => void
   onCleanup?: () => void
-}
-
-const applyRuntimeError = (errorText: string): ((m: Message) => Message) => {
-  return (m) => {
-    const currentEvents = m.agentEvents || []
-    const hasEvents = currentEvents.length > 0
-    return {
-      ...m,
-      content: errorText,
-      isRuntimeError: true,
-      agentEvents: hasEvents
-        ? [...currentEvents, { type: 'final', content: errorText }]
-        : currentEvents
-    }
-  }
 }
 
 export const startStreamingRun = ({
@@ -70,7 +57,12 @@ export const startStreamingRun = ({
 
     if (data.error) {
       const errorText = formatError(data.error)
-      updateMessageById(assistantMsgId, applyRuntimeError(errorText), false, sessionId)
+      updateMessageById(
+        assistantMsgId,
+        applyRuntimeErrorToMessage(errorText, data.errorPayload),
+        false,
+        sessionId
+      )
       cleanup()
       return
     }
@@ -160,7 +152,13 @@ export const startStreamingRun = ({
     const error = err as Error
     console.error(error)
     const errorText = formatError(error.message)
-    updateMessageById(assistantMsgId, applyRuntimeError(errorText), false, sessionId)
+    const errorPayload = normalizeRuntimeError(error, 'renderer')
+    updateMessageById(
+      assistantMsgId,
+      applyRuntimeErrorToMessage(errorText, errorPayload),
+      false,
+      sessionId
+    )
     cleanup()
   }
 }
