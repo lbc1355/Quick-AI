@@ -47,7 +47,7 @@ interface SessionSidebarProps {
   setAutocompleteItems: (items: never[]) => void
 }
 
-export const SessionSidebar: React.FC<SessionSidebarProps> = ({
+const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
   sessions,
   projects,
   activeProjectId,
@@ -282,3 +282,6 @@ export const SessionSidebar: React.FC<SessionSidebarProps> = ({
     </aside>
   )
 }
+
+export const SessionSidebar = React.memo(SessionSidebarComponent)
+SessionSidebar.displayName = 'SessionSidebar'

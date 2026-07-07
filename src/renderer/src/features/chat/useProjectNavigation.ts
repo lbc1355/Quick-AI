@@ -150,7 +150,10 @@ export function useProjectNavigation({
     async (projectId: string): Promise<void> => {
       const project = projects.find((item) => item.id === projectId)
       if (!project) return
-      const relatedCount = sessions.filter((session) => session.projectId === projectId).length
+      const currentSessions = sessionsRef.current
+      const relatedCount = currentSessions.filter(
+        (session) => session.projectId === projectId
+      ).length
       const confirmed = window.confirm(
         relatedCount > 0
           ? `移除项目「${project.name}」？磁盘文件不会被删除，${relatedCount} 个对话会保留为自由对话。`
@@ -159,7 +162,7 @@ export function useProjectNavigation({
       if (!confirmed) return
 
       const nextProjects = projects.filter((item) => item.id !== projectId)
-      const nextSessions = sessions.map((session) =>
+      const nextSessions = currentSessions.map((session) =>
         session.projectId === projectId ? { ...session, projectId: undefined } : session
       )
       await persistProjects(nextProjects)
@@ -170,7 +173,7 @@ export function useProjectNavigation({
       sessionsRef.current = nextSessions
       await window.api.storeSet('sessions', nextSessions)
     },
-    [persistProjects, projects, sessions, sessionsRef, setSessions, sidebarProjectId]
+    [persistProjects, projects, sessionsRef, setSessions, sidebarProjectId]
   )
 
   return {

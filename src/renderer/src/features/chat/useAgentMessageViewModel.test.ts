@@ -155,4 +155,22 @@ describe('useAgentMessageViewModel hook', () => {
     vm.handleCopy()
     expect(global.navigator.clipboard.writeText).toHaveBeenCalledWith('Final reply content')
   })
+
+  it('can skip rich content rendering for streaming hot paths', () => {
+    const msg: Message = {
+      id: '1710000000000',
+      role: 'assistant',
+      content: 'Final reply content'
+    }
+
+    const vm = useAgentMessageViewModel({
+      msg,
+      isGenerating: true,
+      renderRichContent: false
+    })
+
+    expect(vm.cleanContent).toBe('Final reply content')
+    expect(vm.finalReplyText).toBe('Final reply content')
+    expect(vm.renderedCleanContent).toBeNull()
+  })
 })

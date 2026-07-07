@@ -57,10 +57,15 @@ const formatElapsedDuration = (seconds: number): string => {
 export interface UseAgentMessageViewModelProps {
   msg: Message
   isGenerating: boolean
+  renderRichContent?: boolean
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function useAgentMessageViewModel({ msg, isGenerating }: UseAgentMessageViewModelProps) {
+export function useAgentMessageViewModel({
+  msg,
+  isGenerating,
+  renderRichContent = true
+}: UseAgentMessageViewModelProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const [activeSubagentId, setActiveSubagentId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -159,12 +164,15 @@ export function useAgentMessageViewModel({ msg, isGenerating }: UseAgentMessageV
   const finalReplyText = hasStructuredEvents ? parsedRun.finalAnswer : cleanContent
 
   const renderedFinalAnswer = useMemo(
-    () => (parsedRun.finalAnswer ? renderMessageContent(parsedRun.finalAnswer) : null),
-    [parsedRun.finalAnswer]
+    () =>
+      renderRichContent && parsedRun.finalAnswer
+        ? renderMessageContent(parsedRun.finalAnswer)
+        : null,
+    [parsedRun.finalAnswer, renderRichContent]
   )
   const renderedCleanContent = useMemo(
-    () => (cleanContent ? renderMessageContent(cleanContent) : null),
-    [cleanContent]
+    () => (renderRichContent && cleanContent ? renderMessageContent(cleanContent) : null),
+    [cleanContent, renderRichContent]
   )
 
   const handleCopy = (): void => {

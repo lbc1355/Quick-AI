@@ -18,6 +18,7 @@ import { SubagentRunPanel } from './SubagentRunPanel'
 import { ToolDetailModal } from './message/ToolDetailModal'
 import { useAgentMessageViewModel } from '../features/chat/useAgentMessageViewModel'
 import { formatToolArgsSummary } from './message/toolDisplay'
+import { useSmoothStreamText } from '../hooks/useSmoothStreamText'
 
 const formatWorkedDuration = (seconds: number, stepsCount: number): string => {
   if (seconds > 0) {
@@ -57,6 +58,22 @@ const getToolFailurePreview = (toolCall: ParsedToolCall): string => {
   const fallback = toolCall.status === 'denied' ? 'Permission denied' : 'Tool failed'
   const text = (toolCall.error || fallback).replace(/\s+/g, ' ').trim()
   return text.length > 120 ? text.substring(0, 117) + '...' : text
+}
+
+const StreamingPlainText: React.FC<{ text: string }> = ({ text }) => {
+  if (!text) return null
+
+  return (
+    <span
+      className="streaming-plain-text"
+      style={{
+        whiteSpace: 'pre-wrap',
+        overflowWrap: 'anywhere'
+      }}
+    >
+      {text}
+    </span>
+  )
 }
 
 interface ToolEventGroup {
@@ -264,7 +281,13 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onOpenBranch,
     onChangeEditingText
   }) => {
-    const vm = useAgentMessageViewModel({ msg, isGenerating })
+    const useLightweightStreamingRender =
+      isGenerating && msg.role === 'assistant' && !msg.isRuntimeError
+    const vm = useAgentMessageViewModel({
+      msg,
+      isGenerating,
+      renderRichContent: !useLightweightStreamingRender
+    })
     const {
       isExpanded,
       setIsExpanded,
@@ -302,6 +325,14 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       toolsSummaryText,
       cockpitColor
     } = vm
+    const smoothCleanContent = useSmoothStreamText(
+      cleanContent,
+      useLightweightStreamingRender && !hasStructuredEvents
+    )
+    const smoothFinalAnswer = useSmoothStreamText(
+      parsedRun.finalAnswer,
+      useLightweightStreamingRender && (hasStructuredEvents || parsedRun.steps.length > 0)
+    )
 
     const isEditing = editingMessageId === msg.id
     const isBranchForkMessage = Boolean(msg.isBranchFork || msg.forkedFrom)
@@ -646,7 +677,13 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                               autoOpen={latestReasoningKey === 'final'}
                               autoStateKey={reasoningAutoStateKey}
                             />
-                            {parsedRun.finalAnswer ? renderedFinalAnswer : null}
+                            {parsedRun.finalAnswer ? (
+                              useLightweightStreamingRender ? (
+                                <StreamingPlainText text={smoothFinalAnswer} />
+                              ) : (
+                                renderedFinalAnswer
+                              )
+                            ) : null}
                             {msg.isRuntimeError && (
                               <RuntimeErrorPanel
                                 error={msg.errorPayload || msg.content}
@@ -712,6 +749,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           error={msg.errorPayload || msg.content}
                           onRetry={() => onRegenerate(idx)}
                         />
+                      ) : useLightweightStreamingRender ? (
+                        <StreamingPlainText text={smoothCleanContent} />
                       ) : (
                         <>
                           {renderedCleanContent}

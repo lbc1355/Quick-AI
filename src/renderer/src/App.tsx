@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Sparkles, GitBranch, Paperclip, ArrowDown } from 'lucide-react'
 
-import { AutocompleteItem, AppSettings, Project, WindowState } from '../../shared/types'
+import type {
+  AutocompleteItem,
+  AppSettings,
+  Project,
+  Session,
+  WindowState
+} from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
 import { SettingsView } from './components/SettingsView'
@@ -37,6 +43,38 @@ import { useProjectNavigation } from './features/chat/useProjectNavigation'
 import { useSessionFamilyView } from './features/chat/useSessionFamilyView'
 import { useContextDiagnosticsState } from './features/chat/useContextDiagnosticsState'
 import { usePermissionPopupController } from './features/chat/usePermissionPopupController'
+
+const buildSessionNavigationSignature = (sessions: Session[]): string =>
+  sessions
+    .map((session) =>
+      [
+        session.id,
+        session.title,
+        session.projectId ?? '',
+        session.lastActiveTime ?? '',
+        session.messages.length,
+        session.branchOf?.sessionId ?? '',
+        session.branchOf?.messageId ?? '',
+        session.branchOf?.runId ?? ''
+      ].join('\u001f')
+    )
+    .join('\u001e')
+
+const useStableValueBySignature = <T,>(value: T, signature: string): T => {
+  const ref = useRef<{ signature: string; value: T } | null>(null)
+  if (!ref.current || ref.current.signature !== signature) {
+    ref.current = { signature, value }
+  }
+  return ref.current.value
+}
+
+const useStableEvent = <Args extends unknown[], Return>(
+  callback: (...args: Args) => Return
+): ((...args: Args) => Return) => {
+  const ref = useRef(callback)
+  ref.current = callback
+  return useCallback((...args: Args) => ref.current(...args), [])
+}
 
 function App(): React.JSX.Element {
   // Navigation
@@ -120,6 +158,8 @@ function App(): React.JSX.Element {
   const [dismissedSessionFamilyViewForId, setDismissedSessionFamilyViewForId] = useState<
     string | null
   >(null)
+  const sessionNavigationSignature = buildSessionNavigationSignature(sessions)
+  const navigationSessions = useStableValueBySignature(sessions, sessionNavigationSignature)
 
   const {
     setSidebarProjectId,
@@ -132,7 +172,7 @@ function App(): React.JSX.Element {
     handleDeleteProject
   } = useProjectNavigation({
     projects,
-    sessions,
+    sessions: navigationSessions,
     sessionsRef,
     activeSession,
     activeSessionId,
@@ -245,7 +285,7 @@ function App(): React.JSX.Element {
     exitSessionFamilyView,
     openSession
   } = useSessionFamilyView({
-    sessions,
+    sessions: navigationSessions,
     activeSessionId,
     sessionFamilyRootId,
     setSessionFamilyRootId,
@@ -356,7 +396,14 @@ function App(): React.JSX.Element {
     inputDraftRef.current = val
     if (val.startsWith('@') || val.startsWith('/') || autocompleteItems.length > 0) {
       setInputVal(val)
-      updateAutocompleteItems(val, modelsList, sessions, activeSessionId, providers, skills)
+      updateAutocompleteItems(
+        val,
+        modelsList,
+        navigationSessions,
+        activeSessionId,
+        providers,
+        skills
+      )
     }
   }
 
@@ -476,18 +523,56 @@ function App(): React.JSX.Element {
     skillsCount: skills.length,
     attachedFiles
   })
-  const orderedSessions = [...sessions].sort((a, b) => {
-    const aTime = a.lastActiveTime || Number(a.id)
-    const bTime = b.lastActiveTime || Number(b.id)
-    return bTime - aTime
-  })
-  const scopedOrderedSessions = sidebarProject
-    ? orderedSessions.filter((session) => session.projectId === sidebarProject.id)
-    : orderedSessions.filter((session) => !session.projectId)
-  const visibleSessionEntries = buildVisibleSessionEntries(scopedOrderedSessions)
+  const orderedSessions = useMemo(
+    () =>
+      [...navigationSessions].sort((a, b) => {
+        const aTime = a.lastActiveTime || Number(a.id)
+        const bTime = b.lastActiveTime || Number(b.id)
+        return bTime - aTime
+      }),
+    [navigationSessions]
+  )
+  const scopedOrderedSessions = useMemo(
+    () =>
+      sidebarProject
+        ? orderedSessions.filter((session) => session.projectId === sidebarProject.id)
+        : orderedSessions.filter((session) => !session.projectId),
+    [orderedSessions, sidebarProject]
+  )
+  const visibleSessionEntries = useMemo(
+    () => buildVisibleSessionEntries(scopedOrderedSessions),
+    [buildVisibleSessionEntries, scopedOrderedSessions]
+  )
   const autocompleteGroups = groupAutocompleteItems(autocompleteItems)
-  const activeBranchInfo = getBranchDisplayInfo(activeSession?.branchOf, sessions, '源会话')
-  const branchChildIndex = buildBranchChildIndex(sessions)
+  const activeBranchInfo = useMemo(
+    () => getBranchDisplayInfo(activeSession?.branchOf, navigationSessions, '源会话'),
+    [activeSession?.branchOf, navigationSessions]
+  )
+  const branchChildIndex = useMemo(
+    () => buildBranchChildIndex(navigationSessions),
+    [navigationSessions]
+  )
+  const handleOpenProjectFromSidebar = useCallback(
+    (projectId: string): void => {
+      openProject(projectId)
+    },
+    [openProject]
+  )
+  const handleOpenFreeConversationsFromSidebar = useCallback((): void => {
+    openFreeConversations()
+  }, [openFreeConversations])
+  const handleDeleteProjectFromSidebar = useCallback(
+    (projectId: string): void => {
+      void handleDeleteProject(projectId)
+    },
+    [handleDeleteProject]
+  )
+  const handleNewSessionFromSidebar = useStableEvent(
+    (): Promise<Session> => handleNewSession({ projectId: sidebarProject?.id })
+  )
+  const handleDeleteSessionFromSidebar = useStableEvent(
+    (sessionId: string): Promise<void> => handleDeleteSession(sessionId)
+  )
   const userMessageNavItems = useMemo(
     () =>
       activeSession?.messages
@@ -533,7 +618,7 @@ function App(): React.JSX.Element {
       ) : (
         <div className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
           <SessionSidebar
-            sessions={sessions}
+            sessions={navigationSessions}
             projects={projects}
             activeProjectId={sidebarProject?.id || null}
             projectSessionCounts={projectSessionCounts}
@@ -546,12 +631,12 @@ function App(): React.JSX.Element {
             activeProviderName={activeProviderName}
             activeModelName={runningModelName}
             onAddProject={handleAddProject}
-            onOpenProject={(projectId) => void openProject(projectId)}
-            onOpenFreeConversations={() => void openFreeConversations()}
-            onDeleteProject={(projectId) => void handleDeleteProject(projectId)}
+            onOpenProject={handleOpenProjectFromSidebar}
+            onOpenFreeConversations={handleOpenFreeConversationsFromSidebar}
+            onDeleteProject={handleDeleteProjectFromSidebar}
             exitSessionFamilyView={exitSessionFamilyView}
-            handleNewSession={() => handleNewSession({ projectId: sidebarProject?.id })}
-            handleDeleteSession={handleDeleteSession}
+            handleNewSession={handleNewSessionFromSidebar}
+            handleDeleteSession={handleDeleteSessionFromSidebar}
             openSession={openSession}
             setSessionFamilyRootId={setSessionFamilyRootId}
             setDismissedSessionFamilyViewForId={setDismissedSessionFamilyViewForId}
