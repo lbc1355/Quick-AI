@@ -28,7 +28,7 @@ describe('runtimeErrorPresenter', () => {
   })
 
   it('resolves network presentation from string', () => {
-    const result = getErrorPresentation('connect ETIMEDOUT')
+    const result = getErrorPresentation('connect ECONNREFUSED')
     expect(result.title).toBe('网络连接失败')
     expect(result.suggestion[0]).toContain('检查您本地的 VPN')
   })

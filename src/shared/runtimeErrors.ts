@@ -38,7 +38,13 @@ export function isRuntimeErrorPayload(value: unknown): value is RuntimeErrorPayl
 export function classifyRuntimeError(errorText: string): { category: RuntimeErrorCategory } {
   const lowercaseErr = errorText.toLowerCase()
 
-  if (lowercaseErr.includes('terminated')) {
+  if (
+    lowercaseErr.includes('terminated') ||
+    lowercaseErr.includes('timed out') ||
+    lowercaseErr.includes('timeout') ||
+    lowercaseErr.includes('etimedout') ||
+    lowercaseErr.includes('deadline exceeded')
+  ) {
     return { category: 'timeout' }
   }
 

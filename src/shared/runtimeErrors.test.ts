@@ -32,6 +32,14 @@ describe('runtimeErrors', () => {
     it('classifies timeout errors', () => {
       expect(classifyRuntimeError('大模型连接超时中断 (terminated)').category).toBe('timeout')
       expect(classifyRuntimeError('Connection was terminated').category).toBe('timeout')
+      expect(
+        classifyRuntimeError('Execution of tool "x" on server "git" timed out after 30000ms')
+          .category
+      ).toBe('timeout')
+      expect(
+        classifyRuntimeError('Connection to server "git" timed out after 10000ms').category
+      ).toBe('timeout')
+      expect(classifyRuntimeError('connect ETIMEDOUT').category).toBe('timeout')
     })
 
     it('classifies rate limit errors', () => {
