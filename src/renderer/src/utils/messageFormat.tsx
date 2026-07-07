@@ -4,6 +4,7 @@ import 'katex/dist/katex.min.css'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AgentEvent, ToolResultUi } from '../../../shared/types'
+import { renderHighlightedCode } from './codeHighlight'
 
 // Parse reasoning process from either official API properties or local Ollama `<think>` tags
 export const parseThinkTags = (
@@ -252,7 +253,7 @@ export const renderMessageContent = (text: string): React.ReactNode => {
               fontSize: '12px'
             }}
           >
-            <code>{code}</code>
+            <code>{renderHighlightedCode(code, lang)}</code>
           </pre>
         </div>
       )

@@ -1,4 +1,5 @@
 import React from 'react'
+import { renderHighlightedCode } from './codeHighlight'
 
 export type StreamingMarkdownBlock =
   | { type: 'text'; text: string }
@@ -145,7 +146,7 @@ const renderCodeBlock = (
           fontSize: '12px'
         }}
       >
-        <code>{block.code}</code>
+        <code>{renderHighlightedCode(block.code, block.lang)}</code>
       </pre>
     </div>
   )
