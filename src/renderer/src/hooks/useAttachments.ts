@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, ChangeEvent, ClipboardEvent, DragEvent } from 'react'
+import { useToast } from '../contexts/ToastContext'
 
 export interface UseAttachmentsReturn {
   dragActive: boolean
@@ -18,6 +19,7 @@ export interface UseAttachmentsReturn {
 export const useAttachments = (
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
 ): UseAttachmentsReturn => {
+  const toast = useToast()
   const [dragActive, setDragActive] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<
     Array<{ name: string; content: string; type: string }>
@@ -45,7 +47,7 @@ export const useAttachments = (
     // 5MB size limit to prevent memory bloating
     const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      alert(`文件 "${file.name}" 超过 5MB 大小限制，无法添加！`)
+      toast.warning(`文件 "${file.name}" 超过 5MB 大小限制，无法添加！`)
       return
     }
 

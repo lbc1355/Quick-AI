@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useToast } from '../contexts/ToastContext'
 import {
   ApiProvider,
   AppSettings,
@@ -98,6 +99,7 @@ export interface UseProvidersReturn {
 }
 
 export const useProviders = (): UseProvidersReturn => {
+  const toast = useToast()
   // Settings state
   const [apiKey, setApiKey] = useState('')
   const [apiUrl, setApiUrl] = useState('https://opencode.ai/zen/v1')
@@ -254,11 +256,11 @@ export const useProviders = (): UseProvidersReturn => {
 
   const handleSaveProviderDetails = async (): Promise<void> => {
     if (modelsList.length === 0) {
-      alert('模型列表不能为空，请至少添加一个模型！')
+      toast.warning('模型列表不能为空，请至少添加一个模型！')
       return
     }
     if (!selectedModel) {
-      alert('未选择默认模型，请先选择一个默认模型！')
+      toast.warning('未选择默认模型，请先选择一个默认模型！')
       return
     }
     const sanitizedContextWindows: Record<string, number> = {}
@@ -267,7 +269,7 @@ export const useProviders = (): UseProvidersReturn => {
       if (value === undefined) continue
       const normalized = normalizeContextWindowTokens(value)
       if (!normalized) {
-        alert(`模型 ${model} 的上下文长度需要在 2,000 到 10,000,000 tokens 之间。`)
+        toast.warning(`模型 ${model} 的上下文长度需要在 2,000 到 10,000,000 tokens 之间。`)
         return
       }
       sanitizedContextWindows[model] = normalized
@@ -476,12 +478,12 @@ export const useProviders = (): UseProvidersReturn => {
         })
         setShowModelsModal(true)
       } else {
-        alert('未能获取到有效的模型列表，请检查 Base URL 或 API Key。')
+        toast.warning('未能获取到有效的模型列表，请检查 Base URL 或 API Key。')
       }
     } catch (e) {
       const err = e as Error
       console.error(err)
-      alert(`获取模型列表失败: ${err.message || err}`)
+      toast.error(`获取模型列表失败: ${err.message || err}`)
     } finally {
       setIsFetchingModels(false)
     }
@@ -497,7 +499,7 @@ export const useProviders = (): UseProvidersReturn => {
   const handleRefreshModelContext = async (modelId: string): Promise<void> => {
     const url = fetchModelsUrl.trim()
     if (!url) {
-      alert('\u8bf7\u5148\u586b\u5199\u6a21\u578b\u5217\u8868\u63a5\u53e3\u3002')
+      toast.warning('请先填写模型列表接口。')
       return
     }
 
@@ -515,18 +517,14 @@ export const useProviders = (): UseProvidersReturn => {
       }
 
       if (!matched) {
-        alert(`\u8fdc\u7a0b\u6a21\u578b\u5217\u8868\u4e2d\u6ca1\u6709\u627e\u5230 ${modelId}\u3002`)
+        toast.warning(`远程模型列表中没有找到 ${modelId}。`)
       } else {
-        alert(
-          `\u670d\u52a1\u5546\u6ca1\u6709\u8fd4\u56de ${modelId} \u7684\u4e0a\u4e0b\u6587\u957f\u5ea6\u3002`
-        )
+        toast.warning(`服务商没有返回 ${modelId} 的上下文长度。`)
       }
     } catch (e) {
       const err = e as Error
       console.error(err)
-      alert(
-        `\u83b7\u53d6 ${modelId} \u7684\u4e0a\u4e0b\u6587\u957f\u5ea6\u5931\u8d25: ${err.message || err}`
-      )
+      toast.error(`获取 ${modelId} 的上下文长度失败: ${err.message || err}`)
     } finally {
       setRefreshingModelContextId(null)
     }
@@ -534,7 +532,7 @@ export const useProviders = (): UseProvidersReturn => {
 
   const handleRemoveModelDirectly = (modelId: string): void => {
     if (modelsList.length <= 1) {
-      alert('必须保留至少一个可用模型！')
+      toast.warning('必须保留至少一个可用模型！')
       return
     }
     const updated = modelsList.filter((m) => m !== modelId)
@@ -553,7 +551,7 @@ export const useProviders = (): UseProvidersReturn => {
     const modelId = model.id
     if (modelsList.includes(modelId)) {
       if (modelsList.length <= 1) {
-        alert('\u5fc5\u987b\u4fdd\u7559\u81f3\u5c11\u4e00\u4e2a\u53ef\u7528\u6a21\u578b\uff01')
+        toast.warning('必须保留至少一个可用模型！')
         return
       }
       const updated = modelsList.filter((m) => m !== modelId)

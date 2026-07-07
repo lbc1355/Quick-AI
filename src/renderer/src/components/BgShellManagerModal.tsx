@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { X, Terminal, Power, RefreshCw, Layers, Info } from 'lucide-react'
+import { useToast } from '../contexts/ToastContext'
 
 interface BgShellInfo {
   id: string
@@ -16,6 +17,7 @@ interface BgShellManagerModalProps {
 }
 
 export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ sessionId, onClose }) => {
+  const toast = useToast()
   const [processes, setProcesses] = useState<BgShellInfo[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
@@ -70,7 +72,7 @@ export const BgShellManagerModal: React.FC<BgShellManagerModalProps> = ({ sessio
       await fetchList(true)
       await fetchLogs(id, true)
     } catch (e) {
-      alert(`停止进程失败: ${e instanceof Error ? e.message : String(e)}`)
+      toast.error(`停止进程失败: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 

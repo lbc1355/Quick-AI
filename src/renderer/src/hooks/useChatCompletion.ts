@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useToast } from '../contexts/ToastContext'
 import {
   ContextRetentionMode,
   Message,
@@ -132,6 +133,7 @@ export const useChatCompletion = ({
   draftSession,
   setDraftSession
 }: UseChatCompletionProps): UseChatCompletionReturn => {
+  const toast = useToast()
   const [inputVal, setInputVal] = useState('')
   const draftSessionRef = useRef<Session | null>(null)
   useEffect(() => {
@@ -317,7 +319,7 @@ export const useChatCompletion = ({
     if (isGeneratingRef.current) return false
 
     if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
-      alert('请先在设置中填写 DeepSeek API Key。')
+      toast.warning('请先在设置中填写 DeepSeek API Key。')
       setShowSettings(true)
       return false
     }
@@ -330,7 +332,7 @@ export const useChatCompletion = ({
     if (!currentSession) return false
 
     if (currentSession.messages.length <= MANUAL_COMPACTION_KEEP_RECENT_MESSAGES + 1) {
-      alert('当前对话可压缩内容不足。')
+      toast.info('当前对话可压缩内容不足。')
       setInputVal('')
       return true
     }
@@ -394,7 +396,7 @@ export const useChatCompletion = ({
       return true
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err || '上下文压缩失败')
-      alert(`上下文压缩失败：${message}`)
+      toast.error(`上下文压缩失败：${message}`)
       return false
     } finally {
       currentSession.messages = currentSession.messages.filter(
@@ -428,7 +430,7 @@ export const useChatCompletion = ({
 
     // Verify key
     if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
-      alert('请先在设置中填写 DeepSeek API Key！')
+      toast.warning('请先在设置中填写 DeepSeek API Key！')
       setShowSettings(true)
       return false
     }
@@ -591,7 +593,7 @@ export const useChatCompletion = ({
     if (isGeneratingRef.current) return
 
     if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
-      alert('Please set the DeepSeek API Key in Settings first.')
+      toast.warning('Please set the DeepSeek API Key in Settings first.')
       setShowSettings(true)
       return
     }
@@ -721,7 +723,7 @@ export const useChatCompletion = ({
     const requestConfig = latestRequestConfigRef.current
     if (isGeneratingRef.current) return
     if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
-      alert('Please set the DeepSeek API Key in Settings first.')
+      toast.warning('Please set the DeepSeek API Key in Settings first.')
       setShowSettings(true)
       return
     }
