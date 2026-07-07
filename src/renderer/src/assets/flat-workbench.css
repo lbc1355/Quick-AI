@@ -1145,6 +1145,14 @@ body {
   background: #52b69a;
 }
 
+.message-minimap-item.agent::before {
+  background: #d29922;
+}
+
+.message-minimap-item.error::before {
+  background: #e5484d;
+}
+
 .message-minimap-item:hover::before,
 .message-minimap-item.active::before {
   width: 23px;
@@ -1966,6 +1974,14 @@ body {
 
 .app-container.theme-light .message-minimap-item.assistant::before {
   background: #0f8f78;
+}
+
+.app-container.theme-light .message-minimap-item.agent::before {
+  background: #a76516;
+}
+
+.app-container.theme-light .message-minimap-item.error::before {
+  background: #c5343b;
 }
 
 .app-container.theme-light .message-minimap-item::after {

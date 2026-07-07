@@ -4,6 +4,7 @@ import { Sparkles, GitBranch, Paperclip, ArrowDown } from 'lucide-react'
 import type {
   AutocompleteItem,
   AppSettings,
+  Message,
   Project,
   Session,
   WindowState
@@ -74,6 +75,41 @@ const useStableEvent = <Args extends unknown[], Return>(
   const ref = useRef(callback)
   ref.current = callback
   return useCallback((...args: Args) => ref.current(...args), [])
+}
+
+type MessageMinimapKind = 'user' | 'assistant' | 'agent' | 'error'
+
+const messageMinimapPreviewCache = new WeakMap<Message, string>()
+
+const getMessageMinimapKind = (message: Message): MessageMinimapKind => {
+  if (message.isRuntimeError) return 'error'
+  if (message.role === 'user') return 'user'
+  if (message.agentRunId || (message.agentEvents && message.agentEvents.length > 0)) return 'agent'
+  return 'assistant'
+}
+
+const getMessageMinimapLabel = (kind: MessageMinimapKind, index: number): string => {
+  const label =
+    kind === 'user'
+      ? 'User'
+      : kind === 'assistant'
+        ? 'Assistant'
+        : kind === 'agent'
+          ? 'Agent'
+          : 'Error'
+  return `${label} #${index + 1}`
+}
+
+const getMessageMinimapPreview = (message: Message): string => {
+  const cached = messageMinimapPreviewCache.get(message)
+  if (cached !== undefined) return cached
+
+  const preview = buildMessageNavPreview(
+    message.errorPayload?.message || message.content,
+    message.files
+  )
+  messageMinimapPreviewCache.set(message, preview)
+  return preview
 }
 
 function App(): React.JSX.Element {
@@ -573,11 +609,18 @@ function App(): React.JSX.Element {
   const handleDeleteSessionFromSidebar = useStableEvent(
     (sessionId: string): Promise<void> => handleDeleteSession(sessionId)
   )
-  const userMessageNavItems = useMemo(
+  const messageNavItems = useMemo(
     () =>
-      activeSession?.messages
-        .map((msg, idx) => ({ msg, idx }))
-        .filter(({ msg }) => msg.role === 'user') || [],
+      activeSession?.messages.map((msg, idx) => {
+        const kind = getMessageMinimapKind(msg)
+        return {
+          msg,
+          idx,
+          kind,
+          label: getMessageMinimapLabel(kind, idx),
+          preview: getMessageMinimapPreview(msg)
+        }
+      }) || [],
     [activeSession?.messages]
   )
   return (
@@ -756,23 +799,21 @@ function App(): React.JSX.Element {
               </div>
             )}
 
-            {!isNewSessionEmpty && userMessageNavItems.length ? (
-              <nav className="message-minimap" aria-label="用户消息导航">
-                {userMessageNavItems.map(({ msg, idx }) => {
+            {!isNewSessionEmpty && messageNavItems.length ? (
+              <nav className="message-minimap" aria-label="Message navigation">
+                {messageNavItems.map(({ msg, kind, label, preview }) => {
                   const isActive = activeMessageNavId === msg.id
-                  const preview = buildMessageNavPreview(msg.content, msg.files)
-                  const tooltipLabel = `用户 #${idx + 1}`
 
                   return (
                     <button
                       key={msg.id}
                       type="button"
-                      className={`message-minimap-item user ${isActive ? 'active' : ''}`}
-                      data-label={tooltipLabel}
+                      className={`message-minimap-item ${kind} ${isActive ? 'active' : ''}`}
+                      data-label={label}
                       data-preview={preview}
                       onClick={() => scrollToMessage(msg.id)}
-                      title={`${tooltipLabel}：${preview}`}
-                      aria-label={`${tooltipLabel}：${preview}`}
+                      title={`${label}: ${preview}`}
+                      aria-label={`${label}: ${preview}`}
                     />
                   )
                 })}
