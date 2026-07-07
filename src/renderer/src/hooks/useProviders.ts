@@ -5,7 +5,8 @@ import {
   ContextRetentionMode,
   FetchedModelInfo,
   WebSearchProviderType,
-  ApiKeyItem
+  ApiKeyItem,
+  ProviderApiFormat
 } from '../../../shared/types'
 import { normalizeContextWindowTokens } from '../../../shared/modelContext'
 import {
@@ -79,6 +80,8 @@ export interface UseProvidersReturn {
   handleSetActiveProvider: (id: string) => Promise<void>
   handleStartEditingProvider: (id: string) => void
   handleDeleteProvider: (id: string) => Promise<void>
+  handleChangeEditingProviderName: (name: string) => void
+  handleChangeEditingProviderApiFormat: (format: ProviderApiFormat) => void
   handleAddManualModel: () => void
   handleFetchModels: () => Promise<void>
   handleRefreshModelContext: (modelId: string) => Promise<void>
@@ -603,6 +606,16 @@ export const useProviders = (): UseProvidersReturn => {
     })
   }
 
+  const handleChangeEditingProviderName = (name: string): void => {
+    setProviders((prev) => prev.map((p) => (p.id === editingProviderId ? { ...p, name } : p)))
+  }
+
+  const handleChangeEditingProviderApiFormat = (format: ProviderApiFormat): void => {
+    setProviders((prev) =>
+      prev.map((p) => (p.id === editingProviderId ? { ...p, apiFormat: format } : p))
+    )
+  }
+
   return {
     apiKey,
     setApiKey,
@@ -664,6 +677,8 @@ export const useProviders = (): UseProvidersReturn => {
     handleSetActiveProvider,
     handleStartEditingProvider,
     handleDeleteProvider,
+    handleChangeEditingProviderName,
+    handleChangeEditingProviderApiFormat,
     handleAddManualModel,
     handleFetchModels,
     handleRefreshModelContext,

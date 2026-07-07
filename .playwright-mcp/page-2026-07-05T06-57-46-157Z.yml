@@ -1,0 +1,886 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - link "Skip to content" [ref=e4] [cursor=pointer]:
+      - /url: "#start-of-content"
+    - banner [ref=e6]:
+      - heading "Navigation Menu" [level=2] [ref=e7]
+      - generic [ref=e8]:
+        - link "Homepage" [ref=e10] [cursor=pointer]:
+          - /url: /
+          - img [ref=e11]
+        - generic [ref=e13]:
+          - navigation "Global" [ref=e16]:
+            - list [ref=e17]:
+              - listitem [ref=e18]:
+                - button "Platform" [ref=e20] [cursor=pointer]:
+                  - text: Platform
+                  - img [ref=e21]
+              - listitem [ref=e23]:
+                - button "Solutions" [ref=e25] [cursor=pointer]:
+                  - text: Solutions
+                  - img [ref=e26]
+              - listitem [ref=e28]:
+                - button "Resources" [ref=e30] [cursor=pointer]:
+                  - text: Resources
+                  - img [ref=e31]
+              - listitem [ref=e33]:
+                - button "Open Source" [ref=e35] [cursor=pointer]:
+                  - text: Open Source
+                  - img [ref=e36]
+              - listitem [ref=e38]:
+                - button "Enterprise" [ref=e40] [cursor=pointer]:
+                  - text: Enterprise
+                  - img [ref=e41]
+              - listitem [ref=e43]:
+                - link "Pricing" [ref=e44] [cursor=pointer]:
+                  - /url: https://github.com/pricing
+                  - generic [ref=e45]: Pricing
+          - generic [ref=e46]:
+            - button "Search or jump to…" [ref=e49] [cursor=pointer]:
+              - img [ref=e51]
+              - generic [ref=e53]: Search or jump to...
+              - img [ref=e55]
+            - link "Sign in" [ref=e59] [cursor=pointer]:
+              - /url: /login?return_to=https%3A%2F%2Fgithub.com%2Ftrending
+            - link "Sign up" [ref=e60] [cursor=pointer]:
+              - /url: /signup?ref_cta=Sign+up&ref_loc=header+logged+out&ref_page=%2Ftrending&source=header
+            - button "Appearance settings" [ref=e63] [cursor=pointer]:
+              - img
+  - main [ref=e66]:
+    - navigation "Explore navigation" [ref=e68]:
+      - generic [ref=e69]:
+        - link "Explore" [ref=e70] [cursor=pointer]:
+          - /url: /explore
+        - link "Topics" [ref=e71] [cursor=pointer]:
+          - /url: /topics
+        - link "Trending" [ref=e72] [cursor=pointer]:
+          - /url: /trending
+        - link "Collections" [ref=e73] [cursor=pointer]:
+          - /url: /collections
+        - link "Events" [ref=e74] [cursor=pointer]:
+          - /url: /events
+        - link "GitHub Sponsors" [ref=e75] [cursor=pointer]:
+          - /url: /sponsors/explore
+    - generic [ref=e77]:
+      - heading "Trending" [level=1] [ref=e78]
+      - paragraph [ref=e79]: See what the GitHub community is most excited about today.
+    - generic [ref=e81]:
+      - generic [ref=e82]:
+        - navigation "Trending" [ref=e83]:
+          - link "Repositories" [ref=e84] [cursor=pointer]:
+            - /url: /trending
+          - link "Developers" [ref=e85] [cursor=pointer]:
+            - /url: /trending/developers
+        - generic [ref=e86]:
+          - group [ref=e88]:
+            - 'button "Spoken Language: Any" [ref=e89] [cursor=pointer]'
+          - group [ref=e91]:
+            - 'button "Language: Any" [ref=e92] [cursor=pointer]'
+          - group [ref=e94]:
+            - 'button "Date range: Today" [ref=e95] [cursor=pointer]'
+      - generic [ref=e96]:
+        - article [ref=e97]:
+          - link "You must be signed in to star a repository" [ref=e100] [cursor=pointer]:
+            - /url: /login?return_to=%2Fopenai%2Fcodex-plugin-cc
+            - img [ref=e101]
+            - text: Star
+          - heading "openai / codex-plugin-cc" [level=2] [ref=e103]:
+            - link "openai / codex-plugin-cc" [ref=e104] [cursor=pointer]:
+              - /url: /openai/codex-plugin-cc
+              - img [ref=e105]
+              - text: openai / codex-plugin-cc
+          - paragraph [ref=e107]: Use Codex from Claude Code to review code or delegate tasks.
+          - generic [ref=e108]:
+            - generic [ref=e109]: JavaScript
+            - link "star 24,823" [ref=e111] [cursor=pointer]:
+              - /url: /openai/codex-plugin-cc/stargazers
+              - img "star" [ref=e112]
+              - text: 24,823
+            - link "fork 1,503" [ref=e114] [cursor=pointer]:
+              - /url: /openai/codex-plugin-cc/forks
+              - img "fork" [ref=e115]
+              - text: 1,503
+            - generic [ref=e117]:
+              - text: Built by
+              - link "@dkundel-openai" [ref=e118] [cursor=pointer]:
+                - /url: /dkundel-openai
+                - img "@dkundel-openai" [ref=e119]
+              - link "@VOIDXAI" [ref=e120] [cursor=pointer]:
+                - /url: /VOIDXAI
+                - img "@VOIDXAI" [ref=e121]
+              - link "@claude" [ref=e122] [cursor=pointer]:
+                - /url: /claude
+                - img "@claude" [ref=e123]
+              - link "@xiaolai" [ref=e124] [cursor=pointer]:
+                - /url: /xiaolai
+                - img "@xiaolai" [ref=e125]
+              - link "@zeta987" [ref=e126] [cursor=pointer]:
+                - /url: /zeta987
+                - img "@zeta987" [ref=e127]
+            - generic [ref=e128]:
+              - img [ref=e129]
+              - text: 718 stars today
+        - article [ref=e131]:
+          - generic [ref=e132]:
+            - link "Sponsor @JuliusBrussee" [ref=e133] [cursor=pointer]:
+              - /url: /sponsors/JuliusBrussee
+              - generic [ref=e135]:
+                - img [ref=e136]
+                - text: Sponsor
+            - link "You must be signed in to star a repository" [ref=e139] [cursor=pointer]:
+              - /url: /login?return_to=%2FJuliusBrussee%2Fcaveman
+              - img [ref=e140]
+              - text: Star
+          - heading "JuliusBrussee / caveman" [level=2] [ref=e142]:
+            - link "JuliusBrussee / caveman" [ref=e143] [cursor=pointer]:
+              - /url: /JuliusBrussee/caveman
+              - img [ref=e144]
+              - text: JuliusBrussee / caveman
+          - paragraph [ref=e146]: 🪨 why use many token when few token do trick — Claude Code skill that cuts 65% of tokens by talking like caveman
+          - generic [ref=e147]:
+            - generic [ref=e148]: JavaScript
+            - link "star 84,216" [ref=e150] [cursor=pointer]:
+              - /url: /JuliusBrussee/caveman/stargazers
+              - img "star" [ref=e151]
+              - text: 84,216
+            - link "fork 4,698" [ref=e153] [cursor=pointer]:
+              - /url: /JuliusBrussee/caveman/forks
+              - img "fork" [ref=e154]
+              - text: 4,698
+            - generic [ref=e156]:
+              - text: Built by
+              - link "@JuliusBrussee" [ref=e157] [cursor=pointer]:
+                - /url: /JuliusBrussee
+                - img "@JuliusBrussee" [ref=e158]
+              - link "@claude" [ref=e159] [cursor=pointer]:
+                - /url: /claude
+                - img "@claude" [ref=e160]
+              - link "@github-actions" [ref=e161] [cursor=pointer]:
+                - /url: /apps/github-actions
+                - img "@github-actions" [ref=e162]
+              - link "@sebastianbreguel" [ref=e163] [cursor=pointer]:
+                - /url: /sebastianbreguel
+                - img "@sebastianbreguel" [ref=e164]
+              - link "@vraj00222" [ref=e165] [cursor=pointer]:
+                - /url: /vraj00222
+                - img "@vraj00222" [ref=e166]
+            - generic [ref=e167]:
+              - img [ref=e168]
+              - text: 1,089 stars today
+        - article [ref=e170]:
+          - link "You must be signed in to star a repository" [ref=e173] [cursor=pointer]:
+            - /url: /login?return_to=%2Falibaba%2Fpage-agent
+            - img [ref=e174]
+            - text: Star
+          - heading "alibaba / page-agent" [level=2] [ref=e176]:
+            - link "alibaba / page-agent" [ref=e177] [cursor=pointer]:
+              - /url: /alibaba/page-agent
+              - img [ref=e178]
+              - text: alibaba / page-agent
+          - paragraph [ref=e180]: JavaScript in-page GUI agent. Control web interfaces with natural language.
+          - generic [ref=e181]:
+            - generic [ref=e182]: TypeScript
+            - link "star 23,310" [ref=e184] [cursor=pointer]:
+              - /url: /alibaba/page-agent/stargazers
+              - img "star" [ref=e185]
+              - text: 23,310
+            - link "fork 2,015" [ref=e187] [cursor=pointer]:
+              - /url: /alibaba/page-agent/forks
+              - img "fork" [ref=e188]
+              - text: 2,015
+            - generic [ref=e190]:
+              - text: Built by
+              - link "@gaomeng1900" [ref=e191] [cursor=pointer]:
+                - /url: /gaomeng1900
+                - img "@gaomeng1900" [ref=e192]
+              - link "@dependabot" [ref=e193] [cursor=pointer]:
+                - /url: /apps/dependabot
+                - img "@dependabot" [ref=e194]
+              - link "@Copilot" [ref=e195] [cursor=pointer]:
+                - /url: /apps/copilot-swe-agent
+                - img "@Copilot" [ref=e196]
+              - link "@JasonOA888" [ref=e197] [cursor=pointer]:
+                - /url: /JasonOA888
+                - img "@JasonOA888" [ref=e198]
+              - link "@linked-danis" [ref=e199] [cursor=pointer]:
+                - /url: /linked-danis
+                - img "@linked-danis" [ref=e200]
+            - generic [ref=e201]:
+              - img [ref=e202]
+              - text: 742 stars today
+        - article [ref=e204]:
+          - link "You must be signed in to star a repository" [ref=e207] [cursor=pointer]:
+            - /url: /login?return_to=%2Fusestrix%2Fstrix
+            - img [ref=e208]
+            - text: Star
+          - heading "usestrix / strix" [level=2] [ref=e210]:
+            - link "usestrix / strix" [ref=e211] [cursor=pointer]:
+              - /url: /usestrix/strix
+              - img [ref=e212]
+              - text: usestrix / strix
+          - paragraph [ref=e214]: Open-source AI penetration testing tool to find and fix your app’s vulnerabilities.
+          - generic [ref=e215]:
+            - generic [ref=e216]: Python
+            - link "star 36,326" [ref=e218] [cursor=pointer]:
+              - /url: /usestrix/strix/stargazers
+              - img "star" [ref=e219]
+              - text: 36,326
+            - link "fork 3,680" [ref=e221] [cursor=pointer]:
+              - /url: /usestrix/strix/forks
+              - img "fork" [ref=e222]
+              - text: 3,680
+            - generic [ref=e224]:
+              - text: Built by
+              - link "@0xallam" [ref=e225] [cursor=pointer]:
+                - /url: /0xallam
+                - img "@0xallam" [ref=e226]
+              - link "@claude" [ref=e227] [cursor=pointer]:
+                - /url: /claude
+                - img "@claude" [ref=e228]
+              - link "@dependabot" [ref=e229] [cursor=pointer]:
+                - /url: /apps/dependabot
+                - img "@dependabot" [ref=e230]
+              - link "@bearsyankees" [ref=e231] [cursor=pointer]:
+                - /url: /bearsyankees
+                - img "@bearsyankees" [ref=e232]
+              - link "@octovimmer" [ref=e233] [cursor=pointer]:
+                - /url: /octovimmer
+                - img "@octovimmer" [ref=e234]
+            - generic [ref=e235]:
+              - img [ref=e236]
+              - text: 1,904 stars today
+        - article [ref=e238]:
+          - link "You must be signed in to star a repository" [ref=e241] [cursor=pointer]:
+            - /url: /login?return_to=%2FChromeDevTools%2Fchrome-devtools-mcp
+            - img [ref=e242]
+            - text: Star
+          - heading "ChromeDevTools / chrome-devtools-mcp" [level=2] [ref=e244]:
+            - link "ChromeDevTools / chrome-devtools-mcp" [ref=e245] [cursor=pointer]:
+              - /url: /ChromeDevTools/chrome-devtools-mcp
+              - img [ref=e246]
+              - text: ChromeDevTools / chrome-devtools-mcp
+          - paragraph [ref=e248]: Chrome DevTools for coding agents
+          - generic [ref=e249]:
+            - generic [ref=e250]: TypeScript
+            - link "star 45,859" [ref=e252] [cursor=pointer]:
+              - /url: /ChromeDevTools/chrome-devtools-mcp/stargazers
+              - img "star" [ref=e253]
+              - text: 45,859
+            - link "fork 2,987" [ref=e255] [cursor=pointer]:
+              - /url: /ChromeDevTools/chrome-devtools-mcp/forks
+              - img "fork" [ref=e256]
+              - text: 2,987
+            - generic [ref=e258]:
+              - text: Built by
+              - link "@OrKoN" [ref=e259] [cursor=pointer]:
+                - /url: /OrKoN
+                - img "@OrKoN" [ref=e260]
+              - link "@dependabot" [ref=e261] [cursor=pointer]:
+                - /url: /apps/dependabot
+                - img "@dependabot" [ref=e262]
+              - link "@Lightning00Blade" [ref=e263] [cursor=pointer]:
+                - /url: /Lightning00Blade
+                - img "@Lightning00Blade" [ref=e264]
+              - link "@browser-automation-bot" [ref=e265] [cursor=pointer]:
+                - /url: /browser-automation-bot
+                - img "@browser-automation-bot" [ref=e266]
+              - link "@nroscino" [ref=e267] [cursor=pointer]:
+                - /url: /nroscino
+                - img "@nroscino" [ref=e268]
+            - generic [ref=e269]:
+              - img [ref=e270]
+              - text: 304 stars today
+        - article [ref=e272]:
+          - generic [ref=e273]:
+            - link "Sponsor @Zackriya-Solutions" [ref=e274] [cursor=pointer]:
+              - /url: /sponsors/Zackriya-Solutions
+              - generic [ref=e276]:
+                - img [ref=e277]
+                - text: Sponsor
+            - link "You must be signed in to star a repository" [ref=e280] [cursor=pointer]:
+              - /url: /login?return_to=%2FZackriya-Solutions%2Fmeetily
+              - img [ref=e281]
+              - text: Star
+          - heading "Zackriya-Solutions / meetily" [level=2] [ref=e283]:
+            - link "Zackriya-Solutions / meetily" [ref=e284] [cursor=pointer]:
+              - /url: /Zackriya-Solutions/meetily
+              - img [ref=e285]
+              - text: Zackriya-Solutions / meetily
+          - paragraph [ref=e287]:
+            - text: Privacy first, AI meeting assistant with 4x faster Parakeet/Whisper live transcription, speaker diarization, and Ollama summarization built on Rust. 100% local processing. no cloud required. Meetily (Meetly Ai -
+            - link "https://meetily.ai" [ref=e288] [cursor=pointer]:
+              - /url: https://meetily.ai
+            - text: ") is the #1 Self-hosted, Open-source Ai meeting note taker for macOS & Windows."
+          - generic [ref=e289]:
+            - generic [ref=e290]: Rust
+            - link "star 15,537" [ref=e292] [cursor=pointer]:
+              - /url: /Zackriya-Solutions/meetily/stargazers
+              - img "star" [ref=e293]
+              - text: 15,537
+            - link "fork 1,689" [ref=e295] [cursor=pointer]:
+              - /url: /Zackriya-Solutions/meetily/forks
+              - img "fork" [ref=e296]
+              - text: 1,689
+            - generic [ref=e298]:
+              - text: Built by
+              - link "@sujithatzackriya" [ref=e299] [cursor=pointer]:
+                - /url: /sujithatzackriya
+                - img "@sujithatzackriya" [ref=e300]
+              - link "@safvanatzack" [ref=e301] [cursor=pointer]:
+                - /url: /safvanatzack
+                - img "@safvanatzack" [ref=e302]
+              - link "@mohammedsafvan" [ref=e303] [cursor=pointer]:
+                - /url: /mohammedsafvan
+                - img "@mohammedsafvan" [ref=e304]
+              - link "@athulchandroth" [ref=e305] [cursor=pointer]:
+                - /url: /athulchandroth
+                - img "@athulchandroth" [ref=e306]
+              - link "@p-s-vishnu" [ref=e307] [cursor=pointer]:
+                - /url: /p-s-vishnu
+                - img "@p-s-vishnu" [ref=e308]
+            - generic [ref=e309]:
+              - img [ref=e310]
+              - text: 718 stars today
+        - article [ref=e312]:
+          - generic [ref=e313]:
+            - link "Sponsor @asgeirtj" [ref=e314] [cursor=pointer]:
+              - /url: /sponsors/asgeirtj
+              - generic [ref=e316]:
+                - img [ref=e317]
+                - text: Sponsor
+            - link "You must be signed in to star a repository" [ref=e320] [cursor=pointer]:
+              - /url: /login?return_to=%2Fasgeirtj%2Fsystem_prompts_leaks
+              - img [ref=e321]
+              - text: Star
+          - heading "asgeirtj / system_prompts_leaks" [level=2] [ref=e323]:
+            - link "asgeirtj / system_prompts_leaks" [ref=e324] [cursor=pointer]:
+              - /url: /asgeirtj/system_prompts_leaks
+              - img [ref=e325]
+              - text: asgeirtj / system_prompts_leaks
+          - paragraph [ref=e327]: Extracted system prompts from Anthropic - Claude Fable 5, Opus 4.8, Claude Code, Claude Design. OpenAI - ChatGPT 5.5 Thinking, GPT 5.5 Instant, Codex. Google - Gemini 3.5 Flash, 3.1 Pro, Antigravity. xAI - Grok, Cursor, Copilot, VS Code, Perplexity, and more. Updated regularly.
+          - generic [ref=e328]:
+            - generic [ref=e329]: JavaScript
+            - link "star 49,129" [ref=e331] [cursor=pointer]:
+              - /url: /asgeirtj/system_prompts_leaks/stargazers
+              - img "star" [ref=e332]
+              - text: 49,129
+            - link "fork 8,017" [ref=e334] [cursor=pointer]:
+              - /url: /asgeirtj/system_prompts_leaks/forks
+              - img "fork" [ref=e335]
+              - text: 8,017
+            - generic [ref=e337]:
+              - text: Built by
+              - link "@asgeirtj" [ref=e338] [cursor=pointer]:
+                - /url: /asgeirtj
+                - img "@asgeirtj" [ref=e339]
+              - link "@claude" [ref=e340] [cursor=pointer]:
+                - /url: /claude
+                - img "@claude" [ref=e341]
+              - link "@awrreny" [ref=e342] [cursor=pointer]:
+                - /url: /awrreny
+                - img "@awrreny" [ref=e343]
+              - link "@anonymous619259" [ref=e344] [cursor=pointer]:
+                - /url: /anonymous619259
+                - img "@anonymous619259" [ref=e345]
+              - link "@lcebot" [ref=e346] [cursor=pointer]:
+                - /url: /lcebot
+                - img "@lcebot" [ref=e347]
+            - generic [ref=e348]:
+              - img [ref=e349]
+              - text: 471 stars today
+        - article [ref=e351]:
+          - link "You must be signed in to star a repository" [ref=e354] [cursor=pointer]:
+            - /url: /login?return_to=%2Fharvard-edge%2Fcs249r_book
+            - img [ref=e355]
+            - text: Star
+          - heading "harvard-edge / cs249r_book" [level=2] [ref=e357]:
+            - link "harvard-edge / cs249r_book" [ref=e358] [cursor=pointer]:
+              - /url: /harvard-edge/cs249r_book
+              - img [ref=e359]
+              - text: harvard-edge / cs249r_book
+          - paragraph [ref=e361]: Machine Learning Systems
+          - generic [ref=e362]:
+            - generic [ref=e363]: Python
+            - link "star 26,640" [ref=e365] [cursor=pointer]:
+              - /url: /harvard-edge/cs249r_book/stargazers
+              - img "star" [ref=e366]
+              - text: 26,640
+            - link "fork 3,172" [ref=e368] [cursor=pointer]:
+              - /url: /harvard-edge/cs249r_book/forks
+              - img "fork" [ref=e369]
+              - text: 3,172
+            - generic [ref=e371]:
+              - text: Built by
+              - link "@profvjreddi" [ref=e372] [cursor=pointer]:
+                - /url: /profvjreddi
+                - img "@profvjreddi" [ref=e373]
+              - link "@github-actions" [ref=e374] [cursor=pointer]:
+                - /url: /apps/github-actions
+                - img "@github-actions" [ref=e375]
+              - link "@hzeljko" [ref=e376] [cursor=pointer]:
+                - /url: /hzeljko
+                - img "@hzeljko" [ref=e377]
+              - link "@claude" [ref=e378] [cursor=pointer]:
+                - /url: /claude
+                - img "@claude" [ref=e379]
+              - link "@dependabot" [ref=e380] [cursor=pointer]:
+                - /url: /apps/dependabot
+                - img "@dependabot" [ref=e381]
+            - generic [ref=e382]:
+              - img [ref=e383]
+              - text: 443 stars today
+        - article [ref=e385]:
+          - link "You must be signed in to star a repository" [ref=e388] [cursor=pointer]:
+            - /url: /login?return_to=%2Frommapp%2Fromm
+            - img [ref=e389]
+            - text: Star
+          - heading "rommapp / romm" [level=2] [ref=e391]:
+            - link "rommapp / romm" [ref=e392] [cursor=pointer]:
+              - /url: /rommapp/romm
+              - img [ref=e393]
+              - text: rommapp / romm
+          - paragraph [ref=e395]: A beautiful, powerful, self-hosted rom manager and player.
+          - generic [ref=e396]:
+            - generic [ref=e397]: Python
+            - link "star 10,290" [ref=e399] [cursor=pointer]:
+              - /url: /rommapp/romm/stargazers
+              - img "star" [ref=e400]
+              - text: 10,290
+            - link "fork 495" [ref=e402] [cursor=pointer]:
+              - /url: /rommapp/romm/forks
+              - img "fork" [ref=e403]
+              - text: "495"
+            - generic [ref=e405]:
+              - text: Built by
+              - link "@zurdi15" [ref=e406] [cursor=pointer]:
+                - /url: /zurdi15
+                - img "@zurdi15" [ref=e407]
+              - link "@gantoine" [ref=e408] [cursor=pointer]:
+                - /url: /gantoine
+                - img "@gantoine" [ref=e409]
+              - link "@adamantike" [ref=e410] [cursor=pointer]:
+                - /url: /adamantike
+                - img "@adamantike" [ref=e411]
+              - link "@claude" [ref=e412] [cursor=pointer]:
+                - /url: /claude
+                - img "@claude" [ref=e413]
+              - link "@dependabot" [ref=e414] [cursor=pointer]:
+                - /url: /apps/dependabot
+                - img "@dependabot" [ref=e415]
+            - generic [ref=e416]:
+              - img [ref=e417]
+              - text: 398 stars today
+        - article [ref=e419]:
+          - generic [ref=e420]:
+            - link "Sponsor @ogulcancelik" [ref=e421] [cursor=pointer]:
+              - /url: /sponsors/ogulcancelik
+              - generic [ref=e423]:
+                - img [ref=e424]
+                - text: Sponsor
+            - link "You must be signed in to star a repository" [ref=e427] [cursor=pointer]:
+              - /url: /login?return_to=%2Fogulcancelik%2Fherdr
+              - img [ref=e428]
+              - text: Star
+          - heading "ogulcancelik / herdr" [level=2] [ref=e430]:
+            - link "ogulcancelik / herdr" [ref=e431] [cursor=pointer]:
+              - /url: /ogulcancelik/herdr
+              - img [ref=e432]
+              - text: ogulcancelik / herdr
+          - paragraph [ref=e434]: agent multiplexer that lives in your terminal.
+          - generic [ref=e435]:
+            - generic [ref=e436]: Rust
+            - link "star 11,598" [ref=e438] [cursor=pointer]:
+              - /url: /ogulcancelik/herdr/stargazers
+              - img "star" [ref=e439]
+              - text: 11,598
+            - link "fork 680" [ref=e441] [cursor=pointer]:
+              - /url: /ogulcancelik/herdr/forks
+              - img "fork" [ref=e442]
+              - text: "680"
+            - generic [ref=e444]:
+              - text: Built by
+              - link "@ogulcancelik" [ref=e445] [cursor=pointer]:
+                - /url: /ogulcancelik
+                - img "@ogulcancelik" [ref=e446]
+              - link "@kangal-bot" [ref=e447] [cursor=pointer]:
+                - /url: /kangal-bot
+                - img "@kangal-bot" [ref=e448]
+              - link "@github-actions" [ref=e449] [cursor=pointer]:
+                - /url: /apps/github-actions
+                - img "@github-actions" [ref=e450]
+              - link "@dmmulroy" [ref=e451] [cursor=pointer]:
+                - /url: /dmmulroy
+                - img "@dmmulroy" [ref=e452]
+              - link "@Golden-Pigeon" [ref=e453] [cursor=pointer]:
+                - /url: /Golden-Pigeon
+                - img "@Golden-Pigeon" [ref=e454]
+            - generic [ref=e455]:
+              - img [ref=e456]
+              - text: 707 stars today
+        - article [ref=e458]:
+          - link "You must be signed in to star a repository" [ref=e461] [cursor=pointer]:
+            - /url: /login?return_to=%2Fdotnet%2Fskills
+            - img [ref=e462]
+            - text: Star
+          - heading "dotnet / skills" [level=2] [ref=e464]:
+            - link "dotnet / skills" [ref=e465] [cursor=pointer]:
+              - /url: /dotnet/skills
+              - img [ref=e466]
+              - text: dotnet / skills
+          - paragraph [ref=e468]: Repository for skills to assist AI coding agents with .NET and C#
+          - generic [ref=e469]:
+            - generic [ref=e470]: C#
+            - link "star 3,866" [ref=e472] [cursor=pointer]:
+              - /url: /dotnet/skills/stargazers
+              - img "star" [ref=e473]
+              - text: 3,866
+            - link "fork 294" [ref=e475] [cursor=pointer]:
+              - /url: /dotnet/skills/forks
+              - img "fork" [ref=e476]
+              - text: "294"
+            - generic [ref=e478]:
+              - text: Built by
+              - link "@github-actions" [ref=e479] [cursor=pointer]:
+                - /url: /apps/github-actions
+                - img "@github-actions" [ref=e480]
+              - link "@Copilot" [ref=e481] [cursor=pointer]:
+                - /url: /apps/github-copilot-cli
+                - img "@Copilot" [ref=e482]
+              - link "@ViktorHofer" [ref=e483] [cursor=pointer]:
+                - /url: /ViktorHofer
+                - img "@ViktorHofer" [ref=e484]
+              - link "@Evangelink" [ref=e485] [cursor=pointer]:
+                - /url: /Evangelink
+                - img "@Evangelink" [ref=e486]
+              - link "@JanKrivanek" [ref=e487] [cursor=pointer]:
+                - /url: /JanKrivanek
+                - img "@JanKrivanek" [ref=e488]
+            - generic [ref=e489]:
+              - img [ref=e490]
+              - text: 59 stars today
+        - article [ref=e492]:
+          - link "You must be signed in to star a repository" [ref=e495] [cursor=pointer]:
+            - /url: /login?return_to=%2Fagentskills%2Fagentskills
+            - img [ref=e496]
+            - text: Star
+          - heading "agentskills / agentskills" [level=2] [ref=e498]:
+            - link "agentskills / agentskills" [ref=e499] [cursor=pointer]:
+              - /url: /agentskills/agentskills
+              - img [ref=e500]
+              - text: agentskills / agentskills
+          - paragraph [ref=e502]: Specification and documentation for Agent Skills
+          - generic [ref=e503]:
+            - generic [ref=e504]: Python
+            - link "star 22,402" [ref=e506] [cursor=pointer]:
+              - /url: /agentskills/agentskills/stargazers
+              - img "star" [ref=e507]
+              - text: 22,402
+            - link "fork 1,415" [ref=e509] [cursor=pointer]:
+              - /url: /agentskills/agentskills/forks
+              - img "fork" [ref=e510]
+              - text: 1,415
+            - generic [ref=e512]:
+              - text: Built by
+              - link "@jonathanhefner" [ref=e513] [cursor=pointer]:
+                - /url: /jonathanhefner
+                - img "@jonathanhefner" [ref=e514]
+              - link "@claude" [ref=e515] [cursor=pointer]:
+                - /url: /claude
+                - img "@claude" [ref=e516]
+              - link "@ericharmeling" [ref=e517] [cursor=pointer]:
+                - /url: /ericharmeling
+                - img "@ericharmeling" [ref=e518]
+              - link "@klazuka" [ref=e519] [cursor=pointer]:
+                - /url: /klazuka
+                - img "@klazuka" [ref=e520]
+              - link "@maheshmurag" [ref=e521] [cursor=pointer]:
+                - /url: /maheshmurag
+                - img "@maheshmurag" [ref=e522]
+            - generic [ref=e523]:
+              - img [ref=e524]
+              - text: 351 stars today
+        - article [ref=e526]:
+          - link "You must be signed in to star a repository" [ref=e529] [cursor=pointer]:
+            - /url: /login?return_to=%2Fimmich-app%2Fimmich
+            - img [ref=e530]
+            - text: Star
+          - heading "immich-app / immich" [level=2] [ref=e532]:
+            - link "immich-app / immich" [ref=e533] [cursor=pointer]:
+              - /url: /immich-app/immich
+              - img [ref=e534]
+              - text: immich-app / immich
+          - paragraph [ref=e536]: High performance self-hosted photo and video management solution.
+          - generic [ref=e537]:
+            - generic [ref=e538]: TypeScript
+            - link "star 105,742" [ref=e540] [cursor=pointer]:
+              - /url: /immich-app/immich/stargazers
+              - img "star" [ref=e541]
+              - text: 105,742
+            - link "fork 6,035" [ref=e543] [cursor=pointer]:
+              - /url: /immich-app/immich/forks
+              - img "fork" [ref=e544]
+              - text: 6,035
+            - generic [ref=e546]:
+              - text: Built by
+              - link "@alextran1502" [ref=e547] [cursor=pointer]:
+                - /url: /alextran1502
+                - img "@alextran1502" [ref=e548]
+              - link "@jrasm91" [ref=e549] [cursor=pointer]:
+                - /url: /jrasm91
+                - img "@jrasm91" [ref=e550]
+              - link "@renovate" [ref=e551] [cursor=pointer]:
+                - /url: /apps/renovate
+                - img "@renovate" [ref=e552]
+              - link "@danieldietzler" [ref=e553] [cursor=pointer]:
+                - /url: /danieldietzler
+                - img "@danieldietzler" [ref=e554]
+              - link "@mertalev" [ref=e555] [cursor=pointer]:
+                - /url: /mertalev
+                - img "@mertalev" [ref=e556]
+            - generic [ref=e557]:
+              - img [ref=e558]
+              - text: 201 stars today
+        - article [ref=e560]:
+          - link "You must be signed in to star a repository" [ref=e563] [cursor=pointer]:
+            - /url: /login?return_to=%2Fchthollyphile%2Ffolia-major
+            - img [ref=e564]
+            - text: Star
+          - heading "chthollyphile / folia-major" [level=2] [ref=e566]:
+            - link "chthollyphile / folia-major" [ref=e567] [cursor=pointer]:
+              - /url: /chthollyphile/folia-major
+              - img [ref=e568]
+              - text: chthollyphile / folia-major
+          - paragraph [ref=e570]: 专注于绚丽的歌词动画效果的本地音乐/navidrome/第三方网易云播放器
+          - generic [ref=e571]:
+            - generic [ref=e572]: TypeScript
+            - link "star 1,030" [ref=e574] [cursor=pointer]:
+              - /url: /chthollyphile/folia-major/stargazers
+              - img "star" [ref=e575]
+              - text: 1,030
+            - link "fork 67" [ref=e577] [cursor=pointer]:
+              - /url: /chthollyphile/folia-major/forks
+              - img "fork" [ref=e578]
+              - text: "67"
+            - generic [ref=e580]:
+              - text: Built by
+              - link "@chthollyphile" [ref=e581] [cursor=pointer]:
+                - /url: /chthollyphile
+                - img "@chthollyphile" [ref=e582]
+              - link "@tumuyan" [ref=e583] [cursor=pointer]:
+                - /url: /tumuyan
+                - img "@tumuyan" [ref=e584]
+              - link "@allcontributors" [ref=e585] [cursor=pointer]:
+                - /url: /apps/allcontributors
+                - img "@allcontributors" [ref=e586]
+              - link "@tonysmith1sme" [ref=e587] [cursor=pointer]:
+                - /url: /tonysmith1sme
+                - img "@tonysmith1sme" [ref=e588]
+            - generic [ref=e589]:
+              - img [ref=e590]
+              - text: 175 stars today
+        - article [ref=e592]:
+          - generic [ref=e593]:
+            - link "Sponsor @mattpocock" [ref=e594] [cursor=pointer]:
+              - /url: /sponsors/mattpocock
+              - generic [ref=e596]:
+                - img [ref=e597]
+                - text: Sponsor
+            - link "You must be signed in to star a repository" [ref=e600] [cursor=pointer]:
+              - /url: /login?return_to=%2Fmattpocock%2Fskills
+              - img [ref=e601]
+              - text: Star
+          - heading "mattpocock / skills" [level=2] [ref=e603]:
+            - link "mattpocock / skills" [ref=e604] [cursor=pointer]:
+              - /url: /mattpocock/skills
+              - img [ref=e605]
+              - text: mattpocock / skills
+          - paragraph [ref=e607]: Skills for Real Engineers. Straight from my .claude directory.
+          - generic [ref=e608]:
+            - generic [ref=e609]: Shell
+            - link "star 156,821" [ref=e611] [cursor=pointer]:
+              - /url: /mattpocock/skills/stargazers
+              - img "star" [ref=e612]
+              - text: 156,821
+            - link "fork 13,493" [ref=e614] [cursor=pointer]:
+              - /url: /mattpocock/skills/forks
+              - img "fork" [ref=e615]
+              - text: 13,493
+            - generic [ref=e617]:
+              - text: Built by
+              - link "@mattpocock" [ref=e618] [cursor=pointer]:
+                - /url: /mattpocock
+                - img "@mattpocock" [ref=e619]
+              - link "@claude" [ref=e620] [cursor=pointer]:
+                - /url: /claude
+                - img "@claude" [ref=e621]
+              - link "@github-actions" [ref=e622] [cursor=pointer]:
+                - /url: /apps/github-actions
+                - img "@github-actions" [ref=e623]
+            - generic [ref=e624]:
+              - img [ref=e625]
+              - text: 973 stars today
+        - article [ref=e627]:
+          - generic [ref=e628]:
+            - link "Sponsor @CoplayDev" [ref=e629] [cursor=pointer]:
+              - /url: /sponsors/CoplayDev
+              - generic [ref=e631]:
+                - img [ref=e632]
+                - text: Sponsor
+            - link "You must be signed in to star a repository" [ref=e635] [cursor=pointer]:
+              - /url: /login?return_to=%2FCoplayDev%2Funity-mcp
+              - img [ref=e636]
+              - text: Star
+          - heading "CoplayDev / unity-mcp" [level=2] [ref=e638]:
+            - link "CoplayDev / unity-mcp" [ref=e639] [cursor=pointer]:
+              - /url: /CoplayDev/unity-mcp
+              - img [ref=e640]
+              - text: CoplayDev / unity-mcp
+          - paragraph [ref=e642]: Unity MCP acts as a bridge between AI assistants and your Unity Editor. Give your LLM tools to manage assets, control scenes, edit scripts, and automate tasks within Unity.
+          - generic [ref=e643]:
+            - generic [ref=e644]: C#
+            - link "star 11,694" [ref=e646] [cursor=pointer]:
+              - /url: /CoplayDev/unity-mcp/stargazers
+              - img "star" [ref=e647]
+              - text: 11,694
+            - link "fork 1,268" [ref=e649] [cursor=pointer]:
+              - /url: /CoplayDev/unity-mcp/forks
+              - img "fork" [ref=e650]
+              - text: 1,268
+            - generic [ref=e652]:
+              - text: Built by
+              - link "@Scriptwonder" [ref=e653] [cursor=pointer]:
+                - /url: /Scriptwonder
+                - img "@Scriptwonder" [ref=e654]
+              - link "@dsarno" [ref=e655] [cursor=pointer]:
+                - /url: /dsarno
+                - img "@dsarno" [ref=e656]
+              - link "@actions-user" [ref=e657] [cursor=pointer]:
+                - /url: /actions-user
+                - img "@actions-user" [ref=e658]
+              - link "@github-actions" [ref=e659] [cursor=pointer]:
+                - /url: /apps/github-actions
+                - img "@github-actions" [ref=e660]
+              - link "@msanatan" [ref=e661] [cursor=pointer]:
+                - /url: /msanatan
+                - img "@msanatan" [ref=e662]
+            - generic [ref=e663]:
+              - img [ref=e664]
+              - text: 69 stars today
+        - article [ref=e666]:
+          - link "You must be signed in to star a repository" [ref=e669] [cursor=pointer]:
+            - /url: /login?return_to=%2Falirezarezvani%2Fclaude-skills
+            - img [ref=e670]
+            - text: Star
+          - heading "alirezarezvani / claude-skills" [level=2] [ref=e672]:
+            - link "alirezarezvani / claude-skills" [ref=e673] [cursor=pointer]:
+              - /url: /alirezarezvani/claude-skills
+              - img [ref=e674]
+              - text: alirezarezvani / claude-skills
+          - paragraph [ref=e676]: 337 Claude Code skills & agent skills & plugins (30+ Agents, 70+ custom commands, 330+ skills, customizable references, scripts)for Claude Code, Codex, Gemini CLI, Cursor, and 8 more coding agents — engineering, marketing, product, compliance, C-level advisory, research, business operations, commercial & finance, and your daily productivity skills.
+          - generic [ref=e677]:
+            - generic [ref=e678]: Python
+            - link "star 20,237" [ref=e680] [cursor=pointer]:
+              - /url: /alirezarezvani/claude-skills/stargazers
+              - img "star" [ref=e681]
+              - text: 20,237
+            - link "fork 2,767" [ref=e683] [cursor=pointer]:
+              - /url: /alirezarezvani/claude-skills/forks
+              - img "fork" [ref=e684]
+              - text: 2,767
+            - generic [ref=e686]:
+              - text: Built by
+              - link "@alirezarezvani" [ref=e687] [cursor=pointer]:
+                - /url: /alirezarezvani
+                - img "@alirezarezvani" [ref=e688]
+              - link "@claude" [ref=e689] [cursor=pointer]:
+                - /url: /claude
+                - img "@claude" [ref=e690]
+              - link "@olgasafonova" [ref=e691] [cursor=pointer]:
+                - /url: /olgasafonova
+                - img "@olgasafonova" [ref=e692]
+              - link "@fernandezbaptiste" [ref=e693] [cursor=pointer]:
+                - /url: /fernandezbaptiste
+                - img "@fernandezbaptiste" [ref=e694]
+              - link "@ikala-shawn" [ref=e695] [cursor=pointer]:
+                - /url: /ikala-shawn
+                - img "@ikala-shawn" [ref=e696]
+            - generic [ref=e697]:
+              - img [ref=e698]
+              - text: 136 stars today
+        - article [ref=e700]:
+          - link "You must be signed in to star a repository" [ref=e703] [cursor=pointer]:
+            - /url: /login?return_to=%2Fcrynta%2Fterax-ai
+            - img [ref=e704]
+            - text: Star
+          - heading "crynta / terax-ai" [level=2] [ref=e706]:
+            - link "crynta / terax-ai" [ref=e707] [cursor=pointer]:
+              - /url: /crynta/terax-ai
+              - img [ref=e708]
+              - text: crynta / terax-ai
+          - paragraph [ref=e710]: Lightweight (7MB) Terminal-first AI-native dev workspace
+          - generic [ref=e711]:
+            - generic [ref=e712]: TypeScript
+            - link "star 8,117" [ref=e714] [cursor=pointer]:
+              - /url: /crynta/terax-ai/stargazers
+              - img "star" [ref=e715]
+              - text: 8,117
+            - link "fork 863" [ref=e717] [cursor=pointer]:
+              - /url: /crynta/terax-ai/forks
+              - img "fork" [ref=e718]
+              - text: "863"
+            - generic [ref=e720]:
+              - text: Built by
+              - link "@crynta" [ref=e721] [cursor=pointer]:
+                - /url: /crynta
+                - img "@crynta" [ref=e722]
+              - link "@viniraioli" [ref=e723] [cursor=pointer]:
+                - /url: /viniraioli
+                - img "@viniraioli" [ref=e724]
+              - link "@dependabot" [ref=e725] [cursor=pointer]:
+                - /url: /apps/dependabot
+                - img "@dependabot" [ref=e726]
+              - link "@Su1ph3r" [ref=e727] [cursor=pointer]:
+                - /url: /Su1ph3r
+                - img "@Su1ph3r" [ref=e728]
+              - link "@Xenos112" [ref=e729] [cursor=pointer]:
+                - /url: /Xenos112
+                - img "@Xenos112" [ref=e730]
+            - generic [ref=e731]:
+              - img [ref=e732]
+              - text: 62 stars today
+  - contentinfo [ref=e734]:
+    - heading "Footer" [level=2] [ref=e735]
+    - generic [ref=e736]:
+      - generic [ref=e737]:
+        - link "GitHub Homepage" [ref=e738] [cursor=pointer]:
+          - /url: https://github.com
+          - img [ref=e739]
+        - generic [ref=e741]: © 2026 GitHub, Inc.
+      - navigation "Footer" [ref=e742]:
+        - heading "Footer navigation" [level=3] [ref=e743]
+        - list "Footer navigation" [ref=e744]:
+          - listitem [ref=e745]:
+            - link "Terms" [ref=e746] [cursor=pointer]:
+              - /url: https://docs.github.com/site-policy/github-terms/github-terms-of-service
+          - listitem [ref=e747]:
+            - link "Privacy" [ref=e748] [cursor=pointer]:
+              - /url: https://docs.github.com/site-policy/privacy-policies/github-privacy-statement
+          - listitem [ref=e749]:
+            - link "Security" [ref=e750] [cursor=pointer]:
+              - /url: https://github.com/security
+          - listitem [ref=e751]:
+            - link "Status" [ref=e752] [cursor=pointer]:
+              - /url: https://www.githubstatus.com/
+          - listitem [ref=e753]:
+            - link "Community" [ref=e754] [cursor=pointer]:
+              - /url: https://github.community/
+          - listitem [ref=e755]:
+            - link "Docs" [ref=e756] [cursor=pointer]:
+              - /url: https://docs.github.com/
+          - listitem [ref=e757]:
+            - link "Contact" [ref=e758] [cursor=pointer]:
+              - /url: https://support.github.com?tags=dotcom-footer
+          - listitem [ref=e759]:
+            - button "Manage cookies" [ref=e761] [cursor=pointer]
+          - listitem [ref=e762]:
+            - button "Do not share my personal information" [ref=e764] [cursor=pointer]

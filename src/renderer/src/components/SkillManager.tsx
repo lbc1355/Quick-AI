@@ -1,12 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { FolderOpen, Trash2, Upload } from 'lucide-react'
-import { Skill, SkillInstallPayload, SkillPackageFile } from '../../../shared/types'
-
-interface SkillManagerProps {
-  skills: Skill[]
-  onInstallSkill: (payload: SkillInstallPayload) => Promise<Skill>
-  onRemoveSkill: (id: string) => Promise<void>
-}
+import { SkillInstallPayload, SkillPackageFile } from '../../../shared/types'
+import { useSettings } from '../contexts/SettingsContext'
 
 type DirectoryInputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   webkitdirectory?: string
@@ -170,11 +165,8 @@ const readSkillFolderPayload = async (files: File[]): Promise<SkillInstallPayloa
   }
 }
 
-export const SkillManager: React.FC<SkillManagerProps> = ({
-  skills,
-  onInstallSkill,
-  onRemoveSkill
-}) => {
+export const SkillManager: React.FC = () => {
+  const { skills, installSkill: onInstallSkill, removeSkill: onRemoveSkill } = useSettings()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
   const [statusText, setStatusText] = useState('')

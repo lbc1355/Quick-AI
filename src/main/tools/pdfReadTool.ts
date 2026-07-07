@@ -6,6 +6,7 @@ import { getRun } from '../agent/AgentRunContext'
 import { getResourceId, saveResourceChunk } from '../resourceCache'
 import { fetchWithCheckedRedirects } from '../webTools'
 import { ROOT_PARAMETER, getRootArg, resolveExistingSafePath, SafePath } from './filePathSafety'
+import { formatBytes } from './helpers'
 import { createToolResult } from './result'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
@@ -23,12 +24,6 @@ interface PdfSource {
   title: string
   rootInfo?: string
   target?: SafePath
-}
-
-const formatBytes = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
 const normalizeOffset = (value: unknown, totalChars: number): number => {

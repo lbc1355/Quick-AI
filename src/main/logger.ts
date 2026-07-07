@@ -15,6 +15,18 @@ const COLOR_RESET = '\x1b[0m'
 const MAX_LOG_SIZE = 5 * 1024 * 1024 // 5MB
 const BACKUP_COUNT = 3
 
+/** Local wall-clock timestamp `YYYY-MM-DD HH:mm:ss.SSS`, shared by the app and session loggers. */
+export function formatTimestamp(date: Date): string {
+  const Y = date.getFullYear()
+  const M = String(date.getMonth() + 1).padStart(2, '0')
+  const D = String(date.getDate()).padStart(2, '0')
+  const h = String(date.getHours()).padStart(2, '0')
+  const m = String(date.getMinutes()).padStart(2, '0')
+  const s = String(date.getSeconds()).padStart(2, '0')
+  const ms = String(date.getMilliseconds()).padStart(3, '0')
+  return `${Y}-${M}-${D} ${h}:${m}:${s}.${ms}`
+}
+
 export class Logger {
   private logPath: string
   private maxLogSize: number
@@ -27,17 +39,6 @@ export class Logger {
     } catch {
       this.logPath = join(process.cwd(), fileName)
     }
-  }
-
-  private formatTime(date: Date): string {
-    const Y = date.getFullYear()
-    const M = String(date.getMonth() + 1).padStart(2, '0')
-    const D = String(date.getDate()).padStart(2, '0')
-    const h = String(date.getHours()).padStart(2, '0')
-    const m = String(date.getMinutes()).padStart(2, '0')
-    const s = String(date.getSeconds()).padStart(2, '0')
-    const ms = String(date.getMilliseconds()).padStart(3, '0')
-    return `${Y}-${M}-${D} ${h}:${m}:${s}.${ms}`
   }
 
   private rotateIfNeed(): void {
@@ -63,7 +64,7 @@ export class Logger {
   }
 
   private write(level: LogLevel, category: string, message: string, ...args: unknown[]): void {
-    const timestamp = this.formatTime(new Date())
+    const timestamp = formatTimestamp(new Date())
     let formattedMessage = message
     if (args.length > 0) {
       formattedMessage += ' ' + args.map(arg => {

@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import { extname } from 'path'
 import { ToolArgs } from '../../shared/types'
 import { ROOT_PARAMETER, getRootArg, resolveExistingSafePath } from './filePathSafety'
+import { formatBytes } from './helpers'
 import { ToolDefinition } from './types'
 
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
@@ -10,12 +11,6 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.gif': 'image/gif'
-}
-
-const formatBytes = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
 export const imageReadTool: ToolDefinition = {

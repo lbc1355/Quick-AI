@@ -1,76 +1,53 @@
 import React, { useState } from 'react'
 import { ArrowLeft, Plus, RefreshCw, X, Eye, EyeOff, Trash2 } from 'lucide-react'
-import { ApiProvider, ApiKeyItem, ProviderApiFormat } from '../../../shared/types'
+import { ProviderApiFormat } from '../../../shared/types'
 import { getContextWindowInfo } from '../../../shared/modelContext'
-
-interface ProviderEditorProps {
-  provider: ApiProvider | undefined
-  apiUrl: string
-  selectedModel: string
-  modelsList: string[]
-  modelContextWindows: Record<string, number>
-  manualModelInput: string
-  fetchModelsUrl: string
-  isFetchingModels: boolean
-  refreshingModelContextId: string | null
-  onSave: () => void
-  onCancel: () => void
-  onChangeName: (name: string) => void
-  onChangeApiUrl: (apiUrl: string) => void
-  onChangeSelectedModel: (model: string) => void
-  onChangeManualModelInput: (val: string) => void
-  onChangeFetchModelsUrl: (val: string) => void
-  onAddManualModel: () => void
-  onFetchModels: () => void
-  onRefreshModelContext: (modelId: string) => void
-  onRemoveModel: (modelId: string) => void
-  onChangeModelContextWindow: (modelId: string, value: string) => void
-  apiKeys: ApiKeyItem[]
-  activeApiKeyId: string
-  onSelectApiKey: (id: string) => void
-  onChangeApiKeyItemName: (id: string, name: string) => void
-  onChangeApiKeyValue: (id: string, value: string) => void
-  onAddApiKey: () => void
-  onDeleteApiKey: (id: string) => void
-  onChangeApiFormat?: (format: ProviderApiFormat) => void
-}
+import { useSettings } from '../contexts/SettingsContext'
 
 const formatContextTokens = (tokens: number): string => `${tokens.toLocaleString()} tokens`
 
-export const ProviderEditor: React.FC<ProviderEditorProps> = ({
-  provider,
-  apiUrl,
-  selectedModel,
-  modelsList,
-  modelContextWindows,
-  manualModelInput,
-  fetchModelsUrl,
-  isFetchingModels,
-  refreshingModelContextId,
-  onSave,
-  onCancel,
-  onChangeName,
-  onChangeApiUrl,
-  onChangeSelectedModel,
-  onChangeManualModelInput,
-  onChangeFetchModelsUrl,
-  onAddManualModel,
-  onFetchModels,
-  onRefreshModelContext,
-  onRemoveModel,
-  onChangeModelContextWindow,
-  apiKeys,
-  activeApiKeyId,
-  onSelectApiKey,
-  onChangeApiKeyItemName,
-  onChangeApiKeyValue,
-  onAddApiKey,
-  onDeleteApiKey,
-  onChangeApiFormat
-}) => {
+export const ProviderEditor: React.FC = () => {
+  const {
+    editingProviderId,
+    providers,
+    apiUrl,
+    selectedModel,
+    modelsList,
+    modelContextWindows,
+    manualModelInput,
+    fetchModelsUrl,
+    isFetchingModels,
+    refreshingModelContextId,
+    apiKeys,
+    activeApiKeyId,
+    setIsEditingProviderDetail,
+    setSelectedModel,
+    setManualModelInput,
+    setFetchModelsUrl,
+    handleSaveProviderDetails: onSave,
+    handleChangeEditingProviderName: onChangeName,
+    handleApiUrlChange: onChangeApiUrl,
+    handleAddManualModel: onAddManualModel,
+    handleFetchModels: onFetchModels,
+    handleRefreshModelContext: onRefreshModelContext,
+    handleRemoveModelDirectly: onRemoveModel,
+    handleChangeModelContextWindow: onChangeModelContextWindow,
+    handleSelectApiKey: onSelectApiKey,
+    handleChangeApiKeyItemName: onChangeApiKeyItemName,
+    handleChangeApiKeyValue: onChangeApiKeyValue,
+    handleAddApiKey: onAddApiKey,
+    handleDeleteApiKey: onDeleteApiKey,
+    handleChangeEditingProviderApiFormat: onChangeApiFormat
+  } = useSettings()
   const [visibleKeyIds, setVisibleKeyIds] = useState<Record<string, boolean>>({})
 
-  const toggleKeyVisibility = (id: string) => {
+  const provider = providers.find((p) => p.id === editingProviderId)
+  const onCancel = (): void => setIsEditingProviderDetail(false)
+  const onChangeSelectedModel = setSelectedModel
+  const onChangeManualModelInput = setManualModelInput
+  const onChangeFetchModelsUrl = setFetchModelsUrl
+
+  const toggleKeyVisibility = (id: string): void => {
     setVisibleKeyIds((prev) => ({
       ...prev,
       [id]: !prev[id]

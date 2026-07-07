@@ -11,6 +11,7 @@ import { ToolPermission, prepareToolCalls as defaultPrepareToolCalls } from './t
 import { buildAgentStepPresentation as defaultBuildAgentStepPresentation } from './toolStepPresentation'
 import { createToolStepExecutor as defaultCreateToolStepExecutor } from './toolStepApplicator'
 import { processPreparedToolStep as defaultProcessPreparedToolStep } from './toolStepProcessor'
+import { getMessageText as getAssistantText } from './messageText'
 
 export interface ToolTurnRunContext {
   activeTools: Set<string>
@@ -65,16 +66,6 @@ export interface RunToolTurnResult {
   lastRecordedCallId?: string
   haltRequested: boolean
   ambiguousActions: AmbiguousAction[]
-}
-
-const getAssistantText = (content: ChatCompletionMessage['content']): string => {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => (part.type === 'text' && typeof part.text === 'string' ? part.text : ''))
-      .join('')
-  }
-  return ''
 }
 
 export async function runToolTurn(options: RunToolTurnOptions): Promise<RunToolTurnResult> {

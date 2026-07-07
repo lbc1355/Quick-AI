@@ -1,6 +1,6 @@
 import { Skill, SkillInterfaceMetadata } from '../../shared/types'
 import { getRun } from '../agent/AgentRunContext'
-import { pathEscapesWorkspace } from '../agent/commandSafety'
+import { normalizeComparablePath, pathEscapesWorkspace } from '../agent/pathPolicy'
 import { getSkillRoot } from '../paths'
 import { cleanSkillLookup } from './skillLookup'
 import { getWorkspaceRoot, isPathInWorkspace, isSensitiveFile } from './helpers'
@@ -58,12 +58,6 @@ export async function pathExists(path: string): Promise<boolean> {
   } catch {
     return false
   }
-}
-
-function normalizeComparablePath(path: string): string {
-  const normalized = resolve(path).replace(/\\/g, '/')
-  const trimmed = normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized
-  return process.platform === 'win32' ? trimmed.toLowerCase() : trimmed
 }
 
 export function sameFilesystemPath(a: string, b: string): boolean {

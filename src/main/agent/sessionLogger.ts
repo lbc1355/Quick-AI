@@ -10,6 +10,7 @@ import {
   PromptCacheStats
 } from '../../shared/types'
 import { estimateMessagesTokens, estimateTokens } from '../../shared/tokenEstimator'
+import { formatTimestamp } from '../logger'
 
 export interface SessionLoggerStartOptions {
   model: string
@@ -156,17 +157,6 @@ export class SessionLogger {
     }
   }
 
-  private static formatTime(date: Date): string {
-    const Y = date.getFullYear()
-    const M = String(date.getMonth() + 1).padStart(2, '0')
-    const D = String(date.getDate()).padStart(2, '0')
-    const h = String(date.getHours()).padStart(2, '0')
-    const m = String(date.getMinutes()).padStart(2, '0')
-    const s = String(date.getSeconds()).padStart(2, '0')
-    const ms = String(date.getMilliseconds()).padStart(3, '0')
-    return `${Y}-${M}-${D} ${h}:${m}:${s}.${ms}`
-  }
-
   private static eventBase(sessionId: string, type: string): Record<string, unknown> {
     return {
       type,
@@ -176,7 +166,7 @@ export class SessionLogger {
   }
 
   static logRunStart(sessionId: string, runId: string, options: SessionLoggerStartOptions): void {
-    const time = this.formatTime(new Date())
+    const time = formatTimestamp(new Date())
     const audit = buildContextAudit(options.messages)
 
     this.appendJsonl(sessionId, {
@@ -208,7 +198,7 @@ export class SessionLogger {
   }
 
   static logStepStart(sessionId: string, step: number, maxSteps: number): void {
-    const time = this.formatTime(new Date())
+    const time = formatTimestamp(new Date())
     this.appendJsonl(sessionId, {
       ...this.eventBase(sessionId, 'step_start'),
       step,
@@ -236,7 +226,7 @@ export class SessionLogger {
     response: ChatCompletionMessage,
     cacheStats?: PromptCacheStats
   ): void {
-    const time = this.formatTime(new Date())
+    const time = formatTimestamp(new Date())
     const content = getMessageContentString(response)
     const toolCalls = response.tool_calls || []
     this.appendJsonl(sessionId, {
@@ -278,7 +268,7 @@ export class SessionLogger {
     durationMs: number,
     result: string
   ): void {
-    const time = this.formatTime(new Date())
+    const time = formatTimestamp(new Date())
     this.appendJsonl(sessionId, {
       ...this.eventBase(sessionId, 'tool_execution'),
       callId,
@@ -302,7 +292,7 @@ export class SessionLogger {
   }
 
   static logRunEnd(sessionId: string, status: string, error?: string): void {
-    const time = this.formatTime(new Date())
+    const time = formatTimestamp(new Date())
     this.appendJsonl(sessionId, {
       ...this.eventBase(sessionId, 'run_end'),
       status,

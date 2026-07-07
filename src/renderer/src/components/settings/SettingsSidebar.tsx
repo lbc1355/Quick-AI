@@ -8,6 +8,7 @@ import {
   SlidersHorizontal,
   type LucideIcon
 } from 'lucide-react'
+import { useSettings } from '../../contexts/SettingsContext'
 
 export type SettingsSection = 'providers' | 'general' | 'agent' | 'skills' | 'memory' | 'mcp'
 
@@ -42,17 +43,15 @@ const settingsSections: Array<{
 
 interface SettingsSidebarProps {
   activeSection: SettingsSection
-  saveSuccess: boolean
   onChangeSection: (section: SettingsSection) => void
-  onSaveGlobalSettings: () => void
 }
 
 export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
   activeSection,
-  saveSuccess,
-  onChangeSection,
-  onSaveGlobalSettings
+  onChangeSection
 }) => {
+  const { saveSuccess, handleSaveGlobalSettings: onSaveGlobalSettings } = useSettings()
+
   return (
     <aside className="control-panel-sidebar">
       <div className="control-panel-title-block">

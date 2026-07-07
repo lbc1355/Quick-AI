@@ -3,7 +3,10 @@ import { promises as fs } from 'fs'
 import { ToolArgs } from '../../shared/types'
 import { ToolExecutionContext } from './types'
 import { getRun } from '../agent/AgentRunContext'
+import { isPathInsideRoot, normalizeComparablePath } from '../agent/pathPolicy'
 import { getWorkspaceRoot, isSensitiveFile } from './helpers'
+
+export { isPathInsideRoot, normalizeComparablePath }
 
 export type FileRootKind = 'workspace' | 'project' | 'extra'
 export type FileRootArg = FileRootKind | undefined
@@ -50,20 +53,6 @@ function getAdditionalRootForPath(
     .sort((a, b) => b.length - a.length)
   const matched = roots.find((root) => isPathInsideRoot(resolvedPath, root))
   return matched ? { root: matched, rootKind: 'extra' } : undefined
-}
-
-export function normalizeComparablePath(filePath: string): string {
-  const normalized = resolve(filePath).replace(/\\/g, '/')
-  const trimmed = normalized.length > 1 ? normalized.replace(/\/+$/, '') : normalized
-  return process.platform === 'win32' ? trimmed.toLowerCase() : trimmed
-}
-
-export function isPathInsideRoot(filePath: string, root: string): boolean {
-  const target = normalizeComparablePath(filePath)
-  const base = normalizeComparablePath(root)
-  if (target === base) return true
-  const rel = relative(base, target)
-  return !!rel && !rel.startsWith('..') && !isAbsolute(rel)
 }
 
 export function chooseBaseRoot(

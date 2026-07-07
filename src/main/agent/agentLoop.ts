@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { ChatCompletionMessage, AgentEvent, ModelRuntimeConfig } from '../../shared/types'
+import { AgentEvent, ModelRuntimeConfig } from '../../shared/types'
 import { AgentHostActions } from '../tools/types'
 import { getToolRegistryView } from '../toolRegistry'
 import {
@@ -21,6 +21,7 @@ import { ToolCallStreamProgress } from './callModel'
 import { AgentRunOptions, prepareAgentRun } from './agentRunPreparation'
 import { runToolTurn } from './toolTurnRunner'
 import { runForcedFinalTurn } from './forcedFinalTurnRunner'
+import { getMessageText as getAssistantText } from './messageText'
 import { startAgentRunLifecycle } from './agentRunLifecycle'
 import { persistAgentRunCheckpoint } from './agentRunCheckpoint'
 import { createAgentEventStream } from './agentEventStream'
@@ -50,16 +51,6 @@ const createAgentHostActions = (mainWindow: BrowserWindow): AgentHostActions => 
     mainWindow.focus()
   }
 })
-
-const getAssistantText = (content: ChatCompletionMessage['content']): string => {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => (part.type === 'text' && typeof part.text === 'string' ? part.text : ''))
-      .join('')
-  }
-  return ''
-}
 
 const formatToolCallProgressMessage = (progress: ToolCallStreamProgress): string => {
   const toolName = progress.toolName || 'tool'

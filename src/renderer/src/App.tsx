@@ -7,12 +7,11 @@ import { MessageBubble } from './components/MessageBubble'
 import { SettingsView } from './components/SettingsView'
 
 import { useSessions } from './hooks/useSessions'
-import { useProviders } from './hooks/useProviders'
 import { useAttachments } from './hooks/useAttachments'
 import { useAutocomplete } from './hooks/useAutocomplete'
 import { useChatCompletion } from './hooks/useChatCompletion'
-import { useSkills } from './hooks/useSkills'
 import { useUserChoiceRequest } from './hooks/useUserChoiceRequest'
+import { useSettings } from './contexts/SettingsContext'
 
 import {
   buildBranchChildIndex,
@@ -51,72 +50,32 @@ function App(): React.JSX.Element {
   })
   const [projects, setProjects] = useState<Project[]>([])
 
-  // 1. Providers hook
+  // 1. Settings (providers + skills) from context. App only pulls the fields it needs itself for
+  // chat, header, autocomplete, the models modal and the ESC handler; the settings UI reads the
+  // rest of the ~60 settings fields directly from SettingsContext instead of via prop drilling.
   const {
-    apiUrl,
-    selectedModel,
     setSelectedModel,
     modelsList,
-    modelContextWindows,
     systemPrompt,
-    setSystemPrompt,
-    autoHideOnBlur,
-    setAutoHideOnBlur,
     contextRetentionMode,
-    setContextRetentionMode,
-    appStorePath,
-    saveSuccess,
     theme,
     toggleTheme,
     providers,
     setProviders,
     activeProviderId,
-    editingProviderId,
     isEditingProviderDetail,
     setIsEditingProviderDetail,
     showAddForm,
     setShowAddForm,
-    newProviderName,
-    setNewProviderName,
-    newProviderType,
-    setNewProviderType,
-    manualModelInput,
-    setManualModelInput,
-    fetchModelsUrl,
-    setFetchModelsUrl,
-    isFetchingModels,
-    refreshingModelContextId,
     fetchedModels,
     showModelsModal,
     setShowModelsModal,
-    handleApiUrlChange,
-    handleSaveGlobalSettings,
-    handleSaveProviderDetails,
-    handleAddProvider,
     handleSetActiveProvider,
-    handleStartEditingProvider,
-    handleDeleteProvider,
-    handleAddManualModel,
-    handleFetchModels,
-    handleRefreshModelContext,
-    handleRemoveModelDirectly,
     handleToggleModelSelection,
-    handleChangeModelContextWindow,
     resetLocalSettings,
     permissions,
-    onChangeToolPermission,
-    webSearchProvider,
-    setWebSearchProvider,
-    webSearchApiKey,
-    setWebSearchApiKey,
-    apiKeys,
-    activeApiKeyId,
-    handleSelectApiKey,
-    handleChangeApiKeyItemName,
-    handleChangeApiKeyValue,
-    handleAddApiKey,
-    handleDeleteApiKey
-  } = useProviders()
+    skills
+  } = useSettings()
 
   // Close settings panel and restore local editor states
   const handleCloseSettings = useCallback((): void => {
@@ -278,9 +237,6 @@ function App(): React.JSX.Element {
     updateAutocompleteItems,
     handleInputKeyDown: autocompleteKeyDown
   } = useAutocomplete()
-
-  // 6. Markdown Skills hook
-  const { skills, installSkill, removeSkill } = useSkills()
 
   // Reset active task message and task panel state when active session changes using render-phase state adjustment
   const [prevSessionId, setPrevSessionId] = useState(activeSessionId)
@@ -579,77 +535,7 @@ function App(): React.JSX.Element {
 
       {/* Main Content Area */}
       {showSettings ? (
-        <SettingsView
-          isEditingProviderDetail={isEditingProviderDetail}
-          editingProviderId={editingProviderId}
-          activeProviderId={activeProviderId}
-          providers={providers}
-          apiUrl={apiUrl}
-          selectedModel={selectedModel}
-          modelsList={modelsList}
-          modelContextWindows={modelContextWindows}
-          manualModelInput={manualModelInput}
-          fetchModelsUrl={fetchModelsUrl}
-          isFetchingModels={isFetchingModels}
-          refreshingModelContextId={refreshingModelContextId}
-          showAddForm={showAddForm}
-          newProviderName={newProviderName}
-          newProviderType={newProviderType}
-          systemPrompt={systemPrompt}
-          autoHideOnBlur={autoHideOnBlur}
-          contextRetentionMode={contextRetentionMode}
-          appStorePath={appStorePath}
-          saveSuccess={saveSuccess}
-          skills={skills}
-          activeSessionId={activeSessionId}
-          setIsEditingProviderDetail={setIsEditingProviderDetail}
-          setSelectedModel={setSelectedModel}
-          setManualModelInput={setManualModelInput}
-          setFetchModelsUrl={setFetchModelsUrl}
-          setShowAddForm={setShowAddForm}
-          setNewProviderName={setNewProviderName}
-          setNewProviderType={setNewProviderType}
-          setSystemPrompt={setSystemPrompt}
-          setAutoHideOnBlur={setAutoHideOnBlur}
-          setContextRetentionMode={setContextRetentionMode}
-          onSaveGlobalSettings={handleSaveGlobalSettings}
-          onSaveProviderDetails={handleSaveProviderDetails}
-          onAddProvider={handleAddProvider}
-          onSetActiveProvider={handleSetActiveProvider}
-          onStartEditingProvider={handleStartEditingProvider}
-          onDeleteProvider={handleDeleteProvider}
-          onAddManualModel={handleAddManualModel}
-          onFetchModels={handleFetchModels}
-          onRefreshModelContext={handleRefreshModelContext}
-          onRemoveModel={handleRemoveModelDirectly}
-          onChangeModelContextWindow={handleChangeModelContextWindow}
-          onInstallSkill={installSkill}
-          onRemoveSkill={removeSkill}
-          onChangeEditingProviderName={(name) => {
-            setProviders((prev) =>
-              prev.map((p) => (p.id === editingProviderId ? { ...p, name } : p))
-            )
-          }}
-          onChangeEditingProviderApiFormat={(apiFormat) => {
-            setProviders((prev) =>
-              prev.map((p) => (p.id === editingProviderId ? { ...p, apiFormat } : p))
-            )
-          }}
-          onChangeEditingProviderApiUrl={handleApiUrlChange}
-          permissions={permissions}
-          onChangeToolPermission={onChangeToolPermission}
-          webSearchProvider={webSearchProvider}
-          setWebSearchProvider={setWebSearchProvider}
-          webSearchApiKey={webSearchApiKey}
-          setWebSearchApiKey={setWebSearchApiKey}
-          apiKeys={apiKeys}
-          activeApiKeyId={activeApiKeyId}
-          onSelectApiKey={handleSelectApiKey}
-          onChangeApiKeyItemName={handleChangeApiKeyItemName}
-          onChangeApiKeyValue={handleChangeApiKeyValue}
-          onAddApiKey={handleAddApiKey}
-          onDeleteApiKey={handleDeleteApiKey}
-        />
+        <SettingsView activeSessionId={activeSessionId} />
       ) : (
         <div className={`chat-area ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
           <SessionSidebar

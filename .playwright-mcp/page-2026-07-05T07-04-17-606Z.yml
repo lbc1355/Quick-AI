@@ -1,0 +1,708 @@
+- generic [ref=f4e2]:
+  - generic [ref=f4e4]:
+    - list [ref=f4e5]:
+      - listitem [ref=f4e6]:
+        - link "首页" [ref=f4e7] [cursor=pointer]:
+          - /url: //www.bilibili.com
+          - img [ref=f4e8]
+          - generic [ref=f4e10]:
+            - text: 首页
+            - img [ref=f4e11]
+      - listitem [ref=f4e14]:
+        - link "番剧" [ref=f4e15] [cursor=pointer]:
+          - /url: //www.bilibili.com/anime/
+      - listitem [ref=f4e16]:
+        - link "直播" [ref=f4e17] [cursor=pointer]:
+          - /url: //live.bilibili.com/
+      - listitem [ref=f4e18]:
+        - link "游戏中心" [ref=f4e19] [cursor=pointer]:
+          - /url: //game.bilibili.com/
+      - listitem [ref=f4e20]:
+        - link "会员购" [ref=f4e21] [cursor=pointer]:
+          - /url: //show.bilibili.com/platform/home.html?msource=pc_web
+      - listitem [ref=f4e22]:
+        - link "漫画" [ref=f4e23] [cursor=pointer]:
+          - /url: //manga.bilibili.com?from=bill_top_mnav
+      - listitem [ref=f4e24]:
+        - link "赛事" [ref=f4e25] [cursor=pointer]:
+          - /url: //www.bilibili.com/v/game/match/
+    - list [ref=f4e26]:
+      - listitem [ref=f4e27] [cursor=pointer]:
+        - generic [ref=f4e28]:
+          - img [ref=f4e29]
+          - generic [ref=f4e32]: 投稿
+  - generic [ref=f4e33]:
+    - generic [ref=f4e34]:
+      - generic [ref=f4e35]:
+        - heading "【arXiv 2026】Cosmos 3：面向物理AI的全模态世界模型 —— 统一理解与生成的五模态世界模型" [level=1] [ref=f4e38]
+        - generic [ref=f4e40]:
+          - generic [ref=f4e41]:
+            - img [ref=f4e42]
+            - generic [ref=f4e43]: "2115"
+          - generic [ref=f4e44]:
+            - img [ref=f4e45]
+            - generic [ref=f4e46]: "0"
+          - generic [ref=f4e48]: 2026-07-02 11:42:24
+      - generic "哔哩哔哩播放器" [ref=f4e58]
+      - generic [ref=f4e68]:
+        - generic [ref=f4e70]:
+          - generic "点赞（Q）" [ref=f4e72] [cursor=pointer]:
+            - img [ref=f4e73]
+            - generic [ref=f4e75]: "24"
+          - generic "投币（W）" [ref=f4e77] [cursor=pointer]:
+            - img [ref=f4e78]
+            - generic [ref=f4e80]: "4"
+          - generic "收藏（E）" [ref=f4e82] [cursor=pointer]:
+            - img [ref=f4e83]
+            - generic [ref=f4e85]: "81"
+          - generic [ref=f4e88] [cursor=pointer]:
+            - img [ref=f4e89]
+            - generic [ref=f4e91]: "9"
+        - img [ref=f4e94] [cursor=pointer]
+      - generic [ref=f4e97]: 【论文信息】 标题：Omnimodal World Models for Physical AI 作者：NVIDIA Cosmos Team 来源：arXiv 2026 论文链接：https://arxiv.org/abs/2606.02800 【核心亮点】 首次将语言、图像、视频、音频、动作五模态统一到一个MoT架构中 Cosmos3-Super在理解和生成任务上全面超越专用开源模型 被Artificial Analysis评为最佳开源T2I和I2V模型 被RoboArena评为最佳策略模型，三版本开源（Edge/Nano/Super） 【内容概要】 本文提出Cosmos 3，一个面向物理AI的全模态世界模型家族，统一处理语言、图像、视频、音频与动作五大模态。基于Mixture-of-Transformers架构，Cosmos 3可在不修改架构的情况下切换为VLM、T2I生成器、T2V/I2V视频模型和世界-动作模型。三个模型版本（Edge 4B、Nano 16B、Super 64B）覆盖端侧到数据中心，在理解与生成任务上全面达到SOTA。代码、模型、数据集和评测基准全部开源。 本视频由 AI 自动生成，仅供学术交流使用。
+      - generic [ref=f4e99]:
+        - link "人工智能" [ref=f4e102] [cursor=pointer]:
+          - /url: //search.bilibili.com/all?keyword=%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD&from_source=video_tag
+        - link "NVIDIA" [ref=f4e105] [cursor=pointer]:
+          - /url: //search.bilibili.com/all?keyword=NVIDIA&from_source=video_tag
+        - link "世界模型" [ref=f4e108] [cursor=pointer]:
+          - /url: //search.bilibili.com/all?keyword=%E4%B8%96%E7%95%8C%E6%A8%A1%E5%9E%8B&from_source=video_tag
+        - link "论文分享" [ref=f4e111] [cursor=pointer]:
+          - /url: //search.bilibili.com/all?keyword=%E8%AE%BA%E6%96%87%E5%88%86%E4%BA%AB&from_source=video_tag
+        - link "具身智能" [ref=f4e114] [cursor=pointer]:
+          - /url: //search.bilibili.com/all?keyword=%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD&from_source=video_tag
+        - link "物理AI" [ref=f4e117] [cursor=pointer]:
+          - /url: //search.bilibili.com/all?keyword=%E7%89%A9%E7%90%86AI&from_source=video_tag
+        - link "多模态" [ref=f4e120] [cursor=pointer]:
+          - /url: //search.bilibili.com/all?keyword=%E5%A4%9A%E6%A8%A1%E6%80%81&from_source=video_tag
+    - generic:
+      - generic:
+        - generic [ref=f4e122]:
+          - link [ref=f4e125] [cursor=pointer]:
+            - /url: //space.bilibili.com/98639326/?spm_id_from=333.788.upinfo.head.click
+          - generic [ref=f4e128]:
+            - generic [ref=f4e129]:
+              - link "物理AI与智能体组会" [ref=f4e130] [cursor=pointer]:
+                - /url: //space.bilibili.com/98639326/?spm_id_from=333.788.upinfo.detail.click
+              - link " 发消息" [ref=f4e131] [cursor=pointer]:
+                - /url: //message.bilibili.com/?spm_id_from=333.788.upinfo.detail.click#whisper/mid98639326
+                - generic [ref=f4e132]: 
+                - text: 发消息
+            - generic "白拾，CWAI理事长，南科大计算机博士在读，存稿400+，关注产学研融合，积极做对的事情，连续创业者。交流群：750365700" [ref=f4e133]
+        - generic [ref=f4e141]:
+          - link "广告 这谁顶得住？b站大会员免费抽 ZERO浏览器 3万人感兴趣" [ref=f4e143] [cursor=pointer]:
+            - /url: javascript:void(0);
+            - generic [ref=f4e144]:
+              - generic [ref=f4e147]: 广告
+              - generic [ref=f4e148]:
+                - generic "这谁顶得住？b站大会员免费抽" [ref=f4e149]
+                - generic [ref=f4e151]: ZERO浏览器
+                - generic [ref=f4e154]: 3万人感兴趣
+          - img [ref=f4e156]
+        - generic [ref=f4e157]:
+          - generic [ref=f4e158]:
+            - generic [ref=f4e159]:
+              - generic [ref=f4e161]:
+                - link "【论文】人工智能" [ref=f4e162] [cursor=pointer]:
+                  - /url: //space.bilibili.com/98639326/channel/collectiondetail?sid=7967102&spm_id_from=333.788.0.0
+                - generic [ref=f4e163]: （40/99）
+              - generic [ref=f4e164]:
+                - generic [ref=f4e165]:
+                  - generic [ref=f4e166]: 4795播放
+                  - generic [ref=f4e167] [cursor=pointer]:
+                    - img [ref=f4e168]
+                    - text: 简介
+                - generic [ref=f4e170] [cursor=pointer]: 订阅合集
+            - generic [ref=f4e172]:
+              - generic "综述" [ref=f4e173] [cursor=pointer]
+              - generic "课题组" [ref=f4e174] [cursor=pointer]
+              - generic "顶刊顶会" [ref=f4e175] [cursor=pointer]
+              - generic "arXiv" [ref=f4e176] [cursor=pointer]
+              - generic "博客" [ref=f4e177] [cursor=pointer]
+            - generic [ref=f4e179]:
+              - generic [ref=f4e182] [cursor=pointer]:
+                - generic "【arXiv 2024】DeepSeekMoE：极致专家特化的MoE架构 — 组合灵活性提升3600万倍，40%计算量媲美7B稠密模型" [ref=f4e183]:
+                  - generic [ref=f4e184]: 【arXiv 2024】DeepSeekMoE：极致专家特化的MoE架构 — 组合灵活性提升3600万倍，40%计算量媲美7B稠密模型
+                - generic [ref=f4e186]: 15:31
+              - generic [ref=f4e189] [cursor=pointer]:
+                - generic "【arXiv 2024】LLM任务叠加：单次推理同时执行多个ICL任务 — 一次前向，K个任务，5大发现" [ref=f4e190]:
+                  - generic [ref=f4e191]: 【arXiv 2024】LLM任务叠加：单次推理同时执行多个ICL任务 — 一次前向，K个任务，5大发现
+                - generic [ref=f4e193]: 16:58
+              - generic [ref=f4e196] [cursor=pointer]:
+                - generic "【arXiv 2024】Proactive Agent 基于大模型的主动式智能体：从被动响应到主动协助 — 小模型微调超越GPT-4o" [ref=f4e197]:
+                  - generic [ref=f4e198]: 【arXiv 2024】Proactive Agent 基于大模型的主动式智能体：从被动响应到主动协助 — 小模型微调超越GPT-4o
+                - generic [ref=f4e200]: 19:05
+              - generic [ref=f4e203] [cursor=pointer]:
+                - generic "【arXiv 2025】InternVL3.5：推进开源多模态模型的全能性、推理与效率 — 三大创新逼近GPT-5，仅差3.9%" [ref=f4e204]:
+                  - generic [ref=f4e205]: 【arXiv 2025】InternVL3.5：推进开源多模态模型的全能性、推理与效率 — 三大创新逼近GPT-5，仅差3.9%
+                - generic [ref=f4e207]: 22:46
+              - generic [ref=f4e210] [cursor=pointer]:
+                - generic "【arXiv 2026】ForkKV：基于写时复制解耦KV缓存的多LoRA智能体高效推理系统 — 吞吐量提升3倍，质量损失不足1%" [ref=f4e211]:
+                  - generic [ref=f4e212]: 【arXiv 2026】ForkKV：基于写时复制解耦KV缓存的多LoRA智能体高效推理系统 — 吞吐量提升3倍，质量损失不足1%
+                - generic [ref=f4e214]: 19:44
+              - generic [ref=f4e217] [cursor=pointer]:
+                - generic "【arXiv 2026】DSpark：置信度调度的推测解码与半自回归生成 — DeepSeek-V4推理加速60-85%" [ref=f4e218]:
+                  - generic [ref=f4e219]: 【arXiv 2026】DSpark：置信度调度的推测解码与半自回归生成 — DeepSeek-V4推理加速60-85%
+                - generic [ref=f4e221]: 22:07
+              - generic [ref=f4e224] [cursor=pointer]:
+                - generic "【arXiv 2026】Skill-3D：让MLLM按场景自动选工具，有效使用率39%→78%" [ref=f4e225]:
+                  - generic [ref=f4e226]: 【arXiv 2026】Skill-3D：让MLLM按场景自动选工具，有效使用率39%→78%
+                - generic [ref=f4e228]: 18:37
+              - generic [ref=f4e231] [cursor=pointer]:
+                - generic "【arXiv 2026】Cosmos 3：面向物理AI的全模态世界模型 —— 统一理解与生成的五模态世界模型" [ref=f4e232]:
+                  - generic [ref=f4e234]: 【arXiv 2026】Cosmos 3：面向物理AI的全模态世界模型 —— 统一理解与生成的五模态世界模型
+                - generic [ref=f4e236]: 18:01
+              - generic [ref=f4e239] [cursor=pointer]:
+                - generic "【arXiv 2026】VoLo：面向开放词汇长序列操作的物理编排器" [ref=f4e240]:
+                  - generic [ref=f4e241]: 【arXiv 2026】VoLo：面向开放词汇长序列操作的物理编排器
+                - generic [ref=f4e243]: 23:09
+              - generic [ref=f4e246] [cursor=pointer]:
+                - generic "【arXiv 2026】QuadVerse：对齐视觉-物理现实的一体化四足仿真框架" [ref=f4e247]:
+                  - generic [ref=f4e248]: 【arXiv 2026】QuadVerse：对齐视觉-物理现实的一体化四足仿真框架
+                - generic [ref=f4e250]: 16:49
+              - generic [ref=f4e253] [cursor=pointer]:
+                - generic "【arXiv 2026】神经符号学习：复杂逻辑约束下的长时序任务规划" [ref=f4e254]:
+                  - generic [ref=f4e255]: 【arXiv 2026】神经符号学习：复杂逻辑约束下的长时序任务规划
+                - generic [ref=f4e257]: 20:36
+              - generic [ref=f4e260] [cursor=pointer]:
+                - generic "【arXiv 2026】Coarse-to-Control：基于动作 Token 规划的 VLA 模型" [ref=f4e261]:
+                  - generic [ref=f4e262]: 【arXiv 2026】Coarse-to-Control：基于动作 Token 规划的 VLA 模型
+                - generic [ref=f4e264]: 19:15
+              - generic [ref=f4e267] [cursor=pointer]:
+                - generic "【arXiv 2026】STRIPS-WM 从图像中学习命题逻辑世界模型" [ref=f4e268]:
+                  - generic [ref=f4e269]: 【arXiv 2026】STRIPS-WM 从图像中学习命题逻辑世界模型
+                - generic [ref=f4e271]: 17:57
+              - generic [ref=f4e274] [cursor=pointer]:
+                - generic "【arXiv 2026】FLIGHT 像飞行员一样思考：细粒度长序列无人机导航" [ref=f4e275]:
+                  - generic [ref=f4e276]: 【arXiv 2026】FLIGHT 像飞行员一样思考：细粒度长序列无人机导航
+                - generic [ref=f4e278]: 18:28
+              - generic [ref=f4e281] [cursor=pointer]:
+                - generic "【arXiv 2026】IR-SIM：面向导航、学习与基准测试的轻量级技能原生模拟器" [ref=f4e282]:
+                  - generic [ref=f4e283]: 【arXiv 2026】IR-SIM：面向导航、学习与基准测试的轻量级技能原生模拟器
+                - generic [ref=f4e285]: 16:53
+              - generic [ref=f4e288] [cursor=pointer]:
+                - generic "【arXiv 2026】ENPIRE — 让编程智能体自主提升真实世界机器人操作能力" [ref=f4e289]:
+                  - generic [ref=f4e290]: 【arXiv 2026】ENPIRE — 让编程智能体自主提升真实世界机器人操作能力
+                - generic [ref=f4e292]: 18:02
+              - generic [ref=f4e295] [cursor=pointer]:
+                - generic "【arXiv 2026】Benchmarking Vision-Language-Action Models on SO-101" [ref=f4e296]:
+                  - generic [ref=f4e297]: 【arXiv 2026】Benchmarking Vision-Language-Action Models on SO-101
+                - generic [ref=f4e299]: 17:11
+              - generic [ref=f4e302] [cursor=pointer]:
+                - generic "【arXiv 2026】MemoryVLA++：通过记忆与想象实现 VLA 模型的全时序建模" [ref=f4e303]:
+                  - generic [ref=f4e304]: 【arXiv 2026】MemoryVLA++：通过记忆与想象实现 VLA 模型的全时序建模
+                - generic [ref=f4e306]: 19:54
+              - generic [ref=f4e309] [cursor=pointer]:
+                - generic "【arXiv 2026】AgenticNav：零样本视觉语言导航的工具调用框架" [ref=f4e310]:
+                  - generic [ref=f4e311]: 【arXiv 2026】AgenticNav：零样本视觉语言导航的工具调用框架
+                - generic [ref=f4e313]: 20:00
+              - generic [ref=f4e316] [cursor=pointer]:
+                - generic "【arXiv 2026】超越 API：探秘多模态大模型的物理工具使用能力 — MLLM 能用螺丝刀吗" [ref=f4e317]:
+                  - generic [ref=f4e318]: 【arXiv 2026】超越 API：探秘多模态大模型的物理工具使用能力 — MLLM 能用螺丝刀吗
+                - generic [ref=f4e320]: 17:48
+              - generic [ref=f4e323] [cursor=pointer]:
+                - generic "【arXiv 2026】DAM-VLA：解耦异步多模态 VLA — 接触操作成功率翻倍至 95%" [ref=f4e324]:
+                  - generic [ref=f4e325]: 【arXiv 2026】DAM-VLA：解耦异步多模态 VLA — 接触操作成功率翻倍至 95%
+                - generic [ref=f4e327]: 17:43
+              - generic [ref=f4e330] [cursor=pointer]:
+                - generic "【arXiv 2026】WorldOlympiad：你的世界模型能通过铁人三项吗？" [ref=f4e331]:
+                  - generic [ref=f4e332]: 【arXiv 2026】WorldOlympiad：你的世界模型能通过铁人三项吗？
+                - generic [ref=f4e334]: 20:13
+              - generic [ref=f4e337] [cursor=pointer]:
+                - generic "【arXiv 2026】CHORUS：一个 VLA 策略实现去中心化多本体协作" [ref=f4e338]:
+                  - generic [ref=f4e339]: 【arXiv 2026】CHORUS：一个 VLA 策略实现去中心化多本体协作
+                - generic [ref=f4e341]: 16:05
+              - generic [ref=f4e344] [cursor=pointer]:
+                - generic "【arXiv 2026】APT：动作专家预训练提升 VLA 指令泛化能力" [ref=f4e345]:
+                  - generic [ref=f4e346]: 【arXiv 2026】APT：动作专家预训练提升 VLA 指令泛化能力
+                - generic [ref=f4e348]: 16:17
+              - generic [ref=f4e351] [cursor=pointer]:
+                - generic "【arXiv 2026】LongBench：真实世界长时域机器人操作评测基准" [ref=f4e352]:
+                  - generic [ref=f4e353]: 【arXiv 2026】LongBench：真实世界长时域机器人操作评测基准
+                - generic [ref=f4e355]: 18:45
+              - generic [ref=f4e358] [cursor=pointer]:
+                - generic "【arXiv 2026】LiveVLN：打破视觉语言导航中的走走停停循环" [ref=f4e359]:
+                  - generic [ref=f4e360]: 【arXiv 2026】LiveVLN：打破视觉语言导航中的走走停停循环
+                - generic [ref=f4e362]: 07:32
+              - generic [ref=f4e365] [cursor=pointer]:
+                - generic "【arXiv 2026】长序列操作：基于视觉轨迹引导的 VLA 规划" [ref=f4e366]:
+                  - generic [ref=f4e367]: 【arXiv 2026】长序列操作：基于视觉轨迹引导的 VLA 规划
+                - generic [ref=f4e369]: 14:28
+              - generic [ref=f4e372] [cursor=pointer]:
+                - generic "【arXiv 2026】HiCo-Nav：一种可部署的具身视觉-语言导航系统" [ref=f4e373]:
+                  - generic [ref=f4e374]: 【arXiv 2026】HiCo-Nav：一种可部署的具身视觉-语言导航系统
+                - generic [ref=f4e376]: 23:32
+              - generic [ref=f4e379] [cursor=pointer]:
+                - generic "【arXiv 2026】Hi-WM：在世界模型中做人机协同后训练" [ref=f4e380]:
+                  - generic [ref=f4e381]: 【arXiv 2026】Hi-WM：在世界模型中做人机协同后训练
+                - generic [ref=f4e383]: 16:37
+              - generic [ref=f4e386] [cursor=pointer]:
+                - generic "【arXiv 2026】Embody4D：面向具身 4D 世界建模的通用数据引擎" [ref=f4e387]:
+                  - generic [ref=f4e388]: 【arXiv 2026】Embody4D：面向具身 4D 世界建模的通用数据引擎
+                - generic [ref=f4e390]: 20:26
+              - generic [ref=f4e393] [cursor=pointer]:
+                - generic "【arXiv 2026】视觉语言导航的瓶颈在哪里？" [ref=f4e394]:
+                  - generic [ref=f4e395]: 【arXiv 2026】视觉语言导航的瓶颈在哪里？
+                - generic [ref=f4e397]: 17:05
+              - generic [ref=f4e400] [cursor=pointer]:
+                - generic "【arXiv 2026】RoboFlow4D：面向实时流引导机器人操作的轻量级流世界模型" [ref=f4e401]:
+                  - generic [ref=f4e402]: 【arXiv 2026】RoboFlow4D：面向实时流引导机器人操作的轻量级流世界模型
+                - generic [ref=f4e404]: 15:37
+              - generic [ref=f4e407] [cursor=pointer]:
+                - generic "【arXiv 2026】Robo-Cortex：基于双粒度认知记忆与自主知识归纳的自进化具身导航框架" [ref=f4e408]:
+                  - generic [ref=f4e409]: 【arXiv 2026】Robo-Cortex：基于双粒度认知记忆与自主知识归纳的自进化具身导航框架
+                - generic [ref=f4e411]: 19:00
+              - generic [ref=f4e414] [cursor=pointer]:
+                - generic "【arXiv 2026】WorldArena 2.0：具身世界模型的多维度基准评测" [ref=f4e415]:
+                  - generic [ref=f4e416]: 【arXiv 2026】WorldArena 2.0：具身世界模型的多维度基准评测
+                - generic [ref=f4e418]: 17:53
+              - generic [ref=f4e421] [cursor=pointer]:
+                - generic "【arXiv 2026】ESI-Bench：面向具身空间智能的感知-行动闭环基准测试" [ref=f4e422]:
+                  - generic [ref=f4e423]: 【arXiv 2026】ESI-Bench：面向具身空间智能的感知-行动闭环基准测试
+                - generic [ref=f4e425]: 17:29
+              - generic [ref=f4e428] [cursor=pointer]:
+                - generic "【arXiv 2026】世界—自我建模：具身混合任务中的长程演化" [ref=f4e429]:
+                  - generic [ref=f4e430]: 【arXiv 2026】世界—自我建模：具身混合任务中的长程演化
+                - generic [ref=f4e432]: 19:20
+              - generic [ref=f4e435] [cursor=pointer]:
+                - generic "【arXiv 2026】GaussianDream：面向机器人操作的前馈 3D 高斯世界模型" [ref=f4e436]:
+                  - generic [ref=f4e437]: 【arXiv 2026】GaussianDream：面向机器人操作的前馈 3D 高斯世界模型
+                - generic [ref=f4e439]: 22:39
+              - generic [ref=f4e442] [cursor=pointer]:
+                - generic "【arXiv 2026】从感知到决策：扩展具身问答（EQA）" [ref=f4e443]:
+                  - generic [ref=f4e444]: 【arXiv 2026】从感知到决策：扩展具身问答（EQA）
+                - generic [ref=f4e446]: 10:34
+              - generic [ref=f4e449] [cursor=pointer]:
+                - generic "【arXiv 2026】Uni-LaViRA：语言-视觉-机器人动作翻译实现统一具身导航" [ref=f4e450]:
+                  - generic [ref=f4e451]: 【arXiv 2026】Uni-LaViRA：语言-视觉-机器人动作翻译实现统一具身导航
+                - generic [ref=f4e453]: 16:11
+              - generic [ref=f4e456] [cursor=pointer]:
+                - generic "【arXiv 2026】MIRABENCH：评估机器人世界模型的动作条件可靠性" [ref=f4e457]:
+                  - generic [ref=f4e458]: 【arXiv 2026】MIRABENCH：评估机器人世界模型的动作条件可靠性
+                - generic [ref=f4e460]: 19:33
+              - generic [ref=f4e463] [cursor=pointer]:
+                - generic "【arXiv 2026】What-If World：具身场景中通用世界模型的因果基准测试" [ref=f4e464]:
+                  - generic [ref=f4e465]: 【arXiv 2026】What-If World：具身场景中通用世界模型的因果基准测试
+                - generic [ref=f4e467]: 13:21
+              - generic [ref=f4e470] [cursor=pointer]:
+                - generic "【arXiv 2026】DynaFLIP：基于三模态动力学引导表示的机器人感知重思" [ref=f4e471]:
+                  - generic [ref=f4e472]: 【arXiv 2026】DynaFLIP：基于三模态动力学引导表示的机器人感知重思
+                - generic [ref=f4e474]: 23:39
+              - generic [ref=f4e477] [cursor=pointer]:
+                - generic "【arXiv 2026】MineExplorer：MLLM Agent\\\\开放世界探索能力评测基准" [ref=f4e478]:
+                  - generic [ref=f4e479]: 【arXiv 2026】MineExplorer：MLLM Agent\\开放世界探索能力评测基准
+                - generic [ref=f4e481]: 17:11
+              - generic [ref=f4e484] [cursor=pointer]:
+                - generic "【arXiv 2026】基础模型能否通过主动探索达到目标视角？" [ref=f4e485]:
+                  - generic [ref=f4e486]: 【arXiv 2026】基础模型能否通过主动探索达到目标视角？
+                - generic [ref=f4e488]: 16:37
+              - generic [ref=f4e491] [cursor=pointer]:
+                - generic "【arXiv 2026】eMEM：面向具身智能体的混合时空记忆系统" [ref=f4e492]:
+                  - generic [ref=f4e493]: 【arXiv 2026】eMEM：面向具身智能体的混合时空记忆系统
+                - generic [ref=f4e495]: 23:34
+              - generic [ref=f4e498] [cursor=pointer]:
+                - generic "【arXiv 2026】MIRABENCH：评估机器人世界模型的动作条件可靠性" [ref=f4e499]:
+                  - generic [ref=f4e500]: 【arXiv 2026】MIRABENCH：评估机器人世界模型的动作条件可靠性
+                - generic [ref=f4e502]: 19:33
+              - generic [ref=f4e505] [cursor=pointer]:
+                - 'generic "【arXiv 2026】Embodied-R1.5: Evolving Physical Intelligence\\\\via Embodied Foundati" [ref=f4e506]':
+                  - generic [ref=f4e507]: "【arXiv 2026】Embodied-R1.5: Evolving Physical Intelligence\\\\via Embodied Foundati"
+                - generic [ref=f4e509]: 23:24
+              - generic [ref=f4e512] [cursor=pointer]:
+                - generic "【arXiv 2026】RoboFlow4D：面向实时流引导机器人操作的轻量级流世界模型" [ref=f4e513]:
+                  - generic [ref=f4e514]: 【arXiv 2026】RoboFlow4D：面向实时流引导机器人操作的轻量级流世界模型
+                - generic [ref=f4e516]: 15:37
+              - generic [ref=f4e519] [cursor=pointer]:
+                - generic "【arXiv 2026】IR-SIM：面向导航、学习与基准测试的轻量级技能原生模拟器——YAML配置+LLM技能秒建可复现导航场景" [ref=f4e520]:
+                  - generic [ref=f4e521]: 【arXiv 2026】IR-SIM：面向导航、学习与基准测试的轻量级技能原生模拟器——YAML配置+LLM技能秒建可复现导航场景
+                - generic [ref=f4e523]: 16:53
+              - generic [ref=f4e526] [cursor=pointer]:
+                - generic "【arXiv 2026】AgenticNav — 零样本视觉语言导航的工具调用框架" [ref=f4e527]:
+                  - generic [ref=f4e528]: 【arXiv 2026】AgenticNav — 零样本视觉语言导航的工具调用框架
+                - generic [ref=f4e530]: 20:00
+              - generic [ref=f4e533] [cursor=pointer]:
+                - generic "【arXiv 2026】MemoryVLA++ — 通过记忆与想象实现 VLA 模型的全时序建模" [ref=f4e534]:
+                  - generic [ref=f4e535]: 【arXiv 2026】MemoryVLA++ — 通过记忆与想象实现 VLA 模型的全时序建模
+                - generic [ref=f4e537]: 19:54
+              - generic [ref=f4e540] [cursor=pointer]:
+                - generic "【arXiv 2026】WorldOlympiad — 你的世界模型能通过铁人三项吗？" [ref=f4e541]:
+                  - generic [ref=f4e542]: 【arXiv 2026】WorldOlympiad — 你的世界模型能通过铁人三项吗？
+                - generic [ref=f4e544]: 20:13
+              - generic [ref=f4e547] [cursor=pointer]:
+                - generic "【arXiv 2026】APT：动作专家预训练提升 VLA 策略的指令泛化能力" [ref=f4e548]:
+                  - generic [ref=f4e549]: 【arXiv 2026】APT：动作专家预训练提升 VLA 策略的指令泛化能力
+                - generic [ref=f4e551]: 16:17
+              - generic [ref=f4e554] [cursor=pointer]:
+                - generic "【arXiv 2026】推理即路由：面向具身规划的自适应测试时计算分配" [ref=f4e555]:
+                  - generic [ref=f4e556]: 【arXiv 2026】推理即路由：面向具身规划的自适应测试时计算分配
+                - generic [ref=f4e558]: 18:13
+              - generic [ref=f4e561] [cursor=pointer]:
+                - generic "【arXiv 2026】CHORUS — 用一个 VLA 策略实现去中心化多本体协作" [ref=f4e562]:
+                  - generic [ref=f4e563]: 【arXiv 2026】CHORUS — 用一个 VLA 策略实现去中心化多本体协作
+                - generic [ref=f4e565]: 16:05
+              - generic [ref=f4e568] [cursor=pointer]:
+                - 'generic "【arXiv 2026】World Pilot: Steering VLA Models with World-Action Priors" [ref=f4e569]':
+                  - generic [ref=f4e570]: "【arXiv 2026】World Pilot: Steering VLA Models with World-Action Priors"
+                - generic [ref=f4e572]: 22:29
+              - generic [ref=f4e575] [cursor=pointer]:
+                - generic "【arXiv 2026】OSCAR：面向机器人策略评估的全具身动作条件世界模型" [ref=f4e576]:
+                  - generic [ref=f4e577]: 【arXiv 2026】OSCAR：面向机器人策略评估的全具身动作条件世界模型
+                - generic [ref=f4e579]: 14:36
+              - generic [ref=f4e582] [cursor=pointer]:
+                - generic "【arXiv 2026】CAPE：对比动作条件并行编码的具身规划" [ref=f4e583]:
+                  - generic [ref=f4e584]: 【arXiv 2026】CAPE：对比动作条件并行编码的具身规划
+                - generic [ref=f4e586]: 15:18
+              - generic [ref=f4e589] [cursor=pointer]:
+                - generic "【arXiv 2026】SpaceVLN：基于在线空间认知记忆与推理的零样本视觉语言导航" [ref=f4e590]:
+                  - generic [ref=f4e591]: 【arXiv 2026】SpaceVLN：基于在线空间认知记忆与推理的零样本视觉语言导航
+                - generic [ref=f4e593]: 19:32
+              - generic [ref=f4e596] [cursor=pointer]:
+                - generic "【arXiv 2026】MotionWAM：面向实时人形机器人运动操控的基础世界行动模型" [ref=f4e597]:
+                  - generic [ref=f4e598]: 【arXiv 2026】MotionWAM：面向实时人形机器人运动操控的基础世界行动模型
+                - generic [ref=f4e600]: 16:45
+              - generic [ref=f4e603] [cursor=pointer]:
+                - generic "【arXiv 2026】WAV：隐式规划的视觉–语言–动作统一框架" [ref=f4e604]:
+                  - generic [ref=f4e605]: 【arXiv 2026】WAV：隐式规划的视觉–语言–动作统一框架
+                - generic [ref=f4e607]: 11:54
+              - generic [ref=f4e610] [cursor=pointer]:
+                - generic "【arXiv 2026】COIN：当推理遇上具身交互 —— 交互式推理基准测试" [ref=f4e611]:
+                  - generic [ref=f4e612]: 【arXiv 2026】COIN：当推理遇上具身交互 —— 交互式推理基准测试
+                - generic [ref=f4e614]: 10:35
+              - generic [ref=f4e617] [cursor=pointer]:
+                - generic "【arXiv 2026】场景遮挡下 VLA 模型的评估与改进\\\\基于视角想象的感知补全" [ref=f4e618]:
+                  - generic [ref=f4e619]: 【arXiv 2026】场景遮挡下 VLA 模型的评估与改进\\基于视角想象的感知补全
+                - generic [ref=f4e621]: 21:36
+          - generic [ref=f4e622]:
+            - generic [ref=f4e623]:
+              - generic [ref=f4e625]:
+                - link [ref=f4e627] [cursor=pointer]:
+                  - /url: https://www.bilibili.com/bubble/home/57?spm_id_from=333.788.specialRecommendByOp.0
+                - generic [ref=f4e628]:
+                  - link "【B站AI论坛】欢迎写代码、做产品的AI开发者发帖加入" [ref=f4e629] [cursor=pointer]:
+                    - /url: https://www.bilibili.com/bubble/home/57?spm_id_from=333.788.specialRecommendByOp.0
+                    - paragraph [ref=f4e630]: 【B站AI论坛】欢迎写代码、做产品的AI开发者发帖加入
+                  - generic [ref=f4e631]: 共建AI开发者交流地>>
+              - generic [ref=f4e633]:
+                - link [ref=f4e637] [cursor=pointer]:
+                  - /url: /video/BV1XJLf6tENt/?spm_id_from=333.788.recommend_more_video.0&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e638]:
+                  - link "NVIDIA 发布 Cosmos 3：会\"推理 + 生成 + 动作\"的物理AI开放模型" [ref=f4e639] [cursor=pointer]:
+                    - /url: /video/BV1XJLf6tENt/?spm_id_from=333.788.recommend_more_video.0&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e640]: NVIDIA 发布 Cosmos 3：会"推理 + 生成 + 动作"的物理AI开放模型
+                  - link "NVIDIA英伟达" [ref=f4e642] [cursor=pointer]:
+                    - /url: //space.bilibili.com/1320140761/
+                    - img [ref=f4e643]
+                    - generic [ref=f4e644]: NVIDIA英伟达
+                  - generic [ref=f4e645]:
+                    - img [ref=f4e646]
+                    - text: "9723"
+                    - img [ref=f4e647]
+                    - text: "0"
+              - generic [ref=f4e649]:
+                - link [ref=f4e653] [cursor=pointer]:
+                  - /url: /video/BV18rMc6kEnq/?spm_id_from=333.788.recommend_more_video.1&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e654]:
+                  - link "【CVPR 2026】D3D-VLP 动态3D视觉语言规划模型 - 统一3D规划-定位-导航的链式思考模型，5项benchmark新SOTA" [ref=f4e655] [cursor=pointer]:
+                    - /url: /video/BV18rMc6kEnq/?spm_id_from=333.788.recommend_more_video.1&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e656]: 【CVPR 2026】D3D-VLP 动态3D视觉语言规划模型 - 统一3D规划-定位-导航的链式思考模型，5项benchmark新SOTA
+                  - link "物理AI与智能体组会" [ref=f4e658] [cursor=pointer]:
+                    - /url: //space.bilibili.com/98639326/
+                    - img [ref=f4e659]
+                    - generic [ref=f4e660]: 物理AI与智能体组会
+                  - generic [ref=f4e661]:
+                    - img [ref=f4e662]
+                    - text: "68"
+                    - img [ref=f4e663]
+                    - text: "0"
+              - generic [ref=f4e665]:
+                - link [ref=f4e669] [cursor=pointer]:
+                  - /url: /video/BV1Hh7y6rECc/?spm_id_from=333.788.recommend_more_video.2&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e670]:
+                  - link "英伟达抛出Cosmos 3，物理AI时代的多米诺骨牌倒向何方？" [ref=f4e671] [cursor=pointer]:
+                    - /url: /video/BV1Hh7y6rECc/?spm_id_from=333.788.recommend_more_video.2&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e672]: 英伟达抛出Cosmos 3，物理AI时代的多米诺骨牌倒向何方？
+                  - link "每天解读一家上市公司" [ref=f4e674] [cursor=pointer]:
+                    - /url: //space.bilibili.com/3546669505317088/
+                    - img [ref=f4e675]
+                    - generic [ref=f4e676]: 每天解读一家上市公司
+                  - generic [ref=f4e677]:
+                    - img [ref=f4e678]
+                    - text: "1847"
+                    - img [ref=f4e679]
+                    - text: "0"
+              - generic [ref=f4e681]:
+                - link [ref=f4e685] [cursor=pointer]:
+                  - /url: /video/BV1QwLU6FEys/?spm_id_from=333.788.recommend_more_video.3&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e686]:
+                  - link "谷歌Omni视频模型实测，真人生成方面爆杀seedance" [ref=f4e687] [cursor=pointer]:
+                    - /url: /video/BV1QwLU6FEys/?spm_id_from=333.788.recommend_more_video.3&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e688]: 谷歌Omni视频模型实测，真人生成方面爆杀seedance
+                  - link "雪花宝可梦官方频道" [ref=f4e690] [cursor=pointer]:
+                    - /url: //space.bilibili.com/13814359/
+                    - img [ref=f4e691]
+                    - generic [ref=f4e692]: 雪花宝可梦官方频道
+                  - generic [ref=f4e693]:
+                    - img [ref=f4e694]
+                    - text: "6390"
+                    - img [ref=f4e695]
+                    - text: "0"
+              - generic [ref=f4e697]:
+                - link [ref=f4e701] [cursor=pointer]:
+                  - /url: /video/BV1ZE716BE2s/?spm_id_from=333.788.recommend_more_video.4&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e702]:
+                  - link "深入解读英伟达Cosmos 3——全球首款完全开放的全模态物理AI模型！" [ref=f4e703] [cursor=pointer]:
+                    - /url: /video/BV1ZE716BE2s/?spm_id_from=333.788.recommend_more_video.4&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e704]: 深入解读英伟达Cosmos 3——全球首款完全开放的全模态物理AI模型！
+                  - link "多模态实验室" [ref=f4e706] [cursor=pointer]:
+                    - /url: //space.bilibili.com/325720245/
+                    - img [ref=f4e707]
+                    - generic [ref=f4e708]: 多模态实验室
+                  - generic [ref=f4e709]:
+                    - img [ref=f4e710]
+                    - text: "3447"
+                    - img [ref=f4e711]
+                    - text: "0"
+              - generic [ref=f4e713]:
+                - link [ref=f4e717] [cursor=pointer]:
+                  - /url: /video/BV1RNTc6VENx/?spm_id_from=333.788.recommend_more_video.5&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e718]:
+                  - link "U-Net在AI生图的统治地位是如何被打破的？【DiT扩散模型原理】" [ref=f4e719] [cursor=pointer]:
+                    - /url: /video/BV1RNTc6VENx/?spm_id_from=333.788.recommend_more_video.5&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e720]: U-Net在AI生图的统治地位是如何被打破的？【DiT扩散模型原理】
+                  - link "AI扫地曾" [ref=f4e722] [cursor=pointer]:
+                    - /url: //space.bilibili.com/499725296/
+                    - img [ref=f4e723]
+                    - generic [ref=f4e724]: AI扫地曾
+                  - generic [ref=f4e725]:
+                    - img [ref=f4e726]
+                    - text: "1265"
+                    - img [ref=f4e727]
+                    - text: "0"
+              - generic [ref=f4e729]:
+                - link [ref=f4e733] [cursor=pointer]:
+                  - /url: /video/BV1dYEc65EVE/?spm_id_from=333.788.recommend_more_video.6&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e734]:
+                  - link "什么是世界模型？李飞飞三个词讲明白了" [ref=f4e735] [cursor=pointer]:
+                    - /url: /video/BV1dYEc65EVE/?spm_id_from=333.788.recommend_more_video.6&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e736]: 什么是世界模型？李飞飞三个词讲明白了
+                  - link "TechAstra星科技" [ref=f4e738] [cursor=pointer]:
+                    - /url: //space.bilibili.com/1977121732/
+                    - img [ref=f4e739]
+                    - generic [ref=f4e740]: TechAstra星科技
+                  - generic [ref=f4e741]:
+                    - img [ref=f4e742]
+                    - text: 2.1万
+                    - img [ref=f4e743]
+                    - text: "4"
+              - generic [ref=f4e745]:
+                - link [ref=f4e749] [cursor=pointer]:
+                  - /url: /video/BV1biUnBFEof/?spm_id_from=333.788.recommend_more_video.7&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e750]:
+                  - link "具身世界模型和VLA经典算法详解：WorldVLA" [ref=f4e751] [cursor=pointer]:
+                    - /url: /video/BV1biUnBFEof/?spm_id_from=333.788.recommend_more_video.7&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e752]: 具身世界模型和VLA经典算法详解：WorldVLA
+                  - link "具身智能之心RoboTech" [ref=f4e754] [cursor=pointer]:
+                    - /url: //space.bilibili.com/1961034195/
+                    - img [ref=f4e755]
+                    - generic [ref=f4e756]: 具身智能之心RoboTech
+                  - generic [ref=f4e757]:
+                    - img [ref=f4e758]
+                    - text: 3.4万
+                    - img [ref=f4e759]
+                    - text: "18"
+              - generic [ref=f4e761]:
+                - link [ref=f4e765] [cursor=pointer]:
+                  - /url: /video/BV1zAjM6cExX/?spm_id_from=333.788.recommend_more_video.8&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e766]:
+                  - link "腾讯混元3D及世界模型负责人郭春超：从物体生成到世界模型的探索和应用" [ref=f4e767] [cursor=pointer]:
+                    - /url: /video/BV1zAjM6cExX/?spm_id_from=333.788.recommend_more_video.8&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e768]: 腾讯混元3D及世界模型负责人郭春超：从物体生成到世界模型的探索和应用
+                  - link "AI早餐汇" [ref=f4e770] [cursor=pointer]:
+                    - /url: //space.bilibili.com/1370967350/
+                    - img [ref=f4e771]
+                    - generic [ref=f4e772]: AI早餐汇
+                  - generic [ref=f4e773]:
+                    - img [ref=f4e774]
+                    - text: "1235"
+                    - img [ref=f4e775]
+                    - text: "0"
+              - generic [ref=f4e777]:
+                - link [ref=f4e781] [cursor=pointer]:
+                  - /url: /video/BV1HBMF6dE7W/?spm_id_from=333.788.recommend_more_video.9&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e782]:
+                  - link "【arXiv 2026】World Model for Robot Learning (5/7)：机器人视频世界模型" [ref=f4e783] [cursor=pointer]:
+                    - /url: /video/BV1HBMF6dE7W/?spm_id_from=333.788.recommend_more_video.9&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e784]: 【arXiv 2026】World Model for Robot Learning (5/7)：机器人视频世界模型
+                  - link "物理AI与智能体组会" [ref=f4e786] [cursor=pointer]:
+                    - /url: //space.bilibili.com/98639326/
+                    - img [ref=f4e787]
+                    - generic [ref=f4e788]: 物理AI与智能体组会
+                  - generic [ref=f4e789]:
+                    - img [ref=f4e790]
+                    - text: "33"
+                    - img [ref=f4e791]
+                    - text: "0"
+              - generic [ref=f4e793]:
+                - link [ref=f4e797] [cursor=pointer]:
+                  - /url: /video/BV1HUzLBVEse/?spm_id_from=333.788.recommend_more_video.10&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e798]:
+                  - link "拒绝deepseek工作邀请！清华学霸谈当年为何选择OpenAI！" [ref=f4e799] [cursor=pointer]:
+                    - /url: /video/BV1HUzLBVEse/?spm_id_from=333.788.recommend_more_video.10&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e800]: 拒绝deepseek工作邀请！清华学霸谈当年为何选择OpenAI！
+                  - link "网易科技频道" [ref=f4e802] [cursor=pointer]:
+                    - /url: //space.bilibili.com/519959352/
+                    - img [ref=f4e803]
+                    - generic [ref=f4e804]: 网易科技频道
+                  - generic [ref=f4e805]:
+                    - img [ref=f4e806]
+                    - text: 7.8万
+                    - img [ref=f4e807]
+                    - text: "8"
+              - generic [ref=f4e809]:
+                - link [ref=f4e813] [cursor=pointer]:
+                  - /url: /video/BV11YTr6jEbz/?spm_id_from=333.788.recommend_more_video.11&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e814]:
+                  - link "【博客分享】Qwen-Robot Suite：物理世界智能的基础模型套件 — Nav + Manip + World 三大模型构建从理解到行动的完整闭环" [ref=f4e815] [cursor=pointer]:
+                    - /url: /video/BV11YTr6jEbz/?spm_id_from=333.788.recommend_more_video.11&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e816]: 【博客分享】Qwen-Robot Suite：物理世界智能的基础模型套件 — Nav + Manip + World 三大模型构建从理解到行动的完整闭环
+                  - link "物理AI与智能体组会" [ref=f4e818] [cursor=pointer]:
+                    - /url: //space.bilibili.com/98639326/
+                    - img [ref=f4e819]
+                    - generic [ref=f4e820]: 物理AI与智能体组会
+                  - generic [ref=f4e821]:
+                    - img [ref=f4e822]
+                    - text: "80"
+                    - img [ref=f4e823]
+                    - text: "0"
+              - generic [ref=f4e825]:
+                - link [ref=f4e829] [cursor=pointer]:
+                  - /url: /video/BV1FBMF6dEFP/?spm_id_from=333.788.recommend_more_video.12&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e830]:
+                  - link "【arXiv 2026】World Model for Robot Learning (1/7)：概览与背景" [ref=f4e831] [cursor=pointer]:
+                    - /url: /video/BV1FBMF6dEFP/?spm_id_from=333.788.recommend_more_video.12&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e832]: 【arXiv 2026】World Model for Robot Learning (1/7)：概览与背景
+                  - link "物理AI与智能体组会" [ref=f4e834] [cursor=pointer]:
+                    - /url: //space.bilibili.com/98639326/
+                    - img [ref=f4e835]
+                    - generic [ref=f4e836]: 物理AI与智能体组会
+                  - generic [ref=f4e837]:
+                    - img [ref=f4e838]
+                    - text: "23"
+                    - img [ref=f4e839]
+                    - text: "0"
+              - generic [ref=f4e841]:
+                - link [ref=f4e845] [cursor=pointer]:
+                  - /url: /video/BV1ExRnBtEpk/?spm_id_from=333.788.recommend_more_video.13&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e846]:
+                  - link "杨立昆被JEPA模型吓到眩晕瘫坐 就像看见原子弹爆炸【世界模型月报 2026.04】世界模型 world model 杨立昆 Genie AMI" [ref=f4e847] [cursor=pointer]:
+                    - /url: /video/BV1ExRnBtEpk/?spm_id_from=333.788.recommend_more_video.13&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e848]: 杨立昆被JEPA模型吓到眩晕瘫坐 就像看见原子弹爆炸【世界模型月报 2026.04】世界模型 world model 杨立昆 Genie AMI
+                  - link "Treap要赚一个亿U-Acc" [ref=f4e850] [cursor=pointer]:
+                    - /url: //space.bilibili.com/3546564905666712/
+                    - img [ref=f4e851]
+                    - generic [ref=f4e852]: Treap要赚一个亿U-Acc
+                  - generic [ref=f4e853]:
+                    - img [ref=f4e854]
+                    - text: 2.9万
+                    - img [ref=f4e855]
+                    - text: "105"
+              - generic [ref=f4e857]:
+                - link [ref=f4e861] [cursor=pointer]:
+                  - /url: /video/BV1KaMw6BEsr/?spm_id_from=333.788.recommend_more_video.14&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e862]:
+                  - link "你的虚拟好友即将下线！豆包、千问将于7月15日关停智能体功能" [ref=f4e863] [cursor=pointer]:
+                    - /url: /video/BV1KaMw6BEsr/?spm_id_from=333.788.recommend_more_video.14&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e864]: 你的虚拟好友即将下线！豆包、千问将于7月15日关停智能体功能
+                  - link "大象新闻" [ref=f4e866] [cursor=pointer]:
+                    - /url: //space.bilibili.com/522653994/
+                    - img [ref=f4e867]
+                    - generic [ref=f4e868]: 大象新闻
+                  - generic [ref=f4e869]:
+                    - img [ref=f4e870]
+                    - text: 108.5万
+                    - img [ref=f4e871]
+                    - text: "322"
+              - generic [ref=f4e873]:
+                - link [ref=f4e877] [cursor=pointer]:
+                  - /url: /video/BV1R3EC6bE27/?spm_id_from=333.788.recommend_more_video.15&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e878]:
+                  - link "CVPR'26 | 重新定义3DGS，ReLaGS：不用训练，秒懂3D场景关系！" [ref=f4e879] [cursor=pointer]:
+                    - /url: /video/BV1R3EC6bE27/?spm_id_from=333.788.recommend_more_video.15&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e880]: CVPR'26 | 重新定义3DGS，ReLaGS：不用训练，秒懂3D场景关系！
+                  - link "深蓝学院" [ref=f4e882] [cursor=pointer]:
+                    - /url: //space.bilibili.com/320203065/
+                    - img [ref=f4e883]
+                    - generic [ref=f4e884]: 深蓝学院
+                  - generic [ref=f4e885]:
+                    - img [ref=f4e886]
+                    - text: "2383"
+                    - img [ref=f4e887]
+                    - text: "1"
+              - generic [ref=f4e889]:
+                - link [ref=f4e893] [cursor=pointer]:
+                  - /url: /video/BV1ke7q6xEfc/?spm_id_from=333.788.recommend_more_video.16&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e894]:
+                  - link "从文本生成到具身智能大脑，AI基模是如何进化的？" [ref=f4e895] [cursor=pointer]:
+                    - /url: /video/BV1ke7q6xEfc/?spm_id_from=333.788.recommend_more_video.16&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e896]: 从文本生成到具身智能大脑，AI基模是如何进化的？
+                  - link "通义实验室" [ref=f4e898] [cursor=pointer]:
+                    - /url: //space.bilibili.com/3546585589877706/
+                    - img [ref=f4e899]
+                    - generic [ref=f4e900]: 通义实验室
+                  - generic [ref=f4e901]:
+                    - img [ref=f4e902]
+                    - text: 3.5万
+                    - img [ref=f4e903]
+                    - text: "10"
+              - generic [ref=f4e905]:
+                - link [ref=f4e909] [cursor=pointer]:
+                  - /url: /video/BV1iuVd6DEBZ/?spm_id_from=333.788.recommend_more_video.17&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e910]:
+                  - link "小米世界模型也来了：重建+生成一体化，实现秒级仿真+实时预测！不仅会看，还会想象！" [ref=f4e911] [cursor=pointer]:
+                    - /url: /video/BV1iuVd6DEBZ/?spm_id_from=333.788.recommend_more_video.17&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e912]: 小米世界模型也来了：重建+生成一体化，实现秒级仿真+实时预测！不仅会看，还会想象！
+                  - link "深蓝学院" [ref=f4e914] [cursor=pointer]:
+                    - /url: //space.bilibili.com/320203065/
+                    - img [ref=f4e915]
+                    - generic [ref=f4e916]: 深蓝学院
+                  - generic [ref=f4e917]:
+                    - img [ref=f4e918]
+                    - text: 1.5万
+                    - img [ref=f4e919]
+                    - text: "1"
+              - generic [ref=f4e921]:
+                - link [ref=f4e925] [cursor=pointer]:
+                  - /url: /video/BV1FBMF6dE1R/?spm_id_from=333.788.recommend_more_video.18&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e926]:
+                  - link "【arXiv 2026】World Model for Robot Learning (2/7)：IDM与单骨干架构" [ref=f4e927] [cursor=pointer]:
+                    - /url: /video/BV1FBMF6dE1R/?spm_id_from=333.788.recommend_more_video.18&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e928]: 【arXiv 2026】World Model for Robot Learning (2/7)：IDM与单骨干架构
+                  - link "物理AI与智能体组会" [ref=f4e930] [cursor=pointer]:
+                    - /url: //space.bilibili.com/98639326/
+                    - img [ref=f4e931]
+                    - generic [ref=f4e932]: 物理AI与智能体组会
+                  - generic [ref=f4e933]:
+                    - img [ref=f4e934]
+                    - text: "19"
+                    - img [ref=f4e935]
+                    - text: "0"
+              - generic [ref=f4e937]:
+                - link [ref=f4e941] [cursor=pointer]:
+                  - /url: /video/BV1xpTG6hE1d/?spm_id_from=333.788.recommend_more_video.19&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                - generic [ref=f4e942]:
+                  - link "VL-JEPA & VLWM（2026智源大会世界模型论坛）" [ref=f4e943] [cursor=pointer]:
+                    - /url: /video/BV1xpTG6hE1d/?spm_id_from=333.788.recommend_more_video.19&trackid=web_related_0.router-related-2479604-gjmc5.1783235056739.625
+                    - paragraph [ref=f4e944]: VL-JEPA & VLWM（2026智源大会世界模型论坛）
+                  - link "__陈德龙__" [ref=f4e946] [cursor=pointer]:
+                    - /url: //space.bilibili.com/291158396/
+                    - img [ref=f4e947]
+                    - generic [ref=f4e948]: __陈德龙__
+                  - generic [ref=f4e949]:
+                    - img [ref=f4e950]
+                    - text: "1952"
+                    - img [ref=f4e951]
+                    - text: "0"
+            - generic [ref=f4e952] [cursor=pointer]: 展开
+          - link "AI全民制作人征稿" [ref=f4e954] [cursor=pointer]:
+            - /url: javascript:void(0);
+            - generic [ref=f4e955]: AI全民制作人征稿

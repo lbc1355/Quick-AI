@@ -1,51 +1,20 @@
 /**
- * Pure argument-safety primitives, ported from CodeWhale's command_safety / execpolicy ideas.
+ * Pure command-safety primitives, ported from CodeWhale's command_safety / execpolicy ideas.
  *
  * Everything here is side-effect free (no fs, no electron) so it is trivially testable and can run
- * before a tool is dispatched. Two concerns:
- *   - pathEscapesWorkspace: lexical containment check that needs no filesystem access.
- *   - analyzeCommand: token-level danger classification for shell-style commands. The guiding
- *     principle (borrowed from Codex/CodeWhale) is restraint: only flag genuinely destructive
- *     actions as `dangerous`, so everyday commands don't drown the user in approval prompts.
+ * before a tool is dispatched. The concern is `analyzeCommand`: token-level danger classification
+ * for shell-style commands. The guiding principle (borrowed from Codex/CodeWhale) is restraint:
+ * only flag genuinely destructive actions as `dangerous`, so everyday commands don't drown the
+ * user in approval prompts. Lexical path-containment checks live in ./pathPolicy.
  */
+
+import { pathEscapesWorkspace } from './pathPolicy'
 
 export type CommandSafetyLevel = 'safe' | 'requires_approval' | 'dangerous'
 
 export interface CommandSafetyVerdict {
   level: CommandSafetyLevel
   reason?: string
-}
-
-/**
- * Does `inputPath`, interpreted relative to a workspace root, lexically escape that root —
- * without touching the filesystem? Absolute paths, home references, and `..` traversal that
- * climbs above the root all count as escapes. `foo..bar` (a literal name) does not.
- */
-export function pathEscapesWorkspace(inputPath: string): boolean {
-  if (typeof inputPath !== 'string' || inputPath.length === 0) return false
-
-  const normalized = inputPath.replace(/\\/g, '/').trim()
-
-  // Home-relative or environment-variable expansions resolve outside a fixed workspace root.
-  if (normalized.startsWith('~')) return true
-  if (/\$(HOME|USERPROFILE)\b/.test(normalized) || /%USERPROFILE%/i.test(normalized)) return true
-
-  // Absolute paths bypass the root entirely: POSIX "/...", Windows drive "C:/..." or UNC "//host".
-  if (normalized.startsWith('/')) return true
-  if (/^[a-zA-Z]:\//.test(normalized)) return true
-
-  // Walk the relative components, tracking depth below the root.
-  let depth = 0
-  for (const segment of normalized.split('/')) {
-    if (segment === '' || segment === '.') continue
-    if (segment === '..') {
-      depth -= 1
-      if (depth < 0) return true
-    } else {
-      depth += 1
-    }
-  }
-  return false
 }
 
 /** Minimal shell-ish tokenizer: splits on whitespace, respecting single and double quotes. */

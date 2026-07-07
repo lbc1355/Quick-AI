@@ -6,6 +6,7 @@ import {
   ToolModelAttachment
 } from '../tools/types'
 import { createToolResult, normalizeToolExecutionResult } from '../tools/result'
+import { safeJsonStringify } from '../tools/jsonSafe'
 import { RetryPolicy, isRetryableError, withRetry } from './retryPolicy'
 
 export type ToolRuntimeFailureStatus = 'error' | 'ambiguous'
@@ -123,25 +124,6 @@ export interface SkippedToolCallResult {
   response: ChatCompletionMessage
   events: AgentEvent[]
   action: RuntimeToolActionDraft
-}
-
-const safeJsonStringify = (value: unknown): string => {
-  const seen = new WeakSet<object>()
-  try {
-    return JSON.stringify(
-      value,
-      (_key, nestedValue: unknown) => {
-        if (typeof nestedValue === 'bigint') return nestedValue.toString()
-        if (typeof nestedValue !== 'object' || nestedValue === null) return nestedValue
-        if (seen.has(nestedValue)) return '[Circular]'
-        seen.add(nestedValue)
-        return nestedValue
-      },
-      2
-    )
-  } catch {
-    return String(value)
-  }
 }
 
 export function classifyToolRuntimeError(

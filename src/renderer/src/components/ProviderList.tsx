@@ -3,36 +3,24 @@ import { Check, Pencil, Plus, Server, Trash2 } from 'lucide-react'
 import { ApiProvider } from '../../../shared/types'
 import { getProviderModels } from '../../../shared/modelCatalog'
 import { getProviderTypeLabel, PROVIDER_PRESETS } from '../utils/providerPresets'
+import { useSettings } from '../contexts/SettingsContext'
 
-interface ProviderListProps {
-  providers: ApiProvider[]
-  activeProviderId: string
-  showAddForm: boolean
-  newProviderName: string
-  newProviderType: ApiProvider['type']
-  setShowAddForm: (show: boolean) => void
-  setNewProviderName: (name: string) => void
-  setNewProviderType: (type: ApiProvider['type']) => void
-  onAddProvider: (name: string, type: ApiProvider['type']) => void
-  onSetActiveProvider: (id: string) => void
-  onStartEditingProvider: (id: string) => void
-  onDeleteProvider: (id: string) => void
-}
+export const ProviderList: React.FC = () => {
+  const {
+    providers,
+    activeProviderId,
+    showAddForm,
+    newProviderName,
+    newProviderType,
+    setShowAddForm,
+    setNewProviderName,
+    setNewProviderType,
+    handleAddProvider: onAddProvider,
+    handleSetActiveProvider: onSetActiveProvider,
+    handleStartEditingProvider: onStartEditingProvider,
+    handleDeleteProvider: onDeleteProvider
+  } = useSettings()
 
-export const ProviderList: React.FC<ProviderListProps> = ({
-  providers,
-  activeProviderId,
-  showAddForm,
-  newProviderName,
-  newProviderType,
-  setShowAddForm,
-  setNewProviderName,
-  setNewProviderType,
-  onAddProvider,
-  onSetActiveProvider,
-  onStartEditingProvider,
-  onDeleteProvider
-}) => {
   const handleAddProvider = (): void => {
     onAddProvider(newProviderName, newProviderType)
     setShowAddForm(false)

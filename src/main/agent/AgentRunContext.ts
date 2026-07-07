@@ -2,6 +2,7 @@ import { resolve } from 'path'
 import { PermissionManager, globalPermissionManager } from './permissionManager'
 import { ActionLog } from './actionLog'
 import { splitCommandSegments, analyzeCommand } from './commandSafety'
+import { normalizeComparablePath } from './pathPolicy'
 import { TaskItem } from '../../shared/types'
 
 /** Session-scoped tool/command approvals. A "task" spans many agent runs (one per user
@@ -18,17 +19,12 @@ export interface AdditionalRoot {
 
 const sessionAdditionalRoots = new Map<string, AdditionalRoot[]>()
 
-const normalizeRootKey = (rootPath: string): string => {
-  const resolved = resolve(rootPath).replace(/\\/g, '/').replace(/\/+$/, '')
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
-}
-
 const cloneAdditionalRoots = (roots: AdditionalRoot[] | undefined): AdditionalRoot[] =>
   roots ? roots.map((root) => ({ ...root })) : []
 
 const upsertAdditionalRoot = (roots: AdditionalRoot[], entry: AdditionalRoot): AdditionalRoot => {
-  const key = normalizeRootKey(entry.path)
-  const existingIndex = roots.findIndex((root) => normalizeRootKey(root.path) === key)
+  const key = normalizeComparablePath(entry.path)
+  const existingIndex = roots.findIndex((root) => normalizeComparablePath(root.path) === key)
   if (existingIndex !== -1) {
     roots[existingIndex] = {
       ...roots[existingIndex],

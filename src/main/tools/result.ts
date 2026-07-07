@@ -1,5 +1,6 @@
 import { ToolResultUi } from '../../shared/types'
 import { ToolExecutionResult, ToolModelAttachment } from './types'
+import { safeJsonStringify } from './jsonSafe'
 
 export const DEFAULT_TOOL_RESULT_UI_DETAILS_LIMIT = 96 * 1024
 
@@ -30,25 +31,6 @@ const compact = (text: string): string => text.replace(/\s+/g, ' ').trim()
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const safeJsonStringify = (value: unknown): string => {
-  const seen = new WeakSet<object>()
-  try {
-    return JSON.stringify(
-      value,
-      (_key, nestedValue: unknown) => {
-        if (typeof nestedValue === 'bigint') return nestedValue.toString()
-        if (typeof nestedValue !== 'object' || nestedValue === null) return nestedValue
-        if (seen.has(nestedValue)) return '[Circular]'
-        seen.add(nestedValue)
-        return nestedValue
-      },
-      2
-    )
-  } catch {
-    return String(value)
-  }
-}
 
 const formatRawToolPart = (part: unknown): string => {
   if (part === undefined || part === null) return ''

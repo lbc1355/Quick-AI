@@ -1,0 +1,333 @@
+- generic [active] [ref=e1]:
+  - heading "淘宝开放平台" [level=1]:
+    - img "淘宝开放平台"
+  - generic [ref=e2]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e9] [cursor=pointer]: 首页
+        - generic [ref=e11] [cursor=pointer]: 开放版图
+        - generic [ref=e13] [cursor=pointer]: 文档中心
+        - generic [ref=e15] [cursor=pointer]: 平台服务
+        - generic [ref=e17] [cursor=pointer]: 商业合作
+      - button "进入控制台" [ref=e18] [cursor=pointer]
+      - generic [ref=e19] [cursor=pointer]: 登录
+    - generic [ref=e20]:
+      - generic [ref=e24] [cursor=pointer]: 智能客服
+      - generic [ref=e30]:
+        - generic [ref=e34]:
+          - heading [level=2]
+          - generic [ref=e37] [cursor=pointer]:
+            - generic [ref=e38]: 查看详情
+            - img [ref=e39]
+        - generic [ref=e43]:
+          - heading [level=2]
+          - generic [ref=e46] [cursor=pointer]:
+            - generic [ref=e47]: 查看详情
+            - img [ref=e48]
+        - generic [ref=e52]:
+          - heading [level=2]
+          - generic [ref=e55] [cursor=pointer]:
+            - generic [ref=e56]: 查看详情
+            - img [ref=e57]
+      - generic [ref=e59] [cursor=pointer]:
+        - generic [ref=e60]: 维护公告｜2026年618大促服务商应用稳定性保障公告（5月8日更新） 2026.05.08
+        - generic [ref=e62]: 维护公告｜2026年618大促API服务调整公告 2026.05.08
+        - link "更多 " [ref=e63]:
+          - /url: https://open.taobao.com/anno?docId=0&docType=11
+          - text: 更多
+          - generic [ref=e64]: 
+      - generic [ref=e65]:
+        - generic [ref=e67]:
+          - generic [ref=e68]:
+            - heading "内容创作工具" [level=2] [ref=e71]
+            - generic [ref=e72]: 为商家提供文案创作、图片制作与短视频生成的SaaS工具，帮助商家降低内容制作成本，提升内容质量与创作效率，更好的服务消费者
+          - generic [ref=e75]:
+            - generic [ref=e79] [cursor=pointer]:
+              - generic [ref=e81]: 短视频工具
+              - generic [ref=e83]: 短视频模板
+            - generic [ref=e87]:
+              - generic [ref=e88]:
+                - heading "短视频工具" [level=5] [ref=e89]
+                - generic [ref=e90]: 为商家提供短视频内容生产、智能编辑等工具，帮助商家降低内容制作门槛和成本，提高内容质量及运营效率
+                - generic [ref=e91]:
+                  - img [ref=e92]
+                  - generic [ref=e94]:
+                    - heading "1,000,000 +" [level=5] [ref=e95]:
+                      - text: 1,000,000
+                      - generic [ref=e96]: +
+                    - generic [ref=e97]: 服务需求量
+                - generic [ref=e99] [cursor=pointer]:
+                  - generic [ref=e100]: 了解详情
+                  - img [ref=e101]
+              - generic [ref=e102]:
+                - img [ref=e104]
+                - img [ref=e105]
+        - generic [ref=e107]:
+          - generic [ref=e108]:
+            - heading "商家经营工具" [level=2] [ref=e111]
+            - generic [ref=e112]: 服务千万电商店铺，通过提供SaaS工具，提升店铺在多场景下的数智化经营能力，从而提升商家经营效率
+          - generic [ref=e115]:
+            - generic [ref=e119] [cursor=pointer]:
+              - generic [ref=e121]: 业财管理
+              - generic [ref=e123]: 企业ERP
+              - generic [ref=e125]: 客户关系管理
+              - generic [ref=e127]: 订单管理
+              - generic [ref=e129]: 商品供应链
+            - generic [ref=e133]:
+              - generic [ref=e134]:
+                - heading "电商业财管理系统" [level=5] [ref=e135]
+                - generic [ref=e136]: 为商家提供财务对账、利润分析、财务统计、支出管理、成本管理、利润管理等功能模块的电商业财管理软件
+                - generic [ref=e138]:
+                  - heading "1,000,000 +" [level=5] [ref=e139]:
+                    - generic [ref=e140]: 1,000,000
+                    - generic [ref=e141]: +
+                  - generic [ref=e142]: 服务需求量
+                - generic [ref=e144] [cursor=pointer]:
+                  - generic [ref=e145]: 了解详情
+                  - img [ref=e146]
+              - generic [ref=e147]:
+                - img [ref=e149]
+                - img [ref=e150]
+        - generic [ref=e153]:
+          - heading "淘宝购物小程序" [level=2] [ref=e156]
+          - generic [ref=e157]: 服务12亿+活跃消费者，帮助商家提升消费者链接能力，实现导购增强、服务增强，赋能电商交易转化
+          - generic [ref=e161]:
+            - generic [ref=e165] [cursor=pointer]:
+              - generic [ref=e167]: 用户互动
+              - generic [ref=e169]: 私域增长
+              - generic [ref=e171]: 商品导购
+              - generic [ref=e173]: 服务履约
+              - generic [ref=e175]: 定制服务
+            - generic [ref=e180]:
+              - generic [ref=e184]:
+                - heading "用户互动小程序" [level=5] [ref=e185]
+                - generic [ref=e186]: 满足商家获客、转化、裂变、复购等用户运营诉求，提升用户停留和粉丝回访
+                - generic [ref=e187]:
+                  - generic [ref=e188]:
+                    - heading "3,000,000 +" [level=5] [ref=e189]:
+                      - text: 3,000,000
+                      - generic [ref=e190]: +
+                    - generic [ref=e191]: 订购商家
+                  - generic [ref=e193]:
+                    - heading "600 +" [level=5] [ref=e194]:
+                      - text: "600"
+                      - generic [ref=e195]: +
+                    - generic [ref=e196]: 入驻服务商
+              - generic [ref=e198] [cursor=pointer]:
+                - generic [ref=e199]: 了解详情
+                - img [ref=e200]
+        - generic [ref=e203]:
+          - generic [ref=e204]:
+            - heading "店铺动态卡片" [level=2] [ref=e207]
+            - generic [ref=e208]: 基于店铺模块开放形成，为旗舰店重新定义店铺体系开放的新标准和新形态，引领消费者交互式、参与式逛店全新体验
+          - generic [ref=e212]:
+            - generic [ref=e216] [cursor=pointer]:
+              - generic [ref=e218]: 场景导购
+              - generic [ref=e220]: 商品表达
+              - generic [ref=e222]: 店铺活动
+              - generic [ref=e224]: 店铺服务
+            - generic [ref=e229]:
+              - generic [ref=e233]:
+                - heading "场景导购小卡片" [level=5] [ref=e234]
+                - generic [ref=e235]: 结合不同行业特性，对商品组合创新表达，引领消费者逛店、浏览新体验
+                - img [ref=e236]
+              - generic [ref=e238] [cursor=pointer]:
+                - generic [ref=e239]: 了解详情
+                - img [ref=e240]
+        - generic [ref=e242]:
+          - heading "商家运营服务" [level=2] [ref=e245]
+          - generic [ref=e246]: 服务千万电商店铺，提供店铺在商品运营、用户运营、流量运营、内容营销、客服接待等场景服务，带来商家生意增量
+          - generic [ref=e249]:
+            - generic [ref=e253] [cursor=pointer]:
+              - generic [ref=e255]: 店铺代运营
+              - generic [ref=e257]: 客服代运营
+              - generic [ref=e259]: 直播代运营
+              - generic [ref=e261]: 营销推广
+              - generic [ref=e263]: 设计服务
+            - generic [ref=e267]:
+              - generic [ref=e268]:
+                - heading "店铺代运营服务" [level=5] [ref=e269]
+                - generic [ref=e270]: 为商家提供店铺及货品运营服务，提供策略建议，优化运营效率，促进业绩增长
+                - generic [ref=e272]:
+                  - heading "300,000 +" [level=5] [ref=e273]:
+                    - generic [ref=e274]: 300,000
+                    - generic [ref=e275]: +
+                  - generic [ref=e276]: 订购商家
+                - generic [ref=e278] [cursor=pointer]:
+                  - generic [ref=e279]: 了解详情
+                  - img [ref=e280]
+              - img [ref=e282]
+          - img [ref=e289]
+        - generic [ref=e290]:
+          - heading "品牌与商家深度自研" [level=2] [ref=e293]
+          - generic [ref=e295]: 支持淘宝、天猫品牌与商家实现店铺小程序、小工具、小卡片的深度研发，强化店铺服务能力
+          - img [ref=e296]
+          - generic [ref=e297]:
+            - generic [ref=e298]:
+              - img [ref=e299]
+              - generic [ref=e300]:
+                - heading "自研小程序接入" [level=3] [ref=e302]
+                - generic [ref=e304]: 支持商家独立研发自有小程序，对接店铺首页、品牌专区等场景
+                - paragraph [ref=e305]:
+                  - text: 1,000
+                  - generic [ref=e306]: +
+                - generic [ref=e307]: 自研小程序数量
+            - generic [ref=e308]:
+              - img [ref=e309]
+              - generic [ref=e310]:
+                - heading "自研系统接入" [level=3] [ref=e312]
+                - generic [ref=e314]: 支持商家自研系统对接店铺商品管理、订单管理、会员管理、物流发货等场景
+                - paragraph [ref=e315]:
+                  - text: 2,000
+                  - generic [ref=e316]: +
+                - generic [ref=e317]: 自研系统数量
+        - generic [ref=e319]:
+          - heading "更多品牌商家在使用淘宝购物⼩程序，深度对接官方旗舰店，服务消费者" [level=2] [ref=e321]
+          - generic [ref=e322]:
+            - generic [ref=e324]:
+              - img [ref=e325]
+              - img [ref=e326]
+            - generic [ref=e327]:
+              - img [ref=e328]
+              - img [ref=e329]
+          - button "了解详情" [ref=e331] [cursor=pointer]:
+            - text: 了解详情
+            - img [ref=e332]
+        - generic [ref=e334]:
+          - heading "让生态伙伴变现更简单灵活" [level=2] [ref=e337]
+          - generic [ref=e339]: 高效的商业转化，全面的资源扶持，助力合作伙伴多渠道触达商家
+          - img [ref=e340]
+          - img [ref=e341]
+          - img [ref=e342]
+          - generic [ref=e343]:
+            - generic [ref=e344]:
+              - generic [ref=e345]: 高效的商机获取
+              - img [ref=e346]
+              - generic [ref=e349]: 千牛分发
+              - generic [ref=e352]: 服务市场分发
+              - generic [ref=e355]: 行业合作推荐
+            - generic [ref=e356]:
+              - generic [ref=e357]:
+                - img [ref=e358]
+                - generic [ref=e359]: 丰富的交易模式
+                - generic [ref=e360]:
+                  - generic [ref=e363]: 按周期计费
+                  - generic [ref=e366]: 按效果计费
+                  - generic [ref=e369]: 一口价计费
+                  - generic [ref=e372]: 灵活定制计费
+              - generic [ref=e373]:
+                - generic [ref=e374]: 全面的权益支持
+                - generic [ref=e375]:
+                  - generic [ref=e376]:
+                    - img [ref=e377]
+                    - generic [ref=e378]: 灵活变现
+                  - generic [ref=e379]:
+                    - img [ref=e380]
+                    - generic [ref=e381]: 流量扶持
+                  - generic [ref=e382]:
+                    - img [ref=e383]
+                    - generic [ref=e384]: 服务创新
+                  - generic [ref=e385]:
+                    - img [ref=e386]
+                    - generic [ref=e387]: 技术保障
+                  - generic [ref=e388]:
+                    - img [ref=e389]
+                    - generic [ref=e390]: 能力认证
+                  - generic [ref=e391]:
+                    - img [ref=e392]
+                    - generic [ref=e393]: 培训成长
+        - generic [ref=e396]:
+          - heading "让淘宝小程序触达用户更全面" [level=2] [ref=e399]
+          - generic [ref=e401]: 手淘全链路多点触达用户，丰富的引流入口，让消费者轻松发现
+          - generic [ref=e406]:
+            - generic [ref=e407] [cursor=pointer]:
+              - generic [ref=e410]: 店铺首页
+              - img [ref=e412]
+            - generic [ref=e413] [cursor=pointer]:
+              - generic [ref=e416]: 商品详情
+              - img [ref=e418]
+            - generic [ref=e419] [cursor=pointer]:
+              - generic [ref=e422]: 会员专区
+              - img [ref=e424]
+            - generic [ref=e425] [cursor=pointer]:
+              - generic [ref=e428]: 直播间
+              - img [ref=e430]
+            - generic [ref=e431] [cursor=pointer]:
+              - generic [ref=e434]: 关注
+              - img [ref=e436]
+            - generic [ref=e437] [cursor=pointer]:
+              - generic [ref=e440]: 品牌专区
+              - img [ref=e442]
+            - generic [ref=e443] [cursor=pointer]:
+              - generic [ref=e446]: 客服消息
+              - img [ref=e448]
+        - generic [ref=e450]:
+          - heading "生态伙伴合作流程" [level=2] [ref=e453]
+          - generic [ref=e455]: 淘宝开放平台为合作伙伴提供更多场景，更多技术支持，更多商业发展空间，期待您的加入
+          - img [ref=e457]
+          - generic [ref=e458]:
+            - generic [ref=e459] [cursor=pointer]:
+              - generic [ref=e460]: 立即注册加入
+              - img [ref=e461]
+            - generic [ref=e462] [cursor=pointer]:
+              - generic [ref=e463]: 预约合作咨询
+              - img [ref=e464]
+        - generic [ref=e466]:
+          - heading "淘宝开放生态资源支持" [level=2] [ref=e468]
+          - generic [ref=e469]: 淘宝开放平台为开发者提供完整的直播、视频教学、文档、在线互动服务，降低小程序研发与创新门槛
+          - generic [ref=e470]:
+            - generic [ref=e471] [cursor=pointer]:
+              - heading "文档中心" [level=5] [ref=e472]
+              - generic [ref=e473]: 为合作伙伴提供各类文档和视频等资料
+              - img [ref=e474]
+            - generic [ref=e475] [cursor=pointer]:
+              - heading "聚石塔" [level=5] [ref=e476]
+              - generic [ref=e477]: 为合作伙伴提供开放的电商云工作平台
+              - img [ref=e478]
+            - generic [ref=e479] [cursor=pointer]:
+              - heading "奇门" [level=5] [ref=e480]
+              - generic [ref=e481]: 为合作伙伴提供高效便捷的通信协作能力
+              - img [ref=e482]
+            - generic [ref=e483] [cursor=pointer]:
+              - heading "千牛企业版" [level=5] [ref=e484]
+              - generic [ref=e485]: 为合作伙伴提供全链路经营场景覆盖支持
+              - img [ref=e486]
+      - generic [ref=e487]:
+        - generic [ref=e488]:
+          - generic [ref=e489]:
+            - generic [ref=e490]: 了解开放平台
+            - list [ref=e491]:
+              - listitem [ref=e492] [cursor=pointer]: 平台简介
+              - listitem [ref=e493] [cursor=pointer]: 平台规则
+              - listitem [ref=e494] [cursor=pointer]: 2021生态大会
+          - generic [ref=e495]:
+            - generic [ref=e496]: 文档与工具
+            - list [ref=e497]:
+              - listitem [ref=e498] [cursor=pointer]: 操作指南
+              - listitem [ref=e499] [cursor=pointer]: 设计文档
+              - listitem [ref=e500] [cursor=pointer]: 常见问题
+              - listitem [ref=e501] [cursor=pointer]: 常用工具
+          - generic [ref=e502]:
+            - generic [ref=e503]: 资源和社区
+            - list [ref=e504]:
+              - listitem [ref=e505] [cursor=pointer]: 开发者社区
+              - listitem [ref=e506] [cursor=pointer]: 需求广场
+          - generic [ref=e507]:
+            - generic [ref=e508]: 支持与服务
+            - list [ref=e509]:
+              - listitem [ref=e510] [cursor=pointer]: 平台公告
+              - listitem [ref=e511] [cursor=pointer]: 在线客服
+              - listitem [ref=e512] [cursor=pointer]: 工单支持
+        - generic [ref=e513]:
+          - generic [ref=e514]: 关联平台
+          - list [ref=e515]:
+            - listitem [ref=e516] [cursor=pointer]: 淘宝网
+            - listitem [ref=e517] [cursor=pointer]: 天猫
+            - listitem [ref=e518] [cursor=pointer]: 服务市场
+            - listitem [ref=e519] [cursor=pointer]: 阿里云
+            - listitem [ref=e520] [cursor=pointer]: 聚石塔
+            - listitem [ref=e521] [cursor=pointer]: 千牛
+            - listitem [ref=e522] [cursor=pointer]: 旺铺
+            - listitem [ref=e523] [cursor=pointer]: 阿里妈妈营销拍档
+            - listitem [ref=e524] [cursor=pointer]: 鹿班
+            - listitem [ref=e525] [cursor=pointer]: 御城河

@@ -1,0 +1,174 @@
+- generic [ref=f2e3]:
+  - generic [ref=f2e5]:
+    - generic [ref=f2e6]:
+      - img [ref=f2e8] [cursor=pointer]
+      - generic [ref=f2e9]: 开放平台
+    - generic [ref=f2e10]:
+      - generic [ref=f2e12] [cursor=pointer]: 首页
+      - generic [ref=f2e14]:
+        - generic [ref=f2e15]: 开放版图
+        - img [ref=f2e16]
+      - generic [ref=f2e19]:
+        - generic [ref=f2e20]: 文档中心
+        - img [ref=f2e21]
+      - generic [ref=f2e24]:
+        - generic [ref=f2e25]: 工单支持
+        - img [ref=f2e26]
+      - generic [ref=f2e29] [cursor=pointer]: 平台公告
+      - generic [ref=f2e30] [cursor=pointer]: 控制台
+      - generic [ref=f2e31]:
+        - generic [ref=f2e32] [cursor=pointer]: 登录
+        - generic [ref=f2e33] [cursor=pointer]: 注册
+  - generic [ref=f2e34]:
+    - generic [ref=f2e35]:
+      - generic [ref=f2e39]:
+        - generic [ref=f2e43]:
+          - generic [ref=f2e44]:
+            - generic [ref=f2e45]: 开放
+            - generic [ref=f2e46]: 新生态
+            - generic [ref=f2e47]: 合作
+            - generic [ref=f2e48]: 拼未来
+          - generic [ref=f2e49] [cursor=pointer]: 立即加入
+        - generic [ref=f2e53]:
+          - generic [ref=f2e54]:
+            - generic [ref=f2e55]: 服务
+            - generic [ref=f2e56]: 新市场
+            - generic [ref=f2e57]: 解锁
+            - generic [ref=f2e58]: 拼流量
+          - generic [ref=f2e59] [cursor=pointer]: 立即加入
+        - generic [ref=f2e63]:
+          - generic [ref=f2e64]:
+            - generic [ref=f2e65]: 开放
+            - generic [ref=f2e66]: 新生态
+            - generic [ref=f2e67]: 合作
+            - generic [ref=f2e68]: 拼未来
+          - generic [ref=f2e69] [cursor=pointer]: 立即加入
+        - generic [ref=f2e73]:
+          - generic [ref=f2e74]:
+            - generic [ref=f2e75]: 服务
+            - generic [ref=f2e76]: 新市场
+            - generic [ref=f2e77]: 解锁
+            - generic [ref=f2e78]: 拼流量
+          - generic [ref=f2e79] [cursor=pointer]: 立即加入
+        - generic [ref=f2e83]:
+          - generic [ref=f2e84]:
+            - generic [ref=f2e85]: 开放
+            - generic [ref=f2e86]: 新生态
+            - generic [ref=f2e87]: 合作
+            - generic [ref=f2e88]: 拼未来
+          - generic [ref=f2e89] [cursor=pointer]: 立即加入
+      - generic [ref=f2e96]:
+        - img [ref=f2e98]
+        - generic [ref=f2e99]:
+          - generic [ref=f2e100]:
+            - img [ref=f2e101]
+            - generic [ref=f2e102]:
+              - generic [ref=f2e103]: 电商软件服务商
+              - generic [ref=f2e104]: 为海量拼多多商家提供单个或复合电商业务场景中的IT系统工具服务
+              - generic [ref=f2e105]:
+                - generic [ref=f2e106]:
+                  - generic [ref=f2e109] [cursor=pointer]: 企业ERP
+                  - generic [ref=f2e113] [cursor=pointer]: 打单发货
+                  - generic [ref=f2e116] [cursor=pointer]: 搬家上货
+                  - generic [ref=f2e119] [cursor=pointer]: 进销存
+                  - generic [ref=f2e122] [cursor=pointer]: 更多
+                - generic [ref=f2e123]: 综合性电商管理系统，功能覆盖电商业务中订单、商品、库存、采购、财务等环节，用于中大型商家全流程管理
+              - button "了解详情" [ref=f2e124] [cursor=pointer]
+          - generic [ref=f2e125]:
+            - img [ref=f2e126]
+            - generic [ref=f2e127]:
+              - generic [ref=f2e128]: 商家服务商
+              - generic [ref=f2e129]: 为海量拼多多商家提供电商业务场景中的内容优化、店铺经营或咨询类服务
+              - generic [ref=f2e130]:
+                - generic [ref=f2e131]:
+                  - generic [ref=f2e134] [cursor=pointer]: 客服外包
+                  - generic [ref=f2e138] [cursor=pointer]: 装修模板
+                  - generic [ref=f2e141] [cursor=pointer]: 推广托管
+                  - generic [ref=f2e144] [cursor=pointer]: 代理运营
+                  - generic [ref=f2e147] [cursor=pointer]: 更多
+                - generic [ref=f2e148]: 为商家提供售前/售后客服服务，提升商家客服能力，保障消费者客服体验
+              - button "了解详情" [ref=f2e149] [cursor=pointer]
+          - generic [ref=f2e150]:
+            - img [ref=f2e151]
+            - generic [ref=f2e152]:
+              - generic [ref=f2e153]: 拼多多商家
+              - generic [ref=f2e154]: 为有软件开发能力的大型商家提供数据能力支持
+              - generic [ref=f2e155]:
+                - generic [ref=f2e156]:
+                  - generic [ref=f2e159] [cursor=pointer]: 商家后台系统
+                  - generic [ref=f2e163] [cursor=pointer]: 虚拟商家后台系统
+                  - generic [ref=f2e166] [cursor=pointer]: 商家自建物流
+                  - generic [ref=f2e169] [cursor=pointer]: 国际商家自建仓系统
+                  - generic [ref=f2e172] [cursor=pointer]: 市场代发货后台系统
+                - generic [ref=f2e173]: 拼多多商家自研发（或定制开发）软件接入商品、交易、物流等电商业务的管理系统
+              - button "了解详情" [ref=f2e174] [cursor=pointer]
+      - generic [ref=f2e175]:
+        - img [ref=f2e177]
+        - generic [ref=f2e178]:
+          - generic [ref=f2e179]:
+            - img [ref=f2e180]
+            - generic [ref=f2e181]: 业务能力开放
+            - generic [ref=f2e182]: 多样化的开放业务场景，共建良好的电商行业生态
+          - generic [ref=f2e183]:
+            - img [ref=f2e184]
+            - generic [ref=f2e185]: 高效服务支撑
+            - generic [ref=f2e186]: 高效的对接服务，提供咨询服务号、工单等多种渠道的技术支持
+          - generic [ref=f2e187]:
+            - img [ref=f2e188]
+            - generic [ref=f2e189]: 海量用户规模
+            - generic [ref=f2e190]: 庞大的用户和商家规模，联合服务市场，实现一站式服务变现
+          - generic [ref=f2e191]:
+            - img [ref=f2e192]
+            - generic [ref=f2e193]: 系统能力丰富
+            - generic [ref=f2e194]: 支持网站/移动多端服务搭建，并提供稳健的技术能力
+      - generic [ref=f2e195]:
+        - img [ref=f2e197]
+        - generic [ref=f2e198]:
+          - generic [ref=f2e199]:
+            - img [ref=f2e200]
+            - generic [ref=f2e201]: 注册账号
+          - generic [ref=f2e202]:
+            - img [ref=f2e203]
+            - generic [ref=f2e204]: 开发者认证
+          - generic [ref=f2e206]:
+            - img [ref=f2e207]
+            - generic [ref=f2e208]: 创建应用/服务
+          - generic [ref=f2e210]:
+            - img [ref=f2e211]
+            - generic [ref=f2e212]: 发布到服务市场
+        - generic [ref=f2e214] [cursor=pointer]: 了解详情
+      - generic [ref=f2e215]:
+        - generic [ref=f2e216]:
+          - img [ref=f2e217]
+          - generic [ref=f2e219]: 开放平台
+        - generic [ref=f2e220]:
+          - generic [ref=f2e221]:
+            - generic [ref=f2e222]: 新手入门
+            - generic [ref=f2e223]:
+              - generic [ref=f2e224] [cursor=pointer]: 开放版图
+              - generic [ref=f2e225] [cursor=pointer]: 新手指南
+              - generic [ref=f2e226] [cursor=pointer]: 平台规范
+              - generic [ref=f2e227] [cursor=pointer]: 平台公告
+          - generic [ref=f2e228]:
+            - generic [ref=f2e229]: 技术支持
+            - generic [ref=f2e230]:
+              - generic [ref=f2e231] [cursor=pointer]: API文档
+              - generic [ref=f2e232] [cursor=pointer]: 消息文档
+              - generic [ref=f2e233] [cursor=pointer]: 入云指南
+              - generic [ref=f2e234] [cursor=pointer]: 常用工具
+          - generic [ref=f2e235]:
+            - generic [ref=f2e236]: 客服帮助
+            - generic [ref=f2e237]:
+              - generic [ref=f2e238] [cursor=pointer]: 工单支持
+              - generic [ref=f2e239] [cursor=pointer]: 联系我们
+              - generic [ref=f2e240] [cursor=pointer]: 智能客服
+              - generic [ref=f2e241] [cursor=pointer]: 常见问题
+          - generic [ref=f2e242]:
+            - generic [ref=f2e243]: 合作伙伴
+            - generic [ref=f2e244]:
+              - generic [ref=f2e245] [cursor=pointer]: 服务市场
+              - generic [ref=f2e246] [cursor=pointer]: 商家后台
+      - generic [ref=f2e247]: © Copyright 2015-2026 pinduoduo.com 版权所有 (沪ICP备15010535号)
+    - generic [ref=f2e248]:
+      - generic [ref=f2e251] [cursor=pointer]: 智能客服
+      - generic [ref=f2e253] [cursor=pointer]: 联系我们

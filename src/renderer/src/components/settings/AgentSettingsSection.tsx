@@ -1,38 +1,34 @@
 import React from 'react'
 import type { AgentToolInfo, WebSearchProviderType } from '../../../../shared/types'
 import { CapabilitiesPanel } from '../CapabilitiesPanel'
+import { useSettings } from '../../contexts/SettingsContext'
 import type { ToolDisplayLanguage } from './toolDisplay'
-
-type ToolPermission = 'allow' | 'ask' | 'deny'
 
 interface AgentSettingsSectionProps {
   agentTools: AgentToolInfo[]
-  permissions: Record<string, ToolPermission>
   toolDisplayLanguage: ToolDisplayLanguage
-  webSearchProvider: WebSearchProviderType
-  webSearchApiKey: string
   onToolDisplayLanguageChange: (language: ToolDisplayLanguage) => void
   getToolDisplay: (
     tool: AgentToolInfo,
     language: ToolDisplayLanguage
   ) => { title: string; description: string }
-  onChangeToolPermission: (toolName: string, policy: ToolPermission) => void
-  onChangeWebSearchProvider: (value: WebSearchProviderType) => void
-  onChangeWebSearchApiKey: (value: string) => void
 }
 
 export const AgentSettingsSection: React.FC<AgentSettingsSectionProps> = ({
   agentTools,
-  permissions,
   toolDisplayLanguage,
-  webSearchProvider,
-  webSearchApiKey,
   onToolDisplayLanguageChange,
-  getToolDisplay,
-  onChangeToolPermission,
-  onChangeWebSearchProvider,
-  onChangeWebSearchApiKey
+  getToolDisplay
 }) => {
+  const {
+    permissions,
+    webSearchProvider,
+    webSearchApiKey,
+    onChangeToolPermission,
+    setWebSearchProvider: onChangeWebSearchProvider,
+    setWebSearchApiKey: onChangeWebSearchApiKey
+  } = useSettings()
+
   return (
     <section className="control-section">
       <header className="control-section-header">

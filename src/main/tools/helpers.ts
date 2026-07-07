@@ -49,6 +49,13 @@ export function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/** Human-readable byte size (B / KB / MB), used by file-size limit messages in read tools. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
 export const SEARCH_IGNORE_EXTENSIONS = [
   '.png',
   '.jpg',

@@ -6,6 +6,7 @@ import {
 import { CallModelOptions } from './callModel'
 import { RunUsageTracker } from './runUsageTracker'
 import { runModelTurn as defaultRunModelTurn } from './modelTurnRunner'
+import { getMessageText as getAssistantText } from './messageText'
 
 export interface RunForcedFinalTurnDependencies {
   trimMessagesToFit?: typeof defaultTrimMessagesToFit
@@ -27,16 +28,6 @@ export interface RunForcedFinalTurnOptions {
 export interface RunForcedFinalTurnResult {
   messages: ChatCompletionMessage[]
   finalMessage: ChatCompletionMessage
-}
-
-const getAssistantText = (content: ChatCompletionMessage['content']): string => {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => (part.type === 'text' && typeof part.text === 'string' ? part.text : ''))
-      .join('')
-  }
-  return ''
 }
 
 export async function runForcedFinalTurn(

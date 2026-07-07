@@ -22,6 +22,7 @@ import { DEFAULT_RETRY_POLICY } from './retryPolicy'
 import { LoopGuard } from './loopGuard'
 import { SIDE_EFFECTING_TOOLS } from './sideEffects'
 import { runToolTurn } from './toolTurnRunner'
+import { getMessageText } from './messageText'
 
 const DEFAULT_SUBAGENT_TOOLS = [
   'file_read',
@@ -85,16 +86,6 @@ interface SubagentToolObservation {
   step: number
   name: string
   content: string
-}
-
-const getMessageText = (content: ChatCompletionMessage['content']): string => {
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => (part.type === 'text' && typeof part.text === 'string' ? part.text : ''))
-      .join('')
-  }
-  return ''
 }
 
 const compact = (text: string): string => text.replace(/\s+/g, ' ').trim()

@@ -1,5 +1,6 @@
 import { ToolResultUi } from '../../shared/types'
 import { createToolResult, formatRawToolOutput } from './result'
+import { safeJsonStringify } from './jsonSafe'
 import { ToolExecutionResult } from './types'
 
 interface CreateMcpToolResultOptions {
@@ -12,25 +13,6 @@ type ToolResultItem = NonNullable<ToolResultUi['items']>[number]
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
-
-const safeJsonStringify = (value: unknown): string => {
-  const seen = new WeakSet<object>()
-  try {
-    return JSON.stringify(
-      value,
-      (_key, nestedValue: unknown) => {
-        if (typeof nestedValue === 'bigint') return nestedValue.toString()
-        if (typeof nestedValue !== 'object' || nestedValue === null) return nestedValue
-        if (seen.has(nestedValue)) return '[Circular]'
-        seen.add(nestedValue)
-        return nestedValue
-      },
-      2
-    )
-  } catch {
-    return String(value)
-  }
-}
 
 const getContentParts = (result: unknown): unknown[] => {
   if (!isRecord(result) || !Array.isArray(result.content)) return []

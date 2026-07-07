@@ -6,8 +6,9 @@
  * call's actual arguments. It never weakens a permission; it only tightens it.
  */
 
-import { isAbsolute, relative, resolve } from 'path'
-import { analyzeCommand, pathEscapesWorkspace } from './commandSafety'
+import { isAbsolute, resolve } from 'path'
+import { analyzeCommand } from './commandSafety'
+import { isPathInsideRoot, pathEscapesWorkspace } from './pathPolicy'
 import { getWorkspaceRoot } from '../paths'
 
 export type GuardAction = 'allow' | 'ask' | 'deny'
@@ -77,19 +78,6 @@ const FILE_MUTATION_TOOLS = new Set([
   'directory_create'
 ])
 
-function comparable(filePath: string): string {
-  const normalized = resolve(filePath).replace(/\\/g, '/').replace(/\/+$/, '')
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
-}
-
-function isInsideRoot(filePath: string, root: string): boolean {
-  const target = comparable(filePath)
-  const base = comparable(root)
-  if (target === base) return true
-  const rel = relative(base, target)
-  return !!rel && !rel.startsWith('..') && !isAbsolute(rel)
-}
-
 function resolveGuardPath(
   value: string,
   context?: GuardContext,
@@ -106,14 +94,14 @@ function resolveGuardPath(
         : defaultRoot
   const resolvedPath = isAbsolute(value) ? resolve(value) : resolve(baseRoot, value)
 
-  if (projectRoot && isInsideRoot(resolvedPath, projectRoot)) {
+  if (projectRoot && isPathInsideRoot(resolvedPath, projectRoot)) {
     return { resolvedPath, rootKind: 'project' }
   }
-  if (isInsideRoot(resolvedPath, workspaceRoot)) {
+  if (isPathInsideRoot(resolvedPath, workspaceRoot)) {
     return { resolvedPath, rootKind: 'workspace' }
   }
   const extraRoot = (context?.additionalRoots || []).find((root) =>
-    isInsideRoot(resolvedPath, root)
+    isPathInsideRoot(resolvedPath, root)
   )
   if (extraRoot) {
     return { resolvedPath, rootKind: 'extra' }

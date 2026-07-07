@@ -1,25 +1,18 @@
 import React from 'react'
 import type { ContextRetentionMode } from '../../../../shared/types'
+import { useSettings } from '../../contexts/SettingsContext'
 
-interface GeneralSettingsSectionProps {
-  systemPrompt: string
-  autoHideOnBlur: boolean
-  contextRetentionMode: ContextRetentionMode
-  appStorePath: string
-  onChangeSystemPrompt: (value: string) => void
-  onChangeAutoHideOnBlur: (value: boolean) => void
-  onChangeContextRetentionMode: (value: ContextRetentionMode) => void
-}
+export const GeneralSettingsSection: React.FC = () => {
+  const {
+    systemPrompt,
+    autoHideOnBlur,
+    contextRetentionMode,
+    appStorePath,
+    setSystemPrompt: onChangeSystemPrompt,
+    setAutoHideOnBlur: onChangeAutoHideOnBlur,
+    setContextRetentionMode: onChangeContextRetentionMode
+  } = useSettings()
 
-export const GeneralSettingsSection: React.FC<GeneralSettingsSectionProps> = ({
-  systemPrompt,
-  autoHideOnBlur,
-  contextRetentionMode,
-  appStorePath,
-  onChangeSystemPrompt,
-  onChangeAutoHideOnBlur,
-  onChangeContextRetentionMode
-}) => {
   return (
     <section className="control-section">
       <header className="control-section-header">
