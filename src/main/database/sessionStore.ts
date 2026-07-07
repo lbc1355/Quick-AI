@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { Message, Session } from '../../shared/types'
 import { compactAgentEvents } from '../../shared/agentEventCompactor'
 import { getDb } from './connection'
@@ -151,13 +152,89 @@ function serializeAgentEvents(events: Message['agentEvents']): string | null {
   return compacted.length > 0 ? JSON.stringify(compacted) : null
 }
 
+/**
+ * Stable content hash of everything saveSessions() persists for a single session. Two snapshots
+ * of the same session that hash equal are byte-identical on disk, so the row can be skipped. The
+ * normalized shape mirrors the persisted columns (missing/undefined fields collapse to the same
+ * canonical value) so cosmetic in-memory differences never trigger a needless rewrite.
+ */
+export function computeSessionHash(session: Session): string {
+  const normalized = {
+    id: session.id,
+    title: session.title,
+    lastActiveTime: session.lastActiveTime || 0,
+    projectId: session.projectId || null,
+    branchOf: session.branchOf ?? null,
+    messages: (session.messages ?? []).map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content || '',
+      reasoning_content: m.reasoning_content || null,
+      agentRunId: m.agentRunId || null,
+      agentRunIds: m.agentRunIds || (m.agentRunId ? [m.agentRunId] : []),
+      agentEvents: serializeAgentEvents(m.agentEvents),
+      forkedFrom: m.forkedFrom ?? null,
+      isBranchFork: m.isBranchFork ? 1 : 0,
+      tokenSpeed: m.tokenSpeed || null,
+      cacheStats: m.cacheStats ?? null,
+      files: (m.files ?? []).map((f) => ({ name: f.name, content: f.content, type: f.type }))
+    }))
+  }
+  return createHash('sha1').update(JSON.stringify(normalized)).digest('hex')
+}
+
+export interface SessionPersistPlan {
+  /** Sessions that changed (or are new) and must be rewritten, paired with their fresh hash. */
+  upserts: Array<{ session: Session; hash: string }>
+  /** Session ids present in the DB but absent from the snapshot — delete them (cascades). */
+  deleteIds: string[]
+}
+
+/**
+ * Pure diff between the hashes already on disk and the incoming snapshot. Extracted from
+ * saveSessions() so it can be unit-tested without an Electron/SQLite environment.
+ */
+export function planSessionPersist(
+  existingHashes: Map<string, string | null>,
+  sessions: Session[]
+): SessionPersistPlan {
+  const incomingIds = new Set<string>()
+  const upserts: SessionPersistPlan['upserts'] = []
+
+  for (const session of sessions) {
+    incomingIds.add(session.id)
+    const hash = computeSessionHash(session)
+    if (existingHashes.get(session.id) !== hash) {
+      upserts.push({ session, hash })
+    }
+  }
+
+  const deleteIds: string[] = []
+  for (const id of existingHashes.keys()) {
+    if (!incomingIds.has(id)) deleteIds.push(id)
+  }
+
+  return { upserts, deleteIds }
+}
+
 export function saveSessions(sessions: Session[]): void {
   const database = getDb()
 
-  const deleteSessions = database.prepare('DELETE FROM sessions')
+  const existingRows = database.prepare('SELECT id, contentHash FROM sessions').all() as Array<{
+    id: string
+    contentHash: string | null
+  }>
+  const existingHashes = new Map(existingRows.map((r) => [r.id, r.contentHash]))
+  const plan = planSessionPersist(existingHashes, sessions)
+
+  // Nothing changed since the last save — skip the transaction (and its fsync) entirely.
+  if (plan.upserts.length === 0 && plan.deleteIds.length === 0) return
+
   const insertSession = database.prepare(
-    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, projectId, branchOf) VALUES (?, ?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, projectId, branchOf, contentHash) VALUES (?, ?, ?, ?, ?, ?)'
   )
+  const deleteSession = database.prepare('DELETE FROM sessions WHERE id = ?')
+  const deleteMessages = database.prepare('DELETE FROM messages WHERE sessionId = ?')
   const insertMessage = database.prepare(
     `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, cacheStats, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -166,21 +243,29 @@ export function saveSessions(sessions: Session[]): void {
     'INSERT INTO message_files (messageId, name, content, type) VALUES (?, ?, ?, ?)'
   )
 
-  // One transaction for the entire snapshot. Without this, the delete-all plus the hundreds
-  // of per-message/per-file inserts each commit (and fsync under WAL) independently — orders
-  // of magnitude slower — and a crash mid-loop could leave every session wiped.
-  const persist = database.transaction((sessionList: Session[]) => {
-    // Delete all existing sessions (cascade deletes messages and files)
-    deleteSessions.run()
+  // One transaction for the whole diff. Only changed/removed sessions are touched, so a quiet
+  // save (e.g. switching sessions with no edits) is a no-op and an active run rewrites just the
+  // one session that grew — instead of the previous delete-all + full reinsert of every session.
+  const persist = database.transaction((currentPlan: SessionPersistPlan) => {
+    // Sessions removed from the snapshot (cascade deletes their messages and files).
+    for (const id of currentPlan.deleteIds) {
+      deleteSession.run(id)
+    }
 
-    for (const session of sessionList) {
+    for (const { session, hash } of currentPlan.upserts) {
       insertSession.run(
         session.id,
         session.title,
         session.lastActiveTime || 0,
         session.projectId || null,
-        session.branchOf ? JSON.stringify(session.branchOf) : null
+        session.branchOf ? JSON.stringify(session.branchOf) : null,
+        hash
       )
+
+      // Rewrite only this session's messages. INSERT OR REPLACE on the session PK already
+      // cascade-deletes existing rows, but the explicit delete keeps behaviour obvious and
+      // correct regardless of REPLACE semantics.
+      deleteMessages.run(session.id)
 
       if (session.messages) {
         for (const msg of session.messages) {
@@ -208,5 +293,5 @@ export function saveSessions(sessions: Session[]): void {
       }
     }
   })
-  persist(sessions)
+  persist(plan)
 }

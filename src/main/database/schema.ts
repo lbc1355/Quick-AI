@@ -127,6 +127,8 @@ export function createSchema(database: Database.Database): void {
   // silently drop the data on save (e.g. branch/fork metadata vanishing after a restart).
   ensureColumn(database, 'sessions', 'branchOf', 'TEXT')
   ensureColumn(database, 'sessions', 'projectId', 'TEXT REFERENCES projects(id) ON DELETE SET NULL')
+  // Per-session content hash used by saveSessions() to skip rewriting unchanged sessions.
+  ensureColumn(database, 'sessions', 'contentHash', 'TEXT')
   ensureColumn(database, 'messages', 'forkedFrom', 'TEXT')
   ensureColumn(database, 'messages', 'isBranchFork', 'INTEGER NOT NULL DEFAULT 0')
   ensureColumn(database, 'messages', 'agentRunIds', "TEXT DEFAULT '[]'")
