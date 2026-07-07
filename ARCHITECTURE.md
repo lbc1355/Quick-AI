@@ -701,10 +701,24 @@ QuickAI 建立了四层多级缓存结构，分工明确，保障性能与安全
 
 | 测试类 | 测试文件 | 测试的核心边界 |
 | --- | --- | --- |
-| **数据库/持久化** | `database.ts` | SQLite 结构校验、自动迁移合并逻辑测试、外键及级联删除校验 |
+| **数据库/持久化** | `sessionStore.test.ts` | SQLite 结构校验、自动迁移合并逻辑测试、外键及级联删除校验 |
 | **Agent 执行** | `agentLoop.test.ts` | 步数上限控制、故障中断与恢复测试、分支轨迹隔离与重载测试 |
 | **行动日志管理** | `actionLog.test.ts` | JSONL 读写速度测试、敏感密钥过滤红线校验、FIFO 内存溢出测试 |
 | **安全宪法守卫** | `constitution.test.ts` | 逃逸路径拦截率、敏感配置读取拦截、高危 shell 命令评估准确度 |
 | **LoopGuard 熔断** | `loopGuard.test.ts` | 循环哈希防重放机制、最大重试次数阶梯警告、失败阈值halt截断 |
-| **SSRF 网络防护** | `webTools.test.ts` | 本地回环地址拦截效果、重定向追溯检查、级联搜索引擎切换逻辑 |
+| **SSRF 网络防护** | `urlSafety.test.ts` | 本地回环地址拦截效果、重定向追溯检查、级联搜索引擎切换逻辑 |
 | **消息裁剪机制** | `contextManager.test.ts`| 两阶段裁剪中大工具输出转换为 retrievable pointer 效果、旧消息整组裁剪 |
+
+---
+
+## 15. 统一运行时异常管理层
+
+应用引入了高内聚的运行时异常管理方案，对主进程生成异常、网络访问中断、Agent 内部熔断与渲染层边界错误进行统一的分类、持久化与用户排查建议渲染。
+
+### 15.1 结构化异常管理设计
+*   **共享分类与规范化中心**：[runtimeErrors.ts](file:///d:/Git/Quick%20Ai/src/shared/runtimeErrors.ts) 定义了归一化的错误实体（`RuntimeErrorPayload`），涵盖 `timeout`（连接或执行超时）、`rate_limit`（频次超限）、`unauthorized`（密钥验证失败）、`network`（DNS/套接字连接失败）等类别。
+*   **SQLite 消息层持久化**：[`schema.ts`](file:///d:/Git/Quick%20Ai/src/main/database/schema.ts) 为 messages 增加了 `errorPayload` 字段并执行 ensureColumn 列升级。在 [`sessionStore.ts`](file:///d:/Git/Quick%20Ai/src/main/database/sessionStore.ts) 中对该异常信息执行了持久化存取与会话 Hash 感知，防止状态丢失。
+*   **文案呈现与消息加工解耦**：
+    *   [runtimeErrorPresenter.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/features/errors/runtimeErrorPresenter.ts)：承载全部中文文案与排错指南映射逻辑。
+    *   [runtimeErrorMessage.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/features/errors/runtimeErrorMessage.ts)：封装 `applyRuntimeErrorToMessage` 进行流写入与最终事件追加。
+*   **UI 隔离与呈现**：[RuntimeErrorPanel.tsx](file:///d:/Git/Quick%20Ai/src/renderer/src/components/errors/RuntimeErrorPanel.tsx) 作为隔离的 React 组件渲染错误并支持“重试并发送”，而 [MessageBubble.tsx](file:///d:/Git/Quick%20Ai/src/renderer/src/components/MessageBubble.tsx) 只负责消费并嵌入该组件。
