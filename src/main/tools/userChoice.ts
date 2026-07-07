@@ -63,7 +63,8 @@ export const askUserChoiceTool: ToolDefinition = {
     required: ['question', 'options']
   },
   execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
-    if (!ctx.mainWindow || ctx.mainWindow.isDestroyed()) {
+    const requestUserChoice = ctx.host?.requestUserChoice
+    if (!requestUserChoice) {
       throw new Error('Cannot ask the user because no application window is available.')
     }
 
@@ -90,7 +91,7 @@ export const askUserChoiceTool: ToolDefinition = {
       timeoutSeconds * 1000
     )
 
-    ctx.mainWindow.webContents.send('user-choice-request', {
+    requestUserChoice({
       reqId: ctx.reqId,
       requestId,
       title: cleanToolString(args.title, '', 100),

@@ -8,15 +8,7 @@ import {
 import { ToolDefinition, ToolExecutionContext } from './types'
 
 function getReminderClickHandler(ctx: ToolExecutionContext): (() => void) | undefined {
-  const win = ctx.mainWindow
-  if (!win) return undefined
-
-  return () => {
-    if (win.isDestroyed()) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
-  }
+  return ctx.host?.focusWindow
 }
 
 export const reminderTools: Record<string, ToolDefinition> = {

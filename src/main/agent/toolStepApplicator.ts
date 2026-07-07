@@ -1,5 +1,5 @@
 import { AgentEvent, ChatCompletionMessage, SessionResource } from '../../shared/types'
-import { ToolDefinition, ToolExecutionContext, ToolModelAttachment } from '../tools/types'
+import { AgentHostActions, ToolExecutionContext, ToolModelAttachment } from '../tools/types'
 import { ToolRegistryView } from '../tools/registryView'
 import { ActionLog } from './actionLog'
 import {
@@ -37,7 +37,7 @@ export interface CreateToolStepExecutorOptions {
   onAmbiguousAction: (action: AmbiguousAction) => void
   resources?: SessionResource[]
   agentModel?: ToolExecutionContext['agentModel']
-  mainWindow?: Parameters<ToolDefinition['execute']>[1]['mainWindow']
+  host?: AgentHostActions
   emitEvent?: (event: AgentEvent) => void
   executePreparedToolCall?: typeof executePreparedToolCall
   recordToolAction?: typeof recordToolAction
@@ -64,7 +64,7 @@ export function createToolStepExecutor(options: CreateToolStepExecutorOptions): 
       maxSteps: options.maxSteps,
       stepId: options.stepId,
       signal: options.signal,
-      mainWindow: options.mainWindow,
+      host: options.host,
       resources: options.resources,
       agentModel: options.agentModel,
       retryPolicy: options.retryPolicy,

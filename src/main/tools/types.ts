@@ -4,15 +4,27 @@ import {
   ToolResultUi,
   SessionResource,
   AgentEvent,
-  ModelRuntimeConfig
+  ModelRuntimeConfig,
+  UserChoiceRequest
 } from '../../shared/types'
-import { BrowserWindow } from 'electron'
+
+/**
+ * Electron-specific host interactions a tool may need, expressed as plain callbacks so the tool
+ * layer never depends on BrowserWindow. Injected at the transport boundary (agentLoop) and left
+ * undefined in headless/test contexts.
+ */
+export interface AgentHostActions {
+  /** Push a user-choice request to the UI (a channel separate from the agent event stream). */
+  requestUserChoice?: (request: UserChoiceRequest) => void
+  /** Bring the app window to the foreground, e.g. when a reminder notification is clicked. */
+  focusWindow?: () => void
+}
 
 export interface ToolExecutionContext {
   reqId: string
   callId?: string
   signal: AbortSignal
-  mainWindow?: BrowserWindow
+  host?: AgentHostActions
   resources?: SessionResource[]
   agentModel?: {
     apiUrl: string

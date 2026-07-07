@@ -1,5 +1,5 @@
 import { AgentEvent, ChatCompletionMessage, SessionResource } from '../../shared/types'
-import { ToolDefinition, ToolExecutionContext, ToolModelAttachment } from '../tools/types'
+import { AgentHostActions, ToolExecutionContext, ToolModelAttachment } from '../tools/types'
 import { ToolRegistryView } from '../tools/registryView'
 import { ActionLog } from './actionLog'
 import { AgentToolDiscovery } from './agentRunPreparation'
@@ -56,7 +56,7 @@ export interface RunToolTurnOptions {
   runContext: ToolTurnRunContext
   emitEvent: (event: AgentEvent) => void
   requestPermission: (callId: string) => Promise<boolean>
-  mainWindow?: Parameters<ToolDefinition['execute']>[1]['mainWindow']
+  host?: AgentHostActions
   dependencies?: RunToolTurnDependencies
 }
 
@@ -123,7 +123,7 @@ export async function runToolTurn(options: RunToolTurnOptions): Promise<RunToolT
     maxSteps: options.maxSteps,
     stepId: options.stepId,
     signal: options.signal,
-    mainWindow: options.mainWindow,
+    host: options.host,
     resources: options.resources,
     agentModel: options.agentModel,
     retryPolicy: options.retryPolicy,

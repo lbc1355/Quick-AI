@@ -48,7 +48,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
 
     const result = await listSkillsTool.execute({}, executionContext)
@@ -72,7 +72,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
 
     const result = await listSkillsTool.execute({ skillId: 'skill-test' }, executionContext)
@@ -100,7 +100,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
 
     const result = await loadSkillTool.execute({ name: '@rich' }, executionContext)
@@ -129,7 +129,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
 
     const result = await systemTools.read_skill_resource.execute(
@@ -146,7 +146,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
 
     const createResult = await systemTools.create_skill.execute(
@@ -193,7 +193,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
 
     const installResult = await systemTools.install_skill.execute(
@@ -224,7 +224,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
     await systemTools.create_skill.execute(
       {
@@ -259,7 +259,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
 
     await systemTools.remove_skill.execute({ name: '@flat-skill' }, executionContext)
@@ -281,7 +281,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
 
     await expect(
@@ -294,7 +294,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
     await systemTools.create_skill.execute(
       {
@@ -324,7 +324,7 @@ describe('systemTools.list_skills', () => {
     const executionContext = {
       reqId: 'test-req',
       signal: new AbortController().signal,
-      mainWindow: null as any
+      host: undefined
     }
 
     const result = await listSkillsTool.execute({}, executionContext)
@@ -337,7 +337,7 @@ describe('systemTools.task', () => {
   const executionContext = (reqId: string) => ({
     reqId,
     signal: new AbortController().signal,
-    mainWindow: null as any
+    host: undefined
   })
 
   afterEach(() => {
@@ -429,14 +429,11 @@ describe('systemTools.ask_user_choice', () => {
   })
 
   it('sends a choice request and returns the selected option to the model', async () => {
-    const send = vi.fn()
+    const requestUserChoice = vi.fn()
     const executionContext: ToolExecutionContext = {
       reqId,
       signal: new AbortController().signal,
-      mainWindow: {
-        isDestroyed: () => false,
-        webContents: { send }
-      } as unknown as ToolExecutionContext['mainWindow']
+      host: { requestUserChoice }
     }
 
     const resultPromise = systemTools.ask_user_choice.execute(
@@ -452,8 +449,7 @@ describe('systemTools.ask_user_choice', () => {
 
     await Promise.resolve()
 
-    expect(send).toHaveBeenCalledWith(
-      'user-choice-request',
+    expect(requestUserChoice).toHaveBeenCalledWith(
       expect.objectContaining({
         reqId,
         question: 'Which database should I install?',
@@ -464,7 +460,7 @@ describe('systemTools.ask_user_choice', () => {
       })
     )
 
-    const request = send.mock.calls[0][1]
+    const request = requestUserChoice.mock.calls[0][0]
     globalUserChoiceManager.resolve(reqId, request.requestId, {
       selectedOptionId: 'option-2',
       selectedLabel: 'PostgreSQL',
@@ -479,14 +475,11 @@ describe('systemTools.ask_user_choice', () => {
   })
 
   it('accepts string options and reports cancellation', async () => {
-    const send = vi.fn()
+    const requestUserChoice = vi.fn()
     const executionContext: ToolExecutionContext = {
       reqId,
       signal: new AbortController().signal,
-      mainWindow: {
-        isDestroyed: () => false,
-        webContents: { send }
-      } as unknown as ToolExecutionContext['mainWindow']
+      host: { requestUserChoice }
     }
 
     const resultPromise = systemTools.ask_user_choice.execute(
@@ -499,7 +492,7 @@ describe('systemTools.ask_user_choice', () => {
 
     await Promise.resolve()
 
-    const request = send.mock.calls[0][1]
+    const request = requestUserChoice.mock.calls[0][0]
     expect(request.options[0]).toEqual({ id: 'option-1', label: 'A', value: 'A' })
 
     globalUserChoiceManager.resolve(reqId, request.requestId, { cancelled: true })
@@ -514,7 +507,7 @@ describe('systemTools reminders', () => {
   const executionContext = {
     reqId: 'reminder-req',
     signal: new AbortController().signal,
-    mainWindow: null as any
+    host: undefined
   }
 
   beforeEach(() => {

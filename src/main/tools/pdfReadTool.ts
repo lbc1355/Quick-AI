@@ -91,18 +91,10 @@ const emitResourceUpdate = (
   sessionResource: SessionResource | undefined
 ): void => {
   if (!sessionResource) return
-  const event = {
+  ctx.emitEvent?.({
     type: 'resource_update' as const,
     resource: sessionResource
-  }
-  if (ctx.emitEvent) {
-    ctx.emitEvent(event)
-  } else if (ctx.mainWindow) {
-    ctx.mainWindow.webContents.send('chat-chunk', {
-      reqId: ctx.reqId,
-      event
-    })
-  }
+  })
 }
 
 async function extractPdfText(

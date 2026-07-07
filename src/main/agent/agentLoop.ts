@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron'
 import { ChatCompletionMessage, AgentEvent, ModelRuntimeConfig } from '../../shared/types'
+import { AgentHostActions } from '../tools/types'
 import { getToolRegistryView } from '../toolRegistry'
 import {
   getContextWindowSize,
@@ -33,6 +34,22 @@ import {
 const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
   mainWindow.webContents.send('chat-chunk', { reqId, event })
 }
+
+// The single Electron transport boundary for the tool layer: everything below runToolTurn only
+// sees these plain callbacks, never a BrowserWindow.
+const createAgentHostActions = (mainWindow: BrowserWindow): AgentHostActions => ({
+  requestUserChoice: (request) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('user-choice-request', request)
+    }
+  },
+  focusWindow: () => {
+    if (mainWindow.isDestroyed()) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
+})
 
 const getAssistantText = (content: ChatCompletionMessage['content']): string => {
   if (typeof content === 'string') return content
@@ -140,6 +157,7 @@ export const runAgentLoop = async (
   })
   const runCtx = lifecycle.runCtx
   const signal = runCtx.signal
+  const hostActions = createAgentHostActions(mainWindow)
 
   const initialContextSize = getEffectiveContextWindowSize(options)
   const initialToolOutputSpilloverThreshold = getToolOutputSpilloverThreshold(initialContextSize)
@@ -359,7 +377,7 @@ export const runAgentLoop = async (
           maxSteps,
           stepId,
           signal,
-          mainWindow,
+          host: hostActions,
           resources: options.resources,
           agentModel: {
             apiUrl: options.apiUrl,
