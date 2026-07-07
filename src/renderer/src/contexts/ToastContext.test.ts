@@ -72,8 +72,13 @@ describe('ToastContext & ToastProvider', () => {
 
   const getContextValue = () => {
     sim.reset()
-    const element = ToastProvider({ children: null })
-    return element.props.value
+    const outerElement = ToastProvider({ children: null })
+    const toasts = outerElement.props.value
+    const actions = outerElement.props.children.props.value
+    return {
+      ...actions,
+      toasts
+    }
   }
 
   it('initializes with empty toasts', () => {
