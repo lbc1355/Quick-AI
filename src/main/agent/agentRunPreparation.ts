@@ -8,7 +8,6 @@ import {
 } from './messageBuilder'
 import {
   buildBranchForkPrompt as defaultBuildBranchForkPrompt,
-  buildCheckpointResumePrompt as defaultBuildCheckpointResumePrompt,
   cloneMessagesForCheckpoint as defaultCloneMessagesForCheckpoint,
   injectPromptBeforeLatestUser as defaultInjectPromptBeforeLatestUser
 } from './resumePrompts'
@@ -51,7 +50,7 @@ export interface PrepareAgentRunDependencies {
   buildSkillMessages?: typeof defaultBuildSkillMessages
   prepareChatAgentMessages?: typeof defaultPrepareChatAgentMessages
   cloneMessagesForCheckpoint?: typeof defaultCloneMessagesForCheckpoint
-  buildCheckpointResumePrompt?: typeof defaultBuildCheckpointResumePrompt
+
   buildBranchForkPrompt?: typeof defaultBuildBranchForkPrompt
   injectPromptBeforeLatestUser?: typeof defaultInjectPromptBeforeLatestUser
   searchToolDefinitions?: typeof defaultSearchToolDefinitions
@@ -111,8 +110,6 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
     dependencies.prepareChatAgentMessages || defaultPrepareChatAgentMessages
   const cloneMessagesForCheckpoint =
     dependencies.cloneMessagesForCheckpoint || defaultCloneMessagesForCheckpoint
-  const buildCheckpointResumePrompt =
-    dependencies.buildCheckpointResumePrompt || defaultBuildCheckpointResumePrompt
   const buildBranchForkPrompt = dependencies.buildBranchForkPrompt || defaultBuildBranchForkPrompt
   const injectPromptBeforeLatestUser =
     dependencies.injectPromptBeforeLatestUser || defaultInjectPromptBeforeLatestUser
@@ -149,10 +146,6 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
     messages = []
   } else if (resumeCheckpoint) {
     messages = cloneMessagesForCheckpoint(resumeCheckpoint.messages)
-    messages.push({
-      role: 'system',
-      content: buildCheckpointResumePrompt(resumeCheckpoint, actionLog)
-    })
   } else if (isSkill) {
     messages = buildSkillMessages({
       apiUrl: options.apiUrl,

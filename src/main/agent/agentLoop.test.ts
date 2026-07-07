@@ -534,7 +534,7 @@ describe('runAgentLoop', () => {
         .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
         .join('\n')
 
-      expect(joined).toContain('[RESUME MODE]')
+      expect(joined).not.toContain('[RESUME MODE]')
       expect(joined).toContain('Read the project then edit it')
       expect(joined).toContain('Checkpoint file content from the previous successful tool call.')
       expect(joined).not.toContain('继续')

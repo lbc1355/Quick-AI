@@ -137,7 +137,7 @@ describe('prepareAgentRun', () => {
     expect(result.messages).toBe(skillMessages)
   })
 
-  it('loads a resume checkpoint and appends the resume prompt', () => {
+  it('loads a resume checkpoint and uses messages directly without injecting a resume prompt', () => {
     const checkpoint: RunCheckpoint = {
       version: 1,
       sessionId: 'source-session',
@@ -170,7 +170,6 @@ describe('prepareAgentRun', () => {
       dependencies: {
         createActionLog,
         loadRunCheckpoint: () => checkpoint,
-        buildCheckpointResumePrompt: () => 'resume prompt',
         searchToolDefinitions: () => []
       }
     })
@@ -178,8 +177,7 @@ describe('prepareAgentRun', () => {
     expect(result.resumeCheckpoint).toBe(checkpoint)
     expect(result.resumeLoadError).toBeUndefined()
     expect(result.messages).toEqual([
-      { role: 'user', content: 'original request' },
-      { role: 'system', content: 'resume prompt' }
+      { role: 'user', content: 'original request' }
     ])
     expect(result.initialActiveTools).toEqual(['search_tools', 'file_read'])
     expect(result.ambiguousActions).toEqual(checkpoint.ambiguousActions)
