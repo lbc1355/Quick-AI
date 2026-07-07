@@ -8,3 +8,4 @@ out
 *.tsbuildinfo
 .codebase-memory
 .playwright-mcp/
+.agents/mcp_config.json

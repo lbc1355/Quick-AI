@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
-  CachePriorityRetainedRunRef,
   ContextRetentionMode,
   Message,
   ModelRuntimeConfig,
@@ -10,9 +9,17 @@ import {
   RunMode
 } from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
-import { isRuntimeErrorAssistantMessage, prepareMessageForInlineResume } from './chatMessageEvents'
-import { createForkedSession, getRunIdsThroughMessage } from './sessionBranching'
 import { startStreamingRun as startChatStreamingRun } from './chatStreaming'
+
+// Extracted pure helper functions
+import { buildApiMessages } from '../features/chat/apiMessageBuilder'
+import { getCachePriorityRetainedRuns } from '../features/chat/resourceCacheCoordinator'
+import {
+  resolveSessionForSend,
+  getProjectRunContext,
+  prepareEditOrForkMutation,
+  prepareResumeMutation
+} from '../features/chat/sessionMutationService'
 
 export {
   isRuntimeErrorAssistantMessage,
@@ -72,17 +79,6 @@ export interface UseChatCompletionReturn {
   showHelpMessage: () => Promise<void>
   handleCompactCurrentSession: () => Promise<boolean>
   handleAbortGeneration: () => void
-}
-
-interface ApiMessage {
-  role: string
-  content:
-    | string
-    | Array<{
-        type: string
-        text?: string
-        image_url?: { url: string }
-      }>
 }
 
 interface SendMessageOptions {
@@ -203,87 +199,6 @@ export const useChatCompletion = ({
   useEffect(() => {
     runModeRef.current = runMode
   }, [runMode])
-
-  const getMessagesForLLM = (messages: Message[]): Message[] => {
-    let startIndex = 0
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].isCompactionSummary) {
-        startIndex = i
-        break
-      }
-    }
-    return messages.slice(startIndex)
-  }
-
-  const getCachePriorityRetainedRuns = (
-    messages: Message[]
-  ): CachePriorityRetainedRunRef[] | undefined => {
-    if (latestRequestConfigRef.current.contextRetentionMode !== 'cache-priority') return undefined
-
-    const messagesToProcess = getMessagesForLLM(messages)
-
-    // The main process inserts retained tool context into the outbound message array. When the
-    // renderer prepends a system prompt to apiMessages, visible dialogue indexes are shifted by one.
-    let apiMessageIndex = latestRequestConfigRef.current.systemPrompt ? 1 : 0
-    const refs: CachePriorityRetainedRunRef[] = []
-    const seen = new Set<string>()
-
-    for (const message of messagesToProcess) {
-      if (isRuntimeErrorAssistantMessage(message)) continue
-
-      if (message.role === 'assistant') {
-        const runIds = message.agentRunIds || (message.agentRunId ? [message.agentRunId] : [])
-        for (const runId of runIds) {
-          if (runId && !seen.has(runId)) {
-            seen.add(runId)
-            refs.push({ runId, assistantMessageIndex: apiMessageIndex })
-          }
-        }
-      }
-
-      apiMessageIndex++
-    }
-
-    return refs.length > 0 ? refs : undefined
-  }
-
-  const resolveSessionForSend = (currentSessions: Session[]): Session => {
-    const now = Date.now()
-    const currentSession = currentSessions.find((s) => s.id === activeSessionId)
-
-    if (currentSession) return currentSession
-
-    const baseSession =
-      draftSessionRef.current && draftSessionRef.current.id === activeSessionId
-        ? draftSessionRef.current
-        : {
-            id: activeSessionId || now.toString(),
-            title: '新对话',
-            messages: [],
-            lastActiveTime: now
-          }
-
-    const newSession: Session = {
-      ...baseSession,
-      lastActiveTime: now
-    }
-    currentSessions.unshift(newSession)
-    setDraftSession(null)
-    return newSession
-  }
-
-  const getProjectRunContext = (
-    session: Session,
-    projectList = latestRequestConfigRef.current.projects
-  ): { projectRoot?: string; projectName?: string } => {
-    if (!session.projectId) return {}
-    const project = projectList.find((item) => item.id === session.projectId)
-    if (!project) return {}
-    return {
-      projectRoot: project.path,
-      projectName: project.name
-    }
-  }
 
   // Replace a single message in the active session, keeping sessionsRef in sync.
   const updateMessageById = (
@@ -521,11 +436,20 @@ export const useChatCompletion = ({
     setIsGeneratingLive(true)
     setInputVal('')
 
-    const currentSessions: Session[] = sessionsRef.current.map((s) => ({
+    let currentSessions: Session[] = sessionsRef.current.map((s) => ({
       ...s,
       messages: s.messages.map((m) => ({ ...m }))
     }))
-    const currentSession = resolveSessionForSend(currentSessions)
+    const resolveResult = resolveSessionForSend(
+      currentSessions,
+      activeSessionId,
+      draftSessionRef.current
+    )
+    const currentSession = resolveResult.session
+    currentSessions = resolveResult.updatedSessions
+    if (resolveResult.draftSessionCleared) {
+      setDraftSession(null)
+    }
     let targetSession = currentSession
     let sourceMessageId = customMsgId
     let branchOf: { sessionId: string; messageId: string; runId?: string } | undefined
@@ -535,67 +459,40 @@ export const useChatCompletion = ({
 
     // 1. If we are editing, update message content and slice trailing messages
     if (customMsgId) {
-      const idx = currentSession.messages.findIndex((m) => m.id === customMsgId)
-      if (idx === -1) {
-        setIsGeneratingLive(false)
-        return false
-      }
+      const editResult = prepareEditOrForkMutation({
+        currentSession,
+        promptToSend,
+        msgId: customMsgId,
+        forceBranch: options.forceBranch,
+        branchSource: options.branchSource,
+        now: Date.now()
+      })
 
-      const shouldFork = options.forceBranch ?? idx < currentSession.messages.length - 1
-
-      if (shouldFork) {
-        branchOf = {
-          sessionId: currentSession.id,
-          messageId: options.branchSource?.messageId || customMsgId,
-          ...(options.branchSource?.runId ? { runId: options.branchSource.runId } : {})
-        }
-
-        targetSession = createForkedSession({
-          sourceSession: currentSession,
-          throughIdx: idx,
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          now: Date.now(),
-          branchOf,
-          transformMessage: (message, messageIdx) =>
-            messageIdx === idx ? { ...message, content: promptToSend } : message
-        })
-        currentSessions.unshift(targetSession)
-        setActiveSessionId(targetSession.id)
-        forkedCachePayload = {
-          sourceSessionId: currentSession.id,
-          targetSessionId: targetSession.id,
-          runIds: getRunIdsThroughMessage(currentSession.messages, idx)
-        }
+      if (editResult.isForked) {
+        targetSession = editResult.targetSession
+        branchOf = editResult.targetSession.branchOf
+        currentSessions.unshift(editResult.targetSession)
+        setActiveSessionId(editResult.targetSession.id)
+        forkedCachePayload = editResult.forkedCachePayload
       } else {
-        // Runs whose turns are about to be sliced away: clean up their cached resources/actions so
-        // the operation history stays consistent with the dialogue after the edit/regenerate.
-        const removedRunIds = currentSession.messages
-          .slice(idx + 1)
-          .filter((m) => m.role === 'assistant' && m.agentRunId)
-          .map((m) => m.agentRunId as string)
-
-        currentSession.messages[idx] = {
-          ...currentSession.messages[idx],
-          content: promptToSend
-        }
-        currentSession.messages = currentSession.messages.slice(0, idx + 1)
-
-        if (removedRunIds.length > 0) {
+        targetSession = currentSession
+        if (editResult.removedRunIds && editResult.removedRunIds.length > 0) {
           const others = currentSessions.filter((s) => s.id !== currentSession.id)
           const { keptResources, deletableIds } = computeResourcePrune(
             currentSession,
             others,
-            removedRunIds
+            editResult.removedRunIds
           )
           currentSession.resources = keptResources
           void window.api
             .clearSessionCaches({
               sessionIds: [],
               resourceIds: deletableIds,
-              partialActions: [{ sessionId: currentSession.id, runIds: removedRunIds }]
+              partialActions: [{ sessionId: currentSession.id, runIds: editResult.removedRunIds }]
             })
             .catch(console.warn)
         }
+        currentSession.messages = editResult.updatedSourceSessionMessages || currentSession.messages
       }
     } else {
       // Normal message send
@@ -642,46 +539,10 @@ export const useChatCompletion = ({
     persistSessionsSnapshotSoon(currentSessions)
 
     // Load full messages block
-    const apiMessages: ApiMessage[] = []
-    if (requestConfig.systemPrompt) {
-      apiMessages.push({ role: 'system', content: requestConfig.systemPrompt })
-    }
-
-    const messagesToProcess = getMessagesForLLM(targetSession.messages.slice(0, -1))
-
-    messagesToProcess.forEach((msg) => {
-      if (isRuntimeErrorAssistantMessage(msg)) return
-
-      let content:
-        | string
-        | Array<{
-            type: string
-            text?: string
-            image_url?: { url: string }
-          }> = msg.content
-
-      if (msg.files && msg.files.length > 0) {
-        const textParts = [msg.content]
-        const images: Array<{ type: 'image_url'; image_url: { url: string } }> = []
-        msg.files.forEach((f) => {
-          if (f.type === 'image') {
-            images.push({
-              type: 'image_url',
-              image_url: { url: f.content }
-            })
-          } else {
-            textParts.push(`\n[参考文件: ${f.name}]\n${f.content}`)
-          }
-        })
-
-        if (images.length > 0) {
-          content = [{ type: 'text', text: textParts.join('\n') }, ...images]
-        } else {
-          content = textParts.join('\n')
-        }
-      }
-      apiMessages.push({ role: msg.role, content })
-    })
+    const apiMessages = buildApiMessages(
+      requestConfig.systemPrompt,
+      targetSession.messages.slice(0, -1)
+    )
 
     if (forkedCachePayload && forkedCachePayload.runIds.length > 0) {
       try {
@@ -707,7 +568,9 @@ export const useChatCompletion = ({
           contextWindowTokens: requestConfig.contextWindowTokens,
           contextRetentionMode: requestConfig.contextRetentionMode,
           cachePriorityRetainedRuns: getCachePriorityRetainedRuns(
-            targetSession.messages.slice(0, -1)
+            targetSession.messages.slice(0, -1),
+            requestConfig.contextRetentionMode,
+            requestConfig.systemPrompt
           ),
           messages: apiMessages,
           runMode: effectiveRunMode,
@@ -736,11 +599,20 @@ export const useChatCompletion = ({
     setIsGeneratingLive(true)
     setInputVal('')
 
-    const currentSessions: Session[] = sessionsRef.current.map((s) => ({
+    let currentSessions: Session[] = sessionsRef.current.map((s) => ({
       ...s,
       messages: s.messages.map((m) => ({ ...m }))
     }))
-    const currentSession = resolveSessionForSend(currentSessions)
+    const resolveResult = resolveSessionForSend(
+      currentSessions,
+      activeSessionId,
+      draftSessionRef.current
+    )
+    const currentSession = resolveResult.session
+    currentSessions = resolveResult.updatedSessions
+    if (resolveResult.draftSessionCleared) {
+      setDraftSession(null)
+    }
 
     const displayPrompt = `@${skill.trigger}${userInput.trim() ? ` ${userInput.trim()}` : ''}`
     const userMsg: Message = {
@@ -789,7 +661,9 @@ export const useChatCompletion = ({
           contextWindowTokens: requestConfig.contextWindowTokens,
           contextRetentionMode: requestConfig.contextRetentionMode,
           cachePriorityRetainedRuns: getCachePriorityRetainedRuns(
-            currentSession.messages.slice(0, -1)
+            currentSession.messages.slice(0, -1),
+            requestConfig.contextRetentionMode,
+            requestConfig.systemPrompt
           ),
           systemPrompt: requestConfig.systemPrompt,
           skill,
@@ -867,62 +741,40 @@ export const useChatCompletion = ({
     const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
     setActiveReqId(reqId)
 
-    const isHistoricalResume = msgIdx < currentSession.messages.length - 1
-    const branchOf = isHistoricalResume
-      ? { sessionId: currentSession.id, messageId: failedMsg.id, runId: resumeFromRunId }
-      : undefined
-    const targetSession = isHistoricalResume
-      ? (() => {
-          const forkedSession = createForkedSession({
-            sourceSession: currentSession,
-            throughIdx: msgIdx,
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            now: Date.now(),
-            branchOf: branchOf!,
-            transformMessage: (message, index) =>
-              index === msgIdx
-                ? {
-                    ...prepareMessageForInlineResume(message, reqId),
-                    isBranchFork: true,
-                    forkedFrom: branchOf
-                  }
-                : message
-          })
-          currentSessions.unshift(forkedSession)
-          setActiveSessionId(forkedSession.id)
-          return forkedSession
-        })()
-      : currentSession
+    const resumeResult = prepareResumeMutation({
+      currentSession,
+      msgIdx,
+      reqId,
+      now: Date.now()
+    })
 
-    const assistantMsgId = failedMsg.id
+    const branchOf = resumeResult.branchOf
+    const isHistoricalResume = resumeResult.isHistoricalResume
+    let targetSession = currentSession
 
-    if (!isHistoricalResume) {
-      const targetMsgIdx = targetSession.messages.findIndex((msg) => msg.id === failedMsg.id)
+    if (isHistoricalResume) {
+      targetSession = resumeResult.targetSession
+      currentSessions.unshift(targetSession)
+      setActiveSessionId(targetSession.id)
+    } else {
+      const targetMsgIdx = currentSession.messages.findIndex((msg) => msg.id === failedMsg.id)
       if (targetMsgIdx === -1) {
         setIsGeneratingLive(false)
         setActiveReqId(null)
         return
       }
-      targetSession.messages[targetMsgIdx] = prepareMessageForInlineResume(
-        targetSession.messages[targetMsgIdx],
-        reqId
-      )
+      currentSession.messages = resumeResult.updatedSourceSessionMessages || currentSession.messages
     }
+
+    const assistantMsgId = failedMsg.id
 
     targetSession.lastActiveTime = Date.now()
     setActiveGenerationSessionId(targetSession.id)
-    if (branchOf) {
-      const runIds = getRunIdsThroughMessage(currentSession.messages, msgIdx)
-      if (runIds.length > 0) {
-        void window.api
-          .forkSessionCaches({
-            sourceSessionId: currentSession.id,
-            targetSessionId: targetSession.id,
-            runIds
-          })
-          .catch(console.warn)
-      }
+
+    if (resumeResult.forkedCachePayload && resumeResult.forkedCachePayload.runIds.length > 0) {
+      void window.api.forkSessionCaches(resumeResult.forkedCachePayload).catch(console.warn)
     }
+
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
     persistSessionsSnapshotSoon(currentSessions)
@@ -940,7 +792,9 @@ export const useChatCompletion = ({
           contextWindowTokens: requestConfig.contextWindowTokens,
           contextRetentionMode: requestConfig.contextRetentionMode,
           cachePriorityRetainedRuns: getCachePriorityRetainedRuns(
-            targetSession.messages.slice(0, -1)
+            targetSession.messages.slice(0, -1),
+            requestConfig.contextRetentionMode,
+            requestConfig.systemPrompt
           ),
           messages: [],
           runMode: 'agent',

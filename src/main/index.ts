@@ -1,55 +1,24 @@
-import {
-  app,
-  shell,
-  BrowserWindow,
-  ipcMain,
-  globalShortcut,
-  Tray,
-  Menu,
-  screen,
-  dialog
-} from 'electron'
-import { basename, join } from 'path'
-import { realpathSync } from 'fs'
+import { app, shell, BrowserWindow, globalShortcut, Tray, Menu, screen } from 'electron'
+import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { FileStore } from './store'
 import type { StorageSchema, WindowMode, WindowState } from '../shared/types'
-import { handleChatCompletion, fetchModels, abortChatCompletion } from './aiClient'
-import { compactContextWithModel } from './agent/contextCompactor'
-import {
-  runAgentSkill,
-  runGeneralAgent,
-  resolveToolPermission,
-  resolveUserChoice,
-  abortAgentSkill
-} from './agent'
-import { deleteActionLog, ActionLog, getActionLogPath } from './agent/actionLog'
-import {
-  copyRunCheckpointsForRuns,
-  deleteRunCheckpoint,
-  deleteRunCheckpoints
-} from './agent/runCheckpoint'
-import { copyRunManifestsForRuns, deleteRunManifest, deleteRunManifests } from './agent/runManifest'
-import { deleteResourceFile } from './resourceCache'
-import { showDesktopNotification } from './tools/helpers'
-import { clearSessionApprovals } from './agent/AgentRunContext'
-import {
-  ensureMemoryLibrary,
-  listMemoryEntries,
-  readMemoryEntry,
-  writeMemoryEntry
-} from './memory/memoryStore'
+import { ensureMemoryLibrary } from './memory/memoryStore'
 import { logger } from './logger'
 import { McpManager } from './mcpManager'
 import { registerHtmlRenderer } from './webRenderer'
 import { ensureSystemSkills, watchSkillFolders } from './skillManager'
-import { getToolRegistryView } from './toolRegistry'
-import {
-  getBackgroundShells,
-  readBackgroundShellLog,
-  stopBackgroundShell
-} from './tools/backgroundShell'
+
+// IPC handlers
+import { registerStoreIpc } from './ipc/storeIpc'
+import { registerMcpIpc } from './ipc/mcpIpc'
+import { registerMemoryIpc } from './ipc/memoryIpc'
+import { registerCacheIpc } from './ipc/cacheIpc'
+import { registerGenerationIpc } from './ipc/generationIpc'
+import { registerWindowIpc } from './ipc/windowIpc'
+import { registerProjectIpc } from './ipc/projectIpc'
+import { registerBackgroundShellIpc } from './ipc/backgroundShellIpc'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -433,310 +402,50 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC handlers for FileStore with security whitelist
-  const ALLOWED_STORE_KEYS = ['sessions', 'settings', 'skills', 'projects']
-
-  // MCP IPC handlers
-  ipcMain.handle('mcp-get-config', () => {
-    return McpManager.readConfigRaw()
-  })
-
-  ipcMain.handle('mcp-set-config', (_event, content) => {
-    const merged = McpManager.writeConfigRaw(content)
-    McpManager.reload().catch((err) => {
-      logger.error('MCP', `Error reloading after config write: ${err.message}`)
+  if (store) {
+    registerStoreIpc(store, (skills) => {
+      broadcastSkillsUpdated(skills)
     })
-    return merged
-  })
+    registerGenerationIpc(store)
+  }
 
-  ipcMain.handle('mcp-delete-server', (_event, name) => {
-    if (typeof name !== 'string') {
-      throw new Error('MCP server name must be a string')
-    }
+  registerMcpIpc()
+  registerMemoryIpc()
+  registerCacheIpc()
 
-    const result = McpManager.deleteServer(name)
-    McpManager.reload().catch((err) => {
-      logger.error('MCP', `Error reloading after MCP server delete: ${err.message}`)
-    })
-    return result
-  })
-
-  ipcMain.handle('mcp-get-status', () => {
-    return McpManager.getStatuses()
-  })
-
-  ipcMain.handle('mcp-open-config', () => {
-    McpManager.openConfigFolder()
-  })
-
-  ipcMain.handle('store-get', (_event, key) => {
-    if (typeof key !== 'string' || !ALLOWED_STORE_KEYS.includes(key)) {
-      throw new Error(`Forbidden store-get key: ${key}`)
-    }
-    const storeKey = key as keyof StorageSchema
-    return store?.get(storeKey)
-  })
-
-  ipcMain.handle('store-set', (_event, key, value) => {
-    if (typeof key !== 'string' || !ALLOWED_STORE_KEYS.includes(key)) {
-      throw new Error(`Forbidden store-set key: ${key}`)
-    }
-    const storeKey = key as keyof StorageSchema
-    store?.set(storeKey, value as StorageSchema[typeof storeKey])
-    if (storeKey === 'skills') {
-      broadcastSkillsUpdated(store?.get('skills') as StorageSchema['skills'])
-    }
-    return true
-  })
-
-  ipcMain.handle('get-app-info', () => {
-    return {
-      storePath: store?.getStorePath() || '',
-      version: '1.0.0'
-    }
-  })
-
-  ipcMain.handle('list-agent-tools', () => {
-    return getToolRegistryView()
-      .list()
-      .filter((tool) => tool.implemented && tool.discoverable)
-      .map((tool) => ({
-        name: tool.name,
-        title: tool.title,
-        description: tool.description,
-        category: tool.category,
-        risk: tool.risk,
-        source: tool.source || 'builtin',
-        parameters: tool.parameters
-      }))
-      .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
-  })
-
-  ipcMain.handle('select-project-directory', async () => {
-    if (!mainWindow) return null
-    isFilePickerActive = true
-    try {
-      const result = await dialog.showOpenDialog(mainWindow, {
-        title: '选择项目文件夹',
-        properties: ['openDirectory']
-      })
-      if (result.canceled || result.filePaths.length === 0) return null
-      const selectedPath = realpathSync.native(result.filePaths[0])
-      return {
-        path: selectedPath,
-        name: basename(selectedPath)
+  const windowController = {
+    hideWindow,
+    showWindow,
+    minimizeWindow,
+    toggleWindowMaximized,
+    getCurrentWindowState,
+    setWindowMode,
+    setFilePickerActive: (active: boolean) => {
+      isFilePickerActive = active
+    },
+    setWindowPinned: (pinned: boolean) => {
+      isWindowPinned = pinned
+    },
+    toggleDevTools: () => {
+      if (mainWindow) {
+        if (mainWindow.webContents.isDevToolsOpened()) {
+          mainWindow.webContents.closeDevTools()
+        } else {
+          mainWindow.webContents.openDevTools({ mode: 'detach' })
+        }
       }
-    } finally {
-      setTimeout(() => {
-        isFilePickerActive = false
-      }, 300)
-    }
-  })
-
-  // Delete a session's on-disk caches (action log + orphaned resource files). Best-effort:
-  // the renderer decides which resource ids are safe to remove (no surviving session references
-  // them); this handler just deletes what it's told and never throws.
-  ipcMain.handle('clear-session-caches', async (_event, payload) => {
-    const sessionIds: string[] = Array.isArray(payload?.sessionIds)
-      ? payload.sessionIds.filter((id: unknown): id is string => typeof id === 'string')
-      : []
-    const resourceIds: string[] = Array.isArray(payload?.resourceIds)
-      ? payload.resourceIds.filter((id: unknown): id is string => typeof id === 'string')
-      : []
-
-    // Partial action-log cleanup for surviving sessions (edit/regenerate): delete only the records
-    // of the removed runs, not the whole file. Done synchronously before the async deletes below.
-    const partialActions: Array<{ sessionId: string; runIds: string[] }> = Array.isArray(
-      payload?.partialActions
-    )
-      ? payload.partialActions.filter(
-          (e: unknown): e is { sessionId: string; runIds: string[] } =>
-            !!e &&
-            typeof (e as { sessionId?: unknown }).sessionId === 'string' &&
-            Array.isArray((e as { runIds?: unknown }).runIds)
-        )
-      : []
-    for (const entry of partialActions) {
-      const runIds = entry.runIds.filter((id): id is string => typeof id === 'string')
-      if (runIds.length === 0) continue
-      try {
-        new ActionLog(getActionLogPath(entry.sessionId)).deleteByRunIds(runIds)
-        await Promise.all(runIds.map((runId) => deleteRunCheckpoint(entry.sessionId, runId)))
-        await Promise.all(runIds.map((runId) => deleteRunManifest(entry.sessionId, runId)))
-      } catch (err) {
-        console.warn('clear-session-caches: partial action delete failed:', (err as Error).message)
+    },
+    reSummonWindow: () => {
+      if (mainWindow) {
+        showWindow()
       }
-    }
+    },
+    getMainWindow: () => mainWindow
+  }
 
-    for (const id of sessionIds) {
-      // Drop any "allow for this task" approvals so a reused session id never inherits stale grants.
-      clearSessionApprovals(id)
-    }
-
-    const results = await Promise.allSettled([
-      ...sessionIds.map((id) => deleteActionLog(id)),
-      ...sessionIds.map((id) => deleteRunCheckpoints(id)),
-      ...sessionIds.map((id) => deleteRunManifests(id)),
-      ...resourceIds.map((id) => deleteResourceFile(id))
-    ])
-    for (const r of results) {
-      if (r.status === 'rejected') {
-        console.warn('clear-session-caches: a cache delete failed:', r.reason)
-      }
-    }
-    return { ok: true }
-  })
-
-  ipcMain.handle('fork-session-caches', async (_event, payload) => {
-    const sourceSessionId =
-      typeof payload?.sourceSessionId === 'string' ? payload.sourceSessionId : ''
-    const targetSessionId =
-      typeof payload?.targetSessionId === 'string' ? payload.targetSessionId : ''
-    const runIds: string[] = Array.isArray(payload?.runIds)
-      ? payload.runIds.filter((id: unknown): id is string => typeof id === 'string')
-      : []
-
-    if (!sourceSessionId || !targetSessionId || sourceSessionId === targetSessionId) {
-      return { ok: true, actions: 0, checkpoints: 0, manifests: 0 }
-    }
-
-    try {
-      const sourceLog = new ActionLog(getActionLogPath(sourceSessionId))
-      const targetLog = new ActionLog(getActionLogPath(targetSessionId))
-      const actions = sourceLog.copyByRunIdsTo(targetLog, runIds)
-      const checkpoints = copyRunCheckpointsForRuns(sourceSessionId, targetSessionId, runIds)
-      const manifests = copyRunManifestsForRuns(sourceSessionId, targetSessionId, runIds)
-      return { ok: true, actions, checkpoints, manifests }
-    } catch (err) {
-      console.warn('fork-session-caches failed:', (err as Error).message)
-      return { ok: false, actions: 0, checkpoints: 0, manifests: 0 }
-    }
-  })
-
-  ipcMain.handle('fetch-models', (_event, fetchUrl, apiKey) => {
-    return fetchModels(fetchUrl, apiKey)
-  })
-
-  ipcMain.handle('memory-entries', () => {
-    return listMemoryEntries()
-  })
-
-  ipcMain.handle('memory-entry-read', (_event, id) => {
-    return typeof id === 'string' ? readMemoryEntry(id) : ''
-  })
-
-  ipcMain.handle('memory-entry-write', async (_event, id, content) => {
-    if (typeof id !== 'string' || typeof content !== 'string') {
-      throw new Error('memory-entry-write requires string id and content')
-    }
-    await writeMemoryEntry(id, content)
-    return { ok: true }
-  })
-
-  // IPC handlers for background shells control
-  ipcMain.handle('bg-shell-list', (_event, sessionId) => {
-    return getBackgroundShells(typeof sessionId === 'string' ? sessionId : undefined)
-  })
-
-  ipcMain.handle('bg-shell-read-log', (_event, id) => {
-    if (typeof id !== 'string') throw new Error('bg-shell-read-log requires string id')
-    return readBackgroundShellLog(id)
-  })
-
-  ipcMain.handle('bg-shell-stop', async (_event, id) => {
-    if (typeof id !== 'string') throw new Error('bg-shell-stop requires string id')
-    await stopBackgroundShell(id)
-    return { ok: true }
-  })
-
-  // IPC handlers for window control
-  ipcMain.on('hide-window', () => {
-    hideWindow()
-  })
-
-  ipcMain.handle('get-window-state', () => getCurrentWindowState())
-
-  ipcMain.handle('set-window-mode', (_event, mode: WindowMode) => {
-    if (mode !== 'floating' && mode !== 'window') {
-      throw new Error(`Invalid window mode: ${String(mode)}`)
-    }
-    return setWindowMode(mode)
-  })
-
-  ipcMain.on('minimize-window', () => {
-    minimizeWindow()
-  })
-
-  ipcMain.on('toggle-window-maximized', () => {
-    toggleWindowMaximized()
-  })
-
-  ipcMain.on('set-file-picker-active', (_event, active) => {
-    isFilePickerActive = active
-  })
-
-  ipcMain.on('set-window-pinned', (_event, pinned) => {
-    isWindowPinned = pinned === true
-  })
-
-  ipcMain.on('re-summon-window', () => {
-    if (mainWindow) {
-      showWindow()
-    }
-  })
-
-  ipcMain.on('toggle-devtools', () => {
-    if (mainWindow) {
-      if (mainWindow.webContents.isDevToolsOpened()) {
-        mainWindow.webContents.closeDevTools()
-      } else {
-        mainWindow.webContents.openDevTools({ mode: 'detach' })
-      }
-    }
-  })
-
-  ipcMain.on('show-notification', (_event, title: string, body: string) => {
-    showDesktopNotification(String(title || 'QuickAI'), String(body || ''), () => {
-      if (mainWindow && !mainWindow.isDestroyed()) showWindow()
-    })
-  })
-
-  ipcMain.handle('compact-context', async (_event, payload) => {
-    return compactContextWithModel(payload)
-  })
-  ipcMain.on('start-chat-completion', (event, reqId, options) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (win && store) {
-      const permissions = store.get('settings').permissions
-      if (options.runMode === 'agent') {
-        const systemPrompt = store.get('settings').systemPrompt
-        runGeneralAgent(win, reqId, { ...options, systemPrompt }, permissions)
-      } else {
-        handleChatCompletion(win, reqId, options)
-      }
-    }
-  })
-
-  ipcMain.on('start-agent-skill', (event, reqId, options) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (win && store) {
-      const permissions = store.get('settings').permissions
-      runAgentSkill(win, reqId, options, permissions)
-    }
-  })
-
-  ipcMain.on('respond-tool-permission', (_event, reqId, callId, approved) => {
-    resolveToolPermission(reqId, callId, approved)
-  })
-
-  ipcMain.on('respond-user-choice', (_event, reqId, requestId, response) => {
-    resolveUserChoice(String(reqId || ''), String(requestId || ''), response || {})
-  })
-
-  ipcMain.on('abort-generation', (_event, reqId) => {
-    abortChatCompletion(reqId)
-    abortAgentSkill(reqId)
-  })
+  registerWindowIpc(windowController)
+  registerProjectIpc(windowController)
+  registerBackgroundShellIpc()
 
   createWindow()
   createTray()

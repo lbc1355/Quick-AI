@@ -75,7 +75,7 @@ QuickAI 是一个 **uTools 风格的桌面 AI 助手**，通过 `Alt+/` 全局�
 │  ┌──────────────┐  ┌───────────────┐  ┌───────────────┐  │
 │  │   App.tsx    │  │  chatStreaming│  │   components/ │  │
 │  │ UI 布局与编排│  │ 前端流式解析器│  │  视图组件渲染 │  │
-│  └──────┬───────┘  └───────────────┘  └───────────────┘  │
+│  └──────┬───────┘  └───────────────┘  └───────┬───────┘  │
 │         │                                                │
 │  ┌──────▼───────┐  ┌───────────────┐  ┌───────────────┐  │
 │  │  useSessions │  │ useAutocomplete│  │  useProviders │  │
@@ -91,54 +91,75 @@ QuickAI 是一个 **uTools 风格的桌面 AI 助手**，通过 `Alt+/` 全局�
 ```
 src/
 ├── shared/                       # 三端共享的纯类型定义与接口声明
-│   └── types.ts                  # 全局类型定义（AI配置、消息、事件流、Skill、存储模型）
+│   └── types.ts                  # 全局类型定义（AI配置、消息、事件流、Skill、存储模型等）
 ├── preload/                      # 预加载脚本目录（沙箱桥接）
 │   ├── index.ts                  # contextBridge API 暴露实现
 │   └── index.d.ts                # window.api 接口类型声明
 ├── main/                         # Electron 主进程 (Node.js 运行时)
-│   ├── index.ts                  # 应用入口：生命周期、托盘、窗口交互、IPC 事件分发与响应
-│   ├── database.ts               # SQLite 数据库底层逻辑：建表、表迁移、数据 CRUD
-│   ├── store.ts                  # 旧版 store 的适配层，封装 load/save 指导 SQLite 读写
-│   ├── aiClient.ts               # Chat 模式入口，调用 LLM 完成无工具辅助的标准会话
+│   ├── index.ts                  # 应用入口：生命周期、托盘、窗口交互及 IPC 调度加载
+│   ├── ipc/                      # 独立解耦的 IPC 注册模块目录
+│   │   ├── mcpIpc.ts             # MCP 服务控制与注销 IPC 通道
+│   │   ├── storeIpc.ts           # SQLite 配置适配与技能更新广播 IPC 通道
+│   │   ├── memoryIpc.ts          # 长期记忆 Git 读写 IPC 通道
+│   │   ├── cacheIpc.ts           # 会话分叉拷贝与孤立缓存清理 IPC 通道
+│   │   ├── generationIpc.ts      # LLM 会话启动、技能执行与终止生成 IPC 通道
+│   │   ├── windowIpc.ts          # 窗口控制（聚焦/最小化/置顶）与控制器注入通道
+│   │   └── backgroundShellIpc.ts # 后台 shell 管理与通知 IPC 通道
+│   ├── database/                 # SQLite 数据库模块目录
+│   │   ├── connection.ts         # 数据库连接初始化与 PRAGMA 性能调优
+│   │   ├── schema.ts             # 表结构 Schema 定义
+│   │   ├── migration.ts          # 数据库迁移与 JSON 历史数据导入逻辑
+│   │   └── *Store.ts             # 实体持久化 Repository (sessionStore, settingsStore, skillStore, projectStore, resourceStore)
+│   ├── store.ts                  # 旧版 store 的适配层，透明桥接至 SQLite 数据库
+│   ├── aiClient.ts               # Chat 模式入口，调用 LLM 完成标准会话
 │   ├── paths.ts                  # 集中管理 ~/.quickai 等本地目录及路径解析
-│   ├── resourceCache.ts          # 网络内容抓取（fetch_url）的磁盘关系分块缓存与合并
-│   ├── webTools.ts               # SSRF 防御的网络请求实现、网页 HTML 剥离、多引擎级联搜索
+│   ├── resourceCache.ts          # 网络内容抓取的磁盘关系缓存管理
 │   ├── logger.ts                 # 主进程文件和控制台日志记录器
-│   ├── tools/                    # 模块化工具箱目录
-│   │   ├── types.ts              # 工具定义接口及 API 转换声明
-│   │   ├── registry.ts           # 动态工具注册中心，包括 Proxy 兼容代理
-│   │   ├── helpers.ts            # 工具辅助逻辑：SSRF校验、沙箱判断、系统通知
-│   │   ├── file.ts               # file_read, file_write, workspace_search, workspace_list_files
-│   │   ├── web.ts                # fetch_url, web_search
-│   │   ├── system.ts             # read_cached_resource, search_cached_resource, read_tool_output, task, inspect_environment, notify
-│   │   ├── memory.ts             # list_past_actions, get_past_action, read_memory, list_memory, write_memory, delete_memory
-│   │   └── shell.ts              # shell 执行工具（带超时与 Abort 信号检测）
-│   ├── memory/                   # Durable Memory 逻辑层
-│   │   ├── memoryStore.ts        # 针对 memories/ 目录下的 markdown 文件的操作和自动索引
-│   │   └── memoryGit.ts          # Git CLI 的 programmatic 调用，用于变动自动 commit
+│   ├── mcpManager.ts             # 负责连接和管理外部 MCP (Model Context Protocol) 服务的核心
+│   ├── skillManager.ts           # 自定义技能包导入、模块运行管理
+│   ├── web/                      # 网络服务提取层
+│   │   ├── urlSafety.ts          # SSRF 安全防护与本地 IP 拦截
+│   │   ├── htmlExtract.ts        # 网页 HTML 去冗余提取与 Markdown 转换
+│   │   └── searchParsers.ts      # 多搜索引擎返回结果爬取解析
+│   ├── memory/                   # Durable Memory 长期记忆模块
+│   │   ├── memoryStore.ts        # memories/ 目录下 Markdown 文件的操作和自动索引
+│   │   └── memoryGit.ts          # Git 自动跟踪提交与仓库初始化
+│   ├── tools/                    # 模块化原子化工具箱目录
+│   │   ├── types.ts              # 工具与执行上下文的 TypeScript 类型定义
+│   │   ├── registry.ts           # 动态工具注册中心与 Bracket Proxy 代理
+│   │   ├── helpers.ts            # SSRF检验、沙箱判断、系统通知等辅助组件
+│   │   ├── file*Tool.ts          # 独立拆分的文件写/读/删除/重命名等原子工具
+│   │   ├── web*Tool.ts           # 网页爬取、级联网络搜索等原子工具
+│   │   ├── memory*Tool.ts        # 读、写、清理长期记忆的原子工具
+│   │   ├── skill*Tool.ts         # 自定义技能创建、移除与安装的原子工具
+│   │   └── ...                   # shellTool.ts, subagentTool.ts 等独立原子工具
 │   └── agent/                    # Agent 引擎目录
 │       ├── index.ts              # 引擎对外的统一导出入口
-│       ├── AgentRunContext.ts    # Agent 运行时状态容器（工具列表、大输出临时存储等）
-│       ├── agentLoop.ts          # Agent ReAct 循环主驱动器
-│       ├── callModel.ts          # 兼容 OpenAI SSE 标准的 LLM 调用层（内置 <think> 标签解析）
-│       ├── messageBuilder.ts     # 系统提示词编排、技能包装、资源覆盖摘要注入
-│       ├── contextManager.ts     # 上下文窗口预算估算及两阶段智能截断机制
-│       ├── permissionManager.ts  # 等待 UI 异步授权的 Promise 等待逻辑
-│       ├── constitution.ts       # 静态规则库，根据工具入参和文件类型动态升级授权级别
-│       ├── commandSafety.ts      # 纯词法分析的 Shell 命令及文件路径安全分类器
-│       ├── loopGuard.ts          # 检测模型调用循环及连续工具失败自动 halt 阻断
-│       ├── retryPolicy.ts        # 网络瞬态异常重试策略
-│       ├── tokenEstimator.ts     # 离线 Token 开销估算器
-│       ├── actionLog.ts          # 行动日志管理器（每会话 JSONL 读写，含脱敏逻辑）
-│       ├── runCheckpoint.ts      # Agent 执行切片状态存档，用于故障恢复与分支追溯
-│       └── runManifest.ts        # Agent 运行跟踪清单，登记已创建消息和副作用（Side Effects）
+│       ├── AgentRunContext.ts    # Agent 运行时状态容器（工具临时大缓冲区等）
+│       ├── agentLoop.ts          # Agent 顶层推理主循环
+│       ├── messageBuilder.ts     # 系统提示词编排与上下文摘要拼接
+│       ├── contextManager.ts     # 上下文窗口智能截断与裁剪管理器
+│       ├── permissionManager.ts  # 等待前端异步审批的 Promise 等待逻辑
+│       ├── constitution.ts       # 静态安全规则宪法，动态升降授权级别
+│       ├── commandSafety.ts      # 词法分析的 Shell 命令与文件路径安全分类器
+│       ├── loopGuard.ts          # 熔断守卫：防止 LLM 重复调用与报错陷入死循环
+│       ├── *Runner.ts            # 单独解耦的任务驱动器 (modelTurnRunner, toolTurnRunner, toolBatchRunner, subagentRunner)
+│       ├── toolStep*.ts          # 处理工具流的独立管道 (toolStepProcessor, toolStepApplicator, toolStepFinalizer, toolStepPresentation)
+│       ├── cache*.ts             # 缓存诊断与状态提取 (cacheShapeDiagnostics, cachePriorityContext)
+│       └── run*.ts               # checkpoint 切片还原与清单日志管理
 └── renderer/                     # Renderer 进程 (React 前端)
     └── src/
         ├── main.tsx              # React 挂载入口
         ├── App.tsx               # UI 状态机骨架与全局弹窗管理
+        ├── features/             # 内聚核心业务领域逻辑层
+        │   └── chat/             # 聊天与生成核心逻辑层
+        │       ├── apiMessageBuilder.ts       # API 消息组装与 /compact 上下文剪枝
+        │       ├── sessionMutationService.ts  # 新会话首发回写与 fork 逻辑事务
+        │       ├── chatCompletionPure.test.ts # 对话调度核心纯函数的单元测试集
+        │       └── useAgentMessageViewModel.ts # 单条消息呈现状态与计时的 ViewModel 钩子
         ├── hooks/                # 响应式逻辑 Hook
         │   ├── useSessions.ts    # 会话列表增删改查及缓存自动修剪
-        │   ├── useChatCompletion.ts # 对话调度核心，支持常规对话、Skill运行、分支及恢复
+        │   ├── useChatCompletion.ts # 对话调度 React 绑定驱动层，承接业务流推进
         │   ├── useProviders.ts   # 多模型、服务商及工具权限配置管理
         │   ├── useSkills.ts      # Skill 的 markdown 导入与解析
         │   ├── useAutocomplete.ts # Spotlight 式快捷指令自动完成
@@ -147,7 +168,7 @@ src/
         │   ├── sessionBranching.ts # 创建分叉会话、提取运行轨迹等分支工具包
         │   └── chatMessageEvents.ts # 辅助消息渲染与行内恢复逻辑转换
         ├── components/           # UI 视图组件
-        │   ├── MessageBubble.tsx # 单条消息气泡（含 Markdown 渲染、KaTeX、代码块、Agent 事件流及权限控制）
+        │   ├── MessageBubble.tsx # 单条消息气泡，消费 useAgentMessageViewModel 产出的稳定呈现状态
         │   ├── SettingsView.tsx  # 设置面板（服务商、模型选择、技能导入、权限审计）
         │   └── ...
         └── utils/
@@ -159,14 +180,27 @@ src/
 
 ## 4. 持久化存储与数据库架构 (SQLite)
 
-在之前的版本中，QuickAI 使用 JSON 文件进行扁平化存储。现已全面重构成基于本地 SQLite 关系型数据库的架构。
+在之前的版本中，QuickAI 使用 JSON 文件进行扁平化存储。现已全面重构成基于本地 SQLite 关系型数据库的模块化架构。
 
-### 4.1 核心数据库管理器 —— [database.ts](file:///d:/Git/Quick%20Ai/src/main/database.ts)
+### 4.1 模块化数据库架构 —— [src/main/database/](file:///d:/Git/Quick%20Ai/src/main/database)
 
-主进程首次初始化时，会在 `{userData}/quickai.db` 创建 SQLite 数据库并运行性能优化 Pragmas：
-- **WAL 模式** (`journal_mode = WAL`)：允许并行读写，提升写入速度。
-- **外键约束** (`foreign_keys = ON`)：启用层级级联删除（例如：删除 session 时自动删除其关联的 messages 和 message_files）。
-- **同步级别** (`synchronous = NORMAL`)：降低写盘同步频率，减少磁盘 I/O 阻塞。
+数据库逻辑不再堆叠在单文件中，而是采用 Repository 模式解耦为以下子模块：
+
+*   **连接配置管理器 —— [connection.ts](file:///d:/Git/Quick%20Ai/src/main/database/connection.ts)**：
+    负责数据库首次初始化，定位 `{userData}/quickai.db` 文件，并应用高性能 SQLite Pragma 优化：
+    *   `journal_mode = WAL`：开启 Write-Ahead Logging 模式，提供高并发读写性能。
+    *   `foreign_keys = ON`：强制启用外键物理约束。
+    *   `synchronous = NORMAL`：在安全与磁盘 I/O 间取得平衡。
+*   **结构定义与表定义 —— [schema.ts](file:///d:/Git/Quick%20Ai/src/main/database/schema.ts)**：
+    定义关系数据库各张表的 DDL。
+*   **数据迁移与导入引擎 —— [migration.ts](file:///d:/Git/Quick%20Ai/src/main/database/migration.ts)**：
+    处理版本迭代时的表结构平滑迁移，以及 `migrateFromJson()`（在数据库为空时读取旧的 `quickai_store.json` 进行一次性原子导入，并生成 `.bak` 备份）。
+*   **业务逻辑持久化仓库 (Repositories)**：
+    *   [settingsStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/settingsStore.ts)：全局 KV 配置与服务商凭证存储。
+    *   [sessionStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/sessionStore.ts)：会话及其下层级联消息（Messages & Files）的管理仓库。
+    *   [skillStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/skillStore.ts)：AI 技能包元数据和资源路径存储。
+    *   [projectStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/projectStore.ts)：多工作空间项目属性持久化。
+    *   [resourceStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/resourceStore.ts)：网页抓取及 PDF 读入的切片级缓存管理器。
 
 ### 4.2 数据库 Schema 结构
 
@@ -264,11 +298,11 @@ erDiagram
 
 ### 4.3 JSON 数据自动迁移机制
 
-如果数据库为空而本地存在旧格式的 `quickai_store.json` 与 `resources/` 目录，[database.ts](file:///d:/Git/Quick%20Ai/src/main/database.ts) 的 `migrateFromJson()` 会自动解析旧数据，通过批量准备语句 (Prepared Statements) 将数据转换并插入到 SQLite 对应的表中，成功后将旧的 JSON 文件重命名为 `.bak` 文件。
+如果数据库为空而本地存在旧格式的 `quickai_store.json` 与 `resources/` 目录，[migration.ts](file:///d:/Git/Quick%20Ai/src/main/database/migration.ts) 中的 `migrateFromJson()` 会自动解析旧数据，通过批量准备语句 (Prepared Statements) 将数据转换并插入到 SQLite 对应的表中，成功后将旧的 JSON 文件重命名为 `.bak` 文件。
 
 ### 4.4 KV 桥接适配器 —— [store.ts](file:///d:/Git/Quick%20Ai/src/main/store.ts)
 
-为了不破坏已有的 IPC 调用逻辑，[store.ts](file:///d:/Git/Quick%20Ai/src/main/store.ts) 导出了一个 `FileStore` 类，其 `get(key)` 和 `set(key, val)` 接口保持原样，但在内部透明地转换为调用 `database.ts` 中的 `loadSettings()`, `saveSettings()`, `loadSessions()`, `saveSessions()`, `loadSkills()`, `saveSkills()` 等关系型数据库读写逻辑。
+为了不破坏已有的 IPC 调用逻辑，[store.ts](file:///d:/Git/Quick%20Ai/src/main/store.ts) 导出了一个 `FileStore` 类，其 `get(key)` 和 `set(key, val)` 接口保持原样，但在内部透明地转换为调用 `database` 各仓库中的 `loadSettings()`, `saveSettings()`, `loadSessions()`, `saveSessions()`, `loadSkills()`, `saveSkills()` 等关系型数据库读写逻辑。
 
 ---
 
@@ -326,28 +360,70 @@ export interface ToolDefinition {
 
 ### 6.2 动态工具注册中心 —— [registry.ts](file:///d:/Git/Quick%20Ai/src/main/tools/registry.ts)
 
-工具模块放置在 `src/main/tools/` 下按类别解耦：
-- `file.ts` (文件工具)：`file_read`, `file_write`, `workspace_search`, `workspace_list_files`
-- `web.ts` (网页工具)：`fetch_url`, `web_search`
-- `system.ts` (系统与任务)：`read_cached_resource`, `search_cached_resource`, `read_tool_output`, `task` (步骤追踪), `inspect_environment` (运行环境探测), `notify` (系统通知)
-- `memory.ts` (记忆工具)：`read_memory`, `list_memory`, `write_memory`, `delete_memory`, `list_past_actions`, `get_past_action`
-- `shell.ts` (脚本执行)：`shell`
+工具不再集中于几个粗粒度的类别大文件中，而是被彻底原子化拆分为存放于 `src/main/tools/` 目录下的独立专责文件（如 `fileReadTool.ts`、`webSearchTool.ts`、`subagentTool.ts` 等），遵循单一职责原则。
 
-主进程启动时会利用 `ToolRegistryImpl` 注册所有内置模块。
-为了兼容旧版代码直接使用 `ToolRegistry[name]` 的 bracket 形式，[registry.ts](file:///d:/Git/Quick%20Ai/src/main/tools/registry.ts) 暴露了一个 Proxy 代理。当调用 `ToolRegistry[name]` 时，代理会将调用路由至 `ToolRegistryImpl.get(name)`。同时，它支持 `Object.keys()` 和 `for...in` 对动态加载的工具进行迭代。
+#### 核心工具模块划分：
+*   **文件操作工具（File Tools）**：
+    *   `fileReadTool.ts` / `fileWriteTool.ts` / `fileEditTool.ts` / `fileDeleteTool.ts`：读写删改。
+    *   `fileCopyTool.ts` / `fileMoveTool.ts` / `directoryCreateTool.ts`：复制、移动和目录创建。
+    *   `workspaceListFilesTool.ts` / `workspaceSearchTool.ts` / `workspaceGlob.ts`：工作空间文件列举、正则和 Glob 检索。
+*   **网络操作工具（Web Tools）**：
+    *   `webFetchTool.ts` / `webSearchTool.ts`：网页抓取和网络搜索引擎接口调用。
+*   **系统与通知工具（System Tools）**：
+    *   `notifyTool.ts` / `inspectEnvironmentTool.ts` / `environmentProbe.ts`：通知系统与本地运行时环境检测。
+    *   `taskTool.ts`：用于 Agent 追踪计划分解的步骤记录。
+*   **长期记忆管理工具（Memory Tools）**：
+    *   `memoryReadTools.ts` / `memoryWriteTools.ts` / `memoryActionTools.ts`：长期知识库与行动历史记录的管理。
+*   **子 Agent 与运行时（Subagent & Core Tools）**：
+    *   `subagentTool.ts`：派生独立沙箱子 Agent 的接口。
+    *   `toolOutputTools.ts` / `cachedResourceTools.ts`：大容量工具输出和资源抓取缓存检索。
+*   **技能生命周期管理（Skill Tools）**：
+    *   `skillCreateTool.ts` / `skillInstallTool.ts` / `skillRemoveTool.ts` / `skillListTool.ts`：自定义技能包的热插拔管理。
+
+主进程启动时会利用 `ToolRegistryImpl` 注册所有内置模块。为了兼容旧版代码直接使用 `ToolRegistry[name]` 的属性语法访问，[registry.ts](file:///d:/Git/Quick%20Ai/src/main/tools/registry.ts) 暴露了一个 Proxy 代理。当调用 `ToolRegistry[name]` 时，代理会将调用路由至 `ToolRegistryImpl.get(name)`。同时，它配合 [registryView.ts](file:///d:/Git/Quick%20Ai/src/main/tools/registryView.ts) 支持对动态加载的工具进行元数据审查与迭代。
+
+### 6.3 MCP 连接与执行超时机制强化
+
+为了防御不稳定的外部 MCP 服务可能导致的子进程或连接悬挂风险，`McpManager` 引入了细粒度的超时保护与主动销毁逻辑：
+
+- **读取全局 `timeouts` 调度配置**：在主进程 reload 时读取配置文件的顶层 `timeouts` 声明，包含 `connect_timeout` (连接与工具声明检索超时) 和 `execute_timeout` (单个工具执行超时)。
+- **双向连接与列表请求超时熔断**：应用将 `client.connect` 和 `client.listTools` 统一包裹在 `withTimeout` 竞速中（默认为 10s）。一旦发生超时或网络无法连通，将触发该 Server 的彻底注销。
+- **运行期间的 CallTool 超时熔断**：调用 `client.callTool` 时应用会对其添加 `execute_timeout` 的上限判定（默认为 30s）。若工具执行卡死超时，将立刻抛出超时异常反馈给大模型，确保管线不被阻塞。
+- **靶向 Server 关闭与卸载机制 (`cleanupServer`)**：在任何阶段（包括连接与工具运行）检测到超时后，McpManager 会独立针对故障 Server 执行清理事务：
+  1. 调用 `client.close()` / `transport.close()` 触发底层的 stdio 连接切断并退出相应的 child process 句柄。
+  2. 从 `registeredToolNames` 内存集中识别并批量注销该 Server 下注册在 QuickAI Registry 中的所有 `mcp_{server}_{tool}` 工具。
+  3. 将该 MCP 服务在 UI 的状态字典中设置为 `failed`，并附带确切的 timeout 报错信息，保障悬挂进程和僵死工具被及时清理。
 
 ---
 
 ## 7. 分支与恢复的 Agent 执行引擎 (ReAct Loop)
 
-Agent 执行引擎在 ReAct 循环的基础上，新增了对会话中断（Interrupt）、切片保存（Checkpointing）、分支（Branching）和执行流复苏（Resuming）的完整支持。
+Agent 执行引擎基于 ReAct 循环，解耦为了高度模块化的管线处理器（Pipeline Processors），以提供对会话中断（Interrupt）、切片保存（Checkpointing）、分支（Branching）和状态复苏（Resuming）的完整支持。
 
-### 7.1 Agent 切片与清单体系
+### 7.1 Agent 执行管线拆解与生命周期
 
-当 Agent 模式被触发时，除了标准的 ReAct 状态维护，以下两套数据结构会被持久化保存：
+当 Agent 被触发时，它将依次流经以下由 [src/main/agent/](file:///d:/Git/Quick%20Ai/src/main/agent) 驱动的处理阶段：
+
+1.  **准备阶段（Run Preparation）**：
+    由 `agentRunPreparation.ts` 对最大步数上限等入参进行校验和修剪，并使用 `runUsageTracker.ts` 开启本次运行的 Token 及调用计数统计。
+2.  **大模型思考规划驱动（Model Turn Runner）**：
+    由 `modelTurnRunner.ts` 发起流式 LLM 调用。它根据服务商类型智能路由给 `callChatCompletionsModel.ts` 或 `callResponsesModel.ts`，由流式解析器实时输出 `<think>` 思考内容与工具调用规划（Tool Calls）。
+3.  **安全审查与授权（Permission Guard）**：
+    提取规划中的工具参数，交由 `constitution.ts` 和 `commandSafety.ts` 进行路径逃逸和高危 Shell 命令分析，必要时通过 `permissionManager.ts` 抛出 IPC 挂起 Promise，等待前端操作审批。
+4.  **工具批量执行器（Tool Turn Runner）**：
+    由 `toolTurnRunner.ts` 进行工具调度。当有多项无依赖的工具调用时，由 `toolBatchRunner.ts` 开启并发执行，通过 `preparedToolExecutor.ts` 分发具体的本地原子工具（`*Tool.ts`）并回收结果。
+5.  **步骤落地与清洗管道（Step Processor & Applicator）**：
+    *   `toolStepProcessor.ts`：将执行结果与原始调用请求封装为完整的步骤块。
+    *   `toolStepApplicator.ts`：处理可能发生的文件系统与变量状态变更应用。
+    *   `toolStepFinalizer.ts`：执行步骤的最终结算，并进行 `persistCheckpoint` 数据落盘。
+    *   `toolStepPresentation.ts`：实时将最终步骤的视觉化结果推送回 React 渲染进程进行展示。
+
+### 7.2 Agent 切片与清单体系
+
+在管线执行的每个 Turn 结束时，引擎会持久化保存以下两套关键数据，以支持分支切换和崩溃恢复：
 
 #### 1. 运行时切片 —— [runCheckpoint.ts](file:///d:/Git/Quick%20Ai/src/main/agent/runCheckpoint.ts)
-切片保存了单步执行完毕时的全部关键数据。在主循环的每个 Turn 结束、发送完响应、执行完工具后，引擎会将其写入到磁盘文件：`{userData}/run_checkpoints/{sessionId}/{reqId}.json`。
+切片保存了单步执行完毕时的全部关键状态，写入到磁盘：`{userData}/run_checkpoints/{sessionId}/{reqId}.json`。
 ```typescript
 export interface RunCheckpoint {
   version: number
@@ -380,37 +456,20 @@ export interface AgentRunManifest {
 }
 ```
 
-### 7.2 中断与在线恢复机制 (Resume Mode)
+### 7.3 中断与在线恢复机制 (Resume Mode)
 
-当 Agent 由于异常（如网络瞬时中断、大模型 API 限流、连续失败过长或执行超时）停顿，UI 会将错误记录渲染在气泡尾部，并显示 **“恢复（Resume）”** 按钮。
-1. 用户点击恢复后，前端获取该步骤消息中的 `agentRunId` (即原先的 `reqId`)。
-2. 前端向主进程发送 `start-chat-completion` 并带上 `resumeFromRunId`。
-3. 主进程的 [agentLoop.ts](file:///d:/Git/Quick%20Ai/src/main/agent/agentLoop.ts) 拦截此恢复信号，调用 `loadRunCheckpoint()` 装载之前的内存切片，将执行步数还原到中断点。
-4. 为了提示大模型，主进程构建一段 `RESUME MODE` 系统上下文指令（[resumePrompts.ts](file:///d:/Git/Quick%20Ai/src/main/agent/resumePrompts.ts)），指出这是一次自动恢复：
-   ```text
-   [RESUME MODE]
-   This is an automatic continuation of the same agent task after a previous execution failure.
-   No new user request was added. Continue the original task from the completed tool observations...
-   Resuming from run: <originalReqId>
-   Checkpoint step: <step>
-   ```
-5. 模型不需要重新开始或者盲目重复副作用工具（如写入），而是可以直接衔接历史 Observations 继续思考。
+当 Agent 由于异常（网络瞬断、大模型限流、或用户手动取消）中断时，UI 气泡会渲染 **“恢复（Resume）”** 按钮。
+1. 用户点击恢复后，前端携带该步骤的 `agentRunId` 发送 `start-chat-completion` 请求。
+2. 主进程拦截恢复信号，由 `agentLoop.ts` 重新加载对应 Run 缓存的 `RunCheckpoint` 切片，将执行状态精确恢复至中断步数。
+3. 大模型重新开始前，主进程在上下文末尾追加由 `resumePrompts.ts` 生成的 `RESUME MODE` 系统提示词，指出这是一次非破坏性的状态恢复，以引导 LLM 衔接先前的观察结果继续任务。
 
-### 7.3 会话分支派生与重构 (Session Branching)
+### 7.4 会话分支派生与重构 (Session Branching)
 
-当用户在会话的历史记录上进行 **编辑并保存**，或者针对历史旧消息点击 **重新生成** 时，QuickAI 会启动会话分支分叉机制：
-
+当用户在历史旧消息上点击编辑或重新生成时，系统会触发分支分叉：
 1. **状态复制与分叉**：
-   - 渲染进程通过 [sessionBranching.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/hooks/sessionBranching.ts) 创建一个全新的 Session（分叉会话），并为它打上 `branchOf` 标识（记录父会话 ID、对应的分支消息 ID 以及触发 Run 的 ID）。
-   - 将原会话中截至该消息为止的历史记录克隆到新会话，并将编辑后的内容作为最新的 User 消息。
-   - 新建一个 Assistant 消息占位，然后切换活跃会话 ID，使 UI 瞬间无缝切换到新会话窗口。
-
+   渲染进程利用 [sessionBranching.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/hooks/sessionBranching.ts) 创建带有 `branchOf` 标志的全新 Session，克隆当前时间戳前的所有历史消息，并将编辑后内容作为最新的 User 消息。
 2. **持久化缓存分叉 (Fork Caches)**：
-   - 主进程收到 IPC 调用的 `fork-session-caches` 请求。
-   - 引擎提取父会话在该编辑消息之前生成的所有 Agent Run 历史 ID。
-   - 主进程自动将这些 Run 的 `actionLog` 追加记录拷贝到新会话的日志中。
-   - 同时，它会执行文件系统克隆，将父会话在该点之前的 `runCheckpoint` 和 `runManifest` 文件成套拷贝到新会话目录。
-   - 结果是，分叉出来的分支会话完美地继承了历史的行动轨迹。在继续对分支会话调用 `list_past_actions` 时，模型依然能获得此前在父会话中执行过的工具记录，防止在分支会话中做重复的网络拉取或操作。
+   主进程接收 `fork-session-caches` 请求，将父 Session 中该时间节点前所有的 `RunCheckpoint` 切片文件及行动日志（`actionLog`）成套克隆至新 Session 目录。分支 Session 将无缝继承先前的运行历史，使模型在检索过去操作时免受重复请求与执行的困扰。
 
 ---
 
@@ -535,17 +594,43 @@ Preload 层 ([index.ts](file:///d:/Git/Quick%20Ai/src/preload/index.ts)) 在保�
   - **孤儿资源修剪**：当删除某会话或执行 clear 时，该 Hook 导出的 `computeResourcePrune()` 会在前端计算出**仅由当前被清理会话引用，而未被其他存活会话引用**的所有 `resourceId` 列表，然后发送 `clearSessionCaches` 彻底移出磁盘。
 
 - [useChatCompletion.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/hooks/useChatCompletion.ts) (生成流调度)：
-  - 会话消息流的拼装点。
-  - 汇聚了正常发送、技能启动、单条消息中途编辑分叉（[sessionBranching.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/hooks/sessionBranching.ts)）、单步故障恢复（Inline Resume）的调度入口。
+  - 对话流调度的 React 驱动器与通道绑定层。
+  - 承载正常发送、技能启动、单条消息中途编辑分叉、单步故障恢复的流式监听器。
 
 - [useAutocomplete.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/hooks/useAutocomplete.ts) (补全系统)：
   - 监控输入框字符，如果以 `/`、`#`、`@` 开头，会检索内置命令、会话、服务商和技能别名，返回高可用的补全面板列表。
+
+### 10.3 核心生成逻辑解耦与 ViewModel 模式 (MVVM)
+
+随着业务的复杂化（分支、中途编辑、多路会话状态回写、Agent 多路事件解析），Renderer 进程引入了 MVVM 风格的领域模型解耦方案：
+
+#### 1. 聊天生成内核解耦 (Chat Completion Core Domain)
+原先积压在 React Hooks 内部的纯逻辑和复杂的数据回刷事务被彻底解耦至 `src/renderer/src/features/chat/`，以纯 TypeScript 服务形式呈现：
+- **`apiMessageBuilder.ts`**：构造发送 payload。自动前置调用 `getMessagesForLLM(messages)`，过滤多余上下文并遵守最近一次 `/compact` 的历史裁减，保证压缩会话边界被完全保护，同时计算出准确的上下文偏移量。
+- **`sessionMutationService.ts`**：管理多级会话流回填。对于新草稿会话首发，该模块自动回填并用 `updatedSessions` 覆盖全局会话树实例；在单条消息中途编辑分叉时，智能执行 Fork 或覆盖编辑（当处于历史最末端时执行原地覆盖，当处于历史中间时默认触发 Fork 分支）。
+- **`chatCompletionPure.test.ts`**：对上述解耦的对话调度核心函数（例如 `resolveSessionForSend` 等）提供完备的纯函数单元测试。
+
+#### 2. MessageBubble 视图与逻辑分离 (ViewModel Pattern)
+- **`useAgentMessageViewModel.ts`**：为 MessageBubble 视图提供干净、无副作用的数据绑定接口。
+  - **计时机制**：内部自带以 500ms 刷新频率刷新耗时统计的 Timer。
+  - **统一解析**：接收 `agentEvents` 并处理结构化时间线 (Structured Timeline Step Mode)，或者兼容旧的 `[tool ...]` 日志提取，向外输出归一化的 `agentStatus` (running / completed / failed / cancelled 等) 和 `cockpitColor` 主题基调。
+  - **剪切板封装**：直接封装 `handleCopy` 复制逻辑，完成对 `/think` 标记剥离和脱敏后的消息文本提取。
+  - **UI 瘦身**：[MessageBubble.tsx](file:///d:/Git/Quick%20Ai/src/renderer/src/components/MessageBubble.tsx) 只需消费 ViewModel 输送的稳定属性，无需维护多个 `useState`、`useMemo` 及 `useEffect` 计算，保持 React DOM 及 UI 逻辑的高内聚低耦合。
 
 ---
 
 ## 11. IPC 通道设计与类型系统
 
 应用通过严格的 TypeScript 契约统一约束前端和主进程之间的交互参数。所有的接口实体均放置在 [types.ts](file:///d:/Git/Quick%20Ai/src/shared/types.ts) 共享模块下。
+
+主进程中的 IPC 通道注册已从 `index.ts` 彻底解耦，按业务领域聚合至 `src/main/ipc/` 目录下独立注册，避免反向依赖和主进程文件体积膨胀：
+- **`mcpIpc.ts`**：对接 `McpManager` 读写/注销 MCP 服务。
+- **`storeIpc.ts`**：控制基础 KV 设置与技能库更新广播。
+- **`memoryIpc.ts`**：对接长期记忆 Git Markdown 仓库的同步读写。
+- **`cacheIpc.ts`**：驱动会话清理、资源 Orphan 判定及缓存 Fork。
+- **`generationIpc.ts`**：对接 Agent 思考与生成控制，并在 UI 侧文件选择器激活时阻止窗口 blur 隐藏。
+- **`windowIpc.ts`**：控制窗口置顶、DEV 工具开启及通知分发，通过 Controller 回调注入窗口状态，解耦具体状态变量。
+- **`backgroundShellIpc.ts`**：后台进程任务挂载与终止。
 
 ### 11.1 IPC 接口全景表
 

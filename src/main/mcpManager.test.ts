@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
 import { McpManager } from './mcpManager'
 import { join } from 'path'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { existsSync, unlinkSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'fs'
 import { getQuickAiRoot } from './paths'
 import { getToolRegistry } from './toolRegistry'
@@ -29,23 +31,31 @@ vi.mock('./paths', () => ({
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
   return {
     Client: class {
-      connect = vi.fn().mockResolvedValue(undefined)
-      listTools = vi.fn().mockResolvedValue({
-        tools: [
-          {
-            name: 'test_tool',
-            description: 'A mock test tool',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                inputVal: { type: 'string' }
+      async connect(): Promise<void> {
+        return Promise.resolve(undefined)
+      }
+      async listTools(): Promise<any> {
+        return Promise.resolve({
+          tools: [
+            {
+              name: 'test_tool',
+              description: 'A mock test tool',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  inputVal: { type: 'string' }
+                }
               }
             }
-          }
-        ]
-      })
-      callTool = vi.fn().mockImplementation(() => Promise.resolve(mcpMockState.callToolResult))
-      close = vi.fn().mockResolvedValue(undefined)
+          ]
+        })
+      }
+      async callTool(): Promise<any> {
+        return Promise.resolve(mcpMockState.callToolResult)
+      }
+      async close(): Promise<void> {
+        return Promise.resolve(undefined)
+      }
     }
   }
 })
@@ -285,5 +295,121 @@ describe('McpManager', () => {
     expect(result.deleted).toBe(true)
     expect(parsed.servers).toHaveProperty('git')
     expect(parsed.servers).not.toHaveProperty('arxiv-agent')
+  })
+
+  it('handles connect timeout and cleans up resources', async () => {
+    const mockConfig = {
+      timeouts: {
+        connect_timeout: 50
+      },
+      servers: {
+        git: {
+          command: 'node',
+          args: ['git-server.js']
+        }
+      }
+    }
+    writeFileSync(configPath, JSON.stringify(mockConfig, null, 2), 'utf-8')
+
+    const connectSpy = vi.spyOn(Client.prototype, 'connect').mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    })
+    const closeSpy = vi.spyOn(Client.prototype, 'close')
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 150))
+
+    const statuses = McpManager.getStatuses()
+    const gitStatus = statuses.find((s) => s.name === 'git')
+
+    expect(gitStatus).toBeDefined()
+    expect(gitStatus?.status).toBe('failed')
+    expect(gitStatus?.error).toContain('timed out')
+    expect(closeSpy).toHaveBeenCalled()
+
+    const registry = getToolRegistry()
+    expect(registry.has('mcp_git_test_tool')).toBe(false)
+
+    connectSpy.mockRestore()
+    closeSpy.mockRestore()
+  })
+
+  it('handles callTool timeout, sets status to failed, closes client, and unregisters tools', async () => {
+    const mockConfig = {
+      timeouts: {
+        execute_timeout: 50
+      },
+      servers: {
+        git: {
+          command: 'node',
+          args: ['git-server.js']
+        }
+      }
+    }
+    writeFileSync(configPath, JSON.stringify(mockConfig, null, 2), 'utf-8')
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    let statuses = McpManager.getStatuses()
+    let gitStatus = statuses.find((s) => s.name === 'git')
+    expect(gitStatus?.status).toBe('connected')
+    const registry = getToolRegistry()
+    expect(registry.has('mcp_git_test_tool')).toBe(true)
+
+    const callToolSpy = vi.spyOn(Client.prototype, 'callTool').mockImplementation((async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      return mcpMockState.callToolResult
+    }) as any)
+    const closeSpy = vi.spyOn(Client.prototype, 'close')
+
+    const toolDef = registry.get('mcp_git_test_tool')
+    const executionResult = await toolDef?.execute(
+      { inputVal: 'test' },
+      { reqId: 'test-req', signal: new AbortController().signal }
+    )
+
+    expect(executionResult?.resultForModel).toContain('timed out')
+    expect(closeSpy).toHaveBeenCalled()
+
+    statuses = McpManager.getStatuses()
+    gitStatus = statuses.find((s) => s.name === 'git')
+    expect(gitStatus?.status).toBe('failed')
+    expect(gitStatus?.error).toContain('timed out')
+
+    expect(registry.has('mcp_git_test_tool')).toBe(false)
+
+    callToolSpy.mockRestore()
+    closeSpy.mockRestore()
+  })
+
+  it('precisely cleans up only the tools belonging to the target server to avoid prefix collision (e.g. git vs git_extra)', async () => {
+    const mockConfig = {
+      servers: {
+        git: {
+          command: 'node',
+          args: ['git-server.js']
+        },
+        git_extra: {
+          command: 'node',
+          args: ['git-extra-server.js']
+        }
+      }
+    }
+    writeFileSync(configPath, JSON.stringify(mockConfig, null, 2), 'utf-8')
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const registry = getToolRegistry()
+    expect(registry.has('mcp_git_test_tool')).toBe(true)
+    expect(registry.has('mcp_git_extra_test_tool')).toBe(true)
+
+    // Directly trigger cleanupServer('git')
+    await (McpManager as any).cleanupServer('git')
+
+    // Assert "git" tools are unregistered, but "git_extra" tools are still registered
+    expect(registry.has('mcp_git_test_tool')).toBe(false)
+    expect(registry.has('mcp_git_extra_test_tool')).toBe(true)
   })
 })

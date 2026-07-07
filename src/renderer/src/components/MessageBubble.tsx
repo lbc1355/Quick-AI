@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Message, AgentEvent } from '../../../shared/types'
+import { Message } from '../../../shared/types'
 import {
   Paperclip,
   Sparkles,
@@ -10,24 +10,14 @@ import {
   Loader2,
   RefreshCw
 } from 'lucide-react'
-import {
-  parseThinkTags,
-  renderMessageContent,
-  parseAgentLogs,
-  parseAgentSteps,
-  ParsedAgentStep,
-  ParsedToolCall
-} from '../utils/messageFormat'
-import { shortBranchRunId, type BranchChildInfo } from '../utils/branchDisplay'
+import { renderMessageContent, ParsedAgentStep, ParsedToolCall } from '../utils/messageFormat'
+import { type BranchChildInfo } from '../utils/branchDisplay'
 import { MessageActions } from './message/MessageActions'
-import { SubagentRunCard, SubagentRunState } from './SubagentRunCard'
+import { SubagentRunCard } from './SubagentRunCard'
 import { SubagentRunPanel } from './SubagentRunPanel'
 import { ToolDetailModal } from './message/ToolDetailModal'
-import {
-  formatCacheHitRate,
-  formatToolArgsSummary,
-  formatToolDisplayText
-} from './message/toolDisplay'
+import { useAgentMessageViewModel } from '../features/chat/useAgentMessageViewModel'
+import { formatToolArgsSummary } from './message/toolDisplay'
 
 const formatWorkedDuration = (seconds: number, stepsCount: number): string => {
   if (seconds > 0) {
@@ -39,14 +29,6 @@ const formatWorkedDuration = (seconds: number, stepsCount: number): string => {
     return `Worked for ${secs}s`
   }
   return `Worked for ${stepsCount} step${stepsCount === 1 ? '' : 's'}`
-}
-
-const formatElapsedDuration = (seconds: number): string => {
-  const safeSeconds = Math.max(0, Math.round(seconds))
-  const mins = Math.floor(safeSeconds / 60)
-  const secs = safeSeconds % 60
-  if (mins > 0) return `${mins}m${secs > 0 ? ` ${secs}s` : ''}`
-  return `${secs}s`
 }
 
 const getToolEventVerb = (toolCall: ParsedToolCall): string => {
@@ -360,28 +342,6 @@ export const StepReasoningBlock: React.FC<{
   )
 }
 
-export function parseSubagentRuns(events?: AgentEvent[]): SubagentRunState[] {
-  if (!events) return []
-  const runsMap: Record<string, SubagentRunState> = {}
-  const order: string[] = []
-
-  for (const ev of events) {
-    if (ev.type === 'subagent_start') {
-      runsMap[ev.subagentId] = { info: ev, events: [], status: 'running' }
-      order.push(ev.subagentId)
-    } else if (ev.type === 'subagent_event' && runsMap[ev.subagentId]) {
-      runsMap[ev.subagentId].events.push(ev.event)
-    } else if (ev.type === 'subagent_end' && runsMap[ev.subagentId]) {
-      runsMap[ev.subagentId].status = ev.status
-      runsMap[ev.subagentId].finalAnswer = ev.finalAnswer
-      runsMap[ev.subagentId].error = ev.error
-      runsMap[ev.subagentId].durationMs = ev.durationMs
-    }
-  }
-
-  return order.map((id) => runsMap[id])
-}
-
 interface MessageBubbleProps {
   msg: Message
   idx: number
@@ -414,52 +374,47 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onOpenBranch,
     onChangeEditingText
   }) => {
-    const [isExpanded, setIsExpanded] = useState(true)
-    const [activeSubagentId, setActiveSubagentId] = useState<string | null>(null)
-    const subagents = useMemo(() => {
-      return parseSubagentRuns(msg.agentEvents)
-    }, [msg.agentEvents])
-    const activeSubagent = useMemo(() => {
-      if (!activeSubagentId) return null
-      return subagents.find((s) => s.info.subagentId === activeSubagentId) || null
-    }, [subagents, activeSubagentId])
-    const { content: displayContent, reasoning: displayReasoning } = useMemo(
-      () => parseThinkTags(msg.content, msg.reasoning_content),
-      [msg.content, msg.reasoning_content]
-    )
+    const vm = useAgentMessageViewModel({ msg, isGenerating })
+    const {
+      isExpanded,
+      setIsExpanded,
+      copied,
+      isStepsExpanded,
+      setIsStepsExpanded,
+      selectedToolCallId,
+      setSelectedToolCallId,
+      elapsed,
+      subagents,
+      activeSubagent,
+      setActiveSubagentId,
+      displayReasoning,
+      hasStructuredEvents,
+      cleanContent,
+      branchRunId,
+      hasLogs,
+      agentEndEvent,
+      agentStatus,
+      parsedRun,
+      selectedToolCall,
+      finalReplyText,
+      renderedFinalAnswer,
+      renderedCleanContent,
+      handleCopy,
+      cacheHitRateText,
+      generationDurationText,
+      tasks,
+      pendingToolCall,
+      latestReasoningKey,
+      reasoningAutoStateKey,
+      shouldAutoOpenStepReasoning,
+      statusText,
+      opText,
+      toolsSummaryText,
+      cockpitColor
+    } = vm
 
-    // Determine if we use structured agent events or legacy string logs fallback
-    const hasStructuredEvents = msg.agentEvents && msg.agentEvents.length > 0
-    const cleanContent = useMemo(
-      () => (hasStructuredEvents ? displayContent : parseAgentLogs(displayContent).cleanContent),
-      [hasStructuredEvents, displayContent]
-    )
-
-    const [copied, setCopied] = useState(false)
-    const [isStepsExpanded, setIsStepsExpanded] = useState(true)
-    const [selectedToolCallId, setSelectedToolCallId] = useState<string | null>(null)
     const isEditing = editingMessageId === msg.id
     const isBranchForkMessage = Boolean(msg.isBranchFork || msg.forkedFrom)
-    const branchRunId = shortBranchRunId(msg.forkedFrom?.runId)
-
-    const [elapsed, setElapsed] = useState<number>(() =>
-      isGenerating && msg.role === 'assistant'
-        ? Math.round((Date.now() - (parseInt(msg.id) || Date.now())) / 1000)
-        : 0
-    )
-
-    const hasLogs = hasStructuredEvents || (msg.content && msg.content.includes('[tool '))
-
-    useEffect(() => {
-      if (isGenerating && msg.role === 'assistant') {
-        const startTime = parseInt(msg.id) || Date.now()
-        const timer = setInterval(() => {
-          setElapsed(Math.round((Date.now() - startTime) / 1000))
-        }, 500)
-        return () => clearInterval(timer)
-      }
-      return undefined
-    }, [isGenerating, msg.id, msg.role])
 
     useEffect(() => {
       if (!selectedToolCallId) return undefined
@@ -473,199 +428,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
 
       window.addEventListener('keydown', handleKeyDown, true)
       return () => window.removeEventListener('keydown', handleKeyDown, true)
-    }, [selectedToolCallId])
-
-    // Find agent_end event in the events list
-    const agentEndEvent = useMemo(
-      () =>
-        msg.agentEvents?.reduce<Extract<AgentEvent, { type: 'agent_end' }> | null>(
-          (last, e) => (e.type === 'agent_end' ? e : last),
-          null
-        ),
-      [msg.agentEvents]
-    )
-    // Find the last agent_progress event in the events list
-    const lastProgressEvent = useMemo(
-      () =>
-        msg.agentEvents?.reduce<Extract<AgentEvent, { type: 'agent_progress' }> | null>(
-          (last, e) => (e.type === 'agent_progress' ? e : last),
-          null
-        ),
-      [msg.agentEvents]
-    )
-    const latestProgressMessage = lastProgressEvent?.message?.trim() || ''
-
-    let agentStatus: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' =
-      'idle'
-    if (msg.agentEvents || msg.agentRunId) {
-      if (agentEndEvent) {
-        agentStatus = agentEndEvent.status
-      } else if (isGenerating) {
-        agentStatus = 'running'
-      } else {
-        agentStatus = cleanContent ? 'completed' : 'idle'
-      }
-    }
-
-    const currentStep = lastProgressEvent?.step || 1
-    const maxSteps = lastProgressEvent?.maxSteps || 30
-
-    const parsedRun = useMemo(() => {
-      return parseAgentSteps(msg.agentEvents, msg.content)
-    }, [msg.agentEvents, msg.content])
-
-    const selectedToolCall = useMemo(() => {
-      if (!selectedToolCallId) return null
-      for (const step of parsedRun.steps) {
-        const match = step.toolCalls.find((toolCall) => toolCall.callId === selectedToolCallId)
-        if (match) return match
-      }
-      return null
-    }, [parsedRun.steps, selectedToolCallId])
-
-    // The assistant's final reply text — the last final answer for structured runs, otherwise
-    // the cleaned content. This is what the copy button puts on the clipboard.
-    const finalReplyText = hasStructuredEvents ? parsedRun.finalAnswer : cleanContent
-
-    // Memoize the rendered markdown/KaTeX output. renderMessageContent runs regex splits and a
-    // synchronous katex.renderToString per math span; without memoization it re-runs on every
-    // re-render (notably the high-frequency re-renders during streaming).
-    const renderedFinalAnswer = useMemo(
-      () => (parsedRun.finalAnswer ? renderMessageContent(parsedRun.finalAnswer) : null),
-      [parsedRun.finalAnswer]
-    )
-    const renderedCleanContent = useMemo(
-      () => (cleanContent ? renderMessageContent(cleanContent) : null),
-      [cleanContent]
-    )
-
-    const handleCopy = (): void => {
-      if (!finalReplyText) return
-      navigator.clipboard
-        .writeText(finalReplyText)
-        .then(() => {
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1500)
-        })
-        .catch((err) => console.warn('Copy failed:', err))
-    }
-
-    const totalToolsCount = parsedRun.totalToolsCount
-    const failedToolsCount = parsedRun.failedToolsCount
-    const cacheHitRateText = formatCacheHitRate(msg.cacheStats)
-    const generationDurationText = elapsed > 0 ? `耗时 ${formatElapsedDuration(elapsed)}` : null
-
-    const activeParsedStep =
-      [...parsedRun.steps]
-        .reverse()
-        .find((step) => step.status === 'running' || step.status === 'failed') ||
-      parsedRun.steps[parsedRun.steps.length - 1]
-    const latestToolCall: ParsedToolCall | undefined =
-      activeParsedStep?.toolCalls.find(
-        (tc) => tc.status === 'pending' || tc.status === 'running'
-      ) || activeParsedStep?.toolCalls[activeParsedStep.toolCalls.length - 1]
-
-    const latestTaskEvent = msg.agentEvents
-      ? [...msg.agentEvents]
-          .reverse()
-          .find((e): e is Extract<AgentEvent, { type: 'task_update' }> => e.type === 'task_update')
-      : undefined
-    const tasks = latestTaskEvent?.tasks || []
-    const inProgressTaskIdx = tasks.findIndex((t) => t.status === 'in_progress')
-    const inProgressTask = inProgressTaskIdx !== -1 ? tasks[inProgressTaskIdx] : undefined
-
-    const pendingToolCall = msg.agentEvents
-      ? msg.agentEvents.find(
-          (e): e is Extract<AgentEvent, { type: 'tool_call' }> =>
-            e.type === 'tool_call' && e.permissionState === 'pending'
-        )
-      : undefined
-    const hasActiveToolCall =
-      latestToolCall?.status === 'pending' || latestToolCall?.status === 'running'
-    const isGeneratingAnswer =
-      agentStatus === 'running' &&
-      !pendingToolCall &&
-      !hasActiveToolCall &&
-      (parsedRun.finalAnswer.trim().length > 0 || totalToolsCount > 0)
-    const latestReasoningStep =
-      agentStatus === 'running'
-        ? [...parsedRun.steps].reverse().find((step) => step.reasoning.trim().length > 0)
-        : undefined
-    const latestReasoningKey =
-      agentStatus === 'running'
-        ? parsedRun.finalReasoning.trim().length > 0
-          ? 'final'
-          : latestReasoningStep?.id
-        : undefined
-    const reasoningAutoStateKey = `${agentStatus}:${latestReasoningKey || 'none'}`
-    const shouldAutoOpenStepReasoning = (step: ParsedAgentStep): boolean => {
-      return latestReasoningKey === step.id
-    }
-
-    const activeStepTitle = useMemo(() => {
-      if (activeParsedStep?.title) return activeParsedStep.title
-      if (activeParsedStep) {
-        const latestStep = activeParsedStep
-        if (latestStep.progressMessage) {
-          const firstLine = latestStep.progressMessage
-            .trim()
-            .split(/[。\n]/)[0]
-            .trim()
-          const clean = firstLine.replace(/[*#_`[\]]/g, '').trim()
-          if (clean.length > 0) {
-            return clean.length > 25 ? clean.substring(0, 25) + '...' : clean
-          }
-        }
-        if (latestStep.toolCalls.length > 0) {
-          return `执行 ${latestStep.toolCalls[0].toolName}`
-        }
-      }
-      if (inProgressTask) return inProgressTask.title
-      return `第 ${currentStep}/${maxSteps} 步`
-    }, [activeParsedStep, inProgressTask, currentStep, maxSteps])
-
-    let statusText = ''
-    let opText = ''
-    let toolsSummaryText = ''
-    let cockpitColor = 'var(--color-status-muted)'
-
-    if (pendingToolCall) {
-      cockpitColor = 'var(--color-status-pending)'
-      statusText = `等待确认 · 正在${activeStepTitle}`
-      const argsStr = formatToolArgsSummary(pendingToolCall.toolName, pendingToolCall.args)
-      opText =
-        pendingToolCall.toolName === 'shell'
-          ? `shell 需要授权：${argsStr}`
-          : `${pendingToolCall.toolName} 需要授权：${argsStr}`
-      toolsSummaryText = `已耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
-    } else if (agentStatus === 'running') {
-      cockpitColor = 'var(--color-status-running)'
-      statusText = isGeneratingAnswer ? '正在生成回答' : `正在${activeStepTitle}`
-      opText = latestProgressMessage
-        ? `当前操作：${latestProgressMessage}`
-        : isGeneratingAnswer
-          ? `当前操作：正在整理结果${totalToolsCount > 0 ? `（已运行 ${totalToolsCount} 个工具）` : ''}`
-          : latestToolCall
-            ? `当前操作：${latestToolCall.purpose || formatToolDisplayText(latestToolCall.toolName, latestToolCall.args)}`
-            : '当前操作：思考分析中...'
-      toolsSummaryText = `已耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
-    } else if (agentStatus === 'completed') {
-      cockpitColor = 'var(--color-status-success)'
-      statusText = '已完成'
-      opText = `共运行 ${totalToolsCount} 个工具 · 累计耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
-      toolsSummaryText = ''
-    } else if (agentStatus === 'cancelled') {
-      cockpitColor = 'var(--color-status-warning)'
-      statusText = '已取消'
-      opText = `共运行 ${totalToolsCount} 个工具 · 累计耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败` : ''}`
-    } else if (agentStatus === 'failed' || agentStatus === 'max_steps') {
-      cockpitColor = 'var(--color-status-danger)'
-      statusText = agentStatus === 'max_steps' ? '步数上限' : '执行失败'
-      opText = `共运行 ${totalToolsCount} 个工具 · 累计耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败` : ''}`
-    } else {
-      statusText = '空闲'
-      opText = `共运行 ${totalToolsCount} 个工具`
-    }
+    }, [selectedToolCallId, setSelectedToolCallId])
 
     return (
       <div

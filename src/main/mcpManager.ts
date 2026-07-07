@@ -70,12 +70,57 @@ const toToolParameters = (value: unknown): ToolDefinition['parameters'] => {
   }
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMsg: string): Promise<T> {
+  let timer: NodeJS.Timeout
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(errorMsg))
+    }, timeoutMs)
+  })
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    clearTimeout(timer)
+  })
+}
+
 class McpManagerImpl {
   private configPath: string = ''
   private clients = new Map<string, Client>()
   private transports = new Map<string, StdioClientTransport>()
   private statuses = new Map<string, McpServerStatus>()
   private registeredToolNames = new Set<string>()
+  private registeredToolNamesByServer = new Map<string, Set<string>>()
+
+  private async cleanupServer(name: string): Promise<void> {
+    const serverTools = this.registeredToolNamesByServer.get(name)
+    if (serverTools) {
+      for (const toolName of serverTools) {
+        unregisterToolDefinition(toolName)
+        this.registeredToolNames.delete(toolName)
+      }
+      this.registeredToolNamesByServer.delete(name)
+    }
+
+    const client = this.clients.get(name)
+    const transport = this.transports.get(name)
+
+    if (client) {
+      try {
+        await client.close()
+      } catch (err) {
+        logger.warn('MCP', `Error closing client for "${name}": ${(err as Error).message}`)
+      }
+      this.clients.delete(name)
+    }
+
+    if (transport) {
+      try {
+        await transport.close()
+      } catch (err) {
+        logger.warn('MCP', `Error closing transport for "${name}": ${(err as Error).message}`)
+      }
+      this.transports.delete(name)
+    }
+  }
 
   init(): void {
     this.configPath = join(getQuickAiRoot(), 'mcp.json')
@@ -230,6 +275,8 @@ class McpManagerImpl {
       return
     }
 
+    const timeouts = config.timeouts || {}
+
     // Merge both "servers" and "mcpServers"
     const serversMap: Record<string, McpServerConfig> = {
       ...(config.mcpServers || {}),
@@ -256,7 +303,7 @@ class McpManagerImpl {
       })
 
       try {
-        await this.connectServer(name, srvConfig)
+        await this.connectServer(name, srvConfig, timeouts)
       } catch (err) {
         const errorMsg = (err as Error).message || String(err)
         this.statuses.set(name, {
@@ -273,7 +320,11 @@ class McpManagerImpl {
     logger.info('MCP', 'MCP servers reload completed.')
   }
 
-  private async connectServer(name: string, srvConfig: McpServerConfig): Promise<void> {
+  private async connectServer(
+    name: string,
+    srvConfig: McpServerConfig,
+    timeouts: NonNullable<McpConfig['timeouts']>
+  ): Promise<void> {
     logger.info('MCP', `Connecting to server "${name}" via stdio...`)
 
     const transportEnv: Record<string, string> = {}
@@ -309,11 +360,24 @@ class McpManagerImpl {
     this.transports.set(name, transport)
     this.clients.set(name, client)
 
-    await client.connect(transport)
+    const connectTimeout = timeouts.connect_timeout || 10000
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let tools: any[] = []
 
-    // Discover tools
-    const response = await client.listTools()
-    const tools = response.tools || []
+    try {
+      tools = await withTimeout(
+        (async () => {
+          await client.connect(transport)
+          const response = await client.listTools()
+          return response.tools || []
+        })(),
+        connectTimeout,
+        `Connection to server "${name}" timed out after ${connectTimeout}ms`
+      )
+    } catch (err) {
+      await this.cleanupServer(name)
+      throw err
+    }
 
     const serverStatus: McpServerStatus = {
       name,
@@ -340,11 +404,16 @@ class McpManagerImpl {
         parameters: toToolParameters(tool.inputSchema),
         execute: async (args) => {
           logger.info('MCP', `Executing tool "${tool.name}" on server "${name}"`)
+          const executeTimeout = timeouts.execute_timeout || timeouts.read_timeout || 30000
           try {
-            const result = await client.callTool({
-              name: tool.name,
-              arguments: args
-            })
+            const result = await withTimeout(
+              client.callTool({
+                name: tool.name,
+                arguments: args
+              }),
+              executeTimeout,
+              `Execution of tool "${tool.name}" on server "${name}" timed out after ${executeTimeout}ms`
+            )
 
             return createMcpToolResult({
               serverName: name,
@@ -357,6 +426,17 @@ class McpManagerImpl {
               'MCP',
               `Error executing tool "${tool.name}" on server "${name}": ${errorMsg}`
             )
+
+            if (errorMsg.includes('timed out')) {
+              this.statuses.set(name, {
+                name,
+                status: 'failed',
+                error: errorMsg,
+                tools: []
+              })
+              await this.cleanupServer(name)
+            }
+
             return createToolResult({
               resultForModel: `Error executing MCP tool: ${errorMsg}`,
               title: `MCP Tool Call Failed: ${name} / ${tool.name}`,
@@ -368,6 +448,10 @@ class McpManagerImpl {
 
       registerToolDefinition(toolDef)
       this.registeredToolNames.add(modelName)
+      if (!this.registeredToolNamesByServer.has(name)) {
+        this.registeredToolNamesByServer.set(name, new Set())
+      }
+      this.registeredToolNamesByServer.get(name)!.add(modelName)
     }
 
     logger.info(
@@ -384,6 +468,7 @@ class McpManagerImpl {
       unregisterToolDefinition(toolName)
     }
     this.registeredToolNames.clear()
+    this.registeredToolNamesByServer.clear()
 
     // 2. Disconnect clients and close transports
     for (const [name, client] of this.clients.entries()) {
