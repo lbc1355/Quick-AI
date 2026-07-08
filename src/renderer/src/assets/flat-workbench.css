@@ -1034,6 +1034,78 @@ body {
   margin: 0 auto;
 }
 
+.sticky-user-message-host {
+  position: absolute;
+  top: 76px;
+  left: 0;
+  right: 0;
+  z-index: 18;
+  display: flex;
+  justify-content: center;
+  padding: 0 64px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+
+.sticky-user-message-host.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.sticky-user-message {
+  max-width: min(760px, 100%);
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid #343434;
+  border-radius: 8px;
+  background: rgba(36, 36, 36, 0.94);
+  color: #d5dde7;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.sticky-user-message:hover {
+  border-color: #4a5565;
+  background: rgba(43, 49, 58, 0.96);
+  color: #eef2f8;
+}
+
+.sticky-user-message-icon {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.sticky-user-message-text {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sticky-user-message-files {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #aeb8c4;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .scroll-to-bottom-btn {
   position: absolute;
   left: 50%;
@@ -1968,6 +2040,24 @@ body {
   color: #111827;
 }
 
+.app-container.theme-light .sticky-user-message {
+  border-color: #d9dee7;
+  background: rgba(255, 255, 255, 0.96);
+  color: #243042;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
+}
+
+.app-container.theme-light .sticky-user-message:hover {
+  border-color: #c9d1dc;
+  background: #f0f3f7;
+  color: #111827;
+}
+
+.app-container.theme-light .sticky-user-message-files {
+  background: rgba(15, 23, 42, 0.07);
+  color: #526071;
+}
+
 .app-container.theme-light .message-minimap-item.user::before {
   background: #2563eb;
 }
@@ -2333,6 +2423,15 @@ body {
 
   .scroll-to-bottom-btn {
     bottom: 104px;
+  }
+
+  .sticky-user-message-host {
+    top: 72px;
+    padding: 0 42px;
+  }
+
+  .sticky-user-message {
+    padding: 6px 9px;
   }
 
   .message-minimap {

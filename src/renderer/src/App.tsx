@@ -36,6 +36,7 @@ import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
 import { BgShellManagerModal } from './components/BgShellManagerModal'
 import { ChatInputArea } from './components/ChatInputArea'
+import { StickyUserMessage } from './components/StickyUserMessage'
 import { UserChoicePopup } from './components/UserChoicePopup'
 import { groupAutocompleteItems } from './utils/autocompleteHelpers'
 import { buildMessageNavPreview } from './features/chat/messageNavigation'
@@ -623,6 +624,17 @@ function App(): React.JSX.Element {
       }) || [],
     [activeSession?.messages]
   )
+  const stickyUserMessages = useMemo(
+    () =>
+      messageNavItems
+        .filter(({ kind }) => kind === 'user')
+        .map(({ msg, preview }) => ({
+          id: msg.id,
+          preview,
+          filesCount: msg.files?.length || 0
+        })),
+    [messageNavItems]
+  )
   return (
     <div
       className={`app-container ${theme === 'light' ? 'theme-light' : ''} ${
@@ -797,6 +809,14 @@ function App(): React.JSX.Element {
                   <div ref={messagesEndRef} />
                 </div>
               </div>
+            )}
+
+            {!isNewSessionEmpty && stickyUserMessages.length > 0 && (
+              <StickyUserMessage
+                containerRef={messagesContainerRef}
+                userMessages={stickyUserMessages}
+                onSelectMessage={scrollToMessage}
+              />
             )}
 
             {!isNewSessionEmpty && messageNavItems.length ? (
