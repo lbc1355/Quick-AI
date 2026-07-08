@@ -15,13 +15,13 @@
 }
 
 :root {
-  --color-primary: #3b82f6;
-  --color-primary-hover: #2563eb;
+  --color-primary: #b8b0a3;
+  --color-primary-hover: #d2cabe;
   --color-bg-darker: #121216;
   --color-bg-header: #15151b;
   --color-bg-main: #181820;
   --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-focus: rgba(59, 130, 246, 0.4);
+  --color-border-focus: rgba(184, 176, 163, 0.4);
   --color-text: #e5e7eb;
   --color-text-title: #ffffff;
   --color-text-muted: #9ca3af;
@@ -38,13 +38,13 @@
 }
 
 .app-container.theme-light {
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
+  --color-primary: #57534e;
+  --color-primary-hover: #44403c;
   --color-bg-darker: #f3f4f6;
   --color-bg-header: #f9fafb;
   --color-bg-main: #ffffff;
   --color-border: rgba(0, 0, 0, 0.08);
-  --color-border-focus: rgba(37, 99, 235, 0.4);
+  --color-border-focus: rgba(87, 83, 78, 0.36);
   --color-text: #1f2937;
   --color-text-title: #111827;
   --color-text-muted: #4b5563;
@@ -96,9 +96,9 @@ select {
 
 /* QuickAI compact workspace redesign */
 :root {
-  --color-primary: #3478f6;
-  --color-primary-hover: #2563d8;
-  --color-accent: #19a389;
+  --color-primary: #b8b0a3;
+  --color-primary-hover: #d2cabe;
+  --color-accent: #a8a29e;
   --color-danger: #e5484d;
   --color-warning: #d98c28;
   --color-success: #22a06b;
@@ -109,7 +109,7 @@ select {
   --color-panel-soft: #1d2024;
   --color-border: rgba(255, 255, 255, 0.09);
   --color-border-strong: rgba(255, 255, 255, 0.14);
-  --color-border-focus: rgba(52, 120, 246, 0.46);
+  --color-border-focus: rgba(184, 176, 163, 0.42);
   --color-text: #e8eaed;
   --color-text-title: #f7f8fa;
   --color-text-muted: #9aa3af;
@@ -128,9 +128,9 @@ select {
 }
 
 .app-container.theme-light {
-  --color-primary: #245fd6;
-  --color-primary-hover: #1d4fb5;
-  --color-accent: #0f8b76;
+  --color-primary: #57534e;
+  --color-primary-hover: #44403c;
+  --color-accent: #78716c;
   --color-danger: #c5343b;
   --color-warning: #a76516;
   --color-success: #147a4f;
@@ -141,7 +141,7 @@ select {
   --color-panel-soft: #f7f8fa;
   --color-border: rgba(15, 23, 42, 0.11);
   --color-border-strong: rgba(15, 23, 42, 0.17);
-  --color-border-focus: rgba(36, 95, 214, 0.42);
+  --color-border-focus: rgba(87, 83, 78, 0.34);
   --color-text: #1f2937;
   --color-text-title: #111827;
   --color-text-muted: #526071;

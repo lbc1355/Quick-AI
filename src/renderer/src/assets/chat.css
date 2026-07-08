@@ -596,12 +596,12 @@
 
 .context-usage-dot.usage-tool-output,
 .context-usage-bar-segment.usage-tool-output {
-  background: #99f6e4;
+  background: #e7e1d7;
 }
 
 .context-usage-dot.usage-user,
 .context-usage-bar-segment.usage-user {
-  background: #bfdbfe;
+  background: #ddd6cc;
 }
 
 .context-usage-dot.usage-assistant,
@@ -904,14 +904,14 @@
 
 .context-role-cell.role-tool,
 .context-role-legend-dot.role-tool {
-  border-color: #0f766e;
-  background: #99f6e4;
+  border-color: #78716c;
+  background: #e7e1d7;
 }
 
 .context-role-cell.role-user,
 .context-role-legend-dot.role-user {
-  border-color: #2563eb;
-  background: #bfdbfe;
+  border-color: #57534e;
+  background: #ddd6cc;
 }
 
 .context-role-cell.role-assistant,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Sparkles, GitBranch, Paperclip, ArrowDown } from 'lucide-react'
+import { MessageSquare, GitBranch, Paperclip, ArrowDown } from 'lucide-react'
 
 import type {
   AutocompleteItem,
@@ -767,11 +767,10 @@ function App(): React.JSX.Element {
             {isNewSessionEmpty ? (
               /* Claude Code Style clean watermark interface */
               <div className="empty-state">
-                <Sparkles
-                  size={40}
+                <MessageSquare
+                  size={32}
                   style={{
-                    color: 'rgba(59, 130, 246, 0.4)',
-                    filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.2))'
+                    color: 'var(--color-text-faint)'
                   }}
                 />
                 <div
@@ -783,7 +782,7 @@ function App(): React.JSX.Element {
                     marginTop: '14px'
                   }}
                 >
-                  QuickAI Chat Launcher
+                  New conversation
                 </div>
                 <div
                   className="empty-desc"

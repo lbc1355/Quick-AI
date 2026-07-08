@@ -92,134 +92,60 @@ export const MemoryManager: React.FC<MemoryManagerProps> = () => {
   const selected = entries.find((e) => e.id === selectedId)
 
   return (
-    <section
-      className="skill-manager memory-manager"
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
-    >
-      <div
-        className="skill-manager-header"
-        style={{
-          marginBottom: '12px',
-          flexShrink: 0,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}
-      >
-        <span
-          className="settings-label"
-          style={{
-            fontSize: '13.5px',
-            color: 'var(--color-text-title)',
-            fontWeight: 'bold',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}
-        >
+    <section className="skill-manager memory-manager">
+      <div className="memory-manager-toolbar">
+        <span className="memory-manager-title">
           <Brain size={15} />
           记忆库（~/.quickai/memories）
         </span>
-        <button
-          className="settings-save-btn skill-install-btn"
-          onClick={() => loadEntries()}
-          title="刷新"
-        >
-          <RefreshCw size={12} />
-          <span>刷新</span>
-        </button>
+        <div className="memory-manager-actions">
+          <button
+            className="settings-secondary-btn memory-manager-action"
+            onClick={() => loadEntries()}
+            title="刷新"
+          >
+            <RefreshCw size={12} />
+            <span>刷新</span>
+          </button>
+          <button
+            className="settings-save-btn memory-manager-action"
+            onClick={handleSave}
+            disabled={!dirty}
+          >
+            <Save size={12} />
+            保存
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <div className="skill-empty">正在加载记忆库...</div>
       ) : (
-        <div style={{ display: 'flex', gap: '12px', flex: 1, minHeight: 0 }}>
-          {/* File list */}
-          <div
-            style={{
-              width: '200px',
-              flexShrink: 0,
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px'
-            }}
-          >
+        <div className="memory-manager-grid">
+          <aside className="memory-entry-list" aria-label="记忆文件">
             {entries.map((entry) => (
               <button
                 key={entry.id}
                 onClick={() => handleSelect(entry.id)}
-                className="skill-card"
-                style={{
-                  textAlign: 'left',
-                  padding: '8px 10px',
-                  cursor: 'pointer',
-                  border:
-                    entry.id === selectedId
-                      ? '1px solid var(--color-text-accent, #38bdf8)'
-                      : '1px solid transparent',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '12px',
-                  color:
-                    entry.id === selectedId
-                      ? 'var(--color-text-title)'
-                      : 'var(--color-text-primary)'
-                }}
+                className={`memory-entry-button${entry.id === selectedId ? ' active' : ''}`}
+                aria-pressed={entry.id === selectedId}
                 title={entry.label}
               >
-                <FileText size={12} style={{ flexShrink: 0 }} />
-                <span
-                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                >
-                  {entry.label}
-                </span>
+                <FileText size={13} />
+                <span>{entry.label}</span>
               </button>
             ))}
-          </div>
+          </aside>
 
-          {/* Editor */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '8px'
-              }}
-            >
-              <span
-                className="settings-label"
-                style={{ fontSize: '12.5px', color: 'var(--color-text-muted)' }}
-              >
+          <div className="memory-editor">
+            <div className="memory-editor-header">
+              <span className="memory-editor-title">
                 {selected?.label || selectedId}
                 {dirty ? ' •' : ''}
               </span>
-              <button
-                className="settings-save-btn"
-                onClick={handleSave}
-                disabled={!dirty}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  opacity: dirty ? 1 : 0.5
-                }}
-              >
-                <Save size={12} />
-                保存
-              </button>
             </div>
             <textarea
-              className="settings-input settings-textarea"
-              style={{
-                flex: 1,
-                minHeight: '240px',
-                fontFamily: 'monospace',
-                fontSize: '13px',
-                resize: 'none'
-              }}
+              className="settings-input settings-textarea memory-editor-textarea"
               value={content}
               onChange={(e) => {
                 setContent(e.target.value)
@@ -232,10 +158,7 @@ export const MemoryManager: React.FC<MemoryManagerProps> = () => {
       )}
 
       {(statusText || errorText) && (
-        <div
-          className={errorText ? 'skill-status error' : 'skill-status'}
-          style={{ marginTop: '8px', flexShrink: 0 }}
-        >
+        <div className={errorText ? 'skill-status error' : 'skill-status'}>
           {errorText || statusText}
         </div>
       )}

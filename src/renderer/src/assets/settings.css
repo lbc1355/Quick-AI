@@ -1884,6 +1884,182 @@
   max-height: none;
 }
 
+.memory-manager {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.memory-manager-toolbar {
+  min-height: 34px;
+  margin-bottom: 14px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.memory-manager-title {
+  min-width: 0;
+  color: var(--color-text-title);
+  font-size: 13.5px;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.memory-manager-title svg {
+  flex-shrink: 0;
+}
+
+.memory-manager-actions {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.memory-manager-action {
+  min-width: 72px;
+  height: 32px;
+  padding: 0 12px;
+}
+
+.memory-manager-action:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.memory-manager-action:disabled:hover {
+  background: var(--color-primary);
+}
+
+.memory-manager-grid {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(190px, 250px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.memory-entry-list {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memory-entry-button {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card-bg);
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
+}
+
+.memory-entry-button:hover {
+  background: var(--color-card-bg-hover);
+  color: var(--color-text-title);
+}
+
+.memory-entry-button.active {
+  border-color: var(--color-border-focus);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-title);
+}
+
+.memory-entry-button svg {
+  flex-shrink: 0;
+}
+
+.memory-entry-button span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-editor {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.memory-editor-header {
+  min-height: 32px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.memory-editor-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-editor-textarea {
+  min-height: 260px;
+  max-height: none;
+  flex: 1;
+  resize: none;
+  font-family: 'Consolas', 'Courier New', Courier, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.memory-manager .skill-status {
+  margin-top: 10px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 760px) {
+  .memory-manager-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .memory-manager-actions {
+    width: 100%;
+  }
+
+  .memory-manager-action {
+    flex: 1;
+  }
+
+  .memory-manager-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .memory-entry-list {
+    max-height: 170px;
+  }
+}
+
 /* MCP Manager Styling */
 .mcp-layout {
   height: 100%;

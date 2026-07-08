@@ -8,7 +8,7 @@ import {
   Settings,
   Square,
   Terminal,
-  Sparkles,
+  Command,
   Trash2,
   Undo2,
   Sun,
@@ -77,7 +77,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       </div>
 
       <div className="header-command-center">
-        <Sparkles size={13} />
+        <Command size={13} />
         <span className="logo-text">QuickAI</span>
         <span className="header-command-separator">·</span>
         <div className="chat-model-info">
