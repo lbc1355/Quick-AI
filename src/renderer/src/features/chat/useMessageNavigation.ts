@@ -13,6 +13,7 @@ import { Session } from '../../../../shared/types'
 interface UseMessageNavigationArgs {
   activeSession: Session | null | undefined
   isCurrentSessionGenerating: boolean
+  getEstimatedMessageTop?: (messageId: string) => number | null
 }
 
 const SCROLL_ALIGNMENT_MARGIN = 24
@@ -104,7 +105,8 @@ const scheduleScrollCorrections = (
 
 export function useMessageNavigation({
   activeSession,
-  isCurrentSessionGenerating
+  isCurrentSessionGenerating,
+  getEstimatedMessageTop
 }: UseMessageNavigationArgs): {
   messagesEndRef: RefObject<HTMLDivElement | null>
   messagesContainerRef: RefObject<HTMLDivElement | null>
@@ -251,13 +253,57 @@ export function useMessageNavigation({
     [activeSession, finishProgrammaticScroll]
   )
 
+  const scrollToEstimatedMessage = useCallback(
+    (container: HTMLDivElement, messageId: string, behavior: ScrollBehavior): boolean => {
+      const estimatedTop = getEstimatedMessageTop?.(messageId)
+      if (estimatedTop === undefined || estimatedTop === null) return false
+
+      shouldAutoScrollRef.current = false
+      setShowScrollToBottom(true)
+      setActiveMessageNavId(messageId)
+      isProgrammaticScrollRef.current = true
+
+      const result = scrollContainerTo(
+        container,
+        clampScrollTop(container, estimatedTop - SCROLL_ALIGNMENT_MARGIN),
+        behavior
+      )
+
+      const correctToRenderedNode = (): void => {
+        if (!container.isConnected) return
+        const renderedTarget = findMessageNode(container, messageId)
+        if (!renderedTarget) return
+
+        const block =
+          renderedTarget.offsetHeight > container.clientHeight * 0.72 ? 'start' : 'center'
+        const getTop = (): number => getElementScrollTop(container, renderedTarget, block)
+        const correction = scrollContainerTo(container, getTop(), 'auto')
+        scheduleScrollCorrections(container, getTop, correction.correctionDelays)
+      }
+
+      window.requestAnimationFrame(() => {
+        correctToRenderedNode()
+        window.requestAnimationFrame(correctToRenderedNode)
+      })
+
+      finishProgrammaticScroll(container, result.resetDelay, () => {
+        setActiveMessageNavId(messageId)
+      })
+      return true
+    },
+    [finishProgrammaticScroll, getEstimatedMessageTop]
+  )
+
   const scrollToMessage = useCallback(
     (messageId: string): void => {
       const container = messagesContainerRef.current
       if (!container) return
 
       const target = findMessageNode(container, messageId)
-      if (!target) return
+      if (!target) {
+        scrollToEstimatedMessage(container, messageId, 'auto')
+        return
+      }
 
       shouldAutoScrollRef.current = false
       setShowScrollToBottom(true)
@@ -273,7 +319,7 @@ export function useMessageNavigation({
         setActiveMessageNavId(messageId)
       })
     },
-    [finishProgrammaticScroll]
+    [finishProgrammaticScroll, scrollToEstimatedMessage]
   )
 
   useEffect(() => {
@@ -346,7 +392,19 @@ export function useMessageNavigation({
 
     const container = messagesContainerRef.current
     const target = container ? findMessageNode(container, pendingScrollMessageId) : undefined
-    if (!container || !target) return
+    if (!container) return
+
+    if (!target) {
+      if (scrollToEstimatedMessage(container, pendingScrollMessageId, 'auto')) {
+        const timeoutId = window.setTimeout(() => {
+          setPendingScrollMessageId(null)
+          saveScrollPosition(container)
+          updateMessageNavigationState(container)
+        }, 120)
+        return () => clearTimeout(timeoutId)
+      }
+      return
+    }
 
     shouldAutoScrollRef.current = false
     setActiveMessageNavId(pendingScrollMessageId)
@@ -369,6 +427,7 @@ export function useMessageNavigation({
     activeSession?.messages.length,
     pendingScrollMessageId,
     saveScrollPosition,
+    scrollToEstimatedMessage,
     updateMessageNavigationState
   ])
 

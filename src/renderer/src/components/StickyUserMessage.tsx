@@ -10,16 +10,19 @@ export interface StickyUserMessageItem {
 interface StickyUserMessageProps {
   containerRef: React.RefObject<HTMLDivElement | null>
   userMessages: StickyUserMessageItem[]
+  stickyMessageId?: string | null
   onSelectMessage: (messageId: string) => void
 }
 
 export const StickyUserMessage: React.FC<StickyUserMessageProps> = ({
   containerRef,
   userMessages,
+  stickyMessageId,
   onSelectMessage
 }) => {
-  const [stickyMessageId, setStickyMessageId] = useState<string | null>(null)
-  const stickyMessageIdRef = useRef<string | null>(null)
+  const isControlled = stickyMessageId !== undefined
+  const [detectedStickyMessageId, setDetectedStickyMessageId] = useState<string | null>(null)
+  const detectedStickyMessageIdRef = useRef<string | null>(null)
 
   const userMessageById = useMemo(() => {
     return new Map(userMessages.map((message) => [message.id, message]))
@@ -30,13 +33,15 @@ export const StickyUserMessage: React.FC<StickyUserMessageProps> = ({
   )
 
   useEffect(() => {
-    stickyMessageIdRef.current = stickyMessageId
-  }, [stickyMessageId])
+    detectedStickyMessageIdRef.current = detectedStickyMessageId
+  }, [detectedStickyMessageId])
 
   useEffect(() => {
+    if (isControlled) return undefined
+
     const container = containerRef.current
     if (!container || userMessages.length === 0) {
-      setStickyMessageId(null)
+      setDetectedStickyMessageId(null)
       return undefined
     }
 
@@ -56,9 +61,9 @@ export const StickyUserMessage: React.FC<StickyUserMessageProps> = ({
         }
       }
 
-      if (nextStickyId !== stickyMessageIdRef.current) {
-        stickyMessageIdRef.current = nextStickyId
-        setStickyMessageId(nextStickyId)
+      if (nextStickyId !== detectedStickyMessageIdRef.current) {
+        detectedStickyMessageIdRef.current = nextStickyId
+        setDetectedStickyMessageId(nextStickyId)
       }
     }
 
@@ -76,9 +81,12 @@ export const StickyUserMessage: React.FC<StickyUserMessageProps> = ({
       resizeObserver.disconnect()
       window.cancelAnimationFrame(frameId)
     }
-  }, [containerRef, userMessageIdsKey, userMessages.length])
+  }, [containerRef, isControlled, userMessageIdsKey, userMessages.length])
 
-  const stickyMessage = stickyMessageId ? userMessageById.get(stickyMessageId) : undefined
+  const effectiveStickyMessageId = isControlled ? stickyMessageId : detectedStickyMessageId
+  const stickyMessage = effectiveStickyMessageId
+    ? userMessageById.get(effectiveStickyMessageId)
+    : undefined
   const isVisible = Boolean(stickyMessage)
 
   return (

@@ -11,6 +11,12 @@ class HookSimulator {
   effects: { fn: Function; deps: any[] }[] = []
 
   reset() {
+    this.states = []
+    this.stateIndex = 0
+    this.effects = []
+  }
+
+  rerender() {
     this.stateIndex = 0
     this.effects = []
   }
@@ -38,8 +44,28 @@ class HookSimulator {
     return fn()
   }
 
+  useCallback<T extends Function>(fn: T): T {
+    return fn
+  }
+
   useEffect(fn: Function, deps: any[]) {
     this.effects.push({ fn, deps })
+  }
+
+  flushEffects() {
+    const effects = this.effects
+    this.effects = []
+    effects.forEach(({ fn }) => fn())
+  }
+
+  useRef<T>(initialValue: T): { current: T } {
+    const idx = this.stateIndex
+    if (this.states.length <= idx) {
+      this.states.push({ current: initialValue })
+    }
+    const ref = this.states[idx]
+    this.stateIndex++
+    return ref
   }
 }
 
@@ -48,7 +74,9 @@ const sim = new HookSimulator()
 vi.mock('react', () => ({
   useState: (init: any) => sim.useState(init),
   useMemo: (fn: any) => sim.useMemo(fn),
-  useEffect: (fn: any, deps: any) => sim.useEffect(fn, deps)
+  useCallback: (fn: any) => sim.useCallback(fn),
+  useEffect: (fn: any, deps: any) => sim.useEffect(fn, deps),
+  useRef: (init: any) => sim.useRef(init)
 }))
 
 // Mock window.api or clipboard since they might run in electron environment
@@ -138,6 +166,142 @@ describe('useAgentMessageViewModel hook', () => {
     expect(vm.activeStepTitle).toBe('Reading configurations')
     expect(vm.pendingToolCall).toBeDefined()
     expect(vm.pendingToolCall?.toolName).toBe('file_read')
+    expect(vm.isStepsExpanded).toBe(true)
+  })
+
+  it('defaults completed structured agent steps to collapsed', () => {
+    const events: AgentEvent[] = [
+      { type: 'agent_start', skillName: 'shell', timestamp: 1000, runId: 'run-1', sequence: 1 },
+      {
+        type: 'agent_step',
+        stepId: 'step-1',
+        step: 1,
+        maxSteps: 30,
+        title: 'Reading files',
+        message: 'Reading files...',
+        status: 'completed',
+        timestamp: 1100,
+        runId: 'run-1',
+        sequence: 2
+      },
+      {
+        type: 'tool_call',
+        callId: 'call-1',
+        toolName: 'file_read',
+        args: { path: 'src/main.ts' },
+        permissionState: 'approved',
+        stepId: 'step-1',
+        timestamp: 1150,
+        runId: 'run-1',
+        sequence: 3
+      },
+      {
+        type: 'final',
+        content: 'Final answer',
+        timestamp: 1200,
+        runId: 'run-1',
+        sequence: 4
+      },
+      {
+        type: 'agent_end',
+        status: 'completed',
+        timestamp: 1300,
+        runId: 'run-1',
+        sequence: 5
+      }
+    ]
+
+    const msg: Message = {
+      id: '1710000000000',
+      role: 'assistant',
+      content: 'Final answer',
+      agentEvents: events
+    }
+
+    const vm = useAgentMessageViewModel({
+      msg,
+      isGenerating: false
+    })
+
+    expect(vm.agentStatus).toBe('completed')
+    expect(vm.parsedRun.steps.length).toBe(1)
+    expect(vm.isStepsExpanded).toBe(false)
+  })
+
+  it('allows completed structured agent steps to be expanded manually', () => {
+    const runningEvents: AgentEvent[] = [
+      { type: 'agent_start', skillName: 'shell', timestamp: 1000, runId: 'run-1', sequence: 1 },
+      {
+        type: 'agent_step',
+        stepId: 'step-1',
+        step: 1,
+        maxSteps: 30,
+        title: 'Reading files',
+        message: 'Reading files...',
+        status: 'running',
+        timestamp: 1100,
+        runId: 'run-1',
+        sequence: 2
+      }
+    ]
+    const completedEvents: AgentEvent[] = [
+      ...runningEvents,
+      {
+        type: 'agent_step_end',
+        stepId: 'step-1',
+        status: 'completed',
+        timestamp: 1200,
+        runId: 'run-1',
+        sequence: 3
+      },
+      {
+        type: 'final',
+        content: 'Final answer',
+        timestamp: 1250,
+        runId: 'run-1',
+        sequence: 4
+      },
+      {
+        type: 'agent_end',
+        status: 'completed',
+        timestamp: 1300,
+        runId: 'run-1',
+        sequence: 5
+      }
+    ]
+    const runningMsg: Message = {
+      id: '1710000000000',
+      role: 'assistant',
+      content: '',
+      agentEvents: runningEvents
+    }
+    const completedMsg: Message = {
+      ...runningMsg,
+      content: 'Final answer',
+      agentEvents: completedEvents
+    }
+
+    let vm = useAgentMessageViewModel({ msg: runningMsg, isGenerating: true })
+    expect(vm.isStepsExpanded).toBe(true)
+    sim.flushEffects()
+
+    sim.rerender()
+    vm = useAgentMessageViewModel({ msg: completedMsg, isGenerating: false })
+    sim.flushEffects()
+
+    sim.rerender()
+    vm = useAgentMessageViewModel({ msg: completedMsg, isGenerating: false })
+    expect(vm.isStepsExpanded).toBe(false)
+
+    vm.setIsStepsExpanded(true)
+
+    sim.rerender()
+    vm = useAgentMessageViewModel({ msg: completedMsg, isGenerating: false })
+    sim.flushEffects()
+
+    sim.rerender()
+    vm = useAgentMessageViewModel({ msg: completedMsg, isGenerating: false })
+    expect(vm.isStepsExpanded).toBe(true)
   })
 
   it('supports copying final answer to clipboard', () => {

@@ -45,6 +45,9 @@ import { useProjectNavigation } from './features/chat/useProjectNavigation'
 import { useSessionFamilyView } from './features/chat/useSessionFamilyView'
 import { useContextDiagnosticsState } from './features/chat/useContextDiagnosticsState'
 import { usePermissionPopupController } from './features/chat/usePermissionPopupController'
+import { useVirtualizedMessages, VIRTUAL_MESSAGE_GAP } from './features/chat/useVirtualizedMessages'
+
+const EMPTY_MESSAGES: Message[] = []
 
 const buildSessionNavigationSignature = (sessions: Session[]): string =>
   sessions
@@ -287,6 +290,12 @@ function App(): React.JSX.Element {
     activeGenerationSessionId,
     activeSessionId
   )
+  const activeMessages = activeSession?.messages ?? EMPTY_MESSAGES
+  const getEstimatedMessageTopRef = useRef<((messageId: string) => number | null) | null>(null)
+  const getEstimatedMessageTop = useCallback(
+    (messageId: string): number | null => getEstimatedMessageTopRef.current?.(messageId) ?? null,
+    []
+  )
   const {
     messagesEndRef,
     messagesContainerRef,
@@ -297,7 +306,20 @@ function App(): React.JSX.Element {
     scrollToBottom,
     scrollToMessage,
     handleScroll
-  } = useMessageNavigation({ activeSession, isCurrentSessionGenerating })
+  } = useMessageNavigation({
+    activeSession,
+    isCurrentSessionGenerating,
+    getEstimatedMessageTop
+  })
+  const virtualizedMessages = useVirtualizedMessages({
+    messages: activeMessages,
+    containerRef: messagesContainerRef,
+    innerRef: messagesInnerRef
+  })
+
+  useEffect(() => {
+    getEstimatedMessageTopRef.current = virtualizedMessages.getEstimatedMessageTop
+  }, [virtualizedMessages.getEstimatedMessageTop])
 
   // 5. Autocomplete hook
   const {
@@ -612,7 +634,7 @@ function App(): React.JSX.Element {
   )
   const messageNavItems = useMemo(
     () =>
-      activeSession?.messages.map((msg, idx) => {
+      activeMessages.map((msg, idx) => {
         const kind = getMessageMinimapKind(msg)
         return {
           msg,
@@ -621,9 +643,19 @@ function App(): React.JSX.Element {
           label: getMessageMinimapLabel(kind, idx),
           preview: getMessageMinimapPreview(msg)
         }
-      }) || [],
-    [activeSession?.messages]
+      }),
+    [activeMessages]
   )
+  const virtualStickyUserMessageId = useMemo(() => {
+    if (!virtualizedMessages.isVirtualized) return undefined
+
+    for (let index = virtualizedMessages.firstVisibleIndex - 1; index >= 0; index -= 1) {
+      const message = activeMessages[index]
+      if (message?.role === 'user') return message.id
+    }
+
+    return null
+  }, [activeMessages, virtualizedMessages.firstVisibleIndex, virtualizedMessages.isVirtualized])
   const stickyUserMessages = useMemo(
     () =>
       messageNavItems
@@ -779,33 +811,63 @@ function App(): React.JSX.Element {
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 'inherit',
+                    gap: virtualizedMessages.isVirtualized ? 0 : 'inherit',
                     width: '100%',
                     minHeight: '100%'
                   }}
                 >
-                  {activeSession?.messages.map((msg, idx) => (
-                    <MessageBubble
-                      key={msg.id}
-                      msg={msg}
-                      idx={idx}
-                      branchChildren={
-                        branchChildIndex[getBranchSourceKey(activeSessionId, msg.id)] || []
-                      }
-                      isGenerating={
-                        isCurrentSessionGenerating && idx === activeSession.messages.length - 1
-                      }
-                      editingMessageId={editingMessageId}
-                      editingText={editingText}
-                      onStartEdit={handleStartEdit}
-                      onCancelEdit={() => setEditingMessageId(null)}
-                      onSaveEdit={handleSaveEdit}
-                      onRegenerate={handleRegenerate}
-                      onResumeAgentRun={handleResumeAgentRun}
-                      onOpenBranch={(sessionId) => openSession(sessionId)}
-                      onChangeEditingText={setEditingText}
+                  {virtualizedMessages.isVirtualized && virtualizedMessages.topSpacerHeight > 0 && (
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        flex: '0 0 auto',
+                        height: virtualizedMessages.topSpacerHeight
+                      }}
                     />
+                  )}
+                  {virtualizedMessages.visibleMessages.map(({ message: msg, index: idx }) => (
+                    <div
+                      key={msg.id}
+                      data-virtual-message-id={msg.id}
+                      style={{
+                        width: '100%',
+                        marginBottom:
+                          virtualizedMessages.isVirtualized && idx < activeMessages.length - 1
+                            ? VIRTUAL_MESSAGE_GAP
+                            : undefined
+                      }}
+                    >
+                      <MessageBubble
+                        msg={msg}
+                        idx={idx}
+                        branchChildren={
+                          branchChildIndex[getBranchSourceKey(activeSessionId, msg.id)] || []
+                        }
+                        isGenerating={
+                          isCurrentSessionGenerating && idx === activeMessages.length - 1
+                        }
+                        editingMessageId={editingMessageId}
+                        editingText={editingText}
+                        onStartEdit={handleStartEdit}
+                        onCancelEdit={() => setEditingMessageId(null)}
+                        onSaveEdit={handleSaveEdit}
+                        onRegenerate={handleRegenerate}
+                        onResumeAgentRun={handleResumeAgentRun}
+                        onOpenBranch={(sessionId) => openSession(sessionId)}
+                        onChangeEditingText={setEditingText}
+                      />
+                    </div>
                   ))}
+                  {virtualizedMessages.isVirtualized &&
+                    virtualizedMessages.bottomSpacerHeight > 0 && (
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          flex: '0 0 auto',
+                          height: virtualizedMessages.bottomSpacerHeight
+                        }}
+                      />
+                    )}
                   <div ref={messagesEndRef} />
                 </div>
               </div>
@@ -815,6 +877,7 @@ function App(): React.JSX.Element {
               <StickyUserMessage
                 containerRef={messagesContainerRef}
                 userMessages={stickyUserMessages}
+                stickyMessageId={virtualStickyUserMessageId}
                 onSelectMessage={scrollToMessage}
               />
             )}

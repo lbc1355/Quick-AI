@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import type { Message, AgentEvent, SubagentInnerEvent } from '../../../../shared/types'
 import {
   parseThinkTags,
@@ -69,8 +69,15 @@ export function useAgentMessageViewModel({
   const [isExpanded, setIsExpanded] = useState(true)
   const [activeSubagentId, setActiveSubagentId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [isStepsExpanded, setIsStepsExpanded] = useState(true)
+  const [isStepsExpanded, setIsStepsExpandedState] = useState(() => isGenerating)
   const [selectedToolCallId, setSelectedToolCallId] = useState<string | null>(null)
+  const wasAgentTimelineActiveRef = useRef(isGenerating)
+  const userChangedStepsExpandedRef = useRef(false)
+
+  const setIsStepsExpanded = useCallback((next: boolean | ((current: boolean) => boolean)) => {
+    userChangedStepsExpandedRef.current = true
+    setIsStepsExpandedState(next)
+  }, [])
 
   const [elapsed, setElapsed] = useState<number>(() =>
     isGenerating && msg.role === 'assistant'
@@ -151,6 +158,32 @@ export function useAgentMessageViewModel({
   const parsedRun = useMemo(() => {
     return parseAgentSteps(msg.agentEvents, msg.content)
   }, [msg.agentEvents, msg.content])
+
+  const isTerminalAgentTimeline =
+    !isGenerating &&
+    parsedRun.steps.length > 0 &&
+    (agentStatus === 'completed' ||
+      agentStatus === 'cancelled' ||
+      agentStatus === 'failed' ||
+      agentStatus === 'max_steps')
+
+  useEffect(() => {
+    if (isGenerating || agentStatus === 'running') {
+      wasAgentTimelineActiveRef.current = true
+      userChangedStepsExpandedRef.current = false
+      return
+    }
+
+    if (
+      wasAgentTimelineActiveRef.current &&
+      isTerminalAgentTimeline &&
+      !userChangedStepsExpandedRef.current
+    ) {
+      setIsStepsExpandedState(false)
+    }
+
+    wasAgentTimelineActiveRef.current = false
+  }, [agentStatus, isGenerating, isTerminalAgentTimeline])
 
   const selectedToolCall = useMemo(() => {
     if (!selectedToolCallId) return null
