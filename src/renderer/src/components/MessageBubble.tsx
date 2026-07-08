@@ -322,6 +322,21 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     const isEditing = editingMessageId === msg.id
     const isBranchForkMessage = Boolean(msg.isBranchFork || msg.forkedFrom)
 
+    const renderAgentStep = (step: ParsedAgentStep): React.ReactNode => (
+      <div key={step.id} className={`agent-step-block ${step.status}`}>
+        {step.progressMessage && <StepProgressMessage message={step.progressMessage} />}
+        <StepReasoningBlock
+          reasoning={step.reasoning}
+          autoOpen={shouldAutoOpenStepReasoning(step)}
+          autoStateKey={reasoningAutoStateKey}
+        />
+        <StepToolEvents
+          step={step}
+          onOpenToolDetail={(toolCall) => setSelectedToolCallId(toolCall.callId)}
+        />
+      </div>
+    )
+
     useEffect(() => {
       if (!selectedToolCallId) return undefined
 
@@ -562,26 +577,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                     {hasStructuredEvents || parsedRun.steps.length > 0 ? (
                       <div className="agent-structured-steps-area">
                         {isGenerating ? (
-                          parsedRun.steps.map((step) => {
-                            return (
-                              <div key={step.id} className={`agent-step-block ${step.status}`}>
-                                {step.progressMessage && (
-                                  <StepProgressMessage message={step.progressMessage} />
-                                )}
-                                <StepReasoningBlock
-                                  reasoning={step.reasoning}
-                                  autoOpen={shouldAutoOpenStepReasoning(step)}
-                                  autoStateKey={reasoningAutoStateKey}
-                                />
-                                <StepToolEvents
-                                  step={step}
-                                  onOpenToolDetail={(toolCall) =>
-                                    setSelectedToolCallId(toolCall.callId)
-                                  }
-                                />
-                              </div>
-                            )
-                          })
+                          parsedRun.steps.map(renderAgentStep)
                         ) : parsedRun.steps.length > 0 ? (
                           <div className="agent-completed-steps-simple-collapsible">
                             <button
@@ -601,29 +597,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                             </button>
                             {isStepsExpanded && (
                               <div className="agent-steps-simple-collapsed-content">
-                                {parsedRun.steps.map((step) => {
-                                  return (
-                                    <div
-                                      key={step.id}
-                                      className={`agent-step-block ${step.status}`}
-                                    >
-                                      {step.progressMessage && (
-                                        <StepProgressMessage message={step.progressMessage} />
-                                      )}
-                                      <StepReasoningBlock
-                                        reasoning={step.reasoning}
-                                        autoOpen={shouldAutoOpenStepReasoning(step)}
-                                        autoStateKey={reasoningAutoStateKey}
-                                      />
-                                      <StepToolEvents
-                                        step={step}
-                                        onOpenToolDetail={(toolCall) =>
-                                          setSelectedToolCallId(toolCall.callId)
-                                        }
-                                      />
-                                    </div>
-                                  )
-                                })}
+                                {parsedRun.steps.map(renderAgentStep)}
                               </div>
                             )}
                           </div>
