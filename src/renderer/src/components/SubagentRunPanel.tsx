@@ -85,16 +85,14 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
 
   return (
     <div
+      className="subagent-route-panel"
       style={{
-        position: 'fixed',
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-        zIndex: 1000,
+        position: 'relative',
+        flex: '1 1 auto',
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
-        background: 'var(--color-bg-main)',
+        background: 'var(--color-panel)',
         color: 'var(--color-text)',
         animation: 'fadeIn 0.2s ease-out'
       }}
@@ -104,9 +102,9 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
         type="button"
         onClick={onClose}
         style={{
-          position: 'fixed',
-          top: '16px',
-          right: '20px',
+          position: 'absolute',
+          top: '14px',
+          right: '18px',
           background: 'var(--color-bg-header)',
           border: '1px solid var(--color-border)',
           color: 'var(--color-text-muted)',
@@ -118,7 +116,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
           justifyContent: 'center',
           boxShadow: '0 2px 6px rgba(0, 0, 0, 0.1)',
           transition: 'all 0.15s ease',
-          zIndex: 1010
+          zIndex: 4
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.color = 'var(--color-text)'
@@ -217,7 +215,9 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
         {(parsedRun.finalReasoning || parsedRun.finalAnswer || subagent.error) && (
           <div className="agent-event-final-text" style={{ flex: '0 0 auto', marginTop: '8px' }}>
             <StepReasoningBlock reasoning={parsedRun.finalReasoning} autoOpen={true} />
-            {parsedRun.finalAnswer ? renderedFinalAnswer : null}
+            {parsedRun.finalAnswer ? (
+              <div className="message-text subagent-final-answer">{renderedFinalAnswer}</div>
+            ) : null}
 
             {subagent.error && (
               <div

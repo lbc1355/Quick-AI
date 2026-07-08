@@ -247,6 +247,7 @@ interface MessageBubbleProps {
   onRegenerate: (idx: number) => void
   onResumeAgentRun: (idx: number) => void
   onOpenBranch: (sessionId: string) => void
+  onOpenSubagent?: (messageId: string, subagentId: string) => void
   onChangeEditingText: (text: string) => void
 }
 
@@ -264,6 +265,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onRegenerate,
     onResumeAgentRun,
     onOpenBranch,
+    onOpenSubagent,
     onChangeEditingText
   }) => {
     const useLightweightStreamingRender =
@@ -617,7 +619,13 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                               <SubagentRunCard
                                 key={subagent.info.subagentId}
                                 subagent={subagent}
-                                onClick={() => setActiveSubagentId(subagent.info.subagentId)}
+                                onClick={() => {
+                                  if (onOpenSubagent) {
+                                    onOpenSubagent(msg.id, subagent.info.subagentId)
+                                    return
+                                  }
+                                  setActiveSubagentId(subagent.info.subagentId)
+                                }}
                               />
                             ))}
                           </div>
@@ -822,7 +830,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
             onClose={() => setSelectedToolCallId(null)}
           />
         )}
-        {activeSubagent && (
+        {activeSubagent && !onOpenSubagent && (
           <SubagentRunPanel subagent={activeSubagent} onClose={() => setActiveSubagentId(null)} />
         )}
       </div>
@@ -838,6 +846,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     if (nextIsEditing && prevProps.editingText !== nextProps.editingText) return false
     if (prevProps.msg !== nextProps.msg) return false
     if (prevBranches.length !== nextBranches.length) return false
+    if (Boolean(prevProps.onOpenSubagent) !== Boolean(nextProps.onOpenSubagent)) return false
     for (let i = 0; i < prevBranches.length; i += 1) {
       if (
         prevBranches[i].sessionId !== nextBranches[i].sessionId ||

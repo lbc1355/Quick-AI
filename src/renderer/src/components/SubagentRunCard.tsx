@@ -39,10 +39,10 @@ export const SubagentRunCard: React.FC<SubagentRunCardProps> = ({ subagent, onCl
       case 'running':
         return (
           <Loader2
+            className="agent-subagent-status-spinner"
             size={13}
             style={{
-              color: 'var(--color-primary)',
-              animation: 'spin 1s linear infinite'
+              color: 'var(--color-primary)'
             }}
           />
         )

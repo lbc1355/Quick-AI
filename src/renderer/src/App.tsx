@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo, useTransition } from 'react'
 import { MessageSquare, GitBranch, Paperclip, ArrowDown } from 'lucide-react'
 
 import type {
@@ -11,6 +11,7 @@ import type {
 } from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
+import { SubagentRunPanel } from './components/SubagentRunPanel'
 import { SettingsView } from './components/SettingsView'
 
 import { useSessions } from './hooks/useSessions'
@@ -46,6 +47,7 @@ import { useSessionFamilyView } from './features/chat/useSessionFamilyView'
 import { useContextDiagnosticsState } from './features/chat/useContextDiagnosticsState'
 import { usePermissionPopupController } from './features/chat/usePermissionPopupController'
 import { useVirtualizedMessages, VIRTUAL_MESSAGE_GAP } from './features/chat/useVirtualizedMessages'
+import { parseSubagentRuns } from './features/chat/useAgentMessageViewModel'
 
 const EMPTY_MESSAGES: Message[] = []
 
@@ -122,6 +124,12 @@ function App(): React.JSX.Element {
   const [showBgShellManager, setShowBgShellManager] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isPanelPinned, setIsPanelPinned] = useState(false)
+  const [isSessionSwitching, setIsSessionSwitching] = useState(false)
+  const [activeSubagentRoute, setActiveSubagentRoute] = useState<{
+    messageId: string
+    subagentId: string
+  } | null>(null)
+  const [isSessionSwitchPending, startSessionSwitchTransition] = useTransition()
   const [windowState, setWindowState] = useState<WindowState>({
     mode: 'window',
     isMaximized: false
@@ -198,6 +206,35 @@ function App(): React.JSX.Element {
   const [dismissedSessionFamilyViewForId, setDismissedSessionFamilyViewForId] = useState<
     string | null
   >(null)
+  const sessionSwitchTimerRef = useRef<number | null>(null)
+  const switchActiveSessionId = useCallback(
+    (sessionId: string): void => {
+      if (!sessionId || sessionId === activeSessionId) return
+
+      if (sessionSwitchTimerRef.current !== null) {
+        window.clearTimeout(sessionSwitchTimerRef.current)
+      }
+
+      setIsSessionSwitching(true)
+      setActiveSubagentRoute(null)
+      startSessionSwitchTransition(() => {
+        setActiveSessionId(sessionId)
+      })
+      sessionSwitchTimerRef.current = window.setTimeout(() => {
+        setIsSessionSwitching(false)
+        sessionSwitchTimerRef.current = null
+      }, 220)
+    },
+    [activeSessionId, setActiveSessionId, startSessionSwitchTransition]
+  )
+  useEffect(
+    () => () => {
+      if (sessionSwitchTimerRef.current !== null) {
+        window.clearTimeout(sessionSwitchTimerRef.current)
+      }
+    },
+    []
+  )
   const sessionNavigationSignature = buildSessionNavigationSignature(sessions)
   const navigationSessions = useStableValueBySignature(sessions, sessionNavigationSignature)
 
@@ -291,6 +328,23 @@ function App(): React.JSX.Element {
     activeSessionId
   )
   const activeMessages = activeSession?.messages ?? EMPTY_MESSAGES
+  const activeSubagentRoutePanel = useMemo(() => {
+    if (!activeSubagentRoute) return null
+    const sourceMessage = activeMessages.find(
+      (message) => message.id === activeSubagentRoute.messageId
+    )
+    if (!sourceMessage) return null
+    return (
+      parseSubagentRuns(sourceMessage.agentEvents).find(
+        (subagent) => subagent.info.subagentId === activeSubagentRoute.subagentId
+      ) || null
+    )
+  }, [activeMessages, activeSubagentRoute])
+  useEffect(() => {
+    if (activeSubagentRoute && !activeSubagentRoutePanel) {
+      setActiveSubagentRoute(null)
+    }
+  }, [activeSubagentRoute, activeSubagentRoutePanel])
   const getEstimatedMessageTopRef = useRef<((messageId: string) => number | null) | null>(null)
   const getEstimatedMessageTop = useCallback(
     (messageId: string): number | null => getEstimatedMessageTopRef.current?.(messageId) ?? null,
@@ -352,7 +406,7 @@ function App(): React.JSX.Element {
     setDismissedSessionFamilyViewForId,
     setSidebarProjectId,
     setPendingScrollMessageId,
-    setActiveSessionId,
+    setActiveSessionId: switchActiveSessionId,
     setAutocompleteItems
   })
   // Listen to window summon (focus/show) event from Main Process
@@ -507,7 +561,7 @@ function App(): React.JSX.Element {
     } else if (item.type === 'session') {
       // Switch conversation session
       enterSessionFamilyView(item.id)
-      setActiveSessionId(item.id)
+      switchActiveSessionId(item.id)
       handleCloseSettings()
       setAutocompleteItems([])
       inputDraftRef.current = ''
@@ -620,6 +674,9 @@ function App(): React.JSX.Element {
   const handleOpenFreeConversationsFromSidebar = useCallback((): void => {
     openFreeConversations()
   }, [openFreeConversations])
+  const handleOpenSubagentRoute = useCallback((messageId: string, subagentId: string): void => {
+    setActiveSubagentRoute({ messageId, subagentId })
+  }, [])
   const handleDeleteProjectFromSidebar = useCallback(
     (projectId: string): void => {
       void handleDeleteProject(projectId)
@@ -667,6 +724,7 @@ function App(): React.JSX.Element {
         })),
     [messageNavItems]
   )
+  const showSessionSwitchOverlay = isSessionSwitching || isSessionSwitchPending
   return (
     <div
       className={`app-container ${theme === 'light' ? 'theme-light' : ''} ${
@@ -730,7 +788,10 @@ function App(): React.JSX.Element {
             setAutocompleteItems={setAutocompleteItems as (items: never[]) => void}
           />
 
-          <section className="conversation-panel">
+          <section
+            className={`conversation-panel ${showSessionSwitchOverlay ? 'session-switching' : ''}`}
+            aria-busy={showSessionSwitchOverlay}
+          >
             <div className="conversation-titlebar">
               <div className="conversation-title-main">
                 <div className="conversation-title-line">
@@ -764,7 +825,19 @@ function App(): React.JSX.Element {
                 </div>
               </div>
             </div>
-            {isNewSessionEmpty ? (
+            {showSessionSwitchOverlay && (
+              <div className="session-switch-overlay" role="status" aria-label="正在切换对话">
+                <div className="session-switch-card">
+                  <span className="session-switch-spinner" aria-hidden="true" />
+                </div>
+              </div>
+            )}
+            {activeSubagentRoutePanel ? (
+              <SubagentRunPanel
+                subagent={activeSubagentRoutePanel}
+                onClose={() => setActiveSubagentRoute(null)}
+              />
+            ) : isNewSessionEmpty ? (
               /* Claude Code Style clean watermark interface */
               <div className="empty-state">
                 <MessageSquare
@@ -853,6 +926,7 @@ function App(): React.JSX.Element {
                         onRegenerate={handleRegenerate}
                         onResumeAgentRun={handleResumeAgentRun}
                         onOpenBranch={(sessionId) => openSession(sessionId)}
+                        onOpenSubagent={handleOpenSubagentRoute}
                         onChangeEditingText={setEditingText}
                       />
                     </div>
@@ -872,7 +946,7 @@ function App(): React.JSX.Element {
               </div>
             )}
 
-            {!isNewSessionEmpty && stickyUserMessages.length > 0 && (
+            {!activeSubagentRoutePanel && !isNewSessionEmpty && stickyUserMessages.length > 0 && (
               <StickyUserMessage
                 containerRef={messagesContainerRef}
                 userMessages={stickyUserMessages}
@@ -881,7 +955,7 @@ function App(): React.JSX.Element {
               />
             )}
 
-            {!isNewSessionEmpty && messageNavItems.length ? (
+            {!activeSubagentRoutePanel && !isNewSessionEmpty && messageNavItems.length ? (
               <nav className="message-minimap" aria-label="Message navigation">
                 {messageNavItems.map(({ msg, kind, label, preview }) => {
                   const isActive = activeMessageNavId === msg.id
@@ -902,7 +976,7 @@ function App(): React.JSX.Element {
               </nav>
             ) : null}
 
-            {!isNewSessionEmpty && showScrollToBottom && (
+            {!activeSubagentRoutePanel && !isNewSessionEmpty && showScrollToBottom && (
               <button
                 type="button"
                 className="scroll-to-bottom-btn"

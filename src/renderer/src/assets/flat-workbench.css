@@ -954,6 +954,60 @@ body {
   background: #1b1b1b;
 }
 
+.session-switch-overlay {
+  position: absolute;
+  inset: 68px 0 0;
+  z-index: 32;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(27, 27, 27, 0.56);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+  animation: session-switch-fade 0.12s ease-out;
+}
+
+.session-switch-card {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #383838;
+  border-radius: 8px;
+  background: rgba(32, 32, 32, 0.92);
+  color: #d6d6d6;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.session-switch-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(214, 214, 214, 0.34);
+  border-top-color: #d6d6d6;
+  border-radius: 999px;
+  animation: session-switch-spin 0.72s linear infinite;
+}
+
+@keyframes session-switch-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes session-switch-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .conversation-title-main {
   max-width: 960px;
   margin: 0 auto;
@@ -1294,6 +1348,15 @@ body {
   line-height: 1.68;
 }
 
+.subagent-route-panel .message-text {
+  padding: 0;
+  color: #dce3ed;
+  background: transparent;
+  border-radius: 0;
+  font-size: 13px;
+  line-height: 1.68;
+}
+
 .message-text p {
   margin-bottom: 0.8em;
 }
@@ -1372,6 +1435,17 @@ body {
 
 .agent-structured-steps-area {
   gap: 10px;
+}
+
+.agent-subagent-status-spinner {
+  flex: 0 0 auto;
+  animation: agent-subagent-spin 0.9s linear infinite;
+}
+
+@keyframes agent-subagent-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .agent-step-block {
@@ -2051,6 +2125,22 @@ body {
   background: #ffffff;
 }
 
+.app-container.theme-light .session-switch-overlay {
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.app-container.theme-light .session-switch-card {
+  border-color: #d9dee7;
+  background: rgba(255, 255, 255, 0.94);
+  color: #44403c;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+}
+
+.app-container.theme-light .session-switch-spinner {
+  border-color: rgba(68, 64, 60, 0.22);
+  border-top-color: #57534e;
+}
+
 .app-container.theme-light .scroll-to-bottom-btn {
   border-color: #d9dee7;
   background: #ffffff;
@@ -2212,6 +2302,7 @@ body {
 
 .app-container.theme-light .sidebar-model-text strong,
 .app-container.theme-light .message-bubble.assistant .message-text,
+.app-container.theme-light .subagent-route-panel .message-text,
 .app-container.theme-light .agent-step-progress-message {
   color: #243042;
 }
