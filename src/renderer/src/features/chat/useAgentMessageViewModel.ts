@@ -54,6 +54,33 @@ const formatElapsedDuration = (seconds: number): string => {
   return `${secs}s`
 }
 
+const getPersistedAgentElapsedSeconds = (events?: AgentEvent[]): number => {
+  if (!events || events.length === 0) return 0
+
+  const firstTimestamp = events.find((event) => typeof event.timestamp === 'number')?.timestamp
+  const lastTimestamp = [...events]
+    .reverse()
+    .find((event) => typeof event.timestamp === 'number')?.timestamp
+  const startTimestamp =
+    events.find((event) => event.type === 'agent_start' && typeof event.timestamp === 'number')
+      ?.timestamp ?? firstTimestamp
+  const endTimestamp =
+    [...events]
+      .reverse()
+      .find((event) => event.type === 'agent_end' && typeof event.timestamp === 'number')
+      ?.timestamp ?? lastTimestamp
+
+  if (
+    startTimestamp === undefined ||
+    endTimestamp === undefined ||
+    endTimestamp <= startTimestamp
+  ) {
+    return 0
+  }
+
+  return Math.max(1, Math.round((endTimestamp - startTimestamp) / 1000))
+}
+
 export interface UseAgentMessageViewModelProps {
   msg: Message
   isGenerating: boolean
@@ -79,13 +106,23 @@ export function useAgentMessageViewModel({
     setIsStepsExpandedState(next)
   }, [])
 
-  const [elapsed, setElapsed] = useState<number>(() =>
-    isGenerating && msg.role === 'assistant'
+  const [elapsed, setElapsed] = useState<number>(() => {
+    const persistedElapsed = getPersistedAgentElapsedSeconds(msg.agentEvents)
+    if (!isGenerating && persistedElapsed > 0) return persistedElapsed
+    return isGenerating && msg.role === 'assistant'
       ? Math.round((Date.now() - (parseInt(msg.id) || Date.now())) / 1000)
       : 0
-  )
+  })
 
   useEffect(() => {
+    if (!isGenerating) {
+      const persistedElapsed = getPersistedAgentElapsedSeconds(msg.agentEvents)
+      if (persistedElapsed > 0) {
+        setElapsed(persistedElapsed)
+      }
+      return undefined
+    }
+
     if (isGenerating && msg.role === 'assistant') {
       const startTime = parseInt(msg.id) || Date.now()
       const timer = setInterval(() => {
@@ -94,7 +131,7 @@ export function useAgentMessageViewModel({
       return () => clearInterval(timer)
     }
     return undefined
-  }, [isGenerating, msg.id, msg.role])
+  }, [isGenerating, msg.agentEvents, msg.id, msg.role])
 
   const subagents = useMemo(() => {
     return parseSubagentRuns(msg.agentEvents)

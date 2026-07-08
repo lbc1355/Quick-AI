@@ -228,6 +228,53 @@ describe('useAgentMessageViewModel hook', () => {
     expect(vm.isStepsExpanded).toBe(false)
   })
 
+  it('restores completed agent duration from persisted event timestamps', () => {
+    const events: AgentEvent[] = [
+      { type: 'agent_start', skillName: 'shell', timestamp: 1000, runId: 'run-1', sequence: 1 },
+      {
+        type: 'agent_step',
+        stepId: 'step-1',
+        step: 1,
+        maxSteps: 30,
+        title: 'Reading files',
+        message: 'Reading files...',
+        status: 'completed',
+        timestamp: 10_000,
+        runId: 'run-1',
+        sequence: 2
+      },
+      {
+        type: 'final',
+        content: 'Final answer',
+        timestamp: 60_000,
+        runId: 'run-1',
+        sequence: 3
+      },
+      {
+        type: 'agent_end',
+        status: 'completed',
+        timestamp: 61_000,
+        runId: 'run-1',
+        sequence: 4
+      }
+    ]
+
+    const msg: Message = {
+      id: '1710000000000',
+      role: 'assistant',
+      content: 'Final answer',
+      agentEvents: events
+    }
+
+    const vm = useAgentMessageViewModel({
+      msg,
+      isGenerating: false
+    })
+
+    expect(vm.elapsed).toBe(60)
+    expect(vm.generationDurationText).toContain('1m')
+  })
+
   it('allows completed structured agent steps to be expanded manually', () => {
     const runningEvents: AgentEvent[] = [
       { type: 'agent_start', skillName: 'shell', timestamp: 1000, runId: 'run-1', sequence: 1 },

@@ -589,10 +589,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                               className={`agent-steps-simple-toggle ${isStepsExpanded ? 'expanded' : ''}`}
                               onClick={() => setIsStepsExpanded(!isStepsExpanded)}
                             >
-                              <span>
-                                {formatWorkedDuration(elapsed, parsedRun.steps.length)}
-                                {msg.tokenSpeed ? ` · ${msg.tokenSpeed} token/s` : ''}
-                              </span>
+                              <span>{formatWorkedDuration(elapsed, parsedRun.steps.length)}</span>
                               <ChevronRight
                                 size={12}
                                 className="toggle-icon"
