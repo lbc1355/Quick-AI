@@ -8,26 +8,12 @@ import { searchToolDefinitions } from '../toolRegistry'
 import { getFirstMissingOffset } from '../resourceCache'
 import { buildMemoryInjection } from './memoryContext'
 import { loadSkillsFromFolders } from '../skillManager'
+import { buildDateContext } from '../../shared/promptDate'
 
 export const TOOL_DIRECTORY_BUDGET = 2000 // max chars injected into system prompt
 export const SKILL_DIRECTORY_BUDGET = 6000 // max chars injected into system prompt
 
-/**
- * A single line stating the current date, injected at the top of the system prompt so the model
- * has a temporal anchor (for relative reasoning like "recently" / "last week" and for dating any
- * memories it stores). Deliberately DATE-level, not clock-level: the prefix stays identical for
- * the whole day, so the prompt cache is not invalidated turn-to-turn. `now` is injectable for
- * deterministic tests.
- */
-export function buildDateLine(now: Date = new Date()): string {
-  const date = now.toLocaleDateString('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }) // YYYY-MM-DD
-  const weekday = now.toLocaleDateString('en-US', { weekday: 'long' })
-  return `Current date: ${date} (${weekday}). The clock time within the day is not provided.`
-}
+export { buildDateLine } from '../../shared/promptDate'
 
 /**
  * Compact tool directory suitable for injection into the system prompt so the model knows
@@ -230,8 +216,6 @@ export function buildSkillMessages(options: AgentSkillRunOptions): ChatCompletio
       role: 'system',
       content: `${baseSystemPrompt}You are QuickAI Agent Runner. Execute the installed Skill by reading its SKILL.md instructions.
 
-${buildDateLine()}
-
 **Platform:** ${process.platform === 'win32' ? 'Windows (cmd.exe shell). Use Windows-native commands: findstr (not grep), dir (not ls), type (not cat), where (not which), del (not rm), copy / move (not cp / mv), mkdir / md (not mkdir). Paths use backslashes.' : process.platform === 'darwin' ? 'macOS (zsh shell). Use standard Unix commands.' : 'Linux (bash shell). Use standard Unix commands.'}
 
 ${buildWorkspaceContextPrompt(options.projectRoot, options.projectName)}
@@ -264,7 +248,7 @@ Rules:
     },
     {
       role: 'user',
-      content: `Installed SKILL.md:\n\n${skillMarkdown}${packageFilesPrompt}\n\nUser request:\n${options.userInput}`
+      content: `${buildDateContext()}\n\nInstalled SKILL.md:\n\n${skillMarkdown}${packageFilesPrompt}\n\nUser request:\n${options.userInput}`
     }
   ]
 
@@ -321,8 +305,6 @@ export function prepareChatAgentMessages(
   const memorySegment = buildMemoryInjection()
 
   const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can call to search the web, fetch pages, read, write, edit, and diff files (both inside the workspace, and outside the workspace via absolute paths which will trigger a user permission prompt), and search the codebase.
-
-${buildDateLine()}
 
 **Platform:** ${process.platform === 'win32' ? 'Windows (cmd.exe shell). Use Windows-native commands: findstr (not grep), dir (not ls), type (not cat), where (not which), del (not rm), copy / move (not cp / mv), mkdir / md (not mkdir). Paths use backslashes.' : process.platform === 'darwin' ? 'macOS (zsh shell). Use standard Unix commands.' : 'Linux (bash shell). Use standard Unix commands.'}
 

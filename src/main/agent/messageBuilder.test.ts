@@ -59,11 +59,31 @@ describe('buildDateLine', () => {
 })
 
 describe('prepareChatAgentMessages date injection', () => {
-  it('injects the current date into the system prompt', () => {
+  it('keeps the general agent system prompt free of daily-changing date text', () => {
     const msgs = prepareChatAgentMessages([{ role: 'user', content: 'hi' }])
     const system = msgs.find((m) => m.role === 'system')
     expect(system).toBeDefined()
-    expect(system!.content as string).toContain('Current date:')
+    expect(system!.content as string).not.toContain('Current date:')
+  })
+
+  it('injects the current date into skill user request context', () => {
+    const msgs = buildSkillMessages({
+      apiUrl: 'https://api.example.com',
+      apiKey: 'key',
+      model: 'test-model',
+      skill: {
+        id: 'skill-date',
+        name: 'Date Skill',
+        trigger: 'date',
+        prompt: 'Use the date.',
+        rawMarkdown: '# Date Skill\n\nUse the date.'
+      },
+      userInput: 'run it'
+    })
+    const user = msgs.find((m) => m.role === 'user')
+    expect(user!.content as string).toContain('<date_context>')
+    expect(user!.content as string).toContain('Current date:')
+    expect(user!.content as string).toContain('</date_context>')
   })
 
   it('injects the platform hint into the system prompt', () => {

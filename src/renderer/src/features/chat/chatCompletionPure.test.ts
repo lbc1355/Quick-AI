@@ -77,6 +77,49 @@ describe('apiMessageBuilder pure functions', () => {
     })
   })
 
+  it('buildApiMessages keeps historical user date context stable across midnight', () => {
+    const firstUserId = String(new Date('2026-06-08T12:00:00').getTime())
+    const nextUserId = String(new Date('2026-06-09T12:00:00').getTime())
+    const firstRequest = buildApiMessages('system', [
+      { id: firstUserId, role: 'user', content: 'first task' }
+    ])
+    const nextRequest = buildApiMessages('system', [
+      { id: firstUserId, role: 'user', content: 'first task' },
+      { id: 'assistant-1', role: 'assistant', content: 'answer' },
+      { id: nextUserId, role: 'user', content: 'second task' }
+    ])
+
+    expect(nextRequest[1]).toEqual(firstRequest[1])
+    expect(nextRequest[1].content).toContain('<date_context>')
+    expect(nextRequest[1].content).toContain('2026-06-08')
+    expect(nextRequest[1].content).toContain('</date_context>')
+    expect(nextRequest[3].content).toContain('2026-06-09')
+  })
+
+  it('buildApiMessages only anchors the date when the calendar day changes', () => {
+    const firstUserId = String(new Date('2026-06-08T09:00:00').getTime())
+    const sameDayUserId = String(new Date('2026-06-08T21:00:00').getTime())
+    const nextDayUserId = String(new Date('2026-06-09T08:00:00').getTime())
+
+    const apiMsgs = buildApiMessages('system', [
+      { id: firstUserId, role: 'user', content: 'first task' },
+      { id: 'assistant-1', role: 'assistant', content: 'answer 1' },
+      { id: sameDayUserId, role: 'user', content: 'same day task' },
+      { id: 'assistant-2', role: 'assistant', content: 'answer 2' },
+      { id: nextDayUserId, role: 'user', content: 'next day task' }
+    ])
+
+    // First user message on 2026-06-08 gets the anchor.
+    expect(apiMsgs[1].content).toContain('<date_context>')
+    expect(apiMsgs[1].content).toContain('2026-06-08')
+    // Second user message on the same day is NOT re-anchored.
+    expect(apiMsgs[3].content).toBe('same day task')
+    expect(apiMsgs[3].content).not.toContain('<date_context>')
+    // Third user message on a new day gets a fresh anchor.
+    expect(apiMsgs[5].content).toContain('<date_context>')
+    expect(apiMsgs[5].content).toContain('2026-06-09')
+  })
+
   it('buildApiMessages crops context correctly after a compaction summary', () => {
     const messages: Message[] = [
       { id: '1', role: 'user', content: 'old query 1' },

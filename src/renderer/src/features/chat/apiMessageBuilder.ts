@@ -1,4 +1,5 @@
 import type { Message } from '../../../../shared/types'
+import { buildDateContext, getDateFromMessageId, getDateKey } from '../../../../shared/promptDate'
 import { isRuntimeErrorAssistantMessage } from '../../hooks/chatMessageEvents'
 
 export interface ApiMessage {
@@ -32,19 +33,36 @@ export function buildApiMessages(systemPrompt: string, messages: Message[]): Api
   // Crop context to messages after the last compaction summary
   const messagesToProcess = getMessagesForLLM(messages)
 
+  // Only anchor the date on a user message when the calendar day differs from the previously
+  // anchored user message (the first dated user message in the window always gets one). This
+  // avoids repeating the same date on every turn while keeping each turn deterministic on replay.
+  let lastAnchoredDateKey: string | null = null
+
   messagesToProcess.forEach((msg) => {
     if (isRuntimeErrorAssistantMessage(msg)) return
 
+    let dateContext: string | null = null
+    if (msg.role === 'user') {
+      const date = getDateFromMessageId(msg.id)
+      if (date) {
+        const dateKey = getDateKey(date)
+        if (dateKey !== lastAnchoredDateKey) {
+          dateContext = buildDateContext(date)
+          lastAnchoredDateKey = dateKey
+        }
+      }
+    }
+    const textContent = dateContext ? `${dateContext}\n\n${msg.content}` : msg.content
     let content:
       | string
       | Array<{
           type: string
           text?: string
           image_url?: { url: string }
-        }> = msg.content
+        }> = textContent
 
     if (msg.files && msg.files.length > 0) {
-      const textParts = [msg.content]
+      const textParts = [textContent]
       const images: Array<{ type: 'image_url'; image_url: { url: string } }> = []
       msg.files.forEach((f) => {
         if (f.type === 'image') {
