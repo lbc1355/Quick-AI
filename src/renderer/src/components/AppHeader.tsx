@@ -1,14 +1,11 @@
 import React from 'react'
 import {
   AppWindow,
-  ArrowLeft,
-  ArrowRight,
   Minimize2,
   Minus,
   Settings,
   Square,
   Terminal,
-  Command,
   Trash2,
   Undo2,
   Sun,
@@ -17,7 +14,7 @@ import {
   PinOff,
   X
 } from 'lucide-react'
-import { ApiProvider, WindowMode } from '../../../shared/types'
+import { WindowMode } from '../../../shared/types'
 
 interface AppHeaderProps {
   theme: string
@@ -34,10 +31,6 @@ interface AppHeaderProps {
   handleCloseSettings: () => void
   handleClearCurrentSession: () => Promise<void>
   setShowSettings: (value: boolean) => void
-  isGenerating: boolean
-  providers: ApiProvider[]
-  activeProviderId: string
-  selectedModel: string
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -54,38 +47,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   showSettings,
   handleCloseSettings,
   handleClearCurrentSession,
-  setShowSettings,
-  isGenerating,
-  providers,
-  activeProviderId,
-  selectedModel
+  setShowSettings
 }) => {
   const isWindowMode = windowMode === 'window'
-  const activeProviderName =
-    providers.find((provider) => provider.id === activeProviderId)?.name || '未选择服务商'
 
   return (
     <div className="drag-header">
       <div className="drag-header-left">
         <span className="logo-icon" aria-hidden="true" />
-        <button type="button" className="header-nav-btn" title="后退">
-          <ArrowLeft size={14} />
-        </button>
-        <button type="button" className="header-nav-btn" title="前进">
-          <ArrowRight size={14} />
-        </button>
-      </div>
-
-      <div className="header-command-center">
-        <Command size={13} />
-        <span className="logo-text">QuickAI</span>
-        <span className="header-command-separator">·</span>
-        <div className="chat-model-info">
-          <div className={`status-dot ${isGenerating ? 'loading' : ''}`} />
-          <span className="model-name">
-            {activeProviderName}: {selectedModel}
-          </span>
-        </div>
       </div>
 
       <div className="drag-header-right">

@@ -751,10 +751,6 @@ function App(): React.JSX.Element {
         handleCloseSettings={handleCloseSettings}
         handleClearCurrentSession={handleClearCurrentSession}
         setShowSettings={setShowSettings}
-        isGenerating={isGenerating}
-        providers={providers}
-        activeProviderId={activeProviderId}
-        selectedModel={runningModelName}
       />
 
       {/* Main Content Area */}

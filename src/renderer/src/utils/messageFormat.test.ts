@@ -1,6 +1,24 @@
 import { describe, expect, it } from 'vitest'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { AgentEvent } from '../../../shared/types'
-import { parseAgentSteps } from './messageFormat'
+import { parseAgentSteps, renderMessageContent } from './messageFormat'
+
+describe('renderMessageContent', () => {
+  it('keeps inline math inside the surrounding markdown paragraph', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        React.Fragment,
+        null,
+        renderMessageContent("产生 4 个 $v'_1, v'_2, v'_3, v'_4$，每个 $v'$ 内部还有空间展平。")
+      )
+    )
+
+    expect(html.match(/<p/g) || []).toHaveLength(1)
+    expect(html).toContain('，每个')
+    expect(html).toContain('内部还有空间展平。')
+  })
+})
 
 describe('parseAgentSteps agent_message_delta', () => {
   it('shows unclassified model deltas as the pending answer', () => {

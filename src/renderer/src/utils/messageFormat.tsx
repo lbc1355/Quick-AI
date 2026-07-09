@@ -200,6 +200,84 @@ const renderMath = (math: string, block = false, key?: string): React.ReactNode 
   return <span key={key} dangerouslySetInnerHTML={{ __html: html }} />
 }
 
+const renderInlineMathText = (text: string, keyPrefix: string): React.ReactNode => {
+  const parts = text.split(/(\$[^$\n]+?\$|\\\(.*?\\\))/g)
+  if (parts.length === 1) return text
+
+  return parts.map((part, idx) => {
+    if (!part) return null
+    if (part.startsWith('$') && part.endsWith('$')) {
+      return renderMath(part.slice(1, -1), false, `${keyPrefix}-math-dollar-${idx}`)
+    }
+    if (part.startsWith('\\(') && part.endsWith('\\)')) {
+      return renderMath(part.slice(2, -2), false, `${keyPrefix}-math-paren-${idx}`)
+    }
+    return part
+  })
+}
+
+const renderInlineMathChildren = (children: React.ReactNode, keyPrefix: string): React.ReactNode =>
+  React.Children.map(children, (child, childIdx) => {
+    if (typeof child === 'string') {
+      return renderInlineMathText(child, `${keyPrefix}-${childIdx}`)
+    }
+    return child
+  })
+
+const markdownComponents = {
+  code: ({ className, children, ...props }: React.ComponentProps<'code'>) => {
+    const content = Array.isArray(children) ? children.join('') : (children as string)
+    return (
+      <code
+        className={className}
+        style={{
+          background: 'var(--color-inline-code-bg)',
+          padding: '2px 4px',
+          borderRadius: '4px',
+          fontFamily: 'Consolas, monospace',
+          fontSize: '12px',
+          color: '#f43f5e'
+        }}
+        {...props}
+      >
+        {content}
+      </code>
+    )
+  },
+  p: ({ children, ...props }: React.ComponentProps<'p'>) => (
+    <p {...props}>{renderInlineMathChildren(children, 'p')}</p>
+  ),
+  li: ({ children, ...props }: React.ComponentProps<'li'>) => (
+    <li {...props}>{renderInlineMathChildren(children, 'li')}</li>
+  ),
+  td: ({ children, ...props }: React.ComponentProps<'td'>) => (
+    <td {...props}>{renderInlineMathChildren(children, 'td')}</td>
+  ),
+  th: ({ children, ...props }: React.ComponentProps<'th'>) => (
+    <th {...props}>{renderInlineMathChildren(children, 'th')}</th>
+  ),
+  strong: ({ children, ...props }: React.ComponentProps<'strong'>) => (
+    <strong {...props}>{renderInlineMathChildren(children, 'strong')}</strong>
+  ),
+  em: ({ children, ...props }: React.ComponentProps<'em'>) => (
+    <em {...props}>{renderInlineMathChildren(children, 'em')}</em>
+  ),
+  a: ({ href, children, ...props }: React.ComponentProps<'a'>) => (
+    <a href={href} target="_blank" rel="noreferrer" {...props}>
+      {renderInlineMathChildren(children, 'a')}
+    </a>
+  )
+}
+
+const renderMarkdownPart = (markdown: string, key: string): React.ReactNode => {
+  if (!markdown) return null
+  return (
+    <ReactMarkdown key={key} remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {markdown}
+    </ReactMarkdown>
+  )
+}
+
 // Custom text formatter — uses react-markdown with GFM support for rich rendering,
 // while preserving custom code-block (with copy button) and KaTeX math rendering.
 export const renderMessageContent = (text: string): React.ReactNode => {
@@ -260,84 +338,26 @@ export const renderMessageContent = (text: string): React.ReactNode => {
     } else {
       // Split by block math $$...$$ and \[...\]
       const blockParts = part.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g)
-      return (
-        <span key={`text-blk-${idx}`}>
-          {blockParts.map((blockPart, bIdx) => {
-            if (blockPart.startsWith('$$') && blockPart.endsWith('$$')) {
-              const math = blockPart.slice(2, -2)
-              return renderMath(math, true, `math-b-${bIdx}`)
-            } else if (blockPart.startsWith('\\[') && blockPart.endsWith('\\]')) {
-              const math = blockPart.slice(2, -2)
-              return renderMath(math, true, `math-b-${bIdx}`)
-            } else {
-              // Split by inline math $...$ and \(...\)
-              const inlineParts = blockPart.split(/(\$[^$\n]+?\$|\\\(.*?\\\))/g)
-              // Rejoin segments so react-markdown receives the largest contiguous text blocks
-              const segments: Array<{ type: 'text' | 'math'; value: string }> = []
-              for (const ip of inlineParts) {
-                if (ip.startsWith('$') && ip.endsWith('$')) {
-                  segments.push({ type: 'math', value: ip.slice(1, -1) })
-                } else if (ip.startsWith('\\(') && ip.endsWith('\\)')) {
-                  segments.push({ type: 'math', value: ip.slice(2, -2) })
-                } else {
-                  if (segments.length > 0 && segments[segments.length - 1].type === 'text') {
-                    segments[segments.length - 1].value += ip
-                  } else {
-                    segments.push({ type: 'text', value: ip })
-                  }
-                }
-              }
-
-              return (
-                <span key={`inline-blk-${bIdx}`}>
-                  {segments.map((seg, sIdx) => {
-                    if (seg.type === 'math') {
-                      return renderMath(seg.value, false, `math-i-${sIdx}`)
-                    }
-                    return (
-                      <ReactMarkdown
-                        key={`rm-${sIdx}`}
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          code: ({ className, children, ...props }) => {
-                            // Inline code: no language class means it's an inline `<code>`
-                            const content = Array.isArray(children)
-                              ? children.join('')
-                              : (children as string)
-                            return (
-                              <code
-                                className={className}
-                                style={{
-                                  background: 'var(--color-inline-code-bg)',
-                                  padding: '2px 4px',
-                                  borderRadius: '4px',
-                                  fontFamily: 'Consolas, monospace',
-                                  fontSize: '12px',
-                                  color: '#f43f5e'
-                                }}
-                                {...props}
-                              >
-                                {content}
-                              </code>
-                            )
-                          },
-                          a: ({ href, children, ...props }) => (
-                            <a href={href} target="_blank" rel="noreferrer" {...props}>
-                              {children}
-                            </a>
-                          )
-                        }}
-                      >
-                        {seg.value}
-                      </ReactMarkdown>
-                    )
-                  })}
-                </span>
-              )
-            }
-          })}
-        </span>
-      )
+      return blockParts.map((blockPart, bIdx) => {
+        if (!blockPart) return null
+        if (blockPart.startsWith('$$') && blockPart.endsWith('$$')) {
+          const math = blockPart.slice(2, -2)
+          return (
+            <div key={`math-b-${idx}-${bIdx}`} className="math-block">
+              {renderMath(math, true)}
+            </div>
+          )
+        }
+        if (blockPart.startsWith('\\[') && blockPart.endsWith('\\]')) {
+          const math = blockPart.slice(2, -2)
+          return (
+            <div key={`math-b-${idx}-${bIdx}`} className="math-block">
+              {renderMath(math, true)}
+            </div>
+          )
+        }
+        return renderMarkdownPart(blockPart, `md-${idx}-${bIdx}`)
+      })
     }
   })
 }
