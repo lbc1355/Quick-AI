@@ -2,6 +2,7 @@ import { compactAgentEvents } from '../../shared/agentEventCompactor'
 import { replayAgentEvents } from '../../shared/agentEventReplay'
 import type { Message, Session } from '../../shared/types'
 import type { AgentEventJournalSnapshot } from './agentEventJournal'
+import { getSessionContextEpoch, normalizeContextEpoch } from '../../shared/contextEpoch'
 
 const mergeJournalIntoMessage = (message: Message, journal: AgentEventJournalSnapshot): Message => {
   const historicalEvents = (message.agentEvents || []).filter(
@@ -38,8 +39,18 @@ export function mergeAgentEventJournalsIntoSessions(
   journals: AgentEventJournalSnapshot[]
 ): Session[] {
   const journalsByMessage = new Map<string, AgentEventJournalSnapshot[]>()
+  const contextEpochBySession = new Map(
+    sessions.map((session) => [session.id, getSessionContextEpoch(session)] as const)
+  )
   for (const journal of journals) {
     if (!journal.assistantMessageId) continue
+    const contextEpoch = contextEpochBySession.get(journal.sessionId)
+    if (
+      contextEpoch === undefined ||
+      normalizeContextEpoch(journal.contextEpoch) !== contextEpoch
+    ) {
+      continue
+    }
     const key = `${journal.sessionId}\u0000${journal.assistantMessageId}`
     const existing = journalsByMessage.get(key)
     if (existing) existing.push(journal)

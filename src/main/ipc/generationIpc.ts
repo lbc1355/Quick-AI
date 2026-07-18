@@ -16,10 +16,12 @@ import type {
   SessionPromptAdmission
 } from '../../shared/types'
 import { globalSessionCoordinator, SessionRunKind } from '../sessionCoordinator'
+import { normalizeContextEpoch } from '../../shared/contextEpoch'
 import type { AgentSteeringControls } from '../agent/agentRunPreparation'
 import {
   admitSessionPrompt,
   cancelSessionPrompt,
+  cancelStaleSessionPrompts,
   claimNextSessionPrompt,
   completeSessionPrompt,
   finishSessionPrompt,
@@ -33,6 +35,7 @@ interface CoordinatedRunInput {
   reqId: string
   sessionId: string
   kind: SessionRunKind
+  contextEpoch: number
   acceptsSteering?: boolean
   promptAdmissionId?: string
   execute: () => Promise<void>
@@ -47,12 +50,20 @@ const getSessionId = (reqId: string, options: unknown): string => {
   return reqId
 }
 
+const getContextEpoch = (options: unknown): number =>
+  normalizeContextEpoch(
+    options && typeof options === 'object'
+      ? (options as Record<string, unknown>).contextEpoch
+      : undefined
+  )
+
 const startCoordinatedRun = (win: BrowserWindow, input: CoordinatedRunInput): void => {
   void globalSessionCoordinator
     .start({
       reqId: input.reqId,
       sessionId: input.sessionId,
       kind: input.kind,
+      contextEpoch: input.contextEpoch,
       acceptsSteering: input.acceptsSteering,
       onUnconsumedSteering: (prompts) => {
         requeueSessionPrompts(prompts.map((prompt) => prompt.admissionId))
@@ -80,6 +91,7 @@ const startCoordinatedRun = (win: BrowserWindow, input: CoordinatedRunInput): vo
       const err = error instanceof Error ? error : new Error(String(error))
       win.webContents.send('chat-chunk', {
         reqId: input.reqId,
+        contextEpoch: input.contextEpoch,
         error: err.message,
         errorPayload: normalizeRuntimeError(err, 'agent')
       })
@@ -110,6 +122,7 @@ export function registerGenerationIpc(store: FileStore): void {
         input.mode === 'steer' &&
         globalSessionCoordinator.steer(input.sessionId, {
           admissionId: stored.prompt.id,
+          contextEpoch: stored.prompt.contextEpoch,
           messages: stored.prompt.messages
         })
       ) {
@@ -135,9 +148,19 @@ export function registerGenerationIpc(store: FileStore): void {
 
   ipcMain.handle(
     'claim-next-session-prompt',
-    (_event, sessionId: string): SessionPromptAdmission | undefined =>
-      claimNextSessionPrompt(sessionId)
+    (_event, sessionId: string, contextEpoch?: number): SessionPromptAdmission | undefined =>
+      claimNextSessionPrompt(sessionId, contextEpoch)
   )
+
+  ipcMain.on('advance-session-context', (_event, sessionId: string, contextEpoch: number) => {
+    const normalizedSessionId = String(sessionId || '').trim()
+    if (!normalizedSessionId) return
+    const normalizedEpoch = normalizeContextEpoch(contextEpoch)
+    const currentEpoch = globalSessionCoordinator.getContextEpoch(normalizedSessionId)
+    if (currentEpoch !== undefined && normalizedEpoch < currentEpoch) return
+    globalSessionCoordinator.advanceContext(normalizedSessionId, normalizedEpoch)
+    cancelStaleSessionPrompts(normalizedSessionId, normalizedEpoch)
+  })
 
   ipcMain.handle('complete-session-prompt', (_event, admissionId: string): boolean =>
     completeSessionPrompt(admissionId)
@@ -177,6 +200,7 @@ export function registerGenerationIpc(store: FileStore): void {
     if (win) {
       const normalizedReqId = String(reqId || '')
       const sessionId = getSessionId(normalizedReqId, options)
+      const contextEpoch = getContextEpoch(options)
       const permissions = store.get('settings').permissions
       if (options.runMode === 'agent') {
         const systemPrompt = store.get('settings').systemPrompt
@@ -184,6 +208,7 @@ export function registerGenerationIpc(store: FileStore): void {
         startCoordinatedRun(win, {
           reqId: normalizedReqId,
           sessionId,
+          contextEpoch,
           kind: 'agent',
           acceptsSteering: true,
           promptAdmissionId: options.promptAdmissionId,
@@ -200,6 +225,7 @@ export function registerGenerationIpc(store: FileStore): void {
         startCoordinatedRun(win, {
           reqId: normalizedReqId,
           sessionId,
+          contextEpoch,
           kind: 'chat',
           promptAdmissionId: options.promptAdmissionId,
           execute: () => handleChatCompletion(win, normalizedReqId, options),
@@ -213,11 +239,13 @@ export function registerGenerationIpc(store: FileStore): void {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) {
       const normalizedReqId = String(reqId || '')
+      const contextEpoch = getContextEpoch(options)
       const permissions = store.get('settings').permissions
       const steeringControls = createSteeringControls(normalizedReqId)
       startCoordinatedRun(win, {
         reqId: normalizedReqId,
         sessionId: getSessionId(normalizedReqId, options),
+        contextEpoch,
         kind: 'skill',
         acceptsSteering: true,
         promptAdmissionId: options.promptAdmissionId,

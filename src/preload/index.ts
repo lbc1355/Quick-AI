@@ -81,12 +81,17 @@ const api = {
   respondUserChoice: (reqId: string, requestId: string, response: UserChoiceResponse): void =>
     ipcRenderer.send('respond-user-choice', reqId, requestId, response),
   abortGeneration: (reqId: string): void => ipcRenderer.send('abort-generation', reqId),
+  advanceSessionContext: (sessionId: string, contextEpoch: number): void =>
+    ipcRenderer.send('advance-session-context', sessionId, contextEpoch),
   admitSessionPrompt: (input: AdmitSessionPromptInput): Promise<AdmitSessionPromptResult> =>
     ipcRenderer.invoke('admit-session-prompt', input),
   listSessionPrompts: (sessionId: string): Promise<SessionPromptAdmission[]> =>
     ipcRenderer.invoke('list-session-prompts', sessionId),
-  claimNextSessionPrompt: (sessionId: string): Promise<SessionPromptAdmission | undefined> =>
-    ipcRenderer.invoke('claim-next-session-prompt', sessionId),
+  claimNextSessionPrompt: (
+    sessionId: string,
+    contextEpoch?: number
+  ): Promise<SessionPromptAdmission | undefined> =>
+    ipcRenderer.invoke('claim-next-session-prompt', sessionId, contextEpoch),
   completeSessionPrompt: (admissionId: string): Promise<boolean> =>
     ipcRenderer.invoke('complete-session-prompt', admissionId),
   cancelSessionPrompt: (admissionId: string): Promise<boolean> =>

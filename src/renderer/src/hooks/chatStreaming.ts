@@ -9,6 +9,7 @@ import type {
 import { applyAgentEventToMessage, mergeResourceUpdate } from './chatMessageEvents'
 import { applyRuntimeErrorToMessage } from '../features/errors/runtimeErrorMessage'
 import { normalizeRuntimeError } from '../../../shared/runtimeErrors'
+import { isSessionContextEpochCurrent, normalizeContextEpoch } from '../../../shared/contextEpoch'
 
 type UpdateMessageById = (
   msgId: string,
@@ -21,6 +22,7 @@ interface StartStreamingRunOptions {
   reqId: string
   sessionId: string
   assistantMsgId: string
+  contextEpoch: number
   start: () => void
   formatError: (msg: string) => string
   setSessions: React.Dispatch<React.SetStateAction<Session[]>>
@@ -51,6 +53,7 @@ export const startStreamingRun = ({
   reqId,
   sessionId,
   assistantMsgId,
+  contextEpoch,
   start,
   formatError,
   setSessions,
@@ -69,9 +72,25 @@ export const startStreamingRun = ({
   let pendingReasoning = false
   let pendingEvents: AgentEvent[] = []
   let pendingResourceUpdates: SessionResource[] = []
+  let settled = false
+
+  const discardPending = (): void => {
+    pendingContent = false
+    pendingReasoning = false
+    pendingEvents = []
+    pendingResourceUpdates = []
+  }
+
+  const isCurrentContext = (): boolean =>
+    isSessionContextEpochCurrent(sessionsRef.current, sessionId, contextEpoch)
 
   const flushPending = (): void => {
     frameId = null
+
+    if (!isCurrentContext()) {
+      discardPending()
+      return
+    }
 
     const hasMessageChanges = pendingContent || pendingReasoning || pendingEvents.length > 0
     const resourceUpdates = pendingResourceUpdates
@@ -174,6 +193,8 @@ export const startStreamingRun = ({
   }
 
   const cleanup = (): void => {
+    if (settled) return
+    settled = true
     flushPendingNow()
     unsubscribe()
     setIsGenerating(false)
@@ -182,8 +203,30 @@ export const startStreamingRun = ({
     persistActiveSession(sessionId)
   }
 
+  const discardStaleRun = (): void => {
+    if (settled) return
+    settled = true
+    if (frameId !== null) {
+      cancelFrame(frameId)
+      frameId = null
+    }
+    discardPending()
+    unsubscribe()
+    window.api.abortGeneration(reqId)
+    setIsGenerating(false)
+    setActiveReqId(null)
+    onCleanup?.()
+  }
+
   unsubscribe = window.api.onChatChunk((data: ChatChunkData): void => {
     if (data.reqId !== reqId) return
+    if (
+      normalizeContextEpoch(data.contextEpoch) !== normalizeContextEpoch(contextEpoch) ||
+      !isCurrentContext()
+    ) {
+      discardStaleRun()
+      return
+    }
 
     if (data.error) {
       flushPendingNow()

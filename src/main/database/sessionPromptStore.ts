@@ -7,10 +7,12 @@ import {
   RunMode
 } from '../../shared/types'
 import { getDb } from './connection'
+import { normalizeContextEpoch } from '../../shared/contextEpoch'
 
 interface SessionPromptRow {
   id: string
   sessionId: string
+  contextEpoch: number
   mode: string
   status: string
   runMode: string
@@ -45,6 +47,7 @@ const parseMessages = (value: string): ChatCompletionMessage[] => {
 const rowToPrompt = (row: SessionPromptRow): SessionPromptAdmission => ({
   id: row.id,
   sessionId: row.sessionId,
+  contextEpoch: normalizeContextEpoch(row.contextEpoch),
   mode: row.mode as SessionPromptAdmissionMode,
   status: row.status as SessionPromptAdmissionStatus,
   runMode: row.runMode as RunMode,
@@ -64,6 +67,7 @@ export function admitSessionPrompt(input: AdmitSessionPromptInput): StoredSessio
   const id = requireText(input.id, 'Prompt admission id')
   const sessionId = requireText(input.sessionId, 'Session id')
   const sourceMessageId = requireText(input.sourceMessageId, 'Source message id')
+  const contextEpoch = normalizeContextEpoch(input.contextEpoch)
   const assistantMessageId = input.assistantMessageId
     ? requireText(input.assistantMessageId, 'Assistant message id')
     : null
@@ -81,12 +85,13 @@ export function admitSessionPrompt(input: AdmitSessionPromptInput): StoredSessio
   const result = getDb()
     .prepare(
       `INSERT OR IGNORE INTO session_prompt_inbox
-       (id, sessionId, mode, status, runMode, sourceMessageId, assistantMessageId, messages, createdAt, updatedAt)
-       VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`
+       (id, sessionId, contextEpoch, mode, status, runMode, sourceMessageId, assistantMessageId, messages, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
       sessionId,
+      contextEpoch,
       input.mode,
       input.runMode,
       sourceMessageId,
@@ -100,6 +105,7 @@ export function admitSessionPrompt(input: AdmitSessionPromptInput): StoredSessio
   if (!row) throw new Error(`Failed to persist prompt admission ${id}`)
   if (
     row.sessionId !== sessionId ||
+    normalizeContextEpoch(row.contextEpoch) !== contextEpoch ||
     row.sourceMessageId !== sourceMessageId ||
     row.mode !== input.mode ||
     row.runMode !== input.runMode ||
@@ -140,17 +146,36 @@ export function markSessionPromptRunning(id: string): boolean {
   return result.changes === 1
 }
 
-export function claimNextSessionPrompt(sessionId: string): SessionPromptAdmission | undefined {
+export function claimNextSessionPrompt(
+  sessionId: string,
+  contextEpoch?: number
+): SessionPromptAdmission | undefined {
   const normalizedSessionId = requireText(sessionId, 'Session id')
+  const normalizedEpoch =
+    contextEpoch === undefined ? undefined : normalizeContextEpoch(contextEpoch)
   const database = getDb()
   return database.transaction((): SessionPromptAdmission | undefined => {
+    if (normalizedEpoch !== undefined) {
+      database
+        .prepare(
+          `UPDATE session_prompt_inbox
+           SET status = 'cancelled', updatedAt = ?
+           WHERE sessionId = ? AND status = 'pending' AND contextEpoch <> ?`
+        )
+        .run(Date.now(), normalizedSessionId, normalizedEpoch)
+    }
     const row = database
       .prepare(
         `SELECT * FROM session_prompt_inbox
          WHERE sessionId = ? AND status = 'pending'
+           ${normalizedEpoch === undefined ? '' : 'AND contextEpoch = ?'}
          ORDER BY createdAt ASC, rowid ASC LIMIT 1`
       )
-      .get(normalizedSessionId) as SessionPromptRow | undefined
+      .get(
+        ...(normalizedEpoch === undefined
+          ? [normalizedSessionId]
+          : [normalizedSessionId, normalizedEpoch])
+      ) as SessionPromptRow | undefined
     if (!row) return undefined
 
     const result = database
@@ -163,6 +188,19 @@ export function claimNextSessionPrompt(sessionId: string): SessionPromptAdmissio
     if (result.changes !== 1) return undefined
     return rowToPrompt(getPromptRow(row.id)!)
   })()
+}
+
+export function cancelStaleSessionPrompts(sessionId: string, contextEpoch: number): number {
+  const normalizedSessionId = requireText(sessionId, 'Session id')
+  const normalizedEpoch = normalizeContextEpoch(contextEpoch)
+  const result = getDb()
+    .prepare(
+      `UPDATE session_prompt_inbox
+       SET status = 'cancelled', updatedAt = ?
+       WHERE sessionId = ? AND status IN ('pending', 'running') AND contextEpoch <> ?`
+    )
+    .run(Date.now(), normalizedSessionId, normalizedEpoch)
+  return result.changes
 }
 
 export function completeSessionPrompt(id: string): boolean {

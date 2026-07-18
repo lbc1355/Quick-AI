@@ -26,6 +26,7 @@ export function createSchema(database: Database.Database): void {
       id             TEXT PRIMARY KEY,
       title          TEXT NOT NULL DEFAULT '',
       lastActiveTime INTEGER NOT NULL DEFAULT 0,
+      contextEpoch  INTEGER NOT NULL DEFAULT 0,
       projectId      TEXT REFERENCES projects(id) ON DELETE SET NULL,
       branchOf       TEXT
     );
@@ -125,6 +126,7 @@ export function createSchema(database: Database.Database): void {
     CREATE TABLE IF NOT EXISTS session_prompt_inbox (
       id                 TEXT PRIMARY KEY,
       sessionId          TEXT NOT NULL,
+      contextEpoch       INTEGER NOT NULL DEFAULT 0,
       mode               TEXT NOT NULL CHECK (mode IN ('steer', 'queue')),
       status             TEXT NOT NULL DEFAULT 'pending'
                          CHECK (status IN ('pending', 'running', 'completed', 'cancelled')),
@@ -143,6 +145,7 @@ export function createSchema(database: Database.Database): void {
   // IF NOT EXISTS never alters an existing table, so older DBs are missing these and would
   // silently drop the data on save (e.g. branch/fork metadata vanishing after a restart).
   ensureColumn(database, 'sessions', 'branchOf', 'TEXT')
+  ensureColumn(database, 'sessions', 'contextEpoch', 'INTEGER NOT NULL DEFAULT 0')
   ensureColumn(database, 'sessions', 'projectId', 'TEXT REFERENCES projects(id) ON DELETE SET NULL')
   // Per-session content hash used by saveSessions() to skip rewriting unchanged sessions.
   ensureColumn(database, 'sessions', 'contentHash', 'TEXT')
@@ -161,6 +164,7 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'skills', 'entryPath', 'TEXT')
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")
+  ensureColumn(database, 'session_prompt_inbox', 'contextEpoch', 'INTEGER NOT NULL DEFAULT 0')
 }
 
 /** Add a column to an existing table if it is missing. Idempotent; safe to call on every boot. */

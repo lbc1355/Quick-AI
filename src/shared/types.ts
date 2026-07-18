@@ -308,6 +308,8 @@ export interface Session {
   id: string
   title: string
   messages: Message[]
+  /** Monotonic boundary used to reject results produced from an obsolete context snapshot. */
+  contextEpoch?: number
   lastActiveTime?: number
   resources?: SessionResource[]
   projectId?: string
@@ -508,6 +510,7 @@ export interface AgentSkillRunOptions {
   resources?: SessionResource[]
   /** Conversation id used to persist the agent's action log across runs. */
   sessionId?: string
+  contextEpoch?: number
   /** Optional real project root attached to this conversation. */
   projectRoot?: string
   projectName?: string
@@ -523,6 +526,7 @@ export interface AgentSkillRunOptions {
 
 export interface ChatChunkData {
   reqId: string
+  contextEpoch?: number
   content?: string
   reasoningContent?: string
   done?: boolean
@@ -575,6 +579,7 @@ export type SessionPromptAdmissionStatus = 'pending' | 'running' | 'completed' |
 export interface SessionPromptAdmission {
   id: string
   sessionId: string
+  contextEpoch: number
   mode: SessionPromptAdmissionMode
   status: SessionPromptAdmissionStatus
   runMode: RunMode
@@ -588,6 +593,7 @@ export interface SessionPromptAdmission {
 export interface AdmitSessionPromptInput {
   id: string
   sessionId: string
+  contextEpoch?: number
   mode: SessionPromptAdmissionMode
   runMode: RunMode
   sourceMessageId: string
@@ -614,6 +620,7 @@ export interface ChatRunOptions {
   resources?: SessionResource[]
   /** Conversation id used to persist the agent's action log across runs. */
   sessionId?: string
+  contextEpoch?: number
   /** Optional real project root attached to this conversation. */
   projectRoot?: string
   projectName?: string

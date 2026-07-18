@@ -58,9 +58,13 @@ declare global {
       ) => void
       respondUserChoice: (reqId: string, requestId: string, response: UserChoiceResponse) => void
       abortGeneration: (reqId: string) => void
+      advanceSessionContext: (sessionId: string, contextEpoch: number) => void
       admitSessionPrompt: (input: AdmitSessionPromptInput) => Promise<AdmitSessionPromptResult>
       listSessionPrompts: (sessionId: string) => Promise<SessionPromptAdmission[]>
-      claimNextSessionPrompt: (sessionId: string) => Promise<SessionPromptAdmission | undefined>
+      claimNextSessionPrompt: (
+        sessionId: string,
+        contextEpoch?: number
+      ) => Promise<SessionPromptAdmission | undefined>
       completeSessionPrompt: (admissionId: string) => Promise<boolean>
       cancelSessionPrompt: (admissionId: string) => Promise<boolean>
       requeueSessionPrompt: (admissionId: string) => Promise<boolean>

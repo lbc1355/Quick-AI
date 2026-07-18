@@ -1048,19 +1048,23 @@ describe('runAgentLoop', () => {
       apiUrl: 'https://api.example.com',
       apiKey: 'test-key',
       model: 'deepseek-chat',
+      contextEpoch: 5,
       messages: [{ role: 'user', content: 'Hello' }]
     })
 
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-progress-completed',
+      contextEpoch: 5,
       event: expect.objectContaining({ type: 'agent_start' })
     })
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-progress-completed',
+      contextEpoch: 5,
       event: expect.objectContaining({ type: 'agent_progress', step: 1 })
     })
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-progress-completed',
+      contextEpoch: 5,
       event: expect.objectContaining({ type: 'agent_end', status: 'completed' })
     })
 
@@ -1074,6 +1078,7 @@ describe('runAgentLoop', () => {
       'test-req-progress-completed'
     )
     expect(journal).toMatchObject({
+      contextEpoch: 5,
       status: 'completed',
       lastSequence: 4,
       events: [
@@ -1305,6 +1310,7 @@ describe('runAgentLoop', () => {
 
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-max-steps-event',
+      contextEpoch: 0,
       event: expect.objectContaining({ type: 'agent_end', status: 'max_steps' })
     })
   })
@@ -1328,6 +1334,7 @@ describe('runAgentLoop', () => {
     )
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-failed-event',
+      contextEpoch: 0,
       event: expect.objectContaining({
         type: 'agent_end',
         status: 'failed',
@@ -1380,11 +1387,13 @@ describe('runAgentLoop', () => {
 
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-abort-event',
+      contextEpoch: 0,
       event: expect.objectContaining({ type: 'agent_end', status: 'cancelled' })
     })
 
     expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
       reqId: 'test-req-abort-event',
+      contextEpoch: 0,
       cancelled: true,
       done: true,
       tokenSpeed: expect.any(Number)

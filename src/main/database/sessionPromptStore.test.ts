@@ -5,6 +5,7 @@ import type { AdmitSessionPromptInput } from '../../shared/types'
 import { closeDb } from './connection'
 import {
   admitSessionPrompt,
+  cancelStaleSessionPrompts,
   cancelSessionPrompt,
   claimNextSessionPrompt,
   completeSessionPrompt,
@@ -27,6 +28,7 @@ vi.mock('electron', () => ({
 const makeInput = (id: string, mode: 'steer' | 'queue' = 'queue'): AdmitSessionPromptInput => ({
   id,
   sessionId: 'session-1',
+  contextEpoch: 2,
   mode,
   runMode: 'agent' as const,
   sourceMessageId: `message-${id}`,
@@ -56,6 +58,7 @@ describeWithSqlite('sessionPromptStore', () => {
       id: 'prompt-1',
       status: 'pending',
       mode: 'steer',
+      contextEpoch: 2,
       messages: [{ role: 'user', content: 'prompt prompt-1' }]
     })
     expect(JSON.stringify(duplicate.prompt)).not.toContain('apiKey')
@@ -72,6 +75,24 @@ describeWithSqlite('sessionPromptStore', () => {
       'running',
       'running'
     ])
+  })
+
+  it('cancels queued prompts from an obsolete context epoch', () => {
+    admitSessionPrompt({ ...makeInput('prompt-old'), contextEpoch: 1 })
+    admitSessionPrompt({ ...makeInput('prompt-current'), contextEpoch: 2 })
+
+    expect(claimNextSessionPrompt('session-1', 2)?.id).toBe('prompt-current')
+    expect(getSessionPrompt('prompt-old')?.status).toBe('cancelled')
+  })
+
+  it('cancels pending and running prompts when the context advances', () => {
+    admitSessionPrompt({ ...makeInput('prompt-running'), contextEpoch: 1 })
+    admitSessionPrompt({ ...makeInput('prompt-pending'), contextEpoch: 1 })
+    claimNextSessionPrompt('session-1', 1)
+
+    expect(cancelStaleSessionPrompts('session-1', 2)).toBe(2)
+    expect(getSessionPrompt('prompt-running')?.status).toBe('cancelled')
+    expect(getSessionPrompt('prompt-pending')?.status).toBe('cancelled')
   })
 
   it('supports consume, requeue, complete, and pending cancellation transitions', () => {

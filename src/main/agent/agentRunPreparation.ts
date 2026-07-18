@@ -43,6 +43,7 @@ export interface AgentRunOptions extends AgentSteeringControls {
   resources?: SessionResource[]
   /** Per-conversation id for action-log persistence. Falls back to reqId. */
   sessionId?: string
+  contextEpoch?: number
   projectRoot?: string
   projectName?: string
   /** Existing run checkpoint to continue without adding a new user message. */

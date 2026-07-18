@@ -13,6 +13,7 @@ import {
 import { dirname, join } from 'path'
 import { compactAgentEvents } from '../../shared/agentEventCompactor'
 import type { AgentEvent } from '../../shared/types'
+import { normalizeContextEpoch } from '../../shared/contextEpoch'
 
 const JOURNAL_VERSION = 1
 const FLUSH_INTERVAL_MS = 150
@@ -38,6 +39,8 @@ export interface AgentEventJournalSnapshot {
   version: typeof JOURNAL_VERSION
   runId: string
   sessionId: string
+  /** Missing in journals written before Context Epoch support; treated as epoch zero. */
+  contextEpoch?: number
   sourceMessageId?: string
   assistantMessageId?: string
   parentRunId?: string
@@ -52,6 +55,7 @@ export interface AgentEventJournalSnapshot {
 export interface CreateAgentEventJournalInput {
   runId: string
   sessionId: string
+  contextEpoch?: number
   sourceMessageId?: string
   assistantMessageId?: string
   parentRunId?: string
@@ -297,6 +301,7 @@ class FileAgentEventJournalWriter implements AgentEventJournalWriter {
       version: JOURNAL_VERSION,
       runId: input.runId,
       sessionId: input.sessionId,
+      contextEpoch: normalizeContextEpoch(input.contextEpoch),
       sourceMessageId: input.sourceMessageId,
       assistantMessageId: input.assistantMessageId,
       parentRunId: input.parentRunId,

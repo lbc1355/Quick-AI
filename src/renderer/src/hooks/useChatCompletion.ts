@@ -12,6 +12,7 @@ import {
 } from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
 import { startStreamingRun as startChatStreamingRun } from './chatStreaming'
+import { getSessionContextEpoch } from '../../../shared/contextEpoch'
 
 // Extracted pure helper functions
 import { buildApiMessages } from '../features/chat/apiMessageBuilder'
@@ -289,6 +290,7 @@ export const useChatCompletion = ({
     reqId: string,
     sessionId: string,
     assistantMsgId: string,
+    contextEpoch: number,
     start: () => void,
     formatError: (msg: string) => string
   ): void => {
@@ -298,6 +300,7 @@ export const useChatCompletion = ({
       reqId,
       sessionId,
       assistantMsgId,
+      contextEpoch,
       start,
       formatError,
       setSessions,
@@ -438,7 +441,9 @@ export const useChatCompletion = ({
       }
 
       currentSession.messages = [...compactedMessages, summaryMsg, ...keptMessages]
+      currentSession.contextEpoch = getSessionContextEpoch(currentSession) + 1
       currentSession.lastActiveTime = Date.now()
+      window.api.advanceSessionContext(currentSession.id, currentSession.contextEpoch)
       setSessions([...currentSessions])
       sessionsRef.current = currentSessions
       persistSessionsSnapshotSoon(currentSessions)
@@ -544,6 +549,7 @@ export const useChatCompletion = ({
             .catch(console.warn)
         }
         currentSession.messages = editResult.updatedSourceSessionMessages || currentSession.messages
+        currentSession.contextEpoch = getSessionContextEpoch(editResult.targetSession)
       }
     } else {
       // Normal message send
@@ -584,6 +590,8 @@ export const useChatCompletion = ({
       ...(branchOf ? { isBranchFork: true, forkedFrom: branchOf } : {})
     }
     targetSession.messages.push(assistantMsg)
+    const contextEpoch = getSessionContextEpoch(targetSession)
+    window.api.advanceSessionContext(targetSession.id, contextEpoch)
     setActiveGenerationSessionId(targetSession.id)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
@@ -610,6 +618,7 @@ export const useChatCompletion = ({
       reqId,
       targetSession.id,
       assistantMsgId,
+      contextEpoch,
       () =>
         window.api.startChatCompletion(reqId, {
           apiUrl: requestConfig.apiUrl,
@@ -627,6 +636,7 @@ export const useChatCompletion = ({
           runMode: effectiveRunMode,
           resources: targetSession.resources,
           sessionId: targetSession.id,
+          contextEpoch,
           ...getProjectRunContext(targetSession, requestConfig.projects),
           sourceMessageId,
           assistantMessageId: assistantMsgId,
@@ -689,6 +699,7 @@ export const useChatCompletion = ({
         : undefined
 
     targetSession = appendQueuedPromptToSession(targetSession, userMessage, assistantPlaceholder)
+    const contextEpoch = getSessionContextEpoch(targetSession)
     if (targetSession.messages.length === 2) {
       targetSession.title = prompt.substring(0, 15) || 'Chat'
     }
@@ -707,6 +718,7 @@ export const useChatCompletion = ({
       const result = await window.api.admitSessionPrompt({
         id: admissionId,
         sessionId: targetSession.id,
+        contextEpoch,
         mode,
         runMode: /^\s*@\S+/.test(prompt) ? 'agent' : runModeRef.current,
         sourceMessageId,
@@ -775,7 +787,10 @@ export const useChatCompletion = ({
     let claimedAdmissionId: string | undefined
     let launched = false
     try {
-      const admission = await window.api.claimNextSessionPrompt(sessionId)
+      const sessionAtClaim = sessionsRef.current.find((session) => session.id === sessionId)
+      if (!sessionAtClaim) return
+      const contextEpoch = getSessionContextEpoch(sessionAtClaim)
+      const admission = await window.api.claimNextSessionPrompt(sessionId, contextEpoch)
       if (!admission) return
       claimedAdmissionId = admission.id
       if (isGeneratingRef.current) {
@@ -785,7 +800,11 @@ export const useChatCompletion = ({
       }
 
       const sourceSession = sessionsRef.current.find((session) => session.id === sessionId)
-      if (!sourceSession || !admission.assistantMessageId) {
+      if (
+        !sourceSession ||
+        !admission.assistantMessageId ||
+        admission.contextEpoch !== getSessionContextEpoch(sourceSession)
+      ) {
         await window.api.cancelSessionPrompt(admission.id)
         claimedAdmissionId = undefined
         return
@@ -823,6 +842,7 @@ export const useChatCompletion = ({
         reqId,
         sessionId,
         prepared.assistantMessageId,
+        contextEpoch,
         () =>
           window.api.startChatCompletion(reqId, {
             apiUrl: requestConfig.apiUrl,
@@ -840,6 +860,7 @@ export const useChatCompletion = ({
             runMode: admission.runMode,
             resources: prepared.session.resources,
             sessionId,
+            contextEpoch,
             ...getProjectRunContext(prepared.session, requestConfig.projects),
             sourceMessageId: admission.sourceMessageId,
             assistantMessageId: prepared.assistantMessageId,
@@ -932,12 +953,15 @@ export const useChatCompletion = ({
     await persistSessionsSnapshot(currentSessions)
 
     const reqId = assistantMsgId
+    const contextEpoch = getSessionContextEpoch(currentSession)
+    window.api.advanceSessionContext(currentSession.id, contextEpoch)
     setActiveReqId(reqId)
 
     startStreamingRun(
       reqId,
       currentSession.id,
       assistantMsgId,
+      contextEpoch,
       () =>
         window.api.startAgentSkill(reqId, {
           apiUrl: requestConfig.apiUrl,
@@ -956,6 +980,7 @@ export const useChatCompletion = ({
           userInput,
           resources: currentSession.resources,
           sessionId: currentSession.id,
+          contextEpoch,
           ...getProjectRunContext(currentSession, requestConfig.projects),
           sourceMessageId: userMsg.id,
           assistantMessageId: assistantMsgId
@@ -1050,9 +1075,12 @@ export const useChatCompletion = ({
         return
       }
       currentSession.messages = resumeResult.updatedSourceSessionMessages || currentSession.messages
+      currentSession.contextEpoch = getSessionContextEpoch(resumeResult.targetSession)
     }
 
     const assistantMsgId = failedMsg.id
+    const contextEpoch = getSessionContextEpoch(targetSession)
+    window.api.advanceSessionContext(targetSession.id, contextEpoch)
 
     targetSession.lastActiveTime = Date.now()
     setActiveGenerationSessionId(targetSession.id)
@@ -1069,6 +1097,7 @@ export const useChatCompletion = ({
       reqId,
       targetSession.id,
       assistantMsgId,
+      contextEpoch,
       () =>
         window.api.startChatCompletion(reqId, {
           apiUrl: requestConfig.apiUrl,
@@ -1086,6 +1115,7 @@ export const useChatCompletion = ({
           runMode: 'agent',
           resources: targetSession.resources,
           sessionId: targetSession.id,
+          contextEpoch,
           ...getProjectRunContext(targetSession, requestConfig.projects),
           resumeFromRunId,
           resumeSourceSessionId: currentSession.id,

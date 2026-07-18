@@ -5,6 +5,7 @@ import { callModel, getPromptCacheStats } from './agent/callModel'
 import { loadMemoryContextPrompt } from './agent/memoryContext'
 import { injectMemoryContext } from './agent/memoryPrompts'
 import { estimateTokens } from './agent/tokenEstimator'
+import { normalizeContextEpoch } from '../shared/contextEpoch'
 
 interface ModelItem {
   id?: string
@@ -50,9 +51,11 @@ export async function handleChatCompletion(
     modelRuntime?: ModelRuntimeConfig
     messages: ChatCompletionMessage[]
     sessionId?: string
+    contextEpoch?: number
   }
 ): Promise<void> {
   const { apiUrl, apiKey, model, modelRuntime, messages } = options
+  const contextEpoch = normalizeContextEpoch(options.contextEpoch)
   const controller = new AbortController()
   activeChatSessions.set(reqId, controller)
 
@@ -71,10 +74,10 @@ export async function handleChatCompletion(
       controller.signal,
       {
         onReasoning: (reasoningContent) => {
-          mainWindow.webContents.send('chat-chunk', { reqId, reasoningContent })
+          mainWindow.webContents.send('chat-chunk', { reqId, contextEpoch, reasoningContent })
         },
         onFinalChunk: (content) => {
-          mainWindow.webContents.send('chat-chunk', { reqId, content })
+          mainWindow.webContents.send('chat-chunk', { reqId, contextEpoch, content })
         }
       }
     )
@@ -87,6 +90,7 @@ export async function handleChatCompletion(
     const cacheStats = getPromptCacheStats(assistantMessage)
     mainWindow.webContents.send('chat-chunk', {
       reqId,
+      contextEpoch,
       done: true,
       tokenSpeed,
       ...(cacheStats ? { cacheStats } : {})
@@ -95,12 +99,18 @@ export async function handleChatCompletion(
     const err = error as Error
     const isAborted = controller.signal.aborted || err.name === 'AbortError'
     if (isAborted) {
-      mainWindow.webContents.send('chat-chunk', { reqId, cancelled: true, done: true })
+      mainWindow.webContents.send('chat-chunk', {
+        reqId,
+        contextEpoch,
+        cancelled: true,
+        done: true
+      })
     } else {
       console.error('Chat Completion Main process error:', err)
       const payload = normalizeRuntimeError(err, 'model_api')
       mainWindow.webContents.send('chat-chunk', {
         reqId,
+        contextEpoch,
         error: err.message || '网络连接失败',
         errorPayload: payload
       })

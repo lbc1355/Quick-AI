@@ -5,6 +5,7 @@ export { loadSessions, saveSessions } from './database/sessionStore'
 export {
   admitSessionPrompt,
   cancelSessionPrompt,
+  cancelStaleSessionPrompts,
   claimNextSessionPrompt,
   completeSessionPrompt,
   finishSessionPrompt,

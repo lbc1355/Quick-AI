@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { SessionBusyError, SessionCoordinator } from './sessionCoordinator'
+import {
+  SessionBusyError,
+  SessionCoordinator,
+  StaleSessionContextError
+} from './sessionCoordinator'
 
 describe('SessionCoordinator', () => {
   it('keeps one foreground run per session until the executor settles', async () => {
@@ -58,6 +62,36 @@ describe('SessionCoordinator', () => {
     expect(coordinator.getActiveRequest('req-1')?.cancelling).toBe(true)
     await run
     expect(coordinator.abortRequest('req-1')).toBe(false)
+  })
+
+  it('aborts an older run when the session context epoch advances', async () => {
+    const coordinator = new SessionCoordinator()
+    const run = coordinator.start({
+      sessionId: 'session-1',
+      reqId: 'req-old',
+      kind: 'agent',
+      contextEpoch: 2,
+      execute: (signal) =>
+        new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()))
+    })
+
+    expect(coordinator.advanceContext('session-1', 3)).toBe(true)
+    expect(coordinator.getActiveRequest('req-old')).toMatchObject({
+      contextEpoch: 2,
+      cancelling: true
+    })
+    expect(coordinator.getContextEpoch('session-1')).toBe(3)
+    await run
+
+    await expect(
+      coordinator.start({
+        sessionId: 'session-1',
+        reqId: 'req-stale',
+        kind: 'chat',
+        contextEpoch: 2,
+        execute: async () => undefined
+      })
+    ).rejects.toBeInstanceOf(StaleSessionContextError)
   })
 
   it('rejects one request id being used by two sessions', async () => {
@@ -145,6 +179,41 @@ describe('SessionCoordinator', () => {
       'prompt-2'
     ])
     expect(coordinator.drainSteering('req-1')).toEqual([])
+    finish?.()
+    await run
+  })
+
+  it('rejects steering captured from a different context epoch', async () => {
+    const coordinator = new SessionCoordinator()
+    let finish: (() => void) | undefined
+    const run = coordinator.start({
+      sessionId: 'session-epoch',
+      reqId: 'req-epoch',
+      kind: 'agent',
+      contextEpoch: 4,
+      acceptsSteering: true,
+      execute: () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    })
+
+    expect(
+      coordinator.steer('session-epoch', {
+        admissionId: 'stale-prompt',
+        contextEpoch: 3,
+        messages: [{ role: 'user', content: 'stale' }]
+      })
+    ).toBe(false)
+    expect(
+      coordinator.steer('session-epoch', {
+        admissionId: 'current-prompt',
+        contextEpoch: 4,
+        messages: [{ role: 'user', content: 'current' }]
+      })
+    ).toBe(true)
+
+    coordinator.drainSteering('req-epoch')
     finish?.()
     await run
   })

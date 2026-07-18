@@ -219,6 +219,7 @@ describe('sessionMutationService pure functions', () => {
     })
     expect(normalEdit.isForked).toBe(false)
     expect(normalEdit.targetSession.messages[1].content).toBe('new prompt')
+    expect(normalEdit.targetSession.contextEpoch).toBe(1)
 
     // Branch fork on historical message
     const forkEdit = prepareEditOrForkMutation({
@@ -229,6 +230,7 @@ describe('sessionMutationService pure functions', () => {
       now: 1000
     })
     expect(forkEdit.isForked).toBe(true)
+    expect(forkEdit.targetSession.contextEpoch).toBe(1)
     expect(forkEdit.forkedCachePayload?.runIds).toEqual(['run-1', 'run-2'])
   })
 
@@ -296,6 +298,7 @@ describe('sessionMutationService pure functions', () => {
     })
     expect(normalResume.isHistoricalResume).toBe(false)
     expect(normalResume.targetSession.messages[1].agentRunId).toBe('new-run-1')
+    expect(normalResume.targetSession.contextEpoch).toBe(1)
 
     // Historical resume on first message
     const historicalSession: Session = {
@@ -310,5 +313,6 @@ describe('sessionMutationService pure functions', () => {
     })
     expect(histResume.isHistoricalResume).toBe(true)
     expect(histResume.branchOf?.runId).toBe('run-1')
+    expect(histResume.targetSession.contextEpoch).toBe(1)
   })
 })

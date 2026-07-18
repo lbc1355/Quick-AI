@@ -29,14 +29,20 @@ import { persistAgentRunCheckpoint } from './agentRunCheckpoint'
 import { createAgentEventStream } from './agentEventStream'
 import { createAgentEventJournalWriter } from './agentEventJournal'
 import { compactStaleToolResultsForContextPressure } from './staleToolResultCompaction'
+import { normalizeContextEpoch } from '../../shared/contextEpoch'
 import {
   captureCacheShape,
   commitCacheShapeForSession,
   previewCacheShapeForSession
 } from './cacheShapeDiagnostics'
 
-const sendEvent = (mainWindow: BrowserWindow, reqId: string, event: AgentEvent): void => {
-  mainWindow.webContents.send('chat-chunk', { reqId, event })
+const sendEvent = (
+  mainWindow: BrowserWindow,
+  reqId: string,
+  contextEpoch: number,
+  event: AgentEvent
+): void => {
+  mainWindow.webContents.send('chat-chunk', { reqId, contextEpoch, event })
 }
 
 // The single Electron transport boundary for the tool layer: everything below runToolTurn only
@@ -126,10 +132,12 @@ export const runAgentLoop = async (
     initialActiveTools
   } = preparedRun
   let messages = preparedRun.messages
+  const contextEpoch = normalizeContextEpoch(options.contextEpoch)
 
   const eventJournal = createAgentEventJournalWriter({
     runId: reqId,
     sessionId: conversationId,
+    contextEpoch,
     sourceMessageId: options.sourceMessageId,
     assistantMessageId: options.assistantMessageId,
     parentRunId: options.resumeFromRunId
@@ -139,7 +147,7 @@ export const runAgentLoop = async (
     runId: reqId,
     emit: (event) => {
       eventJournal.append(event)
-      sendEvent(mainWindow, reqId, event)
+      sendEvent(mainWindow, reqId, contextEpoch, event)
     }
   })
 
@@ -186,6 +194,7 @@ export const runAgentLoop = async (
     const cacheStats = usageTracker.getAggregatedCacheStats()
     return {
       reqId,
+      contextEpoch,
       ...extra,
       done: true,
       tokenSpeed: usageTracker.getTokenSpeed(),
@@ -498,6 +507,7 @@ export const runAgentLoop = async (
       const payload = normalizeRuntimeError(err, 'agent')
       mainWindow.webContents.send('chat-chunk', {
         reqId,
+        contextEpoch,
         error: err.message || 'Agent Loop failed',
         errorPayload: payload
       })

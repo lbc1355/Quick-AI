@@ -1,6 +1,7 @@
 import type { Message, Session, Project } from '../../../../shared/types'
 import { createForkedSession, getRunIdsThroughMessage } from '../../hooks/sessionBranching'
 import { prepareMessageForInlineResume } from '../../hooks/chatMessageEvents'
+import { advanceSessionContextEpoch } from '../../../../shared/contextEpoch'
 
 export function resolveSessionForSend(
   currentSessions: Session[],
@@ -78,15 +79,17 @@ export function prepareEditOrForkMutation(options: {
       ...(branchSource?.runId ? { runId: branchSource.runId } : {})
     }
 
-    const targetSession = createForkedSession({
-      sourceSession: currentSession,
-      throughIdx: idx,
-      id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
-      now,
-      branchOf,
-      transformMessage: (message, messageIdx) =>
-        messageIdx === idx ? { ...message, content: promptToSend } : message
-    })
+    const targetSession = advanceSessionContextEpoch(
+      createForkedSession({
+        sourceSession: currentSession,
+        throughIdx: idx,
+        id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
+        now,
+        branchOf,
+        transformMessage: (message, messageIdx) =>
+          messageIdx === idx ? { ...message, content: promptToSend } : message
+      })
+    )
 
     return {
       targetSession,
@@ -110,10 +113,10 @@ export function prepareEditOrForkMutation(options: {
       return m
     })
 
-    const targetSession: Session = {
+    const targetSession: Session = advanceSessionContextEpoch({
       ...currentSession,
       messages: updatedMessages
-    }
+    })
 
     return {
       targetSession,
@@ -149,21 +152,23 @@ export function prepareResumeMutation(options: {
     : undefined
 
   if (isHistoricalResume) {
-    const forkedSession = createForkedSession({
-      sourceSession: currentSession,
-      throughIdx: msgIdx,
-      id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
-      now,
-      branchOf: branchOf!,
-      transformMessage: (message, index) =>
-        index === msgIdx
-          ? {
-              ...prepareMessageForInlineResume(message, reqId),
-              isBranchFork: true,
-              forkedFrom: branchOf
-            }
-          : message
-    })
+    const forkedSession = advanceSessionContextEpoch(
+      createForkedSession({
+        sourceSession: currentSession,
+        throughIdx: msgIdx,
+        id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
+        now,
+        branchOf: branchOf!,
+        transformMessage: (message, index) =>
+          index === msgIdx
+            ? {
+                ...prepareMessageForInlineResume(message, reqId),
+                isBranchFork: true,
+                forkedFrom: branchOf
+              }
+            : message
+      })
+    )
 
     return {
       targetSession: forkedSession,
@@ -183,10 +188,10 @@ export function prepareResumeMutation(options: {
       return msg
     })
 
-    const targetSession = {
+    const targetSession = advanceSessionContextEpoch({
       ...currentSession,
       messages: updatedMessages
-    }
+    })
 
     return {
       targetSession,

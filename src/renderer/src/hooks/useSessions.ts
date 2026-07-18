@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Session, SessionResource } from '../../../shared/types'
+import { advanceSessionContextEpoch, getSessionContextEpoch } from '../../../shared/contextEpoch'
 
 /**
  * Resource cache files are keyed by md5(url) and shared across sessions, so a resource is only
@@ -114,6 +115,7 @@ export const useSessions = (): UseSessionsReturn => {
           id: Date.now().toString(),
           title: '新对话',
           messages: [],
+          contextEpoch: 0,
           lastActiveTime: Date.now()
         }
         setDraftSession(defaultSession)
@@ -134,6 +136,7 @@ export const useSessions = (): UseSessionsReturn => {
       id: Date.now().toString(),
       title: '新对话',
       messages: [],
+      contextEpoch: 0,
       lastActiveTime: Date.now(),
       projectId: options.projectId
     }
@@ -149,17 +152,26 @@ export const useSessions = (): UseSessionsReturn => {
     // Clearing resets the conversation (and its resources), so wipe its caches first. Survivors
     // are all OTHER sessions — the cleared one keeps its object but no longer references anything.
     const target = sessions.find((s) => s.id === activeSessionId)
+    const advancedTarget = target ? advanceSessionContextEpoch(target) : undefined
     if (target) {
+      window.api.advanceSessionContext(target.id, getSessionContextEpoch(target) + 1)
       const survivors = sessions.filter((s) => s.id !== activeSessionId)
       await clearCachesFor(activeSessionId, computeOrphanResourceIds(target, survivors))
     }
 
     const updated = sessions.map((s) => {
       if (s.id === activeSessionId) {
-        return { ...s, messages: [], title: '新对话', lastActiveTime: Date.now(), resources: [] }
+        return {
+          ...(advancedTarget || s),
+          messages: [],
+          title: '新对话',
+          lastActiveTime: Date.now(),
+          resources: []
+        }
       }
       return s
     })
+    sessionsRef.current = updated
     setSessions(updated)
     await window.api.storeSet('sessions', updated)
   }
@@ -169,6 +181,7 @@ export const useSessions = (): UseSessionsReturn => {
     const survivors = sessions.filter((s) => s.id !== targetSessionId)
     const target = sessions.find((s) => s.id === targetSessionId)
     if (target) {
+      window.api.advanceSessionContext(target.id, getSessionContextEpoch(target) + 1)
       await clearCachesFor(targetSessionId, computeOrphanResourceIds(target, survivors))
     }
 
@@ -182,6 +195,7 @@ export const useSessions = (): UseSessionsReturn => {
           id: Date.now().toString(),
           title: '新对话',
           messages: [],
+          contextEpoch: 0,
           lastActiveTime: Date.now(),
           projectId: target?.projectId
         }
@@ -189,6 +203,7 @@ export const useSessions = (): UseSessionsReturn => {
         setActiveSessionId(newSession.id)
       }
     }
+    sessionsRef.current = updated
     setSessions(updated)
     await window.api.storeSet('sessions', updated)
   }

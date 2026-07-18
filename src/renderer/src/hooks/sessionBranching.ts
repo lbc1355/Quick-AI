@@ -73,6 +73,7 @@ export const createForkedSession = ({
     id,
     title: `${sourceSession.title || 'Chat'}${titleSuffix}`,
     messages: keptMessages,
+    contextEpoch: sourceSession.contextEpoch,
     resources: forkResourcesForRuns(sourceSession.resources, keptRunIds),
     lastActiveTime: now,
     projectId: sourceSession.projectId,

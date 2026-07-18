@@ -35,6 +35,9 @@ describe('planSessionPersist / computeSessionHash', () => {
 
     const touched = makeSession('a', { lastActiveTime: 999 })
     expect(computeSessionHash(touched)).not.toBe(computeSessionHash(a))
+
+    const advanced = makeSession('a', { contextEpoch: 1 })
+    expect(computeSessionHash(advanced)).not.toBe(computeSessionHash(a))
   })
 
   it('treats missing and falsy-optional fields as canonically equal', () => {
@@ -88,11 +91,13 @@ describeWithSqlite('saveSessions incremental persistence', () => {
   })
 
   it('round-trips a multi-session snapshot', () => {
-    const sessions = [makeSession('a'), makeSession('b')]
+    const sessions = [makeSession('a', { contextEpoch: 3 }), makeSession('b')]
     saveSessions(sessions)
     closeDb()
     const loaded = loadSessions()
     expect(loaded.map((s) => s.id).sort()).toEqual(['a', 'b'])
+    expect(loaded.find((s) => s.id === 'a')?.contextEpoch).toBe(3)
+    expect(loaded.find((s) => s.id === 'b')?.contextEpoch).toBe(0)
   })
 
   it('keeps untouched sessions intact when only one session changes', () => {

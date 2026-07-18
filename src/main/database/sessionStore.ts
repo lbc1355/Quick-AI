@@ -3,6 +3,7 @@ import { Message, Session } from '../../shared/types'
 import { compactAgentEvents } from '../../shared/agentEventCompactor'
 import { loadSessionAgentEventJournals } from '../agent/agentEventJournal'
 import { mergeAgentEventJournalsIntoSessions } from '../agent/agentEventRecovery'
+import { normalizeContextEpoch } from '../../shared/contextEpoch'
 import { getDb } from './connection'
 
 export function loadSessions(): Session[] {
@@ -10,12 +11,13 @@ export function loadSessions(): Session[] {
 
   const sessionRows = database
     .prepare(
-      'SELECT id, title, lastActiveTime, projectId, branchOf FROM sessions ORDER BY lastActiveTime DESC'
+      'SELECT id, title, lastActiveTime, contextEpoch, projectId, branchOf FROM sessions ORDER BY lastActiveTime DESC'
     )
     .all() as Array<{
     id: string
     title: string
     lastActiveTime: number
+    contextEpoch: number
     projectId: string | null
     branchOf: string | null
   }>
@@ -117,6 +119,7 @@ export function loadSessions(): Session[] {
     id: s.id,
     title: s.title,
     lastActiveTime: s.lastActiveTime || undefined,
+    contextEpoch: normalizeContextEpoch(s.contextEpoch),
     projectId: s.projectId || undefined,
     branchOf: parseBranchRef(s.branchOf),
     messages: messagesBySession.get(s.id) || []
@@ -178,6 +181,7 @@ export function computeSessionHash(session: Session): string {
     id: session.id,
     title: session.title,
     lastActiveTime: session.lastActiveTime || 0,
+    contextEpoch: normalizeContextEpoch(session.contextEpoch),
     projectId: session.projectId || null,
     branchOf: session.branchOf ?? null,
     messages: (session.messages ?? []).map((m) => ({
@@ -247,7 +251,7 @@ export function saveSessions(sessions: Session[]): void {
   if (plan.upserts.length === 0 && plan.deleteIds.length === 0) return
 
   const insertSession = database.prepare(
-    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, projectId, branchOf, contentHash) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, contextEpoch, projectId, branchOf, contentHash) VALUES (?, ?, ?, ?, ?, ?, ?)'
   )
   const deleteSession = database.prepare('DELETE FROM sessions WHERE id = ?')
   const deleteMessages = database.prepare('DELETE FROM messages WHERE sessionId = ?')
@@ -273,6 +277,7 @@ export function saveSessions(sessions: Session[]): void {
         session.id,
         session.title,
         session.lastActiveTime || 0,
+        normalizeContextEpoch(session.contextEpoch),
         session.projectId || null,
         session.branchOf ? JSON.stringify(session.branchOf) : null,
         hash

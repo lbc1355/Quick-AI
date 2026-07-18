@@ -104,4 +104,15 @@ describe('mergeAgentEventJournalsIntoSessions', () => {
     ])
     expect(result).toEqual(sessions)
   })
+
+  it('ignores journals written for an obsolete context epoch', () => {
+    const session = { ...makeSession(), contextEpoch: 2 }
+    const result = mergeAgentEventJournalsIntoSessions(
+      [session],
+      [makeJournal({ contextEpoch: 1 })]
+    )
+
+    expect(result).toEqual([session])
+    expect(result[0].messages[1].content).toBe('')
+  })
 })

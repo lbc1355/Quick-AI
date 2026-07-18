@@ -7,6 +7,7 @@ const mockWebContentsSend = vi.hoisted(() => vi.fn())
 const promptStoreMocks = vi.hoisted(() => ({
   admitSessionPrompt: vi.fn(),
   cancelSessionPrompt: vi.fn(),
+  cancelStaleSessionPrompts: vi.fn(),
   claimNextSessionPrompt: vi.fn(),
   completeSessionPrompt: vi.fn(),
   finishSessionPrompt: vi.fn(),
@@ -238,6 +239,7 @@ describe('IPC Registration Modules', () => {
     expect(mockHandlers['fetch-models']).toBeDefined()
     expect(mockListeners['start-chat-completion']).toBeDefined()
     expect(mockListeners['start-agent-skill']).toBeDefined()
+    expect(mockListeners['advance-session-context']).toBeDefined()
     expect(mockListeners['respond-tool-permission']).toBeDefined()
     expect(mockListeners['respond-user-choice']).toBeDefined()
     expect(mockListeners['abort-generation']).toBeDefined()
@@ -249,6 +251,13 @@ describe('IPC Registration Modules', () => {
     // Test fetch-models
     mockHandlers['fetch-models']({} as IpcMainInvokeEvent, 'url', 'key')
     expect(fetchModels).toHaveBeenCalledWith('url', 'key')
+
+    mockListeners['advance-session-context']({} as IpcMainEvent, 'session-epoch-ipc', 4)
+    expect(promptStoreMocks.cancelStaleSessionPrompts).toHaveBeenCalledWith('session-epoch-ipc', 4)
+    expect(globalSessionCoordinator.getContextEpoch('session-epoch-ipc')).toBe(4)
+    promptStoreMocks.cancelStaleSessionPrompts.mockClear()
+    mockListeners['advance-session-context']({} as IpcMainEvent, 'session-epoch-ipc', 3)
+    expect(promptStoreMocks.cancelStaleSessionPrompts).not.toHaveBeenCalled()
 
     // Test start-chat-completion in chat mode
     mockListeners['start-chat-completion']({ sender: {} } as IpcMainEvent, 'req-1', {
@@ -313,6 +322,7 @@ describe('IPC Registration Modules', () => {
     const prompt = {
       id: 'admission-1',
       sessionId: 'session-steer',
+      contextEpoch: 0,
       mode: 'steer' as const,
       status: 'pending' as const,
       runMode: 'agent' as const,

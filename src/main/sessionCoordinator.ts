@@ -1,9 +1,11 @@
 import { ChatCompletionMessage } from '../shared/types'
+import { normalizeContextEpoch } from '../shared/contextEpoch'
 
 export type SessionRunKind = 'chat' | 'agent' | 'skill'
 
 export interface SessionSteeringPrompt {
   admissionId: string
+  contextEpoch?: number
   messages: ChatCompletionMessage[]
 }
 
@@ -11,6 +13,7 @@ export interface SessionRunSnapshot {
   sessionId: string
   reqId: string
   kind: SessionRunKind
+  contextEpoch: number
   startedAt: number
   cancelling: boolean
   acceptsSteering: boolean
@@ -21,6 +24,7 @@ export interface StartSessionRunOptions {
   sessionId: string
   reqId: string
   kind: SessionRunKind
+  contextEpoch?: number
   acceptsSteering?: boolean
   onUnconsumedSteering?: (prompts: SessionSteeringPrompt[]) => void
   execute: (signal: AbortSignal) => Promise<void>
@@ -43,16 +47,42 @@ export class SessionBusyError extends Error {
   }
 }
 
+export class StaleSessionContextError extends Error {
+  readonly sessionId: string
+  readonly expectedEpoch: number
+  readonly receivedEpoch: number
+
+  constructor(sessionId: string, expectedEpoch: number, receivedEpoch: number) {
+    super(
+      `Session ${sessionId} context epoch ${receivedEpoch} is stale; current epoch is ${expectedEpoch}`
+    )
+    this.name = 'StaleSessionContextError'
+    this.sessionId = sessionId
+    this.expectedEpoch = expectedEpoch
+    this.receivedEpoch = receivedEpoch
+  }
+}
+
 /** Process-local foreground run coordinator. Durable prompt admission is layered above this. */
 export class SessionCoordinator {
   private readonly bySession = new Map<string, ActiveSessionRun>()
   private readonly sessionByRequest = new Map<string, string>()
+  private readonly contextEpochBySession = new Map<string, number>()
 
   async start(options: StartSessionRunOptions): Promise<void> {
     const sessionId = options.sessionId.trim()
     const reqId = options.reqId.trim()
+    const contextEpoch = normalizeContextEpoch(options.contextEpoch)
     if (!sessionId) throw new Error('Session id is required')
     if (!reqId) throw new Error('Request id is required')
+
+    const knownEpoch = this.contextEpochBySession.get(sessionId)
+    if (knownEpoch !== undefined && contextEpoch < knownEpoch) {
+      throw new StaleSessionContextError(sessionId, knownEpoch, contextEpoch)
+    }
+    if (knownEpoch === undefined || contextEpoch > knownEpoch) {
+      this.advanceContext(sessionId, contextEpoch)
+    }
 
     const activeForSession = this.bySession.get(sessionId)
     if (activeForSession) {
@@ -68,6 +98,7 @@ export class SessionCoordinator {
       sessionId,
       reqId,
       kind: options.kind,
+      contextEpoch,
       startedAt: Date.now(),
       cancelling: false,
       acceptsSteering: options.acceptsSteering === true,
@@ -103,6 +134,7 @@ export class SessionCoordinator {
   steer(sessionId: string, prompt: SessionSteeringPrompt): boolean {
     const active = this.bySession.get(sessionId)
     if (!active || !active.acceptsSteering || active.cancelling) return false
+    if (normalizeContextEpoch(prompt.contextEpoch) !== active.contextEpoch) return false
     if (!prompt.admissionId.trim() || prompt.messages.length === 0) return false
     if (active.steering.some((item) => item.admissionId === prompt.admissionId)) return true
     active.steering.push(prompt)
@@ -146,6 +178,22 @@ export class SessionCoordinator {
     return this.abortActive(this.bySession.get(sessionId))
   }
 
+  advanceContext(sessionId: string, contextEpoch: number): boolean {
+    const normalizedSessionId = sessionId.trim()
+    if (!normalizedSessionId) return false
+    const nextEpoch = normalizeContextEpoch(contextEpoch)
+    const currentEpoch = this.contextEpochBySession.get(normalizedSessionId)
+    if (currentEpoch !== undefined && nextEpoch <= currentEpoch) return false
+    this.contextEpochBySession.set(normalizedSessionId, nextEpoch)
+    const active = this.bySession.get(normalizedSessionId)
+    if (active && active.contextEpoch < nextEpoch) this.abortActive(active)
+    return true
+  }
+
+  getContextEpoch(sessionId: string): number | undefined {
+    return this.contextEpochBySession.get(sessionId)
+  }
+
   getActiveSession(sessionId: string): SessionRunSnapshot | undefined {
     return this.snapshot(this.bySession.get(sessionId))
   }
@@ -178,6 +226,7 @@ export class SessionCoordinator {
       sessionId: active.sessionId,
       reqId: active.reqId,
       kind: active.kind,
+      contextEpoch: active.contextEpoch,
       startedAt: active.startedAt,
       cancelling: active.cancelling,
       acceptsSteering: active.acceptsSteering,
