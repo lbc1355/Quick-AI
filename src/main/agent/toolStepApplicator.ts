@@ -1,6 +1,6 @@
 import { AgentEvent, ChatCompletionMessage, SessionResource } from '../../shared/types'
 import { AgentHostActions, ToolExecutionContext, ToolModelAttachment } from '../tools/types'
-import { ToolRegistryView } from '../tools/registryView'
+import { resolveMaterializedTool, ToolRegistryView } from '../tools/registryView'
 import { ActionLog } from './actionLog'
 import {
   FetchUrlBudget,
@@ -54,10 +54,22 @@ export function createToolStepExecutor(options: CreateToolStepExecutorOptions): 
   ): Promise<ChatCompletionMessage> => {
     const { toolName } = prep
     const toolStartTime = Date.now()
+    const resolution = resolveMaterializedTool(options.toolRegistry, toolName)
+    const executionPrep =
+      resolution.status === 'stale'
+        ? {
+            ...prep,
+            isValid: false,
+            blockReason:
+              'Stale tool call: ' +
+              toolName +
+              ' changed after this model turn began. Retry using the current tool registry.'
+          }
+        : prep
 
     const executionResult: PreparedToolExecutionResult = await runPreparedTool({
-      prep,
-      tool: options.toolRegistry.get(toolName),
+      prep: executionPrep,
+      tool: resolution.status === 'current' ? resolution.tool : undefined,
       isApproved,
       reqId: options.reqId,
       step: options.step,

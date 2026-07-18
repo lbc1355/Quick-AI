@@ -5,7 +5,8 @@ import {
   saveSessions,
   getDb,
   loadProjects,
-  saveProjects
+  saveProjects,
+  recoverRunningSessionPrompts
 } from './database'
 import { StorageSchema } from '../shared/types'
 import { loadSkillsFromFolders, saveSkillsToFolders } from './skillManager'
@@ -16,6 +17,7 @@ export class FileStore {
   constructor() {
     // Initialize the database (creates file + migrates old JSON if needed)
     getDb()
+    recoverRunningSessionPrompts()
     this.ready = true
   }
 

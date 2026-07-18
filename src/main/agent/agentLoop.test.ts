@@ -1149,6 +1149,53 @@ describe('runAgentLoop', () => {
     )
   })
 
+  it('merges steering at a terminal model boundary before completing the run', async () => {
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async (_options, messages) => {
+      callCount++
+      if (callCount === 2) {
+        expect(messages.slice(-2)).toEqual([
+          { role: 'assistant', content: 'Initial direction.' },
+          { role: 'user', content: 'Use the new direction instead.' }
+        ])
+      }
+      return {
+        role: 'assistant',
+        content: callCount === 1 ? 'Initial direction.' : 'Revised final answer.'
+      }
+    })
+    const setSteeringAcceptance = vi.fn()
+    const onSteeringConsumed = vi.fn()
+    let delivered = false
+
+    await runAgentLoop(mockWindow, 'test-req-steer', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Start' }],
+      setSteeringAcceptance,
+      drainSteering: (close) => {
+        if (!close || delivered) return []
+        delivered = true
+        return [
+          {
+            admissionId: 'admission-1',
+            messages: [{ role: 'user', content: 'Use the new direction instead.' }]
+          }
+        ]
+      },
+      onSteeringConsumed
+    })
+
+    expect(callCount).toBe(2)
+    expect(onSteeringConsumed).toHaveBeenCalledWith(['admission-1'])
+    expect(setSteeringAcceptance).toHaveBeenCalledWith(false)
+    const finalEvents = sendMock.mock.calls
+      .map(([, payload]) => payload.event)
+      .filter((event) => event?.type === 'final')
+    expect(finalEvents).toMatchObject([{ content: 'Revised final answer.', step: 2 }])
+  })
+
   it('streams unclassified model text before committing it as final', async () => {
     vi.mocked(callModel).mockImplementation(
       async (_options, _messages, _tools, _signal, callbacks) => {

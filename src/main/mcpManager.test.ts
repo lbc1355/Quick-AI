@@ -6,16 +6,23 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { existsSync, unlinkSync, writeFileSync, readFileSync, mkdirSync, rmSync } from 'fs'
 import { getQuickAiRoot } from './paths'
 import { getToolRegistry } from './toolRegistry'
+import { toMcpModelToolName } from './mcpCatalog'
 
 const pathMock = vi.hoisted(() => ({
   root: `${process.cwd()}/.test-quickai`
 }))
 
 const mcpMockState = vi.hoisted(
-  (): { callToolResult: { content: Array<Record<string, unknown>> } } => ({
+  (): {
+    callToolResult: Record<string, unknown>
+    listToolsResults: Array<Record<string, unknown>>
+    toolListChangedHandler?: () => Promise<void> | void
+    lastCallToolOptions?: Record<string, unknown>
+  } => ({
     callToolResult: {
       content: [{ type: 'text', text: 'mocked tool response' }]
-    }
+    },
+    listToolsResults: []
   })
 )
 
@@ -35,6 +42,8 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
         return Promise.resolve(undefined)
       }
       async listTools(): Promise<any> {
+        const nextResult = mcpMockState.listToolsResults.shift()
+        if (nextResult) return Promise.resolve(nextResult)
         return Promise.resolve({
           tools: [
             {
@@ -50,7 +59,15 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
           ]
         })
       }
-      async callTool(): Promise<any> {
+      setNotificationHandler(_schema: unknown, handler: () => Promise<void> | void): void {
+        mcpMockState.toolListChangedHandler = handler
+      }
+      async callTool(
+        _params?: unknown,
+        _schema?: unknown,
+        options?: Record<string, unknown>
+      ): Promise<any> {
+        mcpMockState.lastCallToolOptions = options
         return Promise.resolve(mcpMockState.callToolResult)
       }
       async close(): Promise<void> {
@@ -73,6 +90,9 @@ describe('McpManager', () => {
     mcpMockState.callToolResult = {
       content: [{ type: 'text', text: 'mocked tool response' }]
     }
+    mcpMockState.listToolsResults = []
+    mcpMockState.toolListChangedHandler = undefined
+    mcpMockState.lastCallToolOptions = undefined
     mkdirSync(getQuickAiRoot(), { recursive: true })
     // Delete config file if it exists to ensure a clean state
     if (existsSync(configPath)) {
@@ -152,6 +172,46 @@ describe('McpManager', () => {
     )
     expect(executionResult?.resultForModel).toBe('mocked tool response')
     expect(executionResult?.resultForUi.title).toBe('MCP Tool Call: git / test_tool')
+    expect(mcpMockState.lastCallToolOptions).toMatchObject({
+      timeout: 30000,
+      resetTimeoutOnProgress: true,
+      signal: expect.any(AbortSignal),
+      onprogress: expect.any(Function)
+    })
+  })
+
+  it('refreshes a server tool set when tools/list_changed is received', async () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({ servers: { git: { command: 'node' } } }, null, 2),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const registry = getToolRegistry()
+    expect(registry.has('mcp_git_test_tool')).toBe(true)
+    mcpMockState.listToolsResults = [
+      {
+        tools: [
+          {
+            name: 'fresh.tool',
+            description: 'Refreshed tool',
+            inputSchema: { type: 'object', properties: {} }
+          }
+        ]
+      }
+    ]
+
+    await mcpMockState.toolListChangedHandler?.()
+
+    const refreshedName = toMcpModelToolName('git', 'fresh.tool')
+    expect(registry.has('mcp_git_test_tool')).toBe(false)
+    expect(registry.has(refreshedName)).toBe(true)
+    expect(McpManager.getStatuses()[0].tools).toEqual([
+      { name: 'fresh.tool', description: 'Refreshed tool' }
+    ])
   })
 
   it('keeps structured MCP tool content visible in UI details', async () => {
@@ -197,6 +257,73 @@ describe('McpManager', () => {
     expect(executionResult?.resultForModel).toContain('text part')
     expect(executionResult?.resultForModel).toContain('"uri": "file:///paper.md"')
     expect(executionResult?.resultForUi.details).toContain('resource part')
+  })
+
+  it('rejects protocol-level MCP tool errors without disconnecting the server', async () => {
+    mcpMockState.callToolResult = {
+      isError: true,
+      content: [{ type: 'text', text: 'remote tool failed' }]
+    }
+    writeFileSync(
+      configPath,
+      JSON.stringify({ servers: { git: { command: 'node' } } }, null, 2),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const registry = getToolRegistry()
+    const toolDef = registry.get('mcp_git_test_tool')
+    await expect(
+      toolDef?.execute(
+        { inputVal: 'test' },
+        { reqId: 'test-req', signal: new AbortController().signal }
+      )
+    ).rejects.toThrow('remote tool failed')
+    expect(McpManager.getStatuses()[0].status).toBe('connected')
+    expect(registry.has('mcp_git_test_tool')).toBe(true)
+  })
+
+  it('forwards cancellation without marking the MCP server as failed', async () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({ servers: { git: { command: 'node' } } }, null, 2),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const callToolSpy = vi.spyOn(Client.prototype, 'callTool').mockImplementation((async (
+      _params: unknown,
+      _schema: unknown,
+      options: { signal: AbortSignal }
+    ) => {
+      return await new Promise((_, reject) => {
+        options.signal.addEventListener(
+          'abort',
+          () => {
+            const error = new Error('cancelled')
+            error.name = 'AbortError'
+            reject(error)
+          },
+          { once: true }
+        )
+      })
+    }) as any)
+    const registry = getToolRegistry()
+    const controller = new AbortController()
+    const execution = registry
+      .get('mcp_git_test_tool')
+      ?.execute({ inputVal: 'test' }, { reqId: 'test-req', signal: controller.signal })
+
+    controller.abort()
+
+    await expect(execution).rejects.toMatchObject({ name: 'AbortError' })
+    expect(McpManager.getStatuses()[0].status).toBe('connected')
+    expect(registry.has('mcp_git_test_tool')).toBe(true)
+    callToolSpy.mockRestore()
   })
 
   it('supports mcpServers compatibility key', async () => {
@@ -357,19 +484,18 @@ describe('McpManager', () => {
     const registry = getToolRegistry()
     expect(registry.has('mcp_git_test_tool')).toBe(true)
 
-    const callToolSpy = vi.spyOn(Client.prototype, 'callTool').mockImplementation((async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200))
-      return mcpMockState.callToolResult
-    }) as any)
+    const callToolSpy = vi
+      .spyOn(Client.prototype, 'callTool')
+      .mockRejectedValue(new Error('Request timed out after 50ms'))
     const closeSpy = vi.spyOn(Client.prototype, 'close')
 
     const toolDef = registry.get('mcp_git_test_tool')
-    const executionResult = await toolDef?.execute(
-      { inputVal: 'test' },
-      { reqId: 'test-req', signal: new AbortController().signal }
-    )
-
-    expect(executionResult?.resultForModel).toContain('timed out')
+    await expect(
+      toolDef?.execute(
+        { inputVal: 'test' },
+        { reqId: 'test-req', signal: new AbortController().signal }
+      )
+    ).rejects.toThrow('timed out')
     expect(closeSpy).toHaveBeenCalled()
 
     statuses = McpManager.getStatuses()

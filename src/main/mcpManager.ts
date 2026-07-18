@@ -3,12 +3,16 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { shell } from 'electron'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import {
+  CallToolResultSchema,
+  ToolListChangedNotificationSchema
+} from '@modelcontextprotocol/sdk/types.js'
 import { getQuickAiRoot } from './paths'
 import { registerToolDefinition, unregisterToolDefinition } from './toolRegistry'
 import { ToolDefinition } from './tools/types'
-import { createToolResult } from './tools/result'
 import { createMcpToolResult } from './tools/mcpResult'
 import { logger } from './logger'
+import { getMcpErrorMessage, listAllMcpTools, McpToolInfo, toMcpModelToolName } from './mcpCatalog'
 
 export interface McpServerConfig {
   command: string
@@ -89,6 +93,7 @@ class McpManagerImpl {
   private statuses = new Map<string, McpServerStatus>()
   private registeredToolNames = new Set<string>()
   private registeredToolNamesByServer = new Map<string, Set<string>>()
+  private toolRefreshes = new Map<string, Promise<void>>()
 
   private async cleanupServer(name: string): Promise<void> {
     const serverTools = this.registeredToolNamesByServer.get(name)
@@ -102,6 +107,9 @@ class McpManagerImpl {
 
     const client = this.clients.get(name)
     const transport = this.transports.get(name)
+    this.clients.delete(name)
+    this.transports.delete(name)
+    this.toolRefreshes.delete(name)
 
     if (client) {
       try {
@@ -109,7 +117,6 @@ class McpManagerImpl {
       } catch (err) {
         logger.warn('MCP', `Error closing client for "${name}": ${(err as Error).message}`)
       }
-      this.clients.delete(name)
     }
 
     if (transport) {
@@ -118,7 +125,6 @@ class McpManagerImpl {
       } catch (err) {
         logger.warn('MCP', `Error closing transport for "${name}": ${(err as Error).message}`)
       }
-      this.transports.delete(name)
     }
   }
 
@@ -386,6 +392,134 @@ class McpManagerImpl {
     return status
   }
 
+  private createToolDefinition(
+    serverName: string,
+    tool: McpToolInfo,
+    client: Client,
+    timeouts: NonNullable<McpConfig['timeouts']>
+  ): ToolDefinition {
+    const modelName = toMcpModelToolName(serverName, tool.name)
+    return {
+      name: modelName,
+      title: tool.name,
+      description: tool.description || 'MCP tool ' + tool.name + ' from server ' + serverName,
+      tags: ['mcp', serverName],
+      category: 'system',
+      risk: 'medium',
+      source: 'mcp',
+      implemented: true,
+      discoverable: true,
+      parameters: toToolParameters(tool.inputSchema),
+      execute: async (args, ctx) => {
+        if (this.clients.get(serverName) !== client) {
+          throw new Error('Stale MCP client for server ' + serverName)
+        }
+
+        logger.info('MCP', 'Executing tool ' + tool.name + ' on server ' + serverName)
+        const executeTimeout = timeouts.execute_timeout || timeouts.read_timeout || 30000
+        try {
+          const result = await client.callTool(
+            {
+              name: tool.name,
+              arguments: args
+            },
+            CallToolResultSchema,
+            {
+              signal: ctx.signal,
+              timeout: executeTimeout,
+              resetTimeoutOnProgress: true,
+              onprogress: () => undefined
+            }
+          )
+          const mcpError = getMcpErrorMessage(result)
+          if (mcpError) throw new Error(mcpError)
+          return createMcpToolResult({
+            serverName,
+            toolName: tool.name,
+            result
+          })
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err))
+          if (ctx.signal.aborted || error.name === 'AbortError') throw error
+          logger.error(
+            'MCP',
+            'Error executing tool ' + tool.name + ' on server ' + serverName + ': ' + error.message
+          )
+          if (/timed out|timeout/i.test(error.message)) {
+            this.statuses.set(serverName, {
+              name: serverName,
+              status: 'failed',
+              error: error.message,
+              tools: []
+            })
+            await this.cleanupServer(serverName)
+          }
+          throw error
+        }
+      }
+    }
+  }
+
+  private replaceServerTools(
+    serverName: string,
+    client: Client,
+    tools: McpToolInfo[],
+    timeouts: NonNullable<McpConfig['timeouts']>
+  ): void {
+    const definitions = tools.map((tool) =>
+      this.createToolDefinition(serverName, tool, client, timeouts)
+    )
+    const nextNames = new Set<string>()
+    for (const definition of definitions) {
+      if (nextNames.has(definition.name)) {
+        throw new Error('MCP tool name collision after sanitization: ' + definition.name)
+      }
+      nextNames.add(definition.name)
+    }
+
+    const previousNames = this.registeredToolNamesByServer.get(serverName) || new Set<string>()
+    for (const definition of definitions) {
+      registerToolDefinition(definition)
+      this.registeredToolNames.add(definition.name)
+    }
+    for (const previousName of previousNames) {
+      if (nextNames.has(previousName)) continue
+      unregisterToolDefinition(previousName)
+      this.registeredToolNames.delete(previousName)
+    }
+
+    this.registeredToolNamesByServer.set(serverName, nextNames)
+    this.statuses.set(serverName, {
+      name: serverName,
+      status: 'connected',
+      tools: tools.map((tool) => ({ name: tool.name, description: tool.description }))
+    })
+  }
+
+  private queueServerToolRefresh(
+    serverName: string,
+    client: Client,
+    timeouts: NonNullable<McpConfig['timeouts']>
+  ): Promise<void> {
+    const previous = this.toolRefreshes.get(serverName) || Promise.resolve()
+    const refresh = previous
+      .catch(() => undefined)
+      .then(async () => {
+        if (this.clients.get(serverName) !== client) return
+        const timeout = timeouts.connect_timeout || timeouts.read_timeout || 10000
+        const tools = await listAllMcpTools(client, timeout)
+        if (this.clients.get(serverName) !== client) return
+        this.replaceServerTools(serverName, client, tools, timeouts)
+        logger.info('MCP', 'Refreshed ' + tools.length + ' tools from server ' + serverName)
+      })
+    this.toolRefreshes.set(serverName, refresh)
+    return refresh.finally(() => {
+      if (this.toolRefreshes.get(serverName) === refresh) {
+        this.toolRefreshes.delete(serverName)
+      }
+    })
+  }
+
   private async connectServer(
     name: string,
     srvConfig: McpServerConfig,
@@ -427,15 +561,13 @@ class McpManagerImpl {
     this.clients.set(name, client)
 
     const connectTimeout = timeouts.connect_timeout || 10000
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let tools: any[] = []
+    let tools: McpToolInfo[] = []
 
     try {
       tools = await withTimeout(
         (async () => {
           await client.connect(transport)
-          const response = await client.listTools()
-          return response.tools || []
+          return await listAllMcpTools(client, connectTimeout)
         })(),
         connectTimeout,
         `Connection to server "${name}" timed out after ${connectTimeout}ms`
@@ -445,79 +577,21 @@ class McpManagerImpl {
       throw err
     }
 
-    const serverStatus: McpServerStatus = {
-      name,
-      status: 'connected',
-      tools: tools.map((t) => ({ name: t.name, description: t.description }))
-    }
-    this.statuses.set(name, serverStatus)
-
-    // Register each tool in our local registry
-    for (const tool of tools) {
-      const modelName = `mcp_${name}_${tool.name}`
-
-      // Create a ToolDefinition compatible with QuickAI registry
-      const toolDef: ToolDefinition = {
-        name: modelName,
-        title: tool.name,
-        description: tool.description || `MCP tool "${tool.name}" from server "${name}"`,
-        tags: ['mcp', name],
-        category: 'system',
-        risk: 'medium', // Default to medium risk so it goes through standard approval prompts
-        source: 'mcp',
-        implemented: true,
-        discoverable: true,
-        parameters: toToolParameters(tool.inputSchema),
-        execute: async (args) => {
-          logger.info('MCP', `Executing tool "${tool.name}" on server "${name}"`)
-          const executeTimeout = timeouts.execute_timeout || timeouts.read_timeout || 30000
-          try {
-            const result = await withTimeout(
-              client.callTool({
-                name: tool.name,
-                arguments: args
-              }),
-              executeTimeout,
-              `Execution of tool "${tool.name}" on server "${name}" timed out after ${executeTimeout}ms`
-            )
-
-            return createMcpToolResult({
-              serverName: name,
-              toolName: tool.name,
-              result
-            })
-          } catch (err) {
-            const errorMsg = (err as Error).message || String(err)
-            logger.error(
-              'MCP',
-              `Error executing tool "${tool.name}" on server "${name}": ${errorMsg}`
-            )
-
-            if (errorMsg.includes('timed out')) {
-              this.statuses.set(name, {
-                name,
-                status: 'failed',
-                error: errorMsg,
-                tools: []
-              })
-              await this.cleanupServer(name)
-            }
-
-            return createToolResult({
-              resultForModel: `Error executing MCP tool: ${errorMsg}`,
-              title: `MCP Tool Call Failed: ${name} / ${tool.name}`,
-              summary: `Failed to execute: ${errorMsg}`
-            })
-          }
+    try {
+      this.replaceServerTools(name, client, tools, timeouts)
+      client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
+        try {
+          await this.queueServerToolRefresh(name, client, timeouts)
+        } catch (err) {
+          logger.error(
+            'MCP',
+            'Failed to refresh tools for server ' + name + ': ' + (err as Error).message
+          )
         }
-      }
-
-      registerToolDefinition(toolDef)
-      this.registeredToolNames.add(modelName)
-      if (!this.registeredToolNamesByServer.has(name)) {
-        this.registeredToolNamesByServer.set(name, new Set())
-      }
-      this.registeredToolNamesByServer.get(name)!.add(modelName)
+      })
+    } catch (err) {
+      await this.cleanupServer(name)
+      throw err
     }
 
     logger.info(
@@ -536,16 +610,18 @@ class McpManagerImpl {
     this.registeredToolNames.clear()
     this.registeredToolNamesByServer.clear()
 
-    // 2. Disconnect clients and close transports
-    for (const [name, client] of this.clients.entries()) {
+    // 2. Invalidate refreshes before closing clients so no late refresh can re-register tools.
+    const clients = Array.from(this.clients.entries())
+    this.clients.clear()
+    this.transports.clear()
+    this.toolRefreshes.clear()
+    for (const [name, client] of clients) {
       try {
         await client.close()
       } catch (err) {
         logger.warn('MCP', `Error closing client for "${name}": ${(err as Error).message}`)
       }
     }
-    this.clients.clear()
-    this.transports.clear()
     this.statuses.clear()
   }
 

@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron'
 import { AgentSkillRunOptions, ChatRunOptions, UserChoiceResponse } from '../../shared/types'
 import { runAgentLoop } from './agentLoop'
+import { AgentSteeringControls } from './agentRunPreparation'
 import { globalPermissionManager } from './permissionManager'
 import { globalUserChoiceManager } from './userChoiceManager'
 import { abortRun, getRun } from './AgentRunContext'
@@ -8,7 +9,7 @@ import { abortRun, getRun } from './AgentRunContext'
 export const runAgentSkill = async (
   mainWindow: BrowserWindow,
   reqId: string,
-  options: AgentSkillRunOptions,
+  options: AgentSkillRunOptions & AgentSteeringControls,
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): Promise<void> => {
   return runAgentLoop(mainWindow, reqId, options, permissions)
@@ -17,7 +18,7 @@ export const runAgentSkill = async (
 export const runGeneralAgent = async (
   mainWindow: BrowserWindow,
   reqId: string,
-  options: ChatRunOptions,
+  options: ChatRunOptions & AgentSteeringControls,
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): Promise<void> => {
   return runAgentLoop(mainWindow, reqId, options, permissions)

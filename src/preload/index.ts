@@ -18,7 +18,10 @@ import {
   UserChoiceRequest,
   UserChoiceResponse,
   WindowMode,
-  WindowState
+  WindowState,
+  AdmitSessionPromptInput,
+  AdmitSessionPromptResult,
+  SessionPromptAdmission
 } from '../shared/types'
 
 interface BackgroundShellInfo {
@@ -78,6 +81,18 @@ const api = {
   respondUserChoice: (reqId: string, requestId: string, response: UserChoiceResponse): void =>
     ipcRenderer.send('respond-user-choice', reqId, requestId, response),
   abortGeneration: (reqId: string): void => ipcRenderer.send('abort-generation', reqId),
+  admitSessionPrompt: (input: AdmitSessionPromptInput): Promise<AdmitSessionPromptResult> =>
+    ipcRenderer.invoke('admit-session-prompt', input),
+  listSessionPrompts: (sessionId: string): Promise<SessionPromptAdmission[]> =>
+    ipcRenderer.invoke('list-session-prompts', sessionId),
+  claimNextSessionPrompt: (sessionId: string): Promise<SessionPromptAdmission | undefined> =>
+    ipcRenderer.invoke('claim-next-session-prompt', sessionId),
+  completeSessionPrompt: (admissionId: string): Promise<boolean> =>
+    ipcRenderer.invoke('complete-session-prompt', admissionId),
+  cancelSessionPrompt: (admissionId: string): Promise<boolean> =>
+    ipcRenderer.invoke('cancel-session-prompt', admissionId),
+  requeueSessionPrompt: (admissionId: string): Promise<boolean> =>
+    ipcRenderer.invoke('requeue-session-prompt', admissionId),
   compactContext: (payload: ContextCompactionRequest): Promise<ContextCompactionResult> =>
     ipcRenderer.invoke('compact-context', payload),
   clearSessionCaches: (payload: ClearSessionCachesPayload): Promise<{ ok: boolean }> =>

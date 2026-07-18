@@ -1,6 +1,6 @@
 import React from 'react'
-import { Paperclip, Send, Sparkles, Square, Terminal } from 'lucide-react'
-import type { RunMode } from '../../../../shared/types'
+import { ListPlus, Paperclip, Send, Sparkles, Square, Terminal } from 'lucide-react'
+import type { RunMode, SessionPromptAdmissionMode } from '../../../../shared/types'
 import type { PendingPermission } from '../../features/chat/permissionTypes'
 
 interface ChatComposerProps {
@@ -22,7 +22,7 @@ interface ChatComposerProps {
   isOtherSessionGenerating: boolean
   canSend: boolean
   handleAbortGeneration: () => void
-  onSubmitDraft: () => void
+  onSubmitDraft: (mode?: SessionPromptAdmissionMode) => void
   onOpenBgShellManager: () => void
 }
 
@@ -136,19 +136,46 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           <span>{runMode === 'agent' ? 'Agent' : 'Chat'}</span>
         </button>
         {isCurrentSessionGenerating ? (
+          <>
+            <button
+              className="input-action-btn stop"
+              onClick={handleAbortGeneration}
+              title="终止回答"
+              style={{ color: '#ef4444' }}
+            >
+              <Square size={14} fill="#ef4444" />
+            </button>
+            <button
+              className="input-action-btn send"
+              onClick={() => onSubmitDraft('queue')}
+              disabled={!canSend}
+              title="排到当前任务之后"
+            >
+              <ListPlus size={14} />
+            </button>
+            <button
+              className="input-action-btn send"
+              onClick={() => onSubmitDraft('steer')}
+              disabled={!canSend}
+              title="在下一安全边界调整当前 Agent；不支持时自动排队"
+            >
+              <Send size={14} />
+            </button>
+          </>
+        ) : isOtherSessionGenerating ? (
           <button
-            className="input-action-btn stop"
-            onClick={handleAbortGeneration}
-            title="终止回答"
-            style={{ color: '#ef4444' }}
+            className="input-action-btn send"
+            onClick={() => onSubmitDraft('queue')}
+            disabled={!canSend}
+            title="另一会话正在运行，将消息加入当前会话队列"
           >
-            <Square size={14} fill="#ef4444" />
+            <ListPlus size={14} />
           </button>
         ) : (
           <button
             className="input-action-btn send"
-            onClick={onSubmitDraft}
-            disabled={isOtherSessionGenerating || !canSend}
+            onClick={() => onSubmitDraft()}
+            disabled={!canSend}
             title={isOtherSessionGenerating ? '另一个会话正在生成' : '发送消息'}
           >
             <Send size={14} />

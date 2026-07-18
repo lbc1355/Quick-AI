@@ -17,7 +17,10 @@ import {
   UserChoiceRequest,
   UserChoiceResponse,
   WindowMode,
-  WindowState
+  WindowState,
+  AdmitSessionPromptInput,
+  AdmitSessionPromptResult,
+  SessionPromptAdmission
 } from '../shared/types'
 
 declare global {
@@ -55,6 +58,12 @@ declare global {
       ) => void
       respondUserChoice: (reqId: string, requestId: string, response: UserChoiceResponse) => void
       abortGeneration: (reqId: string) => void
+      admitSessionPrompt: (input: AdmitSessionPromptInput) => Promise<AdmitSessionPromptResult>
+      listSessionPrompts: (sessionId: string) => Promise<SessionPromptAdmission[]>
+      claimNextSessionPrompt: (sessionId: string) => Promise<SessionPromptAdmission | undefined>
+      completeSessionPrompt: (admissionId: string) => Promise<boolean>
+      cancelSessionPrompt: (admissionId: string) => Promise<boolean>
+      requeueSessionPrompt: (admissionId: string) => Promise<boolean>
       compactContext: (payload: ContextCompactionRequest) => Promise<ContextCompactionResult>
       clearSessionCaches: (payload: ClearSessionCachesPayload) => Promise<{ ok: boolean }>
       forkSessionCaches: (

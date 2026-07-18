@@ -7,6 +7,7 @@ import {
   unregisterToolDefinition
 } from './toolRegistry'
 import { ToolDefinition } from './tools/types'
+import { materializeToolRegistry } from './tools/registryView'
 
 const testToolName = '__test_registry_view_tool'
 
@@ -54,5 +55,27 @@ describe('toolRegistry public APIs', () => {
 
     expect(unregisterToolDefinition(testToolName)).toBe(true)
     expect(getToolRegistryView().get(testToolName)).toBeUndefined()
+  })
+
+  it('marks a materialized tool as stale when the live definition is replaced', () => {
+    registerToolDefinition(testTool)
+    const snapshot = materializeToolRegistry(getToolRegistryView())
+
+    expect(snapshot.resolve(testToolName)).toMatchObject({
+      status: 'current',
+      tool: { title: 'Registry View Test Tool' }
+    })
+
+    registerToolDefinition({ ...testTool, title: 'Replacement Tool' })
+
+    expect(snapshot.get(testToolName)?.title).toBe('Registry View Test Tool')
+    expect(snapshot.resolve(testToolName)).toEqual({ status: 'stale' })
+
+    const nextSnapshot = materializeToolRegistry(getToolRegistryView())
+    expect(nextSnapshot.revision).toBeGreaterThan(snapshot.revision)
+    expect(nextSnapshot.resolve(testToolName)).toMatchObject({
+      status: 'current',
+      tool: { title: 'Replacement Tool' }
+    })
   })
 })

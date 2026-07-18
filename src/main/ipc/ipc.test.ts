@@ -3,6 +3,18 @@ import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron'
 
 const mockHandlers: Record<string, (...args: unknown[]) => unknown> = {}
 const mockListeners: Record<string, (...args: unknown[]) => unknown> = {}
+const mockWebContentsSend = vi.hoisted(() => vi.fn())
+const promptStoreMocks = vi.hoisted(() => ({
+  admitSessionPrompt: vi.fn(),
+  cancelSessionPrompt: vi.fn(),
+  claimNextSessionPrompt: vi.fn(),
+  completeSessionPrompt: vi.fn(),
+  finishSessionPrompt: vi.fn(),
+  getSessionPrompt: vi.fn(),
+  listSessionPrompts: vi.fn(),
+  markSessionPromptRunning: vi.fn(),
+  requeueSessionPrompts: vi.fn()
+}))
 
 vi.mock('electron', () => {
   return {
@@ -18,7 +30,10 @@ vi.mock('electron', () => {
       showOpenDialog: vi.fn()
     },
     BrowserWindow: {
-      fromWebContents: vi.fn().mockReturnValue({} as unknown)
+      fromWebContents: vi.fn().mockReturnValue({
+        isDestroyed: () => false,
+        webContents: { send: mockWebContentsSend }
+      } as unknown)
     }
   }
 })
@@ -54,6 +69,8 @@ vi.mock('../toolRegistry', () => ({
   })
 }))
 
+vi.mock('../database/sessionPromptStore', () => promptStoreMocks)
+
 import { registerStoreIpc } from './storeIpc'
 import { registerMcpIpc } from './mcpIpc'
 import { registerMemoryIpc } from './memoryIpc'
@@ -73,6 +90,7 @@ import {
   resolveUserChoice,
   abortAgentSkill
 } from '../agent'
+import { globalSessionCoordinator } from '../sessionCoordinator'
 
 describe('IPC Registration Modules', () => {
   beforeEach(() => {
@@ -80,6 +98,9 @@ describe('IPC Registration Modules', () => {
     for (const key of Object.keys(mockHandlers)) delete mockHandlers[key]
     for (const key of Object.keys(mockListeners)) delete mockListeners[key]
     vi.clearAllMocks()
+    promptStoreMocks.listSessionPrompts.mockReturnValue([])
+    promptStoreMocks.markSessionPromptRunning.mockReturnValue(true)
+    promptStoreMocks.requeueSessionPrompts.mockReturnValue(0)
   })
 
   it('registerStoreIpc binds correct store-get and store-set behaviors', () => {
@@ -208,6 +229,12 @@ describe('IPC Registration Modules', () => {
     registerGenerationIpc(mockStore)
 
     expect(mockHandlers['list-agent-tools']).toBeDefined()
+    expect(mockHandlers['admit-session-prompt']).toBeDefined()
+    expect(mockHandlers['list-session-prompts']).toBeDefined()
+    expect(mockHandlers['claim-next-session-prompt']).toBeDefined()
+    expect(mockHandlers['complete-session-prompt']).toBeDefined()
+    expect(mockHandlers['cancel-session-prompt']).toBeDefined()
+    expect(mockHandlers['requeue-session-prompt']).toBeDefined()
     expect(mockHandlers['fetch-models']).toBeDefined()
     expect(mockListeners['start-chat-completion']).toBeDefined()
     expect(mockListeners['start-agent-skill']).toBeDefined()
@@ -247,7 +274,7 @@ describe('IPC Registration Modules', () => {
     expect(runAgentSkill).toHaveBeenCalledWith(
       expect.any(Object),
       'req-3',
-      { option: 'val' },
+      expect.objectContaining({ option: 'val' }),
       expect.any(Object)
     )
 
@@ -263,5 +290,104 @@ describe('IPC Registration Modules', () => {
     mockListeners['abort-generation']({} as IpcMainEvent, 'req-6')
     expect(abortChatCompletion).toHaveBeenCalledWith('req-6')
     expect(abortAgentSkill).toHaveBeenCalledWith('req-6')
+  })
+
+  it('persists prompt admission and steers only an accepting agent run', async () => {
+    const mockStore = {
+      get: vi.fn().mockReturnValue({ permissions: {}, systemPrompt: 'sys-prompt' })
+    } as unknown as FileStore
+    let finishRun: (() => void) | undefined
+    vi.mocked(runGeneralAgent).mockImplementation(
+      async () =>
+        await new Promise<void>((resolve) => {
+          finishRun = resolve
+        })
+    )
+    registerGenerationIpc(mockStore)
+
+    mockListeners['start-chat-completion']({ sender: {} } as IpcMainEvent, 'agent-req', {
+      runMode: 'agent',
+      sessionId: 'session-steer'
+    })
+
+    const prompt = {
+      id: 'admission-1',
+      sessionId: 'session-steer',
+      mode: 'steer' as const,
+      status: 'pending' as const,
+      runMode: 'agent' as const,
+      sourceMessageId: 'message-1',
+      messages: [{ role: 'user', content: 'change direction' }],
+      createdAt: 1,
+      updatedAt: 1
+    }
+    promptStoreMocks.admitSessionPrompt.mockReturnValue({ prompt, inserted: true })
+    promptStoreMocks.getSessionPrompt.mockReturnValue({ ...prompt, status: 'running' })
+
+    const result = mockHandlers['admit-session-prompt']({} as IpcMainInvokeEvent, {
+      id: prompt.id,
+      sessionId: prompt.sessionId,
+      mode: prompt.mode,
+      runMode: prompt.runMode,
+      sourceMessageId: prompt.sourceMessageId,
+      messages: prompt.messages
+    })
+
+    expect(result).toMatchObject({ disposition: 'steered', prompt: { status: 'running' } })
+    expect(promptStoreMocks.markSessionPromptRunning).toHaveBeenCalledWith('admission-1')
+    expect(globalSessionCoordinator.getActiveSession('session-steer')).toMatchObject({
+      pendingSteeringCount: 1
+    })
+
+    finishRun?.()
+    await vi.waitFor(() => {
+      expect(promptStoreMocks.requeueSessionPrompts).toHaveBeenCalledWith(['admission-1'])
+    })
+  })
+
+  it('coordinates one foreground generation per session and routes cancellation by request', async () => {
+    const mockStore = {
+      get: vi.fn().mockReturnValue({ permissions: {}, systemPrompt: 'sys-prompt' })
+    } as unknown as FileStore
+    let finishRun: (() => void) | undefined
+    vi.mocked(handleChatCompletion).mockImplementation(
+      async () =>
+        await new Promise<void>((resolve) => {
+          finishRun = resolve
+        })
+    )
+    vi.mocked(abortChatCompletion).mockImplementation(() => finishRun?.())
+    registerGenerationIpc(mockStore)
+
+    mockListeners['start-chat-completion']({ sender: {} } as IpcMainEvent, 'req-active', {
+      runMode: 'chat',
+      sessionId: 'session-1'
+    })
+    expect(globalSessionCoordinator.getActiveSession('session-1')).toMatchObject({
+      reqId: 'req-active',
+      kind: 'chat'
+    })
+
+    mockListeners['start-chat-completion']({ sender: {} } as IpcMainEvent, 'req-busy', {
+      runMode: 'chat',
+      sessionId: 'session-1'
+    })
+    await vi.waitFor(() => {
+      expect(mockWebContentsSend).toHaveBeenCalledWith(
+        'chat-chunk',
+        expect.objectContaining({
+          reqId: 'req-busy',
+          error: expect.stringContaining('already running request req-active')
+        })
+      )
+    })
+    expect(handleChatCompletion).toHaveBeenCalledTimes(1)
+
+    mockListeners['abort-generation']({} as IpcMainEvent, 'req-active')
+    expect(abortChatCompletion).toHaveBeenCalledWith('req-active')
+    expect(abortAgentSkill).not.toHaveBeenCalledWith('req-active')
+    await vi.waitFor(() => {
+      expect(globalSessionCoordinator.getActiveSession('session-1')).toBeUndefined()
+    })
   })
 })

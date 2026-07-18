@@ -516,6 +516,8 @@ export interface AgentSkillRunOptions {
   resumeSourceSessionId?: string
   sourceMessageId?: string
   assistantMessageId?: string
+  /** Durable prompt admission that owns this run, when started from the session inbox. */
+  promptAdmissionId?: string
   branchOf?: { sessionId: string; messageId: string; runId?: string }
 }
 
@@ -566,6 +568,38 @@ export interface ChatToolDeclaration {
 
 export type RunMode = 'chat' | 'agent'
 
+export type SessionPromptAdmissionMode = 'steer' | 'queue'
+export type SessionPromptAdmissionStatus = 'pending' | 'running' | 'completed' | 'cancelled'
+
+/** A durable user prompt waiting to steer the active agent or start after it. */
+export interface SessionPromptAdmission {
+  id: string
+  sessionId: string
+  mode: SessionPromptAdmissionMode
+  status: SessionPromptAdmissionStatus
+  runMode: RunMode
+  sourceMessageId: string
+  assistantMessageId?: string
+  messages: ChatCompletionMessage[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface AdmitSessionPromptInput {
+  id: string
+  sessionId: string
+  mode: SessionPromptAdmissionMode
+  runMode: RunMode
+  sourceMessageId: string
+  assistantMessageId?: string
+  messages: ChatCompletionMessage[]
+}
+
+export interface AdmitSessionPromptResult {
+  disposition: 'steered' | 'queued' | 'duplicate'
+  prompt: SessionPromptAdmission
+}
+
 export interface ChatRunOptions {
   apiUrl: string
   apiKey: string
@@ -588,6 +622,8 @@ export interface ChatRunOptions {
   resumeSourceSessionId?: string
   sourceMessageId?: string
   assistantMessageId?: string
+  /** Durable prompt admission that owns this run, when started from the session inbox. */
+  promptAdmissionId?: string
   branchOf?: { sessionId: string; messageId: string; runId?: string }
 }
 

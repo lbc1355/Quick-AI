@@ -17,7 +17,18 @@ import {
   loadRunCheckpoint as defaultLoadRunCheckpoint
 } from './runCheckpoint'
 
-export interface AgentRunOptions {
+export interface AgentSteeringPrompt {
+  admissionId: string
+  messages: ChatCompletionMessage[]
+}
+
+export interface AgentSteeringControls {
+  setSteeringAcceptance?: (acceptsSteering: boolean) => void
+  drainSteering?: (close: boolean) => AgentSteeringPrompt[]
+  onSteeringConsumed?: (admissionIds: string[]) => void
+}
+
+export interface AgentRunOptions extends AgentSteeringControls {
   apiUrl: string
   apiKey: string
   model: string
@@ -39,6 +50,7 @@ export interface AgentRunOptions {
   resumeSourceSessionId?: string
   sourceMessageId?: string
   assistantMessageId?: string
+  promptAdmissionId?: string
   branchOf?: { sessionId: string; messageId: string; runId?: string }
 }
 

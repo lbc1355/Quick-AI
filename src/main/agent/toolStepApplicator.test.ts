@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AgentEvent, ChatCompletionMessage } from '../../shared/types'
 import { ToolDefinition } from '../tools/types'
-import { ToolRegistryView } from '../tools/registryView'
+import { materializeToolRegistry, ToolRegistryView } from '../tools/registryView'
 import { createToolStepExecutor } from './toolStepApplicator'
 import { PreparedToolCall } from './toolCallPlanning'
 
@@ -185,5 +185,76 @@ describe('createToolStepExecutor', () => {
         startedAt: Date.now()
       })
     )
+  })
+
+  it('blocks a tool definition replaced after the model turn snapshot', async () => {
+    const advertisedTool = makeTool()
+    const liveTools: Record<string, ToolDefinition | undefined> = {
+      file_read: advertisedTool
+    }
+    const snapshot = materializeToolRegistry(registryOf(liveTools))
+    const replacementTool = makeTool()
+    liveTools.file_read = replacementTool
+
+    const response: ChatCompletionMessage = {
+      role: 'tool',
+      tool_call_id: 'call-1',
+      name: 'file_read',
+      content: 'blocked stale call'
+    }
+    const executePreparedToolCall = vi.fn(async () => ({
+      response,
+      events: [],
+      action: {
+        resultStatus: 'blocked' as const,
+        resultContent: 'blocked stale call'
+      },
+      haltRequested: false
+    }))
+    const executeTool = createToolStepExecutor({
+      toolRegistry: snapshot,
+      reqId: 'req-1',
+      conversationId: 'session-1',
+      step: 1,
+      maxSteps: 8,
+      stepId: 'step-1',
+      signal: new AbortController().signal,
+      retryPolicy: {
+        maxRetries: 0,
+        baseDelayMs: 1,
+        maxDelayMs: 1,
+        retryableErrors: new Set<string>()
+      },
+      isSideEffecting: () => false,
+      loopGuard: {
+        recordSuccess: vi.fn(),
+        recordFailure: vi.fn()
+      },
+      outputSpilloverThreshold: 100,
+      activeTools: new Set(['file_read']),
+      fetchUrlBudget: { count: 0, max: 10 },
+      toolModelAttachments: [],
+      actionLog: {} as never,
+      markExecuted: vi.fn(),
+      storeToolOutput: vi.fn(),
+      activateTool: vi.fn(),
+      onHaltRequested: vi.fn(),
+      onAmbiguousAction: vi.fn(),
+      executePreparedToolCall,
+      recordToolAction: vi.fn()
+    })
+
+    await expect(executeTool(makePrep(), true, vi.fn())).resolves.toBe(response)
+    expect(executePreparedToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prep: expect.objectContaining({
+          isValid: false,
+          blockReason: expect.stringContaining('Stale tool call: file_read')
+        }),
+        tool: undefined
+      })
+    )
+    expect(advertisedTool.execute).not.toHaveBeenCalled()
+    expect(replacementTool.execute).not.toHaveBeenCalled()
   })
 })

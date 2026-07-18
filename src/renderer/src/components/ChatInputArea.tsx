@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { AutocompleteItem, RunMode } from '../../../shared/types'
+import { AutocompleteItem, RunMode, SessionPromptAdmissionMode } from '../../../shared/types'
 import { FilePreviewList } from './FilePreviewList'
 import { PermissionPopup } from './PermissionPopup'
 import { ContextPanel } from './ContextPanel'
@@ -47,6 +47,7 @@ interface ChatInputAreaProps {
   isOtherSessionGenerating: boolean
   handleAbortGeneration: () => void
   handleSendMessage: (promptOverride?: string) => Promise<boolean>
+  handleAdmitPrompt: (prompt: string, mode: SessionPromptAdmissionMode) => Promise<boolean>
   onOpenBgShellManager: () => void
 }
 interface ContextUsagePopoverItem {
@@ -155,6 +156,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   isOtherSessionGenerating,
   handleAbortGeneration,
   handleSendMessage,
+  handleAdmitPrompt,
   onOpenBgShellManager
 }) => {
   const draftValueRef = useRef(inputVal)
@@ -334,15 +336,29 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
     [handleInputChange, resizeDraftTextarea, scheduleContextMeterUpdate, updateHasDraftContent]
   )
 
-  const submitDraft = useCallback(() => {
-    const promise = handleSendMessage(draftValueRef.current)
-    promise
-      .then((sent) => {
-        if (!sent) return
-        setDraftDomValue('')
-      })
-      .catch(console.error)
-  }, [handleSendMessage, setDraftDomValue])
+  const submitDraft = useCallback(
+    (admissionMode?: SessionPromptAdmissionMode) => {
+      const shouldAdmit = isCurrentSessionGenerating || isOtherSessionGenerating
+      const mode =
+        admissionMode || (isCurrentSessionGenerating ? ('steer' as const) : ('queue' as const))
+      const promise = shouldAdmit
+        ? handleAdmitPrompt(draftValueRef.current, mode)
+        : handleSendMessage(draftValueRef.current)
+      promise
+        .then((sent) => {
+          if (!sent) return
+          setDraftDomValue('')
+        })
+        .catch(console.error)
+    },
+    [
+      handleAdmitPrompt,
+      handleSendMessage,
+      isCurrentSessionGenerating,
+      isOtherSessionGenerating,
+      setDraftDomValue
+    ]
+  )
 
   const handleLocalKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     handleInputKeyDown(e)

@@ -3,6 +3,7 @@ import { AgentEvent, ModelRuntimeConfig } from '../../shared/types'
 import { normalizeRuntimeError } from '../../shared/runtimeErrors'
 import { AgentHostActions } from '../tools/types'
 import { getToolRegistryView } from '../toolRegistry'
+import { materializeToolRegistry } from '../tools/registryView'
 import {
   getContextWindowSize,
   normalizeContextWindowTokens,
@@ -200,6 +201,23 @@ export const runAgentLoop = async (
 
   const setRunEnd = lifecycle.finish
 
+  const appendSteering = (close: boolean): number => {
+    const steering = options.drainSteering?.(close) || []
+    if (steering.length === 0) return 0
+
+    const admissionIds: string[] = []
+    for (const prompt of steering) {
+      messages.push(...prompt.messages)
+      admissionIds.push(prompt.admissionId)
+    }
+    try {
+      options.onSteeringConsumed?.(admissionIds)
+    } catch (error) {
+      console.error('Failed to persist consumed steering prompts:', error)
+    }
+    return steering.length
+  }
+
   try {
     if (resumeLoadError) {
       throw new Error(resumeLoadError)
@@ -232,6 +250,14 @@ export const runAgentLoop = async (
         throw new Error('Agent execution aborted by user.')
       }
 
+      // Steering is admitted while a model/tool turn is in flight, then merged only here at
+      // the provider-turn boundary so tool-call/result ordering cannot be corrupted.
+      options.setSteeringAcceptance?.(true)
+      const steeringCount = appendSteering(false)
+      if (steeringCount > 0) {
+        persistCheckpoint(Math.max(0, step - 1))
+      }
+
       eventStream.emit({
         type: 'agent_progress',
         step,
@@ -242,11 +268,14 @@ export const runAgentLoop = async (
 
       SessionLogger.logStepStart(conversationId, step, maxSteps)
 
+      const toolRegistrySnapshot = materializeToolRegistry(toolRegistry)
       const toolsToDeclare = toolDeclarationCache.getDeclarations({
         toolDiscovery,
         activeTools: runCtx.activeTools,
         skillTools,
-        permissions
+        permissions,
+        toolRegistry: toolRegistrySnapshot,
+        registryRevision: toolRegistrySnapshot.revision
       })
 
       // Phase 1: Context Size Control & Message Trimming
@@ -362,7 +391,7 @@ export const runAgentLoop = async (
           toolDiscovery,
           skillTools,
           permissions,
-          toolRegistry,
+          toolRegistry: toolRegistrySnapshot,
           reqId,
           conversationId,
           step,
@@ -400,6 +429,14 @@ export const runAgentLoop = async (
 
         step++
       } else {
+        // Stop accepting new steering and atomically drain anything admitted during this model
+        // call before committing the response as terminal. A late prompt gets another turn.
+        const lateSteeringCount = appendSteering(true)
+        if (lateSteeringCount > 0) {
+          persistCheckpoint(step)
+          step++
+          continue
+        }
         const finalText = getAssistantText(assistantMessage.content) || assistantTextBuffer
         if (finalText) {
           eventStream.emit({ type: 'final', content: finalText, step, stepId })
@@ -412,6 +449,7 @@ export const runAgentLoop = async (
 
     // Tool use ended without a final answer, either the step ceiling was hit or the loop
     // guard halted on repeated failures. Ask the model for a best-effort final answer.
+    options.setSteeringAcceptance?.(false)
     const forcedFinalTurn = await runForcedFinalTurn({
       messages,
       haltRequested,
@@ -454,6 +492,7 @@ export const runAgentLoop = async (
       mainWindow.webContents.send('chat-chunk', buildDoneChunk())
     }
   } finally {
+    options.setSteeringAcceptance?.(false)
     actionLog.save()
     lifecycle.destroy()
   }

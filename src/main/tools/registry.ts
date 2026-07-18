@@ -1,5 +1,6 @@
 import { ToolDefinition, ToolSummary } from './types'
 import { normalizeToolDefinition } from './metadata'
+import { MaterializedToolRegistryView } from './registryView'
 
 /**
  * Dynamically-registerable tool registry. Replaces the old static `Record<string, ToolDefinition>`
@@ -11,17 +12,21 @@ import { normalizeToolDefinition } from './metadata'
  */
 export class ToolRegistryImpl {
   private tools = new Map<string, ToolDefinition>()
+  private revision = 0
 
   // ---- mutation ----
 
   register(def: ToolDefinition): void {
     const normalized = normalizeToolDefinition(def)
     this.tools.set(normalized.name, normalized)
+    this.revision += 1
   }
 
   /** Remove a tool. Returns true when the tool existed and was removed. */
   unregister(name: string): boolean {
-    return this.tools.delete(name)
+    const deleted = this.tools.delete(name)
+    if (deleted) this.revision += 1
+    return deleted
   }
 
   /** Register every built-in tool from category modules. Idempotent. */
@@ -51,6 +56,22 @@ export class ToolRegistryImpl {
   /** All tool definitions. */
   list(): ToolDefinition[] {
     return Array.from(this.tools.values())
+  }
+
+  /** Capture the exact registry generation advertised to one model turn. */
+  materialize(): MaterializedToolRegistryView {
+    const revision = this.revision
+    const captured = new Map(this.tools)
+    return {
+      revision,
+      get: (name) => captured.get(name),
+      list: () => Array.from(captured.values()),
+      resolve: (name) => {
+        const tool = captured.get(name)
+        if (!tool) return { status: 'unknown' }
+        return this.tools.get(name) === tool ? { status: 'current', tool } : { status: 'stale' }
+      }
+    }
   }
 
   /** Search tools by query, respecting scope and permissions. */

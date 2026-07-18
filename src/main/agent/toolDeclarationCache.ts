@@ -11,6 +11,8 @@ export interface ToolDeclarationCacheInput {
   activeTools: Set<string>
   skillTools: string[]
   permissions?: Record<string, ToolPermission>
+  toolRegistry?: ToolRegistryView
+  registryRevision?: number
 }
 
 export interface CreateToolDeclarationCacheOptions {
@@ -30,7 +32,7 @@ const buildSignature = (input: ToolDeclarationCacheInput): string => {
     .map(([toolName, permission]) => `${toolName}:${permission}`)
     .join(',')
 
-  return `${input.toolDiscovery}|active=${active}|skills=${skills}|permissions=${permissions}`
+  return `${input.toolDiscovery}|registry=${input.registryRevision ?? 'live'}|active=${active}|skills=${skills}|permissions=${permissions}`
 }
 
 export function createToolDeclarationCache(
@@ -48,7 +50,8 @@ export function createToolDeclarationCache(
       }
 
       const declarations: ChatToolDeclaration[] = []
-      for (const tool of options.toolRegistry.list()) {
+      const toolRegistry = input.toolRegistry || options.toolRegistry
+      for (const tool of toolRegistry.list()) {
         const toolName = tool.name
         if (!tool?.implemented) continue
 

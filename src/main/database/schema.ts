@@ -121,6 +121,22 @@ export function createSchema(database: Database.Database): void {
       href       TEXT NOT NULL,
       PRIMARY KEY (resourceId, linkId)
     );
+
+    CREATE TABLE IF NOT EXISTS session_prompt_inbox (
+      id                 TEXT PRIMARY KEY,
+      sessionId          TEXT NOT NULL,
+      mode               TEXT NOT NULL CHECK (mode IN ('steer', 'queue')),
+      status             TEXT NOT NULL DEFAULT 'pending'
+                         CHECK (status IN ('pending', 'running', 'completed', 'cancelled')),
+      runMode            TEXT NOT NULL CHECK (runMode IN ('chat', 'agent')),
+      sourceMessageId    TEXT NOT NULL,
+      assistantMessageId TEXT,
+      messages           TEXT NOT NULL,
+      createdAt          INTEGER NOT NULL,
+      updatedAt          INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_session_prompt_inbox_open
+      ON session_prompt_inbox(sessionId, status, createdAt, id);
   `)
 
   // Additive column migrations for databases created before a column existed. CREATE TABLE

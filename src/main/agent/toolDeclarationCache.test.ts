@@ -151,4 +151,36 @@ describe('createToolDeclarationCache', () => {
     expect(second.map((declaration) => declaration.function.name)).toEqual(['file_read', 'shell'])
     expect(second).not.toBe(first)
   })
+
+  it('rebuilds declarations when the materialized registry revision changes', () => {
+    const firstTool = tool('file_read')
+    const replacementTool = {
+      ...tool('file_read'),
+      description: 'replacement description'
+    }
+    const cache = createToolDeclarationCache({
+      toolRegistry: registryOf({ file_read: firstTool }),
+      toDeclaration: declarationFor
+    })
+    const baseInput = {
+      toolDiscovery: 'dynamic' as const,
+      activeTools: new Set(['file_read']),
+      skillTools: []
+    }
+
+    const first = cache.getDeclarations({
+      ...baseInput,
+      toolRegistry: registryOf({ file_read: firstTool }),
+      registryRevision: 1
+    })
+    const second = cache.getDeclarations({
+      ...baseInput,
+      toolRegistry: registryOf({ file_read: replacementTool }),
+      registryRevision: 2
+    })
+
+    expect(first[0].function.description).toBe('file_read description')
+    expect(second[0].function.description).toBe('replacement description')
+    expect(second).not.toBe(first)
+  })
 })

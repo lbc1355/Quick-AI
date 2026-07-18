@@ -2,6 +2,18 @@ export { closeDb, getDb, isDatabaseInitialized } from './database/connection'
 export { loadSettings, saveSettings } from './database/settingsStore'
 export { loadProjects, saveProjects } from './database/projectStore'
 export { loadSessions, saveSessions } from './database/sessionStore'
+export {
+  admitSessionPrompt,
+  cancelSessionPrompt,
+  claimNextSessionPrompt,
+  completeSessionPrompt,
+  finishSessionPrompt,
+  getSessionPrompt,
+  listSessionPrompts,
+  markSessionPromptRunning,
+  recoverRunningSessionPrompts,
+  requeueSessionPrompts
+} from './database/sessionPromptStore'
 export { loadSkills, saveSkills } from './database/skillStore'
 export {
   deleteResourceFromDb,

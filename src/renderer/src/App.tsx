@@ -290,6 +290,7 @@ function App(): React.JSX.Element {
     runMode,
     setRunMode,
     handleSendMessage,
+    handleAdmitPrompt,
     handleStartEdit,
     handleSaveEdit,
     handleRegenerate,
@@ -1014,6 +1015,7 @@ function App(): React.JSX.Element {
               isOtherSessionGenerating={isOtherSessionGenerating}
               handleAbortGeneration={handleAbortGeneration}
               handleSendMessage={handleSendMessage}
+              handleAdmitPrompt={handleAdmitPrompt}
               onOpenBgShellManager={() => setShowBgShellManager(true)}
             />
           </section>

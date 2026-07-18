@@ -27,7 +27,7 @@ interface StartStreamingRunOptions {
   sessionsRef: React.MutableRefObject<Session[]>
   updateMessageById: UpdateMessageById
   setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>
-  setActiveReqId: React.Dispatch<React.SetStateAction<string | null>>
+  setActiveReqId: (reqId: string | null) => void
   persistActiveSession: (sessionId?: string) => void
   onCleanup?: () => void
 }
