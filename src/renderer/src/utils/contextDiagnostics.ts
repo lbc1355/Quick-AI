@@ -1,6 +1,7 @@
 import type { CacheShapeDiagnostics, Message, SessionResource } from '../../../shared/types'
 import type { ContextWindowSource } from '../../../shared/modelContext'
 import { estimateTokens } from '../../../shared/tokenEstimator'
+import { getMessagesForCurrentContext } from './contextMessages'
 
 export type ContextCompositionRole = 'system' | 'tool_call' | 'tool' | 'user' | 'assistant'
 export type ContextCompositionGroupKind = 'system' | 'user' | 'agent'
@@ -193,7 +194,7 @@ export function buildContextCompositionSegments({
 
   let agentTurn = 0
 
-  for (const message of messages) {
+  for (const message of getMessagesForCurrentContext(messages)) {
     if (message.role === 'user') {
       pushSegment(segments, {
         id: `user-${message.id}`,

@@ -190,6 +190,40 @@ describe('contextDiagnostics', () => {
     expect(agentSegments.map((segment) => segment.role)).toEqual(['tool_call', 'tool', 'assistant'])
     expect(new Set(agentSegments.map((segment) => segment.groupId)).size).toBe(1)
   })
+
+  it('estimates only the effective message window after context compaction', () => {
+    const messages: Message[] = [
+      { id: 'old-user', role: 'user', content: 'old '.repeat(4_000) },
+      { id: 'old-assistant', role: 'assistant', content: 'old answer '.repeat(2_000) },
+      {
+        id: 'summary',
+        role: 'assistant',
+        content: 'compact summary',
+        isCompactionSummary: true
+      },
+      { id: 'recent-user', role: 'user', content: 'recent question' }
+    ]
+
+    const beforeCompaction = buildContextCompositionSegments({
+      messages: messages.slice(0, 2),
+      systemPrompt: '',
+      resources: []
+    })
+    const afterCompaction = buildContextCompositionSegments({
+      messages,
+      systemPrompt: '',
+      resources: []
+    })
+
+    expect(afterCompaction.map((segment) => segment.id)).toEqual([
+      'assistant-summary',
+      'user-recent-user'
+    ])
+    expect(
+      afterCompaction.reduce((total, segment) => total + segment.tokenEstimate, 0)
+    ).toBeLessThan(beforeCompaction.reduce((total, segment) => total + segment.tokenEstimate, 0))
+  })
+
   it('builds context usage percentages for the circular meter', () => {
     const usage = buildContextUsageBreakdown({
       draftTokens: 700,

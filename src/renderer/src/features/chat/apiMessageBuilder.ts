@@ -1,6 +1,7 @@
 import type { Message } from '../../../../shared/types'
 import { buildDateContext, getDateFromMessageId, getDateKey } from '../../../../shared/promptDate'
 import { isRuntimeErrorAssistantMessage } from '../../hooks/chatMessageEvents'
+import { getMessagesForCurrentContext } from '../../utils/contextMessages'
 
 export interface ApiMessage {
   role: string
@@ -14,14 +15,7 @@ export interface ApiMessage {
 }
 
 export function getMessagesForLLM(messages: Message[]): Message[] {
-  let startIndex = 0
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].isCompactionSummary) {
-      startIndex = i
-      break
-    }
-  }
-  return messages.slice(startIndex)
+  return getMessagesForCurrentContext(messages)
 }
 
 export function buildApiMessages(systemPrompt: string, messages: Message[]): ApiMessage[] {
