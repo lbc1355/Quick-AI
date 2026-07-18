@@ -27,6 +27,7 @@ import { getMessageText as getAssistantText } from './messageText'
 import { startAgentRunLifecycle } from './agentRunLifecycle'
 import { persistAgentRunCheckpoint } from './agentRunCheckpoint'
 import { createAgentEventStream } from './agentEventStream'
+import { createAgentEventJournalWriter } from './agentEventJournal'
 import { compactStaleToolResultsForContextPressure } from './staleToolResultCompaction'
 import {
   captureCacheShape,
@@ -126,9 +127,20 @@ export const runAgentLoop = async (
   } = preparedRun
   let messages = preparedRun.messages
 
+  const eventJournal = createAgentEventJournalWriter({
+    runId: reqId,
+    sessionId: conversationId,
+    sourceMessageId: options.sourceMessageId,
+    assistantMessageId: options.assistantMessageId,
+    parentRunId: options.resumeFromRunId
+  })
+
   const eventStream = createAgentEventStream({
     runId: reqId,
-    emit: (event) => sendEvent(mainWindow, reqId, event)
+    emit: (event) => {
+      eventJournal.append(event)
+      sendEvent(mainWindow, reqId, event)
+    }
   })
 
   const lifecycle = startAgentRunLifecycle({
@@ -493,6 +505,7 @@ export const runAgentLoop = async (
     }
   } finally {
     options.setSteeringAcceptance?.(false)
+    eventJournal.close()
     actionLog.save()
     lifecycle.destroy()
   }

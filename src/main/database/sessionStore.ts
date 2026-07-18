@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import { Message, Session } from '../../shared/types'
 import { compactAgentEvents } from '../../shared/agentEventCompactor'
+import { loadSessionAgentEventJournals } from '../agent/agentEventJournal'
+import { mergeAgentEventJournalsIntoSessions } from '../agent/agentEventRecovery'
 import { getDb } from './connection'
 
 export function loadSessions(): Session[] {
@@ -111,7 +113,7 @@ export function loadSessions(): Session[] {
     else messagesBySession.set(m.sessionId, [message])
   }
 
-  return sessionRows.map((s) => ({
+  const sessions = sessionRows.map((s) => ({
     id: s.id,
     title: s.title,
     lastActiveTime: s.lastActiveTime || undefined,
@@ -119,6 +121,8 @@ export function loadSessions(): Session[] {
     branchOf: parseBranchRef(s.branchOf),
     messages: messagesBySession.get(s.id) || []
   }))
+  const eventJournals = sessions.flatMap((session) => loadSessionAgentEventJournals(session.id))
+  return mergeAgentEventJournalsIntoSessions(sessions, eventJournals)
 }
 
 /** Parse a JSON-serialised branch reference column back into its typed shape (null/garbage → undefined). */

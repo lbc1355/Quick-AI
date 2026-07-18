@@ -99,8 +99,13 @@ const api = {
     ipcRenderer.invoke('clear-session-caches', payload),
   forkSessionCaches: (
     payload: ForkSessionCachesPayload
-  ): Promise<{ ok: boolean; actions: number; checkpoints: number; manifests: number }> =>
-    ipcRenderer.invoke('fork-session-caches', payload),
+  ): Promise<{
+    ok: boolean
+    actions: number
+    checkpoints: number
+    manifests: number
+    events: number
+  }> => ipcRenderer.invoke('fork-session-caches', payload),
   onChatChunk: (callback: (data: ChatChunkData) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, data: ChatChunkData): void => callback(data)
     ipcRenderer.on('chat-chunk', listener)

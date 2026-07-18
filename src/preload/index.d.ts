@@ -66,9 +66,13 @@ declare global {
       requeueSessionPrompt: (admissionId: string) => Promise<boolean>
       compactContext: (payload: ContextCompactionRequest) => Promise<ContextCompactionResult>
       clearSessionCaches: (payload: ClearSessionCachesPayload) => Promise<{ ok: boolean }>
-      forkSessionCaches: (
-        payload: ForkSessionCachesPayload
-      ) => Promise<{ ok: boolean; actions: number; checkpoints: number; manifests: number }>
+      forkSessionCaches: (payload: ForkSessionCachesPayload) => Promise<{
+        ok: boolean
+        actions: number
+        checkpoints: number
+        manifests: number
+        events: number
+      }>
       showNotification: (title: string, body: string) => void
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       onSkillsUpdated: (callback: (skills: Skill[]) => void) => () => void

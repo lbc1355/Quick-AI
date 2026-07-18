@@ -13,6 +13,11 @@ import {
 import { deleteResourceFile } from '../resourceCache'
 import { clearSessionApprovals } from '../agent/AgentRunContext'
 import { compactContextWithModel } from '../agent/contextCompactor'
+import {
+  copyAgentEventJournalsForRuns,
+  deleteAgentEventJournal,
+  deleteAgentEventJournals
+} from '../agent/agentEventJournal'
 
 export function registerCacheIpc(): void {
   ipcMain.handle('clear-session-caches', async (_event, payload) => {
@@ -40,6 +45,7 @@ export function registerCacheIpc(): void {
         new ActionLog(getActionLogPath(entry.sessionId)).deleteByRunIds(runIds)
         await Promise.all(runIds.map((runId) => deleteRunCheckpoint(entry.sessionId, runId)))
         await Promise.all(runIds.map((runId) => deleteRunManifest(entry.sessionId, runId)))
+        await Promise.all(runIds.map((runId) => deleteAgentEventJournal(entry.sessionId, runId)))
       } catch (err) {
         console.warn('clear-session-caches: partial action delete failed:', (err as Error).message)
       }
@@ -53,6 +59,7 @@ export function registerCacheIpc(): void {
       ...sessionIds.map((id) => deleteActionLog(id)),
       ...sessionIds.map((id) => deleteRunCheckpoints(id)),
       ...sessionIds.map((id) => deleteRunManifests(id)),
+      ...sessionIds.map((id) => deleteAgentEventJournals(id)),
       ...resourceIds.map((id) => deleteResourceFile(id))
     ])
     for (const r of results) {
@@ -73,7 +80,7 @@ export function registerCacheIpc(): void {
       : []
 
     if (!sourceSessionId || !targetSessionId || sourceSessionId === targetSessionId) {
-      return { ok: true, actions: 0, checkpoints: 0, manifests: 0 }
+      return { ok: true, actions: 0, checkpoints: 0, manifests: 0, events: 0 }
     }
 
     try {
@@ -82,10 +89,11 @@ export function registerCacheIpc(): void {
       const actions = sourceLog.copyByRunIdsTo(targetLog, runIds)
       const checkpoints = copyRunCheckpointsForRuns(sourceSessionId, targetSessionId, runIds)
       const manifests = copyRunManifestsForRuns(sourceSessionId, targetSessionId, runIds)
-      return { ok: true, actions, checkpoints, manifests }
+      const events = copyAgentEventJournalsForRuns(sourceSessionId, targetSessionId, runIds)
+      return { ok: true, actions, checkpoints, manifests, events }
     } catch (err) {
       console.warn('fork-session-caches failed:', (err as Error).message)
-      return { ok: false, actions: 0, checkpoints: 0, manifests: 0 }
+      return { ok: false, actions: 0, checkpoints: 0, manifests: 0, events: 0 }
     }
   })
 

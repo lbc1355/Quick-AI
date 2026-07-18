@@ -9,6 +9,8 @@ import {
   recoverRunningSessionPrompts
 } from './database'
 import { StorageSchema } from '../shared/types'
+import { recoverInterruptedAgentEventJournals } from './agent/agentEventJournal'
+import { finishRunManifest } from './agent/runManifest'
 import { loadSkillsFromFolders, saveSkillsToFolders } from './skillManager'
 
 export class FileStore {
@@ -18,6 +20,16 @@ export class FileStore {
     // Initialize the database (creates file + migrates old JSON if needed)
     getDb()
     recoverRunningSessionPrompts()
+    const interruptedRuns = recoverInterruptedAgentEventJournals()
+    for (const run of interruptedRuns) {
+      const terminalEvent = [...run.events].reverse().find((event) => event.type === 'agent_end')
+      finishRunManifest(
+        run.sessionId,
+        run.runId,
+        'failed',
+        terminalEvent?.type === 'agent_end' ? terminalEvent.error : undefined
+      )
+    }
     this.ready = true
   }
 

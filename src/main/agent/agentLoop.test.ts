@@ -10,6 +10,7 @@ import { BrowserWindow } from 'electron'
 import { abortRun } from './AgentRunContext'
 import { ActionLog, getActionLogPath } from './actionLog'
 import { loadRunManifest } from './runManifest'
+import { loadAgentEventJournal } from './agentEventJournal'
 
 vi.mock('electron', () => ({
   BrowserWindow: {},
@@ -45,6 +46,10 @@ describe('runAgentLoop', () => {
       force: true
     })
     rmSync(join(tmpdir(), 'quickai-agentloop-test', 'run_manifests'), {
+      recursive: true,
+      force: true
+    })
+    rmSync(join(tmpdir(), 'quickai-agentloop-test', 'agent_event_journals'), {
       recursive: true,
       force: true
     })
@@ -1063,6 +1068,21 @@ describe('runAgentLoop', () => {
     expect(emittedEvents.every((event) => event.runId === 'test-req-progress-completed')).toBe(true)
     expect(emittedEvents.map((event) => event.sequence)).toEqual([1, 2, 3, 4])
     expect(emittedEvents.every((event) => typeof event.timestamp === 'number')).toBe(true)
+
+    const journal = loadAgentEventJournal(
+      'test-req-progress-completed',
+      'test-req-progress-completed'
+    )
+    expect(journal).toMatchObject({
+      status: 'completed',
+      lastSequence: 4,
+      events: [
+        expect.objectContaining({ type: 'agent_start' }),
+        expect.objectContaining({ type: 'agent_progress', step: 1 }),
+        expect.objectContaining({ type: 'final', content: 'Final Answer' }),
+        expect.objectContaining({ type: 'agent_end', status: 'completed' })
+      ]
+    })
   })
 
   it('emits one agent_step for a model turn with multiple tool calls', async () => {

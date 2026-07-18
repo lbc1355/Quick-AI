@@ -83,7 +83,7 @@ export interface UseChatCompletionReturn {
   handleStartEdit: (msg: Message) => void
   handleSaveEdit: (msgId: string) => void
   handleRegenerate: (msgIdx: number) => void
-  handleResumeAgentRun: (msgIdx: number) => void
+  handleResumeAgentRun: (msgIdx: number) => Promise<void>
   showHelpMessage: () => Promise<void>
   handleCompactCurrentSession: () => Promise<boolean>
   handleAbortGeneration: () => void
@@ -587,7 +587,7 @@ export const useChatCompletion = ({
     setActiveGenerationSessionId(targetSession.id)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
-    persistSessionsSnapshotSoon(currentSessions)
+    await persistSessionsSnapshot(currentSessions)
 
     // Load full messages block
     const apiMessages = buildApiMessages(
@@ -929,7 +929,7 @@ export const useChatCompletion = ({
     setActiveGenerationSessionId(currentSession.id)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
-    persistSessionsSnapshotSoon(currentSessions)
+    await persistSessionsSnapshot(currentSessions)
 
     const reqId = assistantMsgId
     setActiveReqId(reqId)
@@ -1003,7 +1003,7 @@ export const useChatCompletion = ({
     }
   }
 
-  const handleResumeAgentRun = (msgIdx: number): void => {
+  const handleResumeAgentRun = async (msgIdx: number): Promise<void> => {
     const requestConfig = latestRequestConfigRef.current
     if (isGeneratingRef.current) return
     if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
@@ -1063,7 +1063,7 @@ export const useChatCompletion = ({
 
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
-    persistSessionsSnapshotSoon(currentSessions)
+    await persistSessionsSnapshot(currentSessions)
 
     startStreamingRun(
       reqId,
