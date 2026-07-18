@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { rmSync } from 'fs'
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'fs'
 import { runAgentLoop } from './agentLoop'
 import { callModel } from './callModel'
 import { ToolRegistry } from '../toolRegistry'
@@ -1089,6 +1089,74 @@ describe('runAgentLoop', () => {
       ]
     })
   })
+
+  it('binds project file changes to the run and emits a file_changes event', async () => {
+    const projectRoot = join(tmpdir(), 'quickai-agentloop-snapshot-project')
+    rmSync(projectRoot, { recursive: true, force: true })
+    mkdirSync(projectRoot, { recursive: true })
+    writeFileSync(join(projectRoot, 'existing.txt'), 'unchanged\n', 'utf8')
+    vi.spyOn(globalPermissionManager, 'requestPermission').mockResolvedValue(true)
+    vi.spyOn(ToolRegistry.file_write, 'execute').mockImplementation(async () => {
+      writeFileSync(join(projectRoot, 'created.txt'), 'created\n', 'utf8')
+      return {
+        resultForModel: 'Created file.',
+        resultForUi: {
+          title: 'Created file',
+          summary: 'Created created.txt'
+        }
+      }
+    })
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async () => {
+      callCount++
+      if (callCount === 1) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'snapshot-write',
+              type: 'function',
+              function: {
+                name: 'file_write',
+                arguments: JSON.stringify({ path: 'created.txt', content: 'created\n' })
+              }
+            }
+          ]
+        }
+      }
+      return { role: 'assistant', content: 'Updated.' }
+    })
+
+    await runAgentLoop(
+      mockWindow,
+      'snapshot-run',
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'test-key',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'Update the file' }],
+        sessionId: 'snapshot-session',
+        projectRoot
+      },
+      { file_write: 'allow' }
+    )
+
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'snapshot-run',
+      contextEpoch: 0,
+      event: expect.objectContaining({
+        type: 'file_changes',
+        files: [{ path: 'created.txt', kind: 'added' }]
+      })
+    })
+    expect(loadRunManifest('snapshot-session', 'snapshot-run')?.fileSnapshot).toMatchObject({
+      projectRoot: realpathSync.native(projectRoot),
+      files: [{ path: 'created.txt', kind: 'added' }]
+    })
+
+    rmSync(projectRoot, { recursive: true, force: true })
+  }, 15_000)
 
   it('emits one agent_step for a model turn with multiple tool calls', async () => {
     let callCount = 0

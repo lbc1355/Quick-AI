@@ -30,6 +30,7 @@ import { createAgentEventStream } from './agentEventStream'
 import { createAgentEventJournalWriter } from './agentEventJournal'
 import { compactStaleToolResultsForContextPressure } from './staleToolResultCompaction'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
+import { beginAgentFileSnapshot } from './agentFileSnapshot'
 import {
   captureCacheShape,
   commitCacheShapeForSession,
@@ -171,6 +172,20 @@ export const runAgentLoop = async (
   const runCtx = lifecycle.runCtx
   const signal = runCtx.signal
   const hostActions = createAgentHostActions(mainWindow)
+  const fileSnapshotHandle = await beginAgentFileSnapshot({
+    sessionId: conversationId,
+    runId: reqId,
+    projectRoot: options.projectRoot
+  })
+  let fileSnapshotFinalized = false
+  const finalizeFileSnapshot = async (): Promise<void> => {
+    if (fileSnapshotFinalized) return
+    fileSnapshotFinalized = true
+    const snapshot = await fileSnapshotHandle?.finish()
+    if (snapshot && snapshot.files.length > 0) {
+      eventStream.emit({ type: 'file_changes', files: snapshot.files })
+    }
+  }
 
   const initialContextSize = getEffectiveContextWindowSize(options)
   const initialToolOutputSpilloverThreshold = getToolOutputSpilloverThreshold(initialContextSize)
@@ -462,6 +477,7 @@ export const runAgentLoop = async (
         if (finalText) {
           eventStream.emit({ type: 'final', content: finalText, step, stepId })
         }
+        await finalizeFileSnapshot()
         setRunEnd('completed')
         mainWindow.webContents.send('chat-chunk', buildDoneChunk())
         return
@@ -492,6 +508,7 @@ export const runAgentLoop = async (
     })
     messages = forcedFinalTurn.messages
 
+    await finalizeFileSnapshot()
     setRunEnd('max_steps')
     mainWindow.webContents.send('chat-chunk', buildDoneChunk())
   } catch (error) {
@@ -499,6 +516,7 @@ export const runAgentLoop = async (
     console.error('Agent Loop error:', err)
     const isAborted =
       signal.aborted || err.message?.includes('aborted') || err.name === 'AbortError'
+    await finalizeFileSnapshot()
     if (isAborted) {
       setRunEnd('cancelled')
       mainWindow.webContents.send('chat-chunk', buildDoneChunk({ cancelled: true }))
@@ -515,6 +533,7 @@ export const runAgentLoop = async (
     }
   } finally {
     options.setSteeringAcceptance?.(false)
+    await finalizeFileSnapshot()
     eventJournal.close()
     actionLog.save()
     lifecycle.destroy()

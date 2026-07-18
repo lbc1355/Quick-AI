@@ -1,17 +1,20 @@
 import React from 'react'
-import { Check, Copy, Edit, Play, RefreshCw } from 'lucide-react'
+import { Check, Copy, Edit, Play, RefreshCw, Undo2 } from 'lucide-react'
 
 interface MessageActionsProps {
   align?: 'flex-start' | 'flex-end'
   canEdit: boolean
   canRegenerate: boolean
   canResume: boolean
+  canRevertFiles?: boolean
+  filesReverted?: boolean
   canCopy?: boolean
   copied: boolean
   onCopy: () => void
   onEdit: () => void
   onRegenerate: () => void
   onResume: () => void
+  onRevertFiles?: () => void
 }
 
 export const MessageActions: React.FC<MessageActionsProps> = ({
@@ -19,14 +22,17 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   canEdit,
   canRegenerate,
   canResume,
+  canRevertFiles = false,
+  filesReverted = false,
   canCopy = false,
   copied,
   onCopy,
   onEdit,
   onRegenerate,
-  onResume
+  onResume,
+  onRevertFiles
 }) => {
-  if (!canEdit && !canRegenerate && !canResume && !canCopy) return null
+  if (!canEdit && !canRegenerate && !canResume && !canCopy && !canRevertFiles) return null
 
   return (
     <div className="message-actions" style={{ justifyContent: align }}>
@@ -46,6 +52,17 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         <button className="msg-action-btn" onClick={onRegenerate}>
           <RefreshCw size={10} />
           <span>重新生成</span>
+        </button>
+      )}
+      {canRevertFiles && (
+        <button
+          className="msg-action-btn"
+          onClick={onRevertFiles}
+          disabled={filesReverted}
+          title={filesReverted ? '文件修改已撤销' : '查看并撤销该次 Agent 运行的文件修改'}
+        >
+          {filesReverted ? <Check size={10} /> : <Undo2 size={10} />}
+          <span>{filesReverted ? '已撤销文件' : '撤销文件修改'}</span>
         </button>
       )}
       {canCopy && (

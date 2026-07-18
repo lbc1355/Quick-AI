@@ -21,7 +21,10 @@ import {
   WindowState,
   AdmitSessionPromptInput,
   AdmitSessionPromptResult,
-  SessionPromptAdmission
+  SessionPromptAdmission,
+  AgentFileRevertPreview,
+  RevertAgentFileChangesInput,
+  RevertAgentFileChangesResult
 } from '../shared/types'
 
 interface BackgroundShellInfo {
@@ -100,6 +103,12 @@ const api = {
     ipcRenderer.invoke('requeue-session-prompt', admissionId),
   compactContext: (payload: ContextCompactionRequest): Promise<ContextCompactionResult> =>
     ipcRenderer.invoke('compact-context', payload),
+  previewAgentFileRevert: (sessionId: string, runId: string): Promise<AgentFileRevertPreview> =>
+    ipcRenderer.invoke('preview-agent-file-revert', sessionId, runId),
+  revertAgentFileChanges: (
+    input: RevertAgentFileChangesInput
+  ): Promise<RevertAgentFileChangesResult> =>
+    ipcRenderer.invoke('revert-agent-file-changes', input),
   clearSessionCaches: (payload: ClearSessionCachesPayload): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('clear-session-caches', payload),
   forkSessionCaches: (

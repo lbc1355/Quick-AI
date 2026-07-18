@@ -18,8 +18,14 @@ import {
   deleteAgentEventJournal,
   deleteAgentEventJournals
 } from '../agent/agentEventJournal'
+import { previewAgentFileRevert, revertAgentFileChanges } from '../agent/agentFileSnapshot'
 
 export function registerCacheIpc(): void {
+  ipcMain.handle('preview-agent-file-revert', (_event, sessionId: string, runId: string) =>
+    previewAgentFileRevert(sessionId, runId)
+  )
+  ipcMain.handle('revert-agent-file-changes', (_event, input) => revertAgentFileChanges(input))
+
   ipcMain.handle('clear-session-caches', async (_event, payload) => {
     const sessionIds: string[] = Array.isArray(payload?.sessionIds)
       ? payload.sessionIds.filter((id: unknown): id is string => typeof id === 'string')

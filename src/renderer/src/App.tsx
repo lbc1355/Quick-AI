@@ -3,6 +3,7 @@ import { MessageSquare, GitBranch, Paperclip, ArrowDown } from 'lucide-react'
 
 import type {
   AutocompleteItem,
+  AgentFileRevertPreview,
   AppSettings,
   Message,
   Project,
@@ -11,6 +12,7 @@ import type {
 } from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
+import { AgentFileRevertModal } from './components/AgentFileRevertModal'
 import { SubagentRunPanel } from './components/SubagentRunPanel'
 import { SettingsView } from './components/SettingsView'
 
@@ -48,6 +50,8 @@ import { useContextDiagnosticsState } from './features/chat/useContextDiagnostic
 import { usePermissionPopupController } from './features/chat/usePermissionPopupController'
 import { useVirtualizedMessages, VIRTUAL_MESSAGE_GAP } from './features/chat/useVirtualizedMessages'
 import { parseSubagentRuns } from './features/chat/useAgentMessageViewModel'
+import { useToast } from './contexts/ToastContext'
+import { advanceSessionContextEpoch, getSessionContextEpoch } from '../../shared/contextEpoch'
 
 const EMPTY_MESSAGES: Message[] = []
 
@@ -135,6 +139,12 @@ function App(): React.JSX.Element {
     isMaximized: false
   })
   const [projects, setProjects] = useState<Project[]>([])
+  const [fileRevertDialog, setFileRevertDialog] = useState<{
+    preview: AgentFileRevertPreview
+    messageId: string
+  } | null>(null)
+  const [isApplyingFileRevert, setIsApplyingFileRevert] = useState(false)
+  const toast = useToast()
 
   // 1. Settings (providers + skills) from context. App only pulls the fields it needs itself for
   // chat, header, autocomplete, the models modal and the ESC handler; the settings UI reads the
@@ -329,6 +339,82 @@ function App(): React.JSX.Element {
     activeSessionId
   )
   const activeMessages = activeSession?.messages ?? EMPTY_MESSAGES
+  const handleOpenAgentFileRevert = useStableEvent(async (message: Message): Promise<void> => {
+    if (isGenerating || !message.agentRunId) return
+    try {
+      const preview = await window.api.previewAgentFileRevert(activeSessionId, message.agentRunId)
+      if (!preview.available) {
+        toast.info(preview.reason || '该次运行没有可撤销的文件修改。')
+        return
+      }
+      setFileRevertDialog({ preview, messageId: message.id })
+    } catch (error) {
+      toast.error(`读取文件快照失败：${(error as Error).message}`)
+    }
+  })
+  const handleConfirmAgentFileRevert = useStableEvent(async (): Promise<void> => {
+    if (!fileRevertDialog || isApplyingFileRevert) return
+    setIsApplyingFileRevert(true)
+    try {
+      const { preview, messageId } = fileRevertDialog
+      const result = await window.api.revertAgentFileChanges({
+        sessionId: preview.sessionId,
+        runId: preview.runId,
+        force: preview.conflicts.length > 0
+      })
+      if (!result.ok) {
+        if (result.conflicts.length > 0) {
+          const refreshed = await window.api.previewAgentFileRevert(
+            preview.sessionId,
+            preview.runId
+          )
+          if (refreshed.available) setFileRevertDialog({ preview: refreshed, messageId })
+          toast.warning(result.error || '检测到新的文件冲突，请重新确认。')
+        } else {
+          toast.error(result.error || '撤销文件修改失败。')
+        }
+        return
+      }
+
+      const revertedAt = result.revertedAt || Date.now()
+      const alreadyReverted = result.alreadyReverted === true
+      let nextEpoch: number | undefined
+      const nextSessions = sessionsRef.current.map((session) => {
+        if (session.id !== preview.sessionId) return session
+        const advanced = alreadyReverted ? session : advanceSessionContextEpoch(session)
+        if (!alreadyReverted) nextEpoch = getSessionContextEpoch(advanced)
+        return {
+          ...advanced,
+          lastActiveTime: Date.now(),
+          messages: advanced.messages.map((message) =>
+            message.id === messageId
+              ? {
+                  ...message,
+                  agentEvents: message.agentEvents?.map((event) =>
+                    event.type === 'file_changes' && (!event.runId || event.runId === preview.runId)
+                      ? { ...event, revertedAt }
+                      : event
+                  )
+                }
+              : message
+          )
+        }
+      })
+      sessionsRef.current = nextSessions
+      setSessions(nextSessions)
+      if (nextEpoch !== undefined) {
+        window.api.advanceSessionContext(preview.sessionId, nextEpoch)
+      }
+      await window.api.storeSet('sessions', nextSessions)
+      setFileRevertDialog(null)
+      if (alreadyReverted) toast.info('这些文件已经处于运行前状态。')
+      else toast.success(`已撤销 ${result.restoredFiles.length} 个文件的修改。`)
+    } catch (error) {
+      toast.error(`撤销文件修改失败：${(error as Error).message}`)
+    } finally {
+      setIsApplyingFileRevert(false)
+    }
+  })
   const activeSubagentRoutePanel = useMemo(() => {
     if (!activeSubagentRoute) return null
     const sourceMessage = activeMessages.find(
@@ -922,6 +1008,7 @@ function App(): React.JSX.Element {
                         onSaveEdit={handleSaveEdit}
                         onRegenerate={handleRegenerate}
                         onResumeAgentRun={handleResumeAgentRun}
+                        onRevertAgentFiles={handleOpenAgentFileRevert}
                         onOpenBranch={(sessionId) => openSession(sessionId)}
                         onOpenSubagent={handleOpenSubagentRoute}
                         onChangeEditingText={setEditingText}
@@ -1027,6 +1114,17 @@ function App(): React.JSX.Element {
         <BgShellManagerModal
           sessionId={activeSessionId}
           onClose={() => setShowBgShellManager(false)}
+        />
+      )}
+
+      {fileRevertDialog && (
+        <AgentFileRevertModal
+          preview={fileRevertDialog.preview}
+          isApplying={isApplyingFileRevert}
+          onClose={() => {
+            if (!isApplyingFileRevert) setFileRevertDialog(null)
+          }}
+          onConfirm={handleConfirmAgentFileRevert}
         />
       )}
 

@@ -20,7 +20,10 @@ import {
   WindowState,
   AdmitSessionPromptInput,
   AdmitSessionPromptResult,
-  SessionPromptAdmission
+  SessionPromptAdmission,
+  AgentFileRevertPreview,
+  RevertAgentFileChangesInput,
+  RevertAgentFileChangesResult
 } from '../shared/types'
 
 declare global {
@@ -69,6 +72,10 @@ declare global {
       cancelSessionPrompt: (admissionId: string) => Promise<boolean>
       requeueSessionPrompt: (admissionId: string) => Promise<boolean>
       compactContext: (payload: ContextCompactionRequest) => Promise<ContextCompactionResult>
+      previewAgentFileRevert: (sessionId: string, runId: string) => Promise<AgentFileRevertPreview>
+      revertAgentFileChanges: (
+        input: RevertAgentFileChangesInput
+      ) => Promise<RevertAgentFileChangesResult>
       clearSessionCaches: (payload: ClearSessionCachesPayload) => Promise<{ ok: boolean }>
       forkSessionCaches: (payload: ForkSessionCachesPayload) => Promise<{
         ok: boolean

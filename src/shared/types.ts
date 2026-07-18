@@ -116,6 +116,13 @@ export interface AgentEventMetadata {
 
 type WithAgentEventMetadata<T> = T & AgentEventMetadata
 
+export type AgentFileChangeKind = 'added' | 'modified' | 'deleted'
+
+export interface AgentFileChange {
+  path: string
+  kind: AgentFileChangeKind
+}
+
 export type AgentEvent =
   | WithAgentEventMetadata<{ type: 'agent_start'; skillName: string }>
   | WithAgentEventMetadata<{ type: 'reasoning'; content: string; step?: number; stepId?: string }>
@@ -193,6 +200,11 @@ export type AgentEvent =
   | WithAgentEventMetadata<{
       type: 'task_update'
       tasks: TaskItem[]
+    }>
+  | WithAgentEventMetadata<{
+      type: 'file_changes'
+      files: AgentFileChange[]
+      revertedAt?: number
     }>
   | WithAgentEventMetadata<{
       type: 'subagent_start'
@@ -650,6 +662,35 @@ export interface ContextCompactionResult {
   keptCount: number
   tokenSpeed?: number
 }
+
+export interface AgentFileRevertPreview {
+  available: boolean
+  reason?: string
+  sessionId: string
+  runId: string
+  projectRoot?: string
+  files: Array<AgentFileChange & { conflict: boolean }>
+  conflicts: string[]
+  diff: string
+  alreadyReverted: boolean
+  revertedAt?: number
+}
+
+export interface RevertAgentFileChangesInput {
+  sessionId: string
+  runId: string
+  force?: boolean
+}
+
+export interface RevertAgentFileChangesResult {
+  ok: boolean
+  restoredFiles: string[]
+  conflicts: string[]
+  alreadyReverted?: boolean
+  error?: string
+  revertedAt?: number
+}
+
 export interface McpServerStatus {
   name: string
   status: 'connected' | 'connecting' | 'failed' | 'disabled'

@@ -149,6 +149,7 @@ const shrinkOversizedEvent = (event: AgentEvent): AgentEvent => {
     compact.activeTools = event.activeTools?.slice(0, 100)
   }
   if (event.type === 'task_update') compact.tasks = event.tasks.slice(0, 100)
+  if (event.type === 'file_changes') compact.files = event.files.slice(0, 500)
   if (event.type === 'subagent_event') {
     compact.event = {
       type: event.event.type,

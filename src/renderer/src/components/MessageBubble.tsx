@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Message } from '../../../shared/types'
+import { AgentEvent, Message } from '../../../shared/types'
 import {
   Paperclip,
   Sparkles,
@@ -246,6 +246,7 @@ interface MessageBubbleProps {
   onSaveEdit: (msgId: string, text: string) => void
   onRegenerate: (idx: number) => void
   onResumeAgentRun: (idx: number) => void
+  onRevertAgentFiles?: (msg: Message) => void
   onOpenBranch: (sessionId: string) => void
   onOpenSubagent?: (messageId: string, subagentId: string) => void
   onChangeEditingText: (text: string) => void
@@ -264,6 +265,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onSaveEdit,
     onRegenerate,
     onResumeAgentRun,
+    onRevertAgentFiles,
     onOpenBranch,
     onOpenSubagent,
     onChangeEditingText
@@ -323,6 +325,13 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
 
     const isEditing = editingMessageId === msg.id
     const isBranchForkMessage = Boolean(msg.isBranchFork || msg.forkedFrom)
+    const fileChangesEvent = [...(msg.agentEvents || [])]
+      .reverse()
+      .find(
+        (event): event is Extract<AgentEvent, { type: 'file_changes' }> =>
+          event.type === 'file_changes' &&
+          (!msg.agentRunId || !event.runId || event.runId === msg.agentRunId)
+      )
 
     const renderAgentStep = (step: ParsedAgentStep): React.ReactNode => (
       <div key={step.id} className={`agent-step-block ${step.status}`}>
@@ -804,6 +813,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       onEdit={() => onStartEdit(msg)}
                       onRegenerate={() => onRegenerate(idx)}
                       onResume={() => onResumeAgentRun(idx)}
+                      canRevertFiles={false}
                     />
                   ) : (
                     <MessageActions
@@ -817,6 +827,14 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       onEdit={() => onStartEdit(msg)}
                       onRegenerate={() => onRegenerate(idx)}
                       onResume={() => onResumeAgentRun(idx)}
+                      canRevertFiles={
+                        !!onRevertAgentFiles &&
+                        !!msg.agentRunId &&
+                        !!fileChangesEvent?.files.length &&
+                        !isGenerating
+                      }
+                      filesReverted={!!fileChangesEvent?.revertedAt}
+                      onRevertFiles={() => onRevertAgentFiles?.(msg)}
                     />
                   )}
                 </>
@@ -847,6 +865,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     if (prevProps.msg !== nextProps.msg) return false
     if (prevBranches.length !== nextBranches.length) return false
     if (Boolean(prevProps.onOpenSubagent) !== Boolean(nextProps.onOpenSubagent)) return false
+    if (Boolean(prevProps.onRevertAgentFiles) !== Boolean(nextProps.onRevertAgentFiles))
+      return false
     for (let i = 0; i < prevBranches.length; i += 1) {
       if (
         prevBranches[i].sessionId !== nextBranches[i].sessionId ||

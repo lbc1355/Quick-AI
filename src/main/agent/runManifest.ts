@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, promises as fsp } from 'fs'
 import { dirname, join } from 'path'
-import { ToolArgs } from '../../shared/types'
+import { AgentFileChange, ToolArgs } from '../../shared/types'
 
 const MANIFEST_VERSION = 1
 
@@ -49,6 +49,15 @@ export interface AgentRunManifest {
   checkpointIds: string[]
   createdMessageIds: string[]
   sideEffects: SideEffectEntry[]
+  fileSnapshot?: {
+    projectRoot: string
+    startTree: string
+    endTree: string
+    files: AgentFileChange[]
+    completedAt: number
+    revertedAt?: number
+    restoredTree?: string
+  }
   startedAt: number
   updatedAt: number
   completedAt?: number

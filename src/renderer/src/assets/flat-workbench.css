@@ -189,6 +189,141 @@
   border-top: 1px solid var(--color-border);
 }
 
+.agent-file-revert-modal {
+  width: min(780px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 48px));
+}
+
+.agent-file-revert-body {
+  gap: 12px;
+}
+
+.agent-file-revert-summary {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+}
+
+.agent-file-revert-warning,
+.agent-file-revert-restored {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 42%, var(--color-border));
+  border-radius: var(--rounded-md);
+  background: color-mix(in srgb, var(--color-warning) 9%, var(--color-panel));
+  color: var(--color-warning);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-file-revert-restored {
+  border-color: color-mix(in srgb, var(--color-success) 42%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 8%, var(--color-panel));
+  color: var(--color-success);
+}
+
+.agent-file-revert-files {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--rounded-md);
+}
+
+.agent-file-revert-file {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.agent-file-revert-file:last-child {
+  border-bottom: 0;
+}
+
+.agent-file-revert-file.conflict {
+  background: color-mix(in srgb, var(--color-warning) 7%, transparent);
+}
+
+.agent-file-revert-file code {
+  overflow: hidden;
+  color: var(--color-text-title);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-file-change-kind,
+.agent-file-conflict-label {
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.agent-file-change-kind.added {
+  color: var(--color-success);
+}
+
+.agent-file-change-kind.modified {
+  color: var(--color-primary);
+}
+
+.agent-file-change-kind.deleted,
+.agent-file-conflict-label {
+  color: var(--color-warning);
+}
+
+.agent-file-revert-diff {
+  max-height: 300px;
+  white-space: pre;
+}
+
+.agent-file-revert-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-header);
+}
+
+.agent-file-revert-button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--rounded-md);
+  background: var(--color-card-bg);
+  color: var(--color-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.agent-file-revert-button.primary {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+.agent-file-revert-button.danger {
+  border-color: var(--color-danger);
+  background: var(--color-danger);
+  color: white;
+}
+
+.agent-file-revert-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .tool-detail-result-item-header {
   display: flex;
   align-items: center;
@@ -1812,6 +1947,14 @@ body {
   font-size: 11px;
 }
 
+.msg-action-btn:disabled,
+.msg-action-btn:disabled:hover {
+  background: transparent;
+  color: #69717c;
+  cursor: default;
+  opacity: 0.7;
+}
+
 .message-branch-note,
 .message-branch-children {
   color: #8f98a4;
@@ -2920,8 +3063,7 @@ body {
 .app-container.theme-light .logo-icon {
   border-color: #4d4b46;
   background:
-    linear-gradient(90deg, transparent 46%, #4d4b46 46%, #4d4b46 58%, transparent 58%),
-    transparent;
+    linear-gradient(90deg, transparent 46%, #4d4b46 46%, #4d4b46 58%, transparent 58%), transparent;
 }
 
 .app-container.theme-light .header-command-center {
