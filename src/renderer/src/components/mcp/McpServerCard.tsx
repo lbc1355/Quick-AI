@@ -14,7 +14,9 @@ import type { McpServerStatus } from '../../../../shared/types'
 interface McpServerCardProps {
   server: McpServerStatus
   isExpanded: boolean
+  isReloading: boolean
   onToggleExpanded: (name: string) => void
+  onReloadServer: (name: string) => void
   onDeleteServer: (name: string) => void
 }
 
@@ -49,7 +51,9 @@ function getStatusLabel(status: McpServerStatus['status']): string {
 export const McpServerCard: React.FC<McpServerCardProps> = ({
   server,
   isExpanded,
+  isReloading,
   onToggleExpanded,
+  onReloadServer,
   onDeleteServer
 }) => (
   <div className={`mcp-server-card ${server.status} ${isExpanded ? 'expanded' : ''}`}>
@@ -73,6 +77,17 @@ export const McpServerCard: React.FC<McpServerCardProps> = ({
           >
             <span className="mcp-expand-label">{server.tools.length} 个工具</span>
             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+        )}
+        {server.status !== 'disabled' && (
+          <button
+            type="button"
+            className="mcp-reload-card-btn"
+            title="重新连接该服务"
+            disabled={isReloading}
+            onClick={() => onReloadServer(server.name)}
+          >
+            <RefreshCw size={13} className={isReloading ? 'spin' : undefined} />
           </button>
         )}
         <button

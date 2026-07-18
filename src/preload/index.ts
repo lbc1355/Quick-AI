@@ -129,6 +129,8 @@ const api = {
   mcpDeleteServer: (name: string): Promise<{ deleted: boolean; config: string }> =>
     ipcRenderer.invoke('mcp-delete-server', name),
   mcpGetStatus: (): Promise<McpServerStatus[]> => ipcRenderer.invoke('mcp-get-status'),
+  mcpReloadServer: (name: string): Promise<McpServerStatus> =>
+    ipcRenderer.invoke('mcp-reload-server', name),
   mcpOpenConfig: (): Promise<void> => ipcRenderer.invoke('mcp-open-config'),
   bgShellList: (sessionId?: string): Promise<BackgroundShellInfo[]> =>
     ipcRenderer.invoke('bg-shell-list', sessionId),

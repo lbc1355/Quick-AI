@@ -2140,6 +2140,26 @@
   min-width: 0;
 }
 
+.mcp-servers-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.mcp-servers-header .settings-label {
+  margin-bottom: 0;
+}
+
+.mcp-servers-header .mcp-save-status {
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
 .mcp-servers-list {
   flex: 1;
   min-height: 0;
@@ -2599,6 +2619,7 @@
   gap: 8px;
 }
 
+.mcp-reload-card-btn,
 .mcp-delete-card-btn {
   background: transparent;
   border: none;
@@ -2611,6 +2632,16 @@
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+}
+
+.mcp-reload-card-btn:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--color-text);
+}
+
+.mcp-reload-card-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .mcp-delete-card-btn:hover {

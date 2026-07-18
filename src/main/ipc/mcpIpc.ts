@@ -31,6 +31,19 @@ export function registerMcpIpc(): void {
     return McpManager.getStatuses()
   })
 
+  ipcMain.handle('mcp-reload-server', async (_event, name) => {
+    if (typeof name !== 'string') {
+      throw new Error('MCP server name must be a string')
+    }
+
+    try {
+      return await McpManager.reloadServer(name)
+    } catch (err) {
+      logger.error('MCP', `Error reloading server "${name}": ${(err as Error).message}`)
+      throw err
+    }
+  })
+
   ipcMain.handle('mcp-open-config', () => {
     McpManager.openConfigFolder()
   })

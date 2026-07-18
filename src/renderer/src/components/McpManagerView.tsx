@@ -10,6 +10,7 @@ export const McpManagerView: React.FC = () => {
     serverStatuses,
     jsonError,
     isSaving,
+    reloadingServers,
     saveMessage,
     expandedServers,
     isConfigEditorOpen,
@@ -17,6 +18,7 @@ export const McpManagerView: React.FC = () => {
     handleConfigChange,
     handleSave,
     handleDeleteServer,
+    handleReloadServer,
     toggleServerExpanded,
     handleAddMcpCard
   } = useMcpManager()
@@ -24,7 +26,12 @@ export const McpManagerView: React.FC = () => {
   return (
     <div className="mcp-layout">
       <div className="mcp-servers-column">
-        <span className="settings-label">连接状态 / 服务列表</span>
+        <div className="mcp-servers-header">
+          <span className="settings-label">连接状态 / 服务列表</span>
+          {saveMessage && !isConfigEditorOpen && (
+            <span className={`mcp-save-status ${saveMessage.type}`}>{saveMessage.text}</span>
+          )}
+        </div>
 
         <div className="mcp-servers-list">
           <button type="button" className="mcp-server-card mcp-add-card" onClick={handleAddMcpCard}>
@@ -40,7 +47,9 @@ export const McpManagerView: React.FC = () => {
               key={server.name}
               server={server}
               isExpanded={!!expandedServers[server.name]}
+              isReloading={!!reloadingServers[server.name]}
               onToggleExpanded={toggleServerExpanded}
+              onReloadServer={(name) => void handleReloadServer(name)}
               onDeleteServer={(name) => void handleDeleteServer(name)}
             />
           ))}

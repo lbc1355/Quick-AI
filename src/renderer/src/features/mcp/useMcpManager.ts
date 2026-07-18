@@ -30,6 +30,7 @@ export function useMcpManager(): {
   serverStatuses: McpServerStatus[]
   jsonError: string | null
   isSaving: boolean
+  reloadingServers: Record<string, boolean>
   saveMessage: McpSaveMessage | null
   expandedServers: Record<string, boolean>
   isConfigEditorOpen: boolean
@@ -37,6 +38,7 @@ export function useMcpManager(): {
   handleConfigChange: (text: string) => void
   handleSave: () => Promise<void>
   handleDeleteServer: (name: string) => Promise<void>
+  handleReloadServer: (name: string) => Promise<void>
   toggleServerExpanded: (name: string) => void
   handleAddMcpCard: () => void
 } {
@@ -44,9 +46,12 @@ export function useMcpManager(): {
   const [serverStatuses, setServerStatuses] = useState<McpServerStatus[]>([])
   const [jsonError, setJsonError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState<boolean>(false)
+  const [reloadingServers, setReloadingServers] = useState<Record<string, boolean>>({})
   const [saveMessage, setSaveMessage] = useState<McpSaveMessage | null>(null)
   const [expandedServers, setExpandedServers] = useState<Record<string, boolean>>({})
   const [isConfigEditorOpen, setIsConfigEditorOpen] = useState(false)
+
+  const hasReloadingServers = Object.values(reloadingServers).some(Boolean)
 
   const loadData = useCallback(async (): Promise<void> => {
     try {
@@ -58,13 +63,15 @@ export function useMcpManager(): {
   }, [])
 
   const pollStatus = useCallback(async (): Promise<void> => {
+    if (isSaving || hasReloadingServers) return
+
     try {
       const statuses = await window.api.mcpGetStatus()
       setServerStatuses(statuses)
     } catch (err) {
       console.error('Failed to poll MCP status:', err)
     }
-  }, [])
+  }, [hasReloadingServers, isSaving])
 
   const refreshAfterReload = useCallback((): void => {
     window.setTimeout(async () => {
@@ -155,6 +162,63 @@ export function useMcpManager(): {
     setIsConfigEditorOpen(true)
   }, [])
 
+  const handleReloadServer = useCallback(
+    async (name: string): Promise<void> => {
+      if (reloadingServers[name] || isSaving) return
+
+      setReloadingServers((prev) => ({ ...prev, [name]: true }))
+      setSaveMessage(null)
+      setServerStatuses((prev) =>
+        prev.map((server) =>
+          server.name === name
+            ? { ...server, status: 'connecting', error: undefined, tools: [] }
+            : server
+        )
+      )
+
+      try {
+        const status = await window.api.mcpReloadServer(name)
+        setServerStatuses((prev) => {
+          const exists = prev.some((server) => server.name === name)
+          if (!exists) return [...prev, status]
+          return prev.map((server) => (server.name === name ? status : server))
+        })
+
+        if (status.status === 'failed') {
+          setSaveMessage({
+            text: `服务 "${name}" 重连失败`,
+            type: 'error'
+          })
+        } else if (status.status === 'disabled') {
+          setSaveMessage({
+            text: `服务 "${name}" 已禁用`,
+            type: 'success'
+          })
+        } else {
+          setSaveMessage({
+            text: `服务 "${name}" 已重新连接`,
+            type: 'success'
+          })
+        }
+      } catch (err) {
+        setSaveMessage({ text: `重连失败: ${(err as Error).message}`, type: 'error' })
+        try {
+          const statuses = await window.api.mcpGetStatus()
+          setServerStatuses(statuses)
+        } catch {
+          // Keep optimistic connecting state if status poll also fails.
+        }
+      } finally {
+        setReloadingServers((prev) => {
+          const next = { ...prev }
+          delete next[name]
+          return next
+        })
+      }
+    },
+    [isSaving, reloadingServers]
+  )
+
   useEffect(() => {
     const initialTimer = window.setTimeout(() => {
       void loadData()
@@ -175,6 +239,7 @@ export function useMcpManager(): {
     serverStatuses,
     jsonError,
     isSaving,
+    reloadingServers,
     saveMessage,
     expandedServers,
     isConfigEditorOpen,
@@ -182,6 +247,7 @@ export function useMcpManager(): {
     handleConfigChange,
     handleSave,
     handleDeleteServer,
+    handleReloadServer,
     toggleServerExpanded,
     handleAddMcpCard
   }

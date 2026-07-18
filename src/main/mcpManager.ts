@@ -320,6 +320,72 @@ class McpManagerImpl {
     logger.info('MCP', 'MCP servers reload completed.')
   }
 
+  async reloadServer(name: string): Promise<McpServerStatus> {
+    if (!name.trim()) {
+      throw new Error('MCP server name cannot be empty')
+    }
+
+    logger.info('MCP', `Reloading MCP server "${name}"...`)
+
+    let config: McpConfig
+    try {
+      const content = this.readConfigRaw()
+      config = JSON.parse(content)
+    } catch (err) {
+      throw new Error(`Failed to parse mcp.json: ${(err as Error).message}`)
+    }
+
+    const serversMap: Record<string, McpServerConfig> = {
+      ...(config.mcpServers || {}),
+      ...(config.servers || {})
+    }
+    const srvConfig = serversMap[name]
+    if (!srvConfig) {
+      throw new Error(`MCP server "${name}" was not found in mcp.json`)
+    }
+
+    await this.cleanupServer(name)
+
+    const isDisabled = srvConfig.disabled === true || srvConfig.enabled === false
+    if (isDisabled) {
+      const status: McpServerStatus = {
+        name,
+        status: 'disabled',
+        tools: []
+      }
+      this.statuses.set(name, status)
+      logger.info('MCP', `Server "${name}" is disabled, skipping reconnect.`)
+      return status
+    }
+
+    this.statuses.set(name, {
+      name,
+      status: 'connecting',
+      tools: []
+    })
+
+    try {
+      await this.connectServer(name, srvConfig, config.timeouts || {})
+    } catch (err) {
+      const errorMsg = (err as Error).message || String(err)
+      const status: McpServerStatus = {
+        name,
+        status: 'failed',
+        error: errorMsg,
+        tools: []
+      }
+      this.statuses.set(name, status)
+      logger.error('MCP', `Failed to reload server "${name}": ${errorMsg}`)
+      return status
+    }
+
+    const status = this.statuses.get(name)
+    if (!status) {
+      throw new Error(`MCP server "${name}" status missing after reload`)
+    }
+    return status
+  }
+
   private async connectServer(
     name: string,
     srvConfig: McpServerConfig,
