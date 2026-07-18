@@ -24,7 +24,10 @@ import {
   SessionPromptAdmission,
   AgentFileRevertPreview,
   RevertAgentFileChangesInput,
-  RevertAgentFileChangesResult
+  RevertAgentFileChangesResult,
+  SessionFileTransitionInput,
+  SessionFileTransitionPreview,
+  SessionFileTransitionResult
 } from '../shared/types'
 
 interface BackgroundShellInfo {
@@ -109,6 +112,14 @@ const api = {
     input: RevertAgentFileChangesInput
   ): Promise<RevertAgentFileChangesResult> =>
     ipcRenderer.invoke('revert-agent-file-changes', input),
+  previewSessionFileTransition: (
+    input: SessionFileTransitionInput
+  ): Promise<SessionFileTransitionPreview> =>
+    ipcRenderer.invoke('preview-session-file-transition', input),
+  applySessionFileTransition: (
+    input: SessionFileTransitionInput
+  ): Promise<SessionFileTransitionResult> =>
+    ipcRenderer.invoke('apply-session-file-transition', input),
   clearSessionCaches: (payload: ClearSessionCachesPayload): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke('clear-session-caches', payload),
   forkSessionCaches: (

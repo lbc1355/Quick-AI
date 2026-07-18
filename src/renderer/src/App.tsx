@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useTransition } from 'react'
-import { MessageSquare, GitBranch, Paperclip, ArrowDown } from 'lucide-react'
+import { MessageSquare, GitBranch, Paperclip, ArrowDown, History } from 'lucide-react'
 
 import type {
   AutocompleteItem,
@@ -8,15 +8,17 @@ import type {
   Message,
   Project,
   Session,
+  SessionFileTransitionPreview,
   WindowState
 } from '../../shared/types'
 import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
 import { AgentFileRevertModal } from './components/AgentFileRevertModal'
+import { SessionRevertModal } from './components/SessionRevertModal'
 import { SubagentRunPanel } from './components/SubagentRunPanel'
 import { SettingsView } from './components/SettingsView'
 
-import { useSessions } from './hooks/useSessions'
+import { computeResourcePrune, useSessions } from './hooks/useSessions'
 import { useAttachments } from './hooks/useAttachments'
 import { useAutocomplete } from './hooks/useAutocomplete'
 import { useChatCompletion } from './hooks/useChatCompletion'
@@ -52,6 +54,11 @@ import { useVirtualizedMessages, VIRTUAL_MESSAGE_GAP } from './features/chat/use
 import { parseSubagentRuns } from './features/chat/useAgentMessageViewModel'
 import { useToast } from './contexts/ToastContext'
 import { advanceSessionContextEpoch, getSessionContextEpoch } from '../../shared/contextEpoch'
+import {
+  collectMessageRunIds,
+  prepareSessionRevert,
+  restoreSessionRevert
+} from './features/chat/sessionRevertService'
 
 const EMPTY_MESSAGES: Message[] = []
 
@@ -144,6 +151,13 @@ function App(): React.JSX.Element {
     messageId: string
   } | null>(null)
   const [isApplyingFileRevert, setIsApplyingFileRevert] = useState(false)
+  const [sessionRevertDialog, setSessionRevertDialog] = useState<{
+    mode: 'revert' | 'restore'
+    preview: SessionFileTransitionPreview
+    boundaryMessageId: string
+    messageCount: number
+  } | null>(null)
+  const [isApplyingSessionRevert, setIsApplyingSessionRevert] = useState(false)
   const toast = useToast()
 
   // 1. Settings (providers + skills) from context. App only pulls the fields it needs itself for
@@ -212,6 +226,10 @@ function App(): React.JSX.Element {
     draftSession,
     setDraftSession
   } = useSessions()
+  useEffect(() => {
+    setFileRevertDialog(null)
+    setSessionRevertDialog(null)
+  }, [activeSessionId])
   const [sessionFamilyRootId, setSessionFamilyRootId] = useState<string | null>(null)
   const [dismissedSessionFamilyViewForId, setDismissedSessionFamilyViewForId] = useState<
     string | null
@@ -413,6 +431,155 @@ function App(): React.JSX.Element {
       toast.error(`撤销文件修改失败：${(error as Error).message}`)
     } finally {
       setIsApplyingFileRevert(false)
+    }
+  })
+  const handleOpenSessionRevert = useStableEvent(async (message: Message): Promise<void> => {
+    if (isGenerating) return
+    const session = sessionsRef.current.find((candidate) => candidate.id === activeSessionId)
+    if (!session || session.revert) return
+    const boundaryIndex = session.messages.findIndex((candidate) => candidate.id === message.id)
+    if (boundaryIndex < 0) return
+    const revertedMessages = session.messages.slice(boundaryIndex + 1)
+    if (revertedMessages.length === 0) {
+      toast.info('该消息已经是当前会话的最后一条消息。')
+      return
+    }
+    const runIds = collectMessageRunIds(revertedMessages)
+    try {
+      const preview = await window.api.previewSessionFileTransition({
+        sessionId: session.id,
+        runIds,
+        direction: 'revert'
+      })
+      if (!preview.available) {
+        toast.error(preview.reason || '无法预览会话回退。')
+        return
+      }
+      setSessionRevertDialog({
+        mode: 'revert',
+        preview,
+        boundaryMessageId: message.id,
+        messageCount: revertedMessages.length
+      })
+    } catch (error) {
+      toast.error(`读取会话回退预览失败：${(error as Error).message}`)
+    }
+  })
+  const handleOpenSessionRestore = useStableEvent(async (): Promise<void> => {
+    if (isGenerating) return
+    const session = sessionsRef.current.find((candidate) => candidate.id === activeSessionId)
+    if (!session?.revert) return
+    try {
+      const preview = await window.api.previewSessionFileTransition({
+        sessionId: session.id,
+        runIds: session.revert.runIds,
+        direction: 'restore',
+        restorePoint: session.revert.fileRestorePoint
+      })
+      if (!preview.available) {
+        toast.error(preview.reason || '无法预览会话恢复。')
+        return
+      }
+      setSessionRevertDialog({
+        mode: 'restore',
+        preview,
+        boundaryMessageId: session.revert.boundaryMessageId,
+        messageCount: session.revert.revertedMessages.length
+      })
+    } catch (error) {
+      toast.error(`读取会话恢复预览失败：${(error as Error).message}`)
+    }
+  })
+  const handleConfirmSessionRevert = useStableEvent(async (): Promise<void> => {
+    if (!sessionRevertDialog || isApplyingSessionRevert || isGenerating) return
+    setIsApplyingSessionRevert(true)
+    try {
+      const dialog = sessionRevertDialog
+      const sourceSession = sessionsRef.current.find(
+        (session) => session.id === dialog.preview.sessionId
+      )
+      if (!sourceSession) throw new Error('会话不存在')
+
+      let targetSession: Session
+      if (dialog.mode === 'revert') {
+        const otherSessions = sessionsRef.current.filter(
+          (session) => session.id !== sourceSession.id
+        )
+        const { keptResources } = computeResourcePrune(
+          sourceSession,
+          otherSessions,
+          dialog.preview.runIds
+        )
+        targetSession = prepareSessionRevert({
+          session: sourceSession,
+          boundaryMessageId: dialog.boundaryMessageId,
+          keptResources,
+          now: Date.now()
+        })
+      } else {
+        targetSession = restoreSessionRevert(sourceSession, Date.now())
+      }
+
+      const result = await window.api.applySessionFileTransition({
+        sessionId: dialog.preview.sessionId,
+        runIds: dialog.preview.runIds,
+        direction: dialog.mode,
+        restorePoint:
+          dialog.mode === 'restore' ? sourceSession.revert?.fileRestorePoint : undefined,
+        force: dialog.preview.conflicts.length > 0
+      })
+      if (!result.ok) {
+        if (result.conflicts.length > 0) {
+          const refreshed = await window.api.previewSessionFileTransition({
+            sessionId: dialog.preview.sessionId,
+            runIds: dialog.preview.runIds,
+            direction: dialog.mode,
+            restorePoint:
+              dialog.mode === 'restore' ? sourceSession.revert?.fileRestorePoint : undefined
+          })
+          if (refreshed.available) {
+            setSessionRevertDialog({ ...dialog, preview: refreshed })
+          }
+          toast.warning(result.error || '检测到新的文件冲突，请重新确认。')
+        } else {
+          toast.error(result.error || '会话文件状态转换失败。')
+        }
+        return
+      }
+
+      if (dialog.mode === 'revert' && targetSession.revert) {
+        targetSession = {
+          ...targetSession,
+          revert: { ...targetSession.revert, fileRestorePoint: result.restorePoint }
+        }
+      }
+
+      const nextSessions = sessionsRef.current.map((session) =>
+        session.id === targetSession.id ? targetSession : session
+      )
+      sessionsRef.current = nextSessions
+      setSessions(nextSessions)
+      window.api.advanceSessionContext(targetSession.id, getSessionContextEpoch(targetSession))
+      setSessionRevertDialog(null)
+      try {
+        await window.api.storeSet('sessions', nextSessions)
+      } catch (error) {
+        toast.warning(
+          `会话已${dialog.mode === 'revert' ? '回退' : '恢复'}，但持久化失败：${(error as Error).message}`
+        )
+        return
+      }
+      if (dialog.mode === 'revert') {
+        toast.success(`已暂存回退 ${dialog.messageCount} 条消息，可随时恢复。`)
+      } else {
+        toast.success(`已恢复 ${dialog.messageCount} 条消息。`)
+      }
+    } catch (error) {
+      toast.error(
+        `会话${sessionRevertDialog.mode === 'revert' ? '回退' : '恢复'}失败：${(error as Error).message}`
+      )
+    } finally {
+      setIsApplyingSessionRevert(false)
     }
   })
   const activeSubagentRoutePanel = useMemo(() => {
@@ -1009,6 +1176,12 @@ function App(): React.JSX.Element {
                         onRegenerate={handleRegenerate}
                         onResumeAgentRun={handleResumeAgentRun}
                         onRevertAgentFiles={handleOpenAgentFileRevert}
+                        canRevertSession={
+                          !activeSession?.revert &&
+                          !isCurrentSessionGenerating &&
+                          idx < activeMessages.length - 1
+                        }
+                        onRevertSession={handleOpenSessionRevert}
                         onOpenBranch={(sessionId) => openSession(sessionId)}
                         onOpenSubagent={handleOpenSubagentRoute}
                         onChangeEditingText={setEditingText}
@@ -1076,6 +1249,25 @@ function App(): React.JSX.Element {
               <UserChoicePopup request={pendingUserChoice} onRespond={handleUserChoiceResponse} />
             )}
 
+            {activeSession?.revert && !activeSubagentRoutePanel && (
+              <div className="session-revert-dock" role="status">
+                <div className="session-revert-dock-copy">
+                  <History size={14} />
+                  <span>
+                    已暂存回退 {activeSession.revert.revertedMessages.length}{' '}
+                    条消息；继续对话将提交回退。
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleOpenSessionRestore}
+                  disabled={isCurrentSessionGenerating}
+                >
+                  恢复
+                </button>
+              </div>
+            )}
+
             <ChatInputArea
               autocompleteItems={autocompleteItems}
               autocompleteGroups={autocompleteGroups}
@@ -1125,6 +1317,19 @@ function App(): React.JSX.Element {
             if (!isApplyingFileRevert) setFileRevertDialog(null)
           }}
           onConfirm={handleConfirmAgentFileRevert}
+        />
+      )}
+
+      {sessionRevertDialog && (
+        <SessionRevertModal
+          mode={sessionRevertDialog.mode}
+          preview={sessionRevertDialog.preview}
+          messageCount={sessionRevertDialog.messageCount}
+          isApplying={isApplyingSessionRevert}
+          onClose={() => {
+            if (!isApplyingSessionRevert) setSessionRevertDialog(null)
+          }}
+          onConfirm={handleConfirmSessionRevert}
         />
       )}
 

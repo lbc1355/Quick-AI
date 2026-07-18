@@ -38,6 +38,16 @@ describe('planSessionPersist / computeSessionHash', () => {
 
     const advanced = makeSession('a', { contextEpoch: 1 })
     expect(computeSessionHash(advanced)).not.toBe(computeSessionHash(a))
+
+    const reverted = makeSession('a', {
+      revert: {
+        boundaryMessageId: 'a-m1',
+        revertedMessages: [{ id: 'a-m2', role: 'assistant', content: 'hidden' }],
+        runIds: [],
+        revertedAt: 10
+      }
+    })
+    expect(computeSessionHash(reverted)).not.toBe(computeSessionHash(a))
   })
 
   it('treats missing and falsy-optional fields as canonically equal', () => {
@@ -202,5 +212,28 @@ describeWithSqlite('saveSessions incremental persistence', () => {
     expect(found).toBeDefined()
     expect(found!.messages).toHaveLength(1)
     expect(found!.messages[0].errorPayload).toEqual(errorPayload)
+  })
+
+  it('round-trips a staged session rollback with recoverable messages', () => {
+    const session = makeSession('reverted', {
+      contextEpoch: 2,
+      revert: {
+        boundaryMessageId: 'reverted-m1',
+        revertedMessages: [
+          { id: 'reverted-m2', role: 'assistant', content: 'recover me', agentRunId: 'run-2' }
+        ],
+        runIds: ['run-2'],
+        fileRestorePoint: {
+          projectRoot: 'D:\\project',
+          tree: 'a'.repeat(40),
+          paths: ['file.txt']
+        },
+        revertedAt: 123
+      }
+    })
+    saveSessions([session])
+    closeDb()
+
+    expect(loadSessions()[0].revert).toEqual(session.revert)
   })
 })

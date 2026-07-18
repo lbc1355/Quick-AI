@@ -247,6 +247,8 @@ interface MessageBubbleProps {
   onRegenerate: (idx: number) => void
   onResumeAgentRun: (idx: number) => void
   onRevertAgentFiles?: (msg: Message) => void
+  canRevertSession?: boolean
+  onRevertSession?: (msg: Message) => void
   onOpenBranch: (sessionId: string) => void
   onOpenSubagent?: (messageId: string, subagentId: string) => void
   onChangeEditingText: (text: string) => void
@@ -266,6 +268,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onRegenerate,
     onResumeAgentRun,
     onRevertAgentFiles,
+    canRevertSession = false,
+    onRevertSession,
     onOpenBranch,
     onOpenSubagent,
     onChangeEditingText
@@ -814,6 +818,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       onRegenerate={() => onRegenerate(idx)}
                       onResume={() => onResumeAgentRun(idx)}
                       canRevertFiles={false}
+                      canRevertSession={canRevertSession}
+                      onRevertSession={() => onRevertSession?.(msg)}
                     />
                   ) : (
                     <MessageActions
@@ -835,6 +841,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       }
                       filesReverted={!!fileChangesEvent?.revertedAt}
                       onRevertFiles={() => onRevertAgentFiles?.(msg)}
+                      canRevertSession={canRevertSession}
+                      onRevertSession={() => onRevertSession?.(msg)}
                     />
                   )}
                 </>
@@ -867,6 +875,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     if (Boolean(prevProps.onOpenSubagent) !== Boolean(nextProps.onOpenSubagent)) return false
     if (Boolean(prevProps.onRevertAgentFiles) !== Boolean(nextProps.onRevertAgentFiles))
       return false
+    if (prevProps.canRevertSession !== nextProps.canRevertSession) return false
+    if (Boolean(prevProps.onRevertSession) !== Boolean(nextProps.onRevertSession)) return false
     for (let i = 0; i < prevBranches.length; i += 1) {
       if (
         prevBranches[i].sessionId !== nextBranches[i].sessionId ||

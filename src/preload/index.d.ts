@@ -23,7 +23,10 @@ import {
   SessionPromptAdmission,
   AgentFileRevertPreview,
   RevertAgentFileChangesInput,
-  RevertAgentFileChangesResult
+  RevertAgentFileChangesResult,
+  SessionFileTransitionInput,
+  SessionFileTransitionPreview,
+  SessionFileTransitionResult
 } from '../shared/types'
 
 declare global {
@@ -76,6 +79,12 @@ declare global {
       revertAgentFileChanges: (
         input: RevertAgentFileChangesInput
       ) => Promise<RevertAgentFileChangesResult>
+      previewSessionFileTransition: (
+        input: SessionFileTransitionInput
+      ) => Promise<SessionFileTransitionPreview>
+      applySessionFileTransition: (
+        input: SessionFileTransitionInput
+      ) => Promise<SessionFileTransitionResult>
       clearSessionCaches: (payload: ClearSessionCachesPayload) => Promise<{ ok: boolean }>
       forkSessionCaches: (payload: ForkSessionCachesPayload) => Promise<{
         ok: boolean

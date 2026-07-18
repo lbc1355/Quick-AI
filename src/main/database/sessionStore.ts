@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { Message, Session } from '../../shared/types'
+import { Message, Session, SessionRevertState } from '../../shared/types'
 import { compactAgentEvents } from '../../shared/agentEventCompactor'
 import { loadSessionAgentEventJournals } from '../agent/agentEventJournal'
 import { mergeAgentEventJournalsIntoSessions } from '../agent/agentEventRecovery'
@@ -11,7 +11,7 @@ export function loadSessions(): Session[] {
 
   const sessionRows = database
     .prepare(
-      'SELECT id, title, lastActiveTime, contextEpoch, projectId, branchOf FROM sessions ORDER BY lastActiveTime DESC'
+      'SELECT id, title, lastActiveTime, contextEpoch, projectId, branchOf, revertState FROM sessions ORDER BY lastActiveTime DESC'
     )
     .all() as Array<{
     id: string
@@ -20,6 +20,7 @@ export function loadSessions(): Session[] {
     contextEpoch: number
     projectId: string | null
     branchOf: string | null
+    revertState: string | null
   }>
 
   // Bulk-load every message and file in two queries, then group in memory. The previous
@@ -122,10 +123,29 @@ export function loadSessions(): Session[] {
     contextEpoch: normalizeContextEpoch(s.contextEpoch),
     projectId: s.projectId || undefined,
     branchOf: parseBranchRef(s.branchOf),
+    revert: parseSessionRevertState(s.revertState),
     messages: messagesBySession.get(s.id) || []
   }))
   const eventJournals = sessions.flatMap((session) => loadSessionAgentEventJournals(session.id))
   return mergeAgentEventJournalsIntoSessions(sessions, eventJournals)
+}
+
+function parseSessionRevertState(value: string | null): SessionRevertState | undefined {
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value) as Partial<SessionRevertState>
+    if (
+      typeof parsed.boundaryMessageId !== 'string' ||
+      !Array.isArray(parsed.revertedMessages) ||
+      !Array.isArray(parsed.runIds) ||
+      typeof parsed.revertedAt !== 'number'
+    ) {
+      return undefined
+    }
+    return parsed as SessionRevertState
+  } catch {
+    return undefined
+  }
 }
 
 /** Parse a JSON-serialised branch reference column back into its typed shape (null/garbage → undefined). */
@@ -184,6 +204,7 @@ export function computeSessionHash(session: Session): string {
     contextEpoch: normalizeContextEpoch(session.contextEpoch),
     projectId: session.projectId || null,
     branchOf: session.branchOf ?? null,
+    revert: session.revert ?? null,
     messages: (session.messages ?? []).map((m) => ({
       id: m.id,
       role: m.role,
@@ -251,7 +272,7 @@ export function saveSessions(sessions: Session[]): void {
   if (plan.upserts.length === 0 && plan.deleteIds.length === 0) return
 
   const insertSession = database.prepare(
-    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, contextEpoch, projectId, branchOf, contentHash) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, contextEpoch, projectId, branchOf, revertState, contentHash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   )
   const deleteSession = database.prepare('DELETE FROM sessions WHERE id = ?')
   const deleteMessages = database.prepare('DELETE FROM messages WHERE sessionId = ?')
@@ -280,6 +301,7 @@ export function saveSessions(sessions: Session[]): void {
         normalizeContextEpoch(session.contextEpoch),
         session.projectId || null,
         session.branchOf ? JSON.stringify(session.branchOf) : null,
+        session.revert ? JSON.stringify(session.revert) : null,
         hash
       )
 

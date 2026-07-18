@@ -159,6 +159,8 @@ describe('IPC Registration Modules', () => {
     expect(mockHandlers['compact-context']).toBeDefined()
     expect(mockHandlers['preview-agent-file-revert']).toBeDefined()
     expect(mockHandlers['revert-agent-file-changes']).toBeDefined()
+    expect(mockHandlers['preview-session-file-transition']).toBeDefined()
+    expect(mockHandlers['apply-session-file-transition']).toBeDefined()
   })
 
   it('registerBackgroundShellIpc registers background shell management channels', () => {

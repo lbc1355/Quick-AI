@@ -2019,6 +2019,61 @@ body {
   border-top: 0;
 }
 
+.session-revert-dock {
+  max-width: 960px;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 auto 8px;
+  padding: 7px 9px 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 34%, #333333);
+  border-radius: var(--rounded-md);
+  background: color-mix(in srgb, var(--color-primary) 8%, #202020);
+  color: #aeb7c4;
+  font-size: 11.5px;
+}
+
+.session-revert-dock-copy {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.session-revert-dock-copy svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.session-revert-dock-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-revert-dock button {
+  min-height: 24px;
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 55%, #333333);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.session-revert-dock button:hover {
+  background: color-mix(in srgb, var(--color-primary) 13%, transparent);
+}
+
+.session-revert-dock button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .skills-menu {
   left: 34px;
   right: 34px;
@@ -3268,6 +3323,12 @@ body {
 .app-container.theme-light .input-container:focus-within {
   border-color: #a7a29a;
   box-shadow: 0 0 0 2px rgba(63, 61, 57, 0.08);
+}
+
+.app-container.theme-light .session-revert-dock {
+  border-color: color-mix(in srgb, var(--color-primary) 32%, #deded9);
+  background: color-mix(in srgb, var(--color-primary) 6%, #ffffff);
+  color: #66645e;
 }
 
 .app-container.theme-light .chat-input {

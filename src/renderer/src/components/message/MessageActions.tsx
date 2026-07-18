@@ -1,5 +1,5 @@
 import React from 'react'
-import { Check, Copy, Edit, Play, RefreshCw, Undo2 } from 'lucide-react'
+import { Check, Copy, Edit, History, Play, RefreshCw, Undo2 } from 'lucide-react'
 
 interface MessageActionsProps {
   align?: 'flex-start' | 'flex-end'
@@ -7,6 +7,7 @@ interface MessageActionsProps {
   canRegenerate: boolean
   canResume: boolean
   canRevertFiles?: boolean
+  canRevertSession?: boolean
   filesReverted?: boolean
   canCopy?: boolean
   copied: boolean
@@ -15,6 +16,7 @@ interface MessageActionsProps {
   onRegenerate: () => void
   onResume: () => void
   onRevertFiles?: () => void
+  onRevertSession?: () => void
 }
 
 export const MessageActions: React.FC<MessageActionsProps> = ({
@@ -23,6 +25,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   canRegenerate,
   canResume,
   canRevertFiles = false,
+  canRevertSession = false,
   filesReverted = false,
   canCopy = false,
   copied,
@@ -30,9 +33,11 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onEdit,
   onRegenerate,
   onResume,
-  onRevertFiles
+  onRevertFiles,
+  onRevertSession
 }) => {
-  if (!canEdit && !canRegenerate && !canResume && !canCopy && !canRevertFiles) return null
+  if (!canEdit && !canRegenerate && !canResume && !canCopy && !canRevertFiles && !canRevertSession)
+    return null
 
   return (
     <div className="message-actions" style={{ justifyContent: align }}>
@@ -63,6 +68,16 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         >
           {filesReverted ? <Check size={10} /> : <Undo2 size={10} />}
           <span>{filesReverted ? '已撤销文件' : '撤销文件修改'}</span>
+        </button>
+      )}
+      {canRevertSession && (
+        <button
+          className="msg-action-btn"
+          onClick={onRevertSession}
+          title="暂存后续消息并把会话回退到此处"
+        >
+          <History size={10} />
+          <span>回退到此处</span>
         </button>
       )}
       {canCopy && (

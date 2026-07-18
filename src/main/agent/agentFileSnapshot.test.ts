@@ -3,8 +3,10 @@ import { existsSync } from 'fs'
 import { mkdir, readFile, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import {
+  applySessionFileTransition,
   beginAgentFileSnapshot,
   previewAgentFileRevert,
+  previewSessionFileTransition,
   revertAgentFileChanges
 } from './agentFileSnapshot'
 import { createRunManifest, loadRunManifest } from './runManifest'
@@ -105,5 +107,95 @@ describe('agentFileSnapshot', () => {
       })
     ).resolves.toMatchObject({ ok: true, conflicts: ['file.txt'] })
     expect(await readFile(join(projectRoot, 'file.txt'), 'utf8')).toBe('before\n')
+  }, 20_000)
+
+  it('reverts and restores several Agent runs as one session transaction', async () => {
+    await writeFile(join(projectRoot, 'file.txt'), 'before\n', 'utf8')
+
+    createManifest('run-a')
+    const first = await beginAgentFileSnapshot({
+      sessionId: 'session-1',
+      runId: 'run-a',
+      projectRoot
+    })
+    await writeFile(join(projectRoot, 'file.txt'), 'after a\n', 'utf8')
+    await writeFile(join(projectRoot, 'a.txt'), 'a\n', 'utf8')
+    await first?.finish()
+
+    createManifest('run-b')
+    const second = await beginAgentFileSnapshot({
+      sessionId: 'session-1',
+      runId: 'run-b',
+      projectRoot
+    })
+    await writeFile(join(projectRoot, 'file.txt'), 'after b\n', 'utf8')
+    await writeFile(join(projectRoot, 'b.txt'), 'b\n', 'utf8')
+    await second?.finish()
+    await writeFile(join(projectRoot, 'file.txt'), 'user state before rollback\n', 'utf8')
+
+    const revertPreview = await previewSessionFileTransition({
+      sessionId: 'session-1',
+      runIds: ['run-a', 'run-b'],
+      direction: 'revert'
+    })
+    expect(revertPreview).toMatchObject({
+      available: true,
+      conflicts: ['file.txt'],
+      alreadyApplied: false
+    })
+    expect(revertPreview.files.map((file) => file.path)).toEqual(['a.txt', 'b.txt', 'file.txt'])
+
+    await expect(
+      applySessionFileTransition({
+        sessionId: 'session-1',
+        runIds: ['run-a', 'run-b'],
+        direction: 'revert'
+      })
+    ).resolves.toMatchObject({ ok: false, conflicts: ['file.txt'] })
+    const revertResult = await applySessionFileTransition({
+      sessionId: 'session-1',
+      runIds: ['run-a', 'run-b'],
+      direction: 'revert',
+      force: true
+    })
+    expect(revertResult).toMatchObject({ ok: true, conflicts: ['file.txt'] })
+    expect(revertResult.restorePoint).toBeDefined()
+    expect(await readFile(join(projectRoot, 'file.txt'), 'utf8')).toBe('before\n')
+    expect(existsSync(join(projectRoot, 'a.txt'))).toBe(false)
+    expect(existsSync(join(projectRoot, 'b.txt'))).toBe(false)
+
+    await writeFile(join(projectRoot, 'file.txt'), 'user edit after rollback\n', 'utf8')
+
+    const restorePreview = await previewSessionFileTransition({
+      sessionId: 'session-1',
+      runIds: ['run-a', 'run-b'],
+      direction: 'restore',
+      restorePoint: revertResult.restorePoint
+    })
+    expect(restorePreview).toMatchObject({ conflicts: ['file.txt'], alreadyApplied: false })
+    await expect(
+      applySessionFileTransition({
+        sessionId: 'session-1',
+        runIds: ['run-a', 'run-b'],
+        direction: 'restore',
+        restorePoint: revertResult.restorePoint
+      })
+    ).resolves.toMatchObject({ ok: false, conflicts: ['file.txt'] })
+    expect(await readFile(join(projectRoot, 'file.txt'), 'utf8')).toBe('user edit after rollback\n')
+    await expect(
+      applySessionFileTransition({
+        sessionId: 'session-1',
+        runIds: ['run-a', 'run-b'],
+        direction: 'restore',
+        restorePoint: revertResult.restorePoint,
+        force: true
+      })
+    ).resolves.toMatchObject({ ok: true, conflicts: ['file.txt'] })
+    expect(await readFile(join(projectRoot, 'file.txt'), 'utf8')).toBe(
+      'user state before rollback\n'
+    )
+    expect(await readFile(join(projectRoot, 'a.txt'), 'utf8')).toBe('a\n')
+    expect(await readFile(join(projectRoot, 'b.txt'), 'utf8')).toBe('b\n')
+    expect(loadRunManifest('session-1', 'run-a')?.fileSnapshot?.revertedAt).toBeUndefined()
   }, 20_000)
 })

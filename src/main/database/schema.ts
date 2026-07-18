@@ -28,7 +28,8 @@ export function createSchema(database: Database.Database): void {
       lastActiveTime INTEGER NOT NULL DEFAULT 0,
       contextEpoch  INTEGER NOT NULL DEFAULT 0,
       projectId      TEXT REFERENCES projects(id) ON DELETE SET NULL,
-      branchOf       TEXT
+      branchOf       TEXT,
+      revertState    TEXT
     );
 
     CREATE TABLE IF NOT EXISTS projects (
@@ -147,6 +148,7 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'sessions', 'branchOf', 'TEXT')
   ensureColumn(database, 'sessions', 'contextEpoch', 'INTEGER NOT NULL DEFAULT 0')
   ensureColumn(database, 'sessions', 'projectId', 'TEXT REFERENCES projects(id) ON DELETE SET NULL')
+  ensureColumn(database, 'sessions', 'revertState', 'TEXT')
   // Per-session content hash used by saveSessions() to skip rewriting unchanged sessions.
   ensureColumn(database, 'sessions', 'contentHash', 'TEXT')
   ensureColumn(database, 'messages', 'forkedFrom', 'TEXT')

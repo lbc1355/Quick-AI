@@ -28,6 +28,7 @@ import {
   applySteeredPromptToSession,
   prepareClaimedPromptRun
 } from '../features/chat/sessionPromptQueue'
+import { commitSessionRevert } from '../features/chat/sessionRevertService'
 
 export {
   isRuntimeErrorAssistantMessage,
@@ -275,6 +276,36 @@ export const useChatCompletion = ({
     })
   }
 
+  const commitStagedSessionRevert = (
+    currentSessions: Session[],
+    sourceSession: Session
+  ): Session => {
+    if (!sourceSession.revert) return sourceSession
+    const committed = commitSessionRevert(sourceSession)
+    const sessionIndex = currentSessions.findIndex((session) => session.id === sourceSession.id)
+    if (sessionIndex >= 0) currentSessions[sessionIndex] = committed.session
+
+    const otherSessions = currentSessions.filter((session) => session.id !== sourceSession.id)
+    const { deletableIds } = computeResourcePrune(
+      { ...committed.session, resources: committed.originalResources },
+      otherSessions,
+      committed.committedRunIds
+    )
+    if (committed.committedRunIds.length > 0 || deletableIds.length > 0) {
+      void window.api
+        .clearSessionCaches({
+          sessionIds: [],
+          resourceIds: deletableIds,
+          partialActions:
+            committed.committedRunIds.length > 0
+              ? [{ sessionId: sourceSession.id, runIds: committed.committedRunIds }]
+              : undefined
+        })
+        .catch(console.warn)
+    }
+    return committed.session
+  }
+
   // Persist the full in-memory snapshot after a run finishes. Branch relationships are spread
   // across sessions, so persisting only one session can lose newly-created branch metadata.
   const persistActiveSession = (sessionId = activeSessionId): void => {
@@ -351,16 +382,19 @@ export const useChatCompletion = ({
 * \`/history:会话名\` - 加载历史对话
 * \`/delete:会话名\` - 删除历史对话`
     }
-    const updated = sessionsRef.current.map((s) => {
-      if (s.id === activeSessionId) {
-        return {
-          ...s,
-          messages: [...s.messages, helpMsg],
-          lastActiveTime: Date.now()
-        }
-      }
-      return s
-    })
+    const updated = sessionsRef.current.map((session) => ({
+      ...session,
+      messages: session.messages.map((message) => ({ ...message }))
+    }))
+    const active = updated.find((session) => session.id === activeSessionId)
+    if (!active) return
+    const committed = commitStagedSessionRevert(updated, active)
+    const committedIndex = updated.findIndex((session) => session.id === committed.id)
+    updated[committedIndex] = {
+      ...committed,
+      messages: [...committed.messages, helpMsg],
+      lastActiveTime: Date.now()
+    }
     setSessions(updated)
     sessionsRef.current = updated
     await window.api.storeSet('sessions', updated)
@@ -380,7 +414,7 @@ export const useChatCompletion = ({
       ...s,
       messages: s.messages.map((m) => ({ ...m }))
     }))
-    const currentSession = currentSessions.find((s) => s.id === activeSessionId)
+    let currentSession = currentSessions.find((s) => s.id === activeSessionId)
     if (!currentSession) return false
 
     if (currentSession.messages.length <= MANUAL_COMPACTION_KEEP_RECENT_MESSAGES + 1) {
@@ -388,6 +422,7 @@ export const useChatCompletion = ({
       setInputVal('')
       return true
     }
+    currentSession = commitStagedSessionRevert(currentSessions, currentSession)
 
     setIsGeneratingLive(true)
     setInputVal('')
@@ -501,11 +536,12 @@ export const useChatCompletion = ({
       activeSessionId,
       draftSessionRef.current
     )
-    const currentSession = resolveResult.session
+    let currentSession = resolveResult.session
     currentSessions = resolveResult.updatedSessions
     if (resolveResult.draftSessionCleared) {
       setDraftSession(null)
     }
+    currentSession = commitStagedSessionRevert(currentSessions, currentSession)
     let targetSession = currentSession
     let sourceMessageId = customMsgId
     let branchOf: { sessionId: string; messageId: string; runId?: string } | undefined
@@ -677,6 +713,7 @@ export const useChatCompletion = ({
     let targetSession = resolveResult.session
     currentSessions = resolveResult.updatedSessions
     if (resolveResult.draftSessionCleared) setDraftSession(null)
+    targetSession = commitStagedSessionRevert(currentSessions, targetSession)
 
     const { sourceMessageId, assistantMessageId } = createMessagePairIds(currentSessions)
     const admissionId = createRunId('prompt-admission-')
@@ -915,11 +952,12 @@ export const useChatCompletion = ({
       activeSessionId,
       draftSessionRef.current
     )
-    const currentSession = resolveResult.session
+    let currentSession = resolveResult.session
     currentSessions = resolveResult.updatedSessions
     if (resolveResult.draftSessionCleared) {
       setDraftSession(null)
     }
+    currentSession = commitStagedSessionRevert(currentSessions, currentSession)
 
     const displayPrompt = `@${skill.trigger}${userInput.trim() ? ` ${userInput.trim()}` : ''}`
     const userMsg: Message = {
@@ -1041,7 +1079,10 @@ export const useChatCompletion = ({
       ...s,
       messages: s.messages.map((m) => ({ ...m }))
     }))
-    const currentSession = currentSessions.find((s) => s.id === activeSessionId)
+    let currentSession = currentSessions.find((s) => s.id === activeSessionId)
+    if (currentSession) {
+      currentSession = commitStagedSessionRevert(currentSessions, currentSession)
+    }
     const failedMsg = currentSession?.messages[msgIdx]
     const resumeFromRunId = failedMsg?.agentRunId
     if (!currentSession || !resumeFromRunId) return

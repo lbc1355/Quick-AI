@@ -156,7 +156,10 @@ export const useSessions = (): UseSessionsReturn => {
     if (target) {
       window.api.advanceSessionContext(target.id, getSessionContextEpoch(target) + 1)
       const survivors = sessions.filter((s) => s.id !== activeSessionId)
-      await clearCachesFor(activeSessionId, computeOrphanResourceIds(target, survivors))
+      const cacheTarget = target.revert?.originalResources
+        ? { ...target, resources: target.revert.originalResources }
+        : target
+      await clearCachesFor(activeSessionId, computeOrphanResourceIds(cacheTarget, survivors))
     }
 
     const updated = sessions.map((s) => {
@@ -166,7 +169,8 @@ export const useSessions = (): UseSessionsReturn => {
           messages: [],
           title: '新对话',
           lastActiveTime: Date.now(),
-          resources: []
+          resources: [],
+          revert: undefined
         }
       }
       return s
@@ -182,7 +186,10 @@ export const useSessions = (): UseSessionsReturn => {
     const target = sessions.find((s) => s.id === targetSessionId)
     if (target) {
       window.api.advanceSessionContext(target.id, getSessionContextEpoch(target) + 1)
-      await clearCachesFor(targetSessionId, computeOrphanResourceIds(target, survivors))
+      const cacheTarget = target.revert?.originalResources
+        ? { ...target, resources: target.revert.originalResources }
+        : target
+      await clearCachesFor(targetSessionId, computeOrphanResourceIds(cacheTarget, survivors))
     }
 
     const updated = sessions.filter((s) => s.id !== targetSessionId)

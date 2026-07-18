@@ -8,9 +8,13 @@ import type {
   AgentFileChangeKind,
   AgentFileRevertPreview,
   RevertAgentFileChangesInput,
-  RevertAgentFileChangesResult
+  RevertAgentFileChangesResult,
+  SessionFileTransitionDirection,
+  SessionFileTransitionInput,
+  SessionFileTransitionPreview,
+  SessionFileTransitionResult
 } from '../../shared/types'
-import { loadRunManifest, updateRunManifest } from './runManifest'
+import { loadRunManifest, updateRunManifest, type AgentRunManifest } from './runManifest'
 
 const MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024
 const MAX_PREVIEW_CHARS = 200_000
@@ -413,6 +417,365 @@ export const revertAgentFileChanges = async (
         restoredFiles: [],
         conflicts: [],
         error: `撤销文件修改失败：${(error as Error).message}`
+      }
+    }
+  })
+}
+
+interface SessionTransitionPathPlan {
+  path: string
+  firstTree: string
+  lastTree: string
+  knownTrees: Set<string>
+}
+
+interface SessionFileTransitionContext {
+  preview: SessionFileTransitionPreview
+  location?: SnapshotLocation
+  currentTree?: string
+  targetGroups: Map<string, string[]>
+  paths: string[]
+}
+
+const normalizeRunIds = (runIds: unknown): string[] =>
+  Array.from(
+    new Set(
+      (Array.isArray(runIds) ? runIds : [])
+        .filter((runId): runId is string => typeof runId === 'string')
+        .map((runId) => runId.trim())
+        .filter(Boolean)
+    )
+  )
+
+const buildUnavailableSessionTransition = (
+  sessionId: string,
+  runIds: string[],
+  direction: SessionFileTransitionDirection,
+  reason: string
+): SessionFileTransitionPreview => ({
+  available: false,
+  reason,
+  sessionId,
+  runIds,
+  direction,
+  files: [],
+  conflicts: [],
+  diff: '',
+  alreadyApplied: false
+})
+
+const buildSessionFileTransitionUnlocked = async (
+  sessionId: string,
+  runIds: string[],
+  direction: SessionFileTransitionDirection,
+  restorePoint?: SessionFileTransitionInput['restorePoint']
+): Promise<SessionFileTransitionContext> => {
+  const snapshots = runIds
+    .map((runId) => ({ runId, snapshot: loadRunManifest(sessionId, runId)?.fileSnapshot }))
+    .filter(
+      (
+        entry
+      ): entry is {
+        runId: string
+        snapshot: NonNullable<AgentRunManifest['fileSnapshot']>
+      } => !!entry.snapshot && entry.snapshot.files.length > 0
+    )
+
+  if (snapshots.length === 0) {
+    return {
+      preview: {
+        available: true,
+        sessionId,
+        runIds,
+        direction,
+        files: [],
+        conflicts: [],
+        diff: '',
+        alreadyApplied: true
+      },
+      targetGroups: new Map(),
+      paths: []
+    }
+  }
+
+  const roots = new Map<string, string>()
+  for (const { snapshot } of snapshots) {
+    const identity =
+      process.platform === 'win32' ? snapshot.projectRoot.toLowerCase() : snapshot.projectRoot
+    roots.set(identity, snapshot.projectRoot)
+  }
+  if (roots.size !== 1) {
+    return {
+      preview: buildUnavailableSessionTransition(
+        sessionId,
+        runIds,
+        direction,
+        '该段会话涉及多个项目目录，暂时无法作为一个事务回退。'
+      ),
+      targetGroups: new Map(),
+      paths: []
+    }
+  }
+
+  const projectRoot = Array.from(roots.values())[0]
+  if (direction === 'restore' && restorePoint) {
+    const left = process.platform === 'win32' ? projectRoot.toLowerCase() : projectRoot
+    const right =
+      process.platform === 'win32'
+        ? restorePoint.projectRoot.toLowerCase()
+        : restorePoint.projectRoot
+    if (left !== right || !/^[a-f0-9]{40,64}$/i.test(restorePoint.tree)) {
+      return {
+        preview: buildUnavailableSessionTransition(
+          sessionId,
+          runIds,
+          direction,
+          '会话文件恢复点无效或不属于当前项目。'
+        ),
+        targetGroups: new Map(),
+        paths: []
+      }
+    }
+  }
+  const current = await captureTreeUnlocked(projectRoot)
+  const pathPlans = new Map<string, SessionTransitionPathPlan>()
+  for (const { snapshot } of snapshots) {
+    for (const file of snapshot.files) {
+      const existing = pathPlans.get(file.path)
+      if (existing) {
+        existing.lastTree = snapshot.endTree
+        existing.knownTrees.add(snapshot.startTree)
+        existing.knownTrees.add(snapshot.endTree)
+      } else {
+        pathPlans.set(file.path, {
+          path: file.path,
+          firstTree: snapshot.startTree,
+          lastTree: snapshot.endTree,
+          knownTrees: new Set([snapshot.startTree, snapshot.endTree])
+        })
+      }
+    }
+  }
+
+  const treeIds = new Set<string>([current.tree])
+  if (direction === 'restore' && restorePoint) treeIds.add(restorePoint.tree)
+  for (const plan of pathPlans.values()) {
+    for (const tree of plan.knownTrees) treeIds.add(tree)
+  }
+  const treeEntryPairs = await Promise.all(
+    Array.from(treeIds).map(
+      async (tree) => [tree, await loadTreeEntries(current.location, tree)] as const
+    )
+  )
+  const entriesByTree = new Map(treeEntryPairs)
+  const currentEntries = entriesByTree.get(current.tree) || new Map<string, TreeEntry>()
+  const targetGroups = new Map<string, string[]>()
+  const conflicts: string[] = []
+  const files: SessionFileTransitionPreview['files'] = []
+
+  for (const plan of Array.from(pathPlans.values()).sort((left, right) =>
+    left.path.localeCompare(right.path)
+  )) {
+    const targetTree = direction === 'revert' ? plan.firstTree : restorePoint?.tree || plan.lastTree
+    const targetEntry = entriesByTree.get(targetTree)?.get(plan.path)
+    const currentEntry = currentEntries.get(plan.path)
+    const startEntry = entriesByTree.get(plan.firstTree)?.get(plan.path)
+    const endEntry = entriesByTree.get(plan.lastTree)?.get(plan.path)
+    if (sameEntry(startEntry, endEntry)) continue
+    const knownTrees =
+      direction === 'restore' && restorePoint
+        ? new Set([...plan.knownTrees, restorePoint.tree])
+        : plan.knownTrees
+    const conflict = !Array.from(knownTrees).some((tree) =>
+      sameEntry(currentEntry, entriesByTree.get(tree)?.get(plan.path))
+    )
+    if (conflict) conflicts.push(plan.path)
+    const kind: AgentFileChangeKind =
+      !startEntry && endEntry ? 'added' : startEntry && !endEntry ? 'deleted' : 'modified'
+    files.push({ path: plan.path, kind, conflict })
+    if (!sameEntry(currentEntry, targetEntry)) {
+      const paths = targetGroups.get(targetTree)
+      if (paths) paths.push(plan.path)
+      else targetGroups.set(targetTree, [plan.path])
+    }
+  }
+
+  const diffParts: string[] = []
+  let diffChars = 0
+  for (const [targetTree, paths] of targetGroups) {
+    for (
+      let offset = 0;
+      offset < paths.length && diffChars <= MAX_PREVIEW_CHARS;
+      offset += CHECKOUT_BATCH_SIZE
+    ) {
+      const batch = paths.slice(offset, offset + CHECKOUT_BATCH_SIZE)
+      const part = await runGit([
+        ...gitContextArgs(current.location),
+        'diff',
+        '--no-ext-diff',
+        '--no-color',
+        '--no-renames',
+        current.tree,
+        targetTree,
+        '--',
+        ...batch
+      ])
+      diffParts.push(part)
+      diffChars += part.length
+    }
+  }
+  const rawDiff = diffParts.join('')
+  const diff =
+    rawDiff.length > MAX_PREVIEW_CHARS
+      ? `${rawDiff.slice(0, MAX_PREVIEW_CHARS)}\n\n[Diff preview truncated]`
+      : rawDiff
+
+  return {
+    preview: {
+      available: true,
+      sessionId,
+      runIds,
+      direction,
+      projectRoot: current.location.projectRoot,
+      files,
+      conflicts,
+      diff,
+      alreadyApplied: targetGroups.size === 0
+    },
+    location: current.location,
+    currentTree: current.tree,
+    targetGroups,
+    paths: files.map((file) => file.path)
+  }
+}
+
+export const previewSessionFileTransition = async (
+  input: SessionFileTransitionInput
+): Promise<SessionFileTransitionPreview> => {
+  const sessionId = String(input.sessionId || '').trim()
+  const runIds = normalizeRunIds(input.runIds)
+  const direction = input.direction
+  if (!sessionId || (direction !== 'revert' && direction !== 'restore')) {
+    return buildUnavailableSessionTransition(
+      sessionId,
+      runIds,
+      direction === 'restore' ? 'restore' : 'revert',
+      '会话或文件转换方向无效。'
+    )
+  }
+  try {
+    const context = await serializeSnapshotOperation(() =>
+      buildSessionFileTransitionUnlocked(sessionId, runIds, direction, input.restorePoint)
+    )
+    return context.preview
+  } catch (error) {
+    return buildUnavailableSessionTransition(
+      sessionId,
+      runIds,
+      direction,
+      `无法读取会话文件快照：${(error as Error).message}`
+    )
+  }
+}
+
+export const applySessionFileTransition = async (
+  input: SessionFileTransitionInput
+): Promise<SessionFileTransitionResult> => {
+  const sessionId = String(input.sessionId || '').trim()
+  const runIds = normalizeRunIds(input.runIds)
+  const direction = input.direction
+  if (!sessionId || (direction !== 'revert' && direction !== 'restore')) {
+    return { ok: false, changedFiles: [], conflicts: [], error: '会话或文件转换方向无效。' }
+  }
+
+  return serializeSnapshotOperation(async () => {
+    try {
+      const context = await buildSessionFileTransitionUnlocked(
+        sessionId,
+        runIds,
+        direction,
+        input.restorePoint
+      )
+      const { preview } = context
+      if (!preview.available) {
+        return { ok: false, changedFiles: [], conflicts: [], error: preview.reason }
+      }
+      const restorePoint =
+        direction === 'revert' && context.location && context.currentTree
+          ? {
+              projectRoot: context.location.projectRoot,
+              tree: context.currentTree,
+              paths: context.paths
+            }
+          : undefined
+      const persistTransitionState = (tree: string | undefined, appliedAt: number): void => {
+        for (const runId of runIds) {
+          updateRunManifest(sessionId, runId, (manifest) => ({
+            ...manifest,
+            fileSnapshot: manifest.fileSnapshot
+              ? {
+                  ...manifest.fileSnapshot,
+                  revertedAt: direction === 'revert' ? appliedAt : undefined,
+                  restoredTree: direction === 'revert' ? tree : undefined
+                }
+              : undefined
+          }))
+        }
+      }
+      if (preview.alreadyApplied) {
+        const appliedAt = Date.now()
+        persistTransitionState(context.currentTree, appliedAt)
+        return {
+          ok: true,
+          changedFiles: [],
+          conflicts: [],
+          alreadyApplied: true,
+          appliedAt,
+          restorePoint
+        }
+      }
+      if (preview.conflicts.length > 0 && input.force !== true) {
+        return {
+          ok: false,
+          changedFiles: [],
+          conflicts: preview.conflicts,
+          error: '部分文件在目标会话之后又被修改，请确认是否覆盖这些后续修改。'
+        }
+      }
+      if (!context.location || !context.currentTree) {
+        return { ok: true, changedFiles: [], conflicts: [], alreadyApplied: true }
+      }
+
+      const changedFiles = Array.from(context.targetGroups.values()).flat()
+      try {
+        for (const [tree, paths] of context.targetGroups) {
+          await applyTreeToPaths(context.location, tree, paths)
+        }
+      } catch (error) {
+        try {
+          await applyTreeToPaths(context.location, context.currentTree, changedFiles)
+        } catch (rollbackError) {
+          console.warn('Failed to roll back an incomplete session file transition:', rollbackError)
+        }
+        throw error
+      }
+
+      const applied = await captureTreeUnlocked(context.location.projectRoot)
+      const appliedAt = Date.now()
+      persistTransitionState(applied.tree, appliedAt)
+      return {
+        ok: true,
+        changedFiles,
+        conflicts: preview.conflicts,
+        appliedAt,
+        restorePoint
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        changedFiles: [],
+        conflicts: [],
+        error: `会话文件${direction === 'revert' ? '回退' : '恢复'}失败：${(error as Error).message}`
       }
     }
   })

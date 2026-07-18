@@ -316,6 +316,15 @@ export interface SessionResource {
   updatedAt: number
 }
 
+export interface SessionRevertState {
+  boundaryMessageId: string
+  revertedMessages: Message[]
+  runIds: string[]
+  originalResources?: SessionResource[]
+  fileRestorePoint?: SessionFileRestorePoint
+  revertedAt: number
+}
+
 export interface Session {
   id: string
   title: string
@@ -326,6 +335,8 @@ export interface Session {
   resources?: SessionResource[]
   projectId?: string
   branchOf?: { sessionId: string; messageId: string; runId?: string }
+  /** Staged session rollback. Messages remain recoverable until a new prompt commits it. */
+  revert?: SessionRevertState
 }
 
 export interface Project {
@@ -689,6 +700,45 @@ export interface RevertAgentFileChangesResult {
   alreadyReverted?: boolean
   error?: string
   revertedAt?: number
+}
+
+export type SessionFileTransitionDirection = 'revert' | 'restore'
+
+export interface SessionFileRestorePoint {
+  projectRoot: string
+  tree: string
+  paths: string[]
+}
+
+export interface SessionFileTransitionInput {
+  sessionId: string
+  runIds: string[]
+  direction: SessionFileTransitionDirection
+  restorePoint?: SessionFileRestorePoint
+  force?: boolean
+}
+
+export interface SessionFileTransitionPreview {
+  available: boolean
+  reason?: string
+  sessionId: string
+  runIds: string[]
+  direction: SessionFileTransitionDirection
+  projectRoot?: string
+  files: Array<AgentFileChange & { conflict: boolean }>
+  conflicts: string[]
+  diff: string
+  alreadyApplied: boolean
+}
+
+export interface SessionFileTransitionResult {
+  ok: boolean
+  changedFiles: string[]
+  conflicts: string[]
+  alreadyApplied?: boolean
+  appliedAt?: number
+  restorePoint?: SessionFileRestorePoint
+  error?: string
 }
 
 export interface McpServerStatus {
