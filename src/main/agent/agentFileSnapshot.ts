@@ -1,7 +1,7 @@
 import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { app } from 'electron'
-import { lstat, mkdir, realpath, rm, rmdir, stat, unlink } from 'fs/promises'
+import { lstat, mkdir, readdir, realpath, rm, rmdir, stat, unlink } from 'fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import type {
   AgentFileChange,
@@ -15,11 +15,21 @@ import type {
   SessionFileTransitionResult
 } from '../../shared/types'
 import { getWorkspaceRoot } from '../paths'
-import { loadRunManifest, updateRunManifest, type AgentRunManifest } from './runManifest'
+import { listSessionFileRestorePoints } from '../database/sessionStore'
+import {
+  listRunManifests,
+  loadRunManifest,
+  updateRunManifest,
+  type AgentRunManifest
+} from './runManifest'
 
 const MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024
 const MAX_PREVIEW_CHARS = 200_000
 const CHECKOUT_BATCH_SIZE = 100
+const MAX_SNAPSHOT_FILE_BYTES = 2 * 1024 * 1024
+const SNAPSHOT_REF_ROOT = 'refs/quickai'
+const SNAPSHOT_PRUNE_AGE = '7.days.ago'
+const PENDING_REF_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 interface SnapshotLocation {
   projectRoot: string
@@ -54,9 +64,9 @@ const serializeSnapshotOperation = async <T>(operation: () => Promise<T>): Promi
   return result
 }
 
-const runGit = (args: string[], cwd?: string): Promise<string> =>
+const runGit = (args: string[], cwd?: string, stdin?: string): Promise<string> =>
   new Promise((resolvePromise, rejectPromise) => {
-    execFile(
+    const child = execFile(
       'git',
       args,
       {
@@ -74,6 +84,7 @@ const runGit = (args: string[], cwd?: string): Promise<string> =>
         resolvePromise(stdout)
       }
     )
+    if (stdin !== undefined) child.stdin?.end(stdin)
   })
 
 const normalizeProjectRoot = async (projectRoot: string): Promise<string> => {
@@ -87,6 +98,38 @@ const getRepositoryDir = (projectRoot: string): string => {
   const identity = process.platform === 'win32' ? projectRoot.toLowerCase() : projectRoot
   const key = createHash('sha256').update(identity).digest('hex')
   return join(app.getPath('userData'), 'agent_file_snapshots', 'repositories', `${key}.git`)
+}
+
+const getRepositoriesRoot = (): string =>
+  join(app.getPath('userData'), 'agent_file_snapshots', 'repositories')
+
+const snapshotRefHash = (...values: string[]): string =>
+  createHash('sha256').update(values.join('\0')).digest('hex').slice(0, 16)
+
+const getRunSnapshotRefBase = (sessionId: string, runId: string): string =>
+  `${SNAPSHOT_REF_ROOT}/runs/${snapshotRefHash(sessionId, runId)}`
+
+const getSessionRestoreRef = (sessionId: string): string =>
+  `${SNAPSHOT_REF_ROOT}/restores/${snapshotRefHash(sessionId)}`
+
+const setSnapshotRef = async (
+  location: Pick<SnapshotLocation, 'repositoryDir'>,
+  ref: string,
+  tree: string
+): Promise<void> => {
+  if (!/^[a-f0-9]{40,64}$/i.test(tree)) throw new Error(`Invalid snapshot tree: ${tree}`)
+  await runGit([`--git-dir=${location.repositoryDir}`, 'update-ref', ref, tree])
+}
+
+const deleteSnapshotRef = async (
+  location: Pick<SnapshotLocation, 'repositoryDir'>,
+  ref: string
+): Promise<void> => {
+  try {
+    await runGit([`--git-dir=${location.repositoryDir}`, 'update-ref', '-d', ref])
+  } catch {
+    // Missing refs are already released.
+  }
 }
 
 const gitContextArgs = (location: SnapshotLocation): string[] => [
@@ -122,6 +165,72 @@ const ensureSnapshotRepository = async (location: SnapshotLocation): Promise<voi
   await runGit([`--git-dir=${location.repositoryDir}`, 'config', 'core.filemode', 'false'])
 }
 
+const snapshotScopePathspecs = [
+  '.',
+  ':(exclude).git',
+  ':(exclude).git/**',
+  ':(exclude,glob)**/.git/**'
+]
+
+const listSnapshotCandidates = async (location: SnapshotLocation): Promise<string[]> => {
+  const output = await runGit([
+    ...gitContextArgs(location),
+    'status',
+    '--porcelain=v1',
+    '--untracked-files=all',
+    '--no-renames',
+    '-z',
+    '--',
+    ...snapshotScopePathspecs
+  ])
+  return Array.from(
+    new Set(
+      output
+        .split('\0')
+        .filter((record) => record.length > 3)
+        .map((record) => record.slice(3))
+    )
+  )
+}
+
+const filterSnapshotCandidates = async (
+  location: SnapshotLocation,
+  candidates: string[]
+): Promise<string[]> => {
+  const allowed: string[] = []
+  const batchSize = 64
+  for (let offset = 0; offset < candidates.length; offset += batchSize) {
+    const batch = candidates.slice(offset, offset + batchSize)
+    const decisions = await Promise.all(
+      batch.map(async (path) => {
+        try {
+          const info = await lstat(join(location.projectRoot, ...path.split('/')))
+          return !info.isFile() || info.size <= MAX_SNAPSHOT_FILE_BYTES
+        } catch (error) {
+          return (error as NodeJS.ErrnoException).code === 'ENOENT'
+        }
+      })
+    )
+    for (let index = 0; index < batch.length; index++) {
+      if (decisions[index]) allowed.push(batch[index])
+    }
+  }
+  return allowed
+}
+
+const stageSnapshotCandidates = async (
+  location: SnapshotLocation,
+  candidates: string[]
+): Promise<void> => {
+  if (candidates.length === 0) return
+  const input = `${candidates.map((path) => `:(top,literal)${path}`).join('\0')}\0`
+  await runGit(
+    [...gitContextArgs(location), 'add', '-A', '--pathspec-from-file=-', '--pathspec-file-nul'],
+    undefined,
+    input
+  )
+}
+
 const captureTreeUnlocked = async (
   projectRoot: string
 ): Promise<{
@@ -134,15 +243,53 @@ const captureTreeUnlocked = async (
     repositoryDir: getRepositoryDir(normalizedRoot)
   }
   await ensureSnapshotRepository(location)
-  const context = gitContextArgs(location)
-  await runGit([...context, 'add', '-A', '--', '.', ':(exclude).git', ':(exclude).git/**'])
-  const tree = (await runGit([...context, 'write-tree'])).trim()
+  const candidates = await listSnapshotCandidates(location)
+  await stageSnapshotCandidates(location, await filterSnapshotCandidates(location, candidates))
+  const tree = (await runGit([...gitContextArgs(location), 'write-tree'])).trim()
   if (!/^[a-f0-9]{40,64}$/i.test(tree)) throw new Error('Git did not return a valid tree id')
   return { location, tree }
 }
 
 const captureTree = (projectRoot: string): Promise<{ location: SnapshotLocation; tree: string }> =>
   serializeSnapshotOperation(() => captureTreeUnlocked(projectRoot))
+
+const protectRunSnapshot = async (
+  location: SnapshotLocation,
+  sessionId: string,
+  runId: string,
+  snapshot: Pick<CompletedAgentFileSnapshot, 'startTree' | 'endTree'> & {
+    restoredTree?: string
+  }
+): Promise<void> => {
+  const base = getRunSnapshotRefBase(sessionId, runId)
+  await setSnapshotRef(location, `${base}/start`, snapshot.startTree)
+  await setSnapshotRef(location, `${base}/end`, snapshot.endTree)
+  if (snapshot.restoredTree) {
+    await setSnapshotRef(location, `${base}/restored`, snapshot.restoredTree)
+  }
+}
+
+const protectSessionRestorePoint = async (
+  location: SnapshotLocation,
+  sessionId: string,
+  tree: string
+): Promise<void> => setSnapshotRef(location, getSessionRestoreRef(sessionId), tree)
+
+const releaseSessionRestorePoint = async (
+  location: SnapshotLocation,
+  sessionId: string
+): Promise<void> => deleteSnapshotRef(location, getSessionRestoreRef(sessionId))
+
+const createPendingSnapshotRef = async (
+  location: SnapshotLocation,
+  sessionId: string,
+  runId: string,
+  tree: string
+): Promise<string> => {
+  const ref = `${SNAPSHOT_REF_ROOT}/pending/${Date.now()}-${snapshotRefHash(sessionId, runId)}`
+  await setSnapshotRef(location, ref, tree)
+  return ref
+}
 
 const loadTreeEntries = async (
   location: SnapshotLocation,
@@ -731,9 +878,23 @@ export const applySessionFileTransition = async (
           }))
         }
       }
+      if (preview.conflicts.length > 0 && input.force !== true) {
+        return {
+          ok: false,
+          changedFiles: [],
+          conflicts: preview.conflicts,
+          error: '部分文件在目标会话之后又被修改，请确认是否覆盖这些后续修改。'
+        }
+      }
+      if (direction === 'revert' && context.location && context.currentTree) {
+        await protectSessionRestorePoint(context.location, sessionId, context.currentTree)
+      }
       if (preview.alreadyApplied) {
         const appliedAt = Date.now()
         persistTransitionState(context.currentTree, appliedAt)
+        if (direction === 'restore' && context.location) {
+          await releaseSessionRestorePoint(context.location, sessionId)
+        }
         return {
           ok: true,
           changedFiles: [],
@@ -741,14 +902,6 @@ export const applySessionFileTransition = async (
           alreadyApplied: true,
           appliedAt,
           restorePoint
-        }
-      }
-      if (preview.conflicts.length > 0 && input.force !== true) {
-        return {
-          ok: false,
-          changedFiles: [],
-          conflicts: preview.conflicts,
-          error: '部分文件在目标会话之后又被修改，请确认是否覆盖这些后续修改。'
         }
       }
       if (!context.location || !context.currentTree) {
@@ -772,6 +925,9 @@ export const applySessionFileTransition = async (
       const applied = await captureTreeUnlocked(context.location.projectRoot)
       const appliedAt = Date.now()
       persistTransitionState(applied.tree, appliedAt)
+      if (direction === 'restore') {
+        await releaseSessionRestorePoint(context.location, sessionId)
+      }
       return {
         ok: true,
         changedFiles,
@@ -790,6 +946,166 @@ export const applySessionFileTransition = async (
   })
 }
 
+export interface AgentFileSnapshotMaintenanceResult {
+  repositories: number
+  protectedRefs: number
+  deletedRefs: number
+  expiredPendingRefs: number
+  errors: number
+}
+
+export interface AgentFileSnapshotMaintenanceOptions {
+  manifests?: AgentRunManifest[]
+  restorePoints?: Array<{
+    sessionId: string
+    restorePoint: { projectRoot: string; tree: string }
+  }>
+  now?: number
+  pruneAge?: string
+}
+
+const repositoryIdentity = (repositoryDir: string): string =>
+  process.platform === 'win32' ? resolve(repositoryDir).toLowerCase() : resolve(repositoryDir)
+
+const addDesiredSnapshotRef = (
+  desired: Map<string, Map<string, string>>,
+  repositoryDir: string,
+  ref: string,
+  tree: string
+): void => {
+  if (!/^[a-f0-9]{40,64}$/i.test(tree)) return
+  const key = repositoryIdentity(repositoryDir)
+  const refs = desired.get(key) || new Map<string, string>()
+  refs.set(ref, tree)
+  desired.set(key, refs)
+}
+
+const listManagedSnapshotRefs = async (repositoryDir: string): Promise<string[]> => {
+  const output = await runGit([
+    `--git-dir=${repositoryDir}`,
+    'for-each-ref',
+    '--format=%(refname)',
+    SNAPSHOT_REF_ROOT
+  ])
+  return output.split(/\r?\n/).filter(Boolean)
+}
+
+const pendingRefCreatedAt = (ref: string): number | undefined => {
+  const match = ref.match(/^refs\/quickai\/pending\/(\d+)-/)
+  if (!match) return undefined
+  const value = Number(match[1])
+  return Number.isFinite(value) ? value : undefined
+}
+
+export const runAgentFileSnapshotMaintenance = async (
+  options: AgentFileSnapshotMaintenanceOptions = {}
+): Promise<AgentFileSnapshotMaintenanceResult> =>
+  serializeSnapshotOperation(async () => {
+    const result: AgentFileSnapshotMaintenanceResult = {
+      repositories: 0,
+      protectedRefs: 0,
+      deletedRefs: 0,
+      expiredPendingRefs: 0,
+      errors: 0
+    }
+    const manifests = options.manifests || (await listRunManifests())
+    let restoreInventoryAvailable = true
+    let restorePoints = options.restorePoints
+    if (!restorePoints) {
+      try {
+        restorePoints = listSessionFileRestorePoints()
+      } catch (error) {
+        restoreInventoryAvailable = false
+        restorePoints = []
+        console.warn(
+          'Snapshot maintenance could not read staged session restores:',
+          (error as Error).message
+        )
+      }
+    }
+
+    const desired = new Map<string, Map<string, string>>()
+    for (const manifest of manifests) {
+      const snapshot = manifest.fileSnapshot
+      if (!snapshot?.projectRoot || snapshot.files.length === 0) continue
+      const repositoryDir = getRepositoryDir(snapshot.projectRoot)
+      const base = getRunSnapshotRefBase(manifest.sessionId, manifest.runId)
+      addDesiredSnapshotRef(desired, repositoryDir, `${base}/start`, snapshot.startTree)
+      addDesiredSnapshotRef(desired, repositoryDir, `${base}/end`, snapshot.endTree)
+      if (snapshot.restoredTree) {
+        addDesiredSnapshotRef(desired, repositoryDir, `${base}/restored`, snapshot.restoredTree)
+      }
+    }
+    for (const entry of restorePoints) {
+      addDesiredSnapshotRef(
+        desired,
+        getRepositoryDir(entry.restorePoint.projectRoot),
+        getSessionRestoreRef(entry.sessionId),
+        entry.restorePoint.tree
+      )
+    }
+
+    let repositories: import('fs').Dirent[]
+    try {
+      repositories = await readdir(getRepositoriesRoot(), { withFileTypes: true })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return result
+      throw error
+    }
+
+    const now = options.now ?? Date.now()
+    for (const repository of repositories) {
+      if (!repository.isDirectory() || !repository.name.endsWith('.git')) continue
+      result.repositories += 1
+      const repositoryDir = join(getRepositoriesRoot(), repository.name)
+      const location = { repositoryDir }
+      const protectedRefs = desired.get(repositoryIdentity(repositoryDir)) || new Map()
+      try {
+        const valid = (
+          await runGit([`--git-dir=${repositoryDir}`, 'rev-parse', '--is-bare-repository'])
+        ).trim()
+        if (valid !== 'true') throw new Error('Snapshot repository is not bare')
+
+        for (const [ref, tree] of protectedRefs) {
+          try {
+            await setSnapshotRef(location, ref, tree)
+            result.protectedRefs += 1
+          } catch (error) {
+            result.errors += 1
+            console.warn(`Failed to protect snapshot ref ${ref}:`, (error as Error).message)
+          }
+        }
+
+        for (const ref of await listManagedSnapshotRefs(repositoryDir)) {
+          if (protectedRefs.has(ref)) continue
+          if (!restoreInventoryAvailable && ref.startsWith(`${SNAPSHOT_REF_ROOT}/restores/`)) {
+            continue
+          }
+          const pendingAt = pendingRefCreatedAt(ref)
+          if (pendingAt !== undefined && now - pendingAt <= PENDING_REF_MAX_AGE_MS) continue
+          await deleteSnapshotRef(location, ref)
+          result.deletedRefs += 1
+          if (pendingAt !== undefined) result.expiredPendingRefs += 1
+        }
+
+        await runGit([`--git-dir=${repositoryDir}`, 'reflog', 'expire', '--expire=now', '--all'])
+        await runGit([
+          `--git-dir=${repositoryDir}`,
+          'gc',
+          '--quiet',
+          `--prune=${options.pruneAge || SNAPSHOT_PRUNE_AGE}`
+        ])
+      } catch (error) {
+        result.errors += 1
+        console.warn(
+          `Agent file snapshot maintenance failed for ${repositoryDir}:`,
+          (error as Error).message
+        )
+      }
+    }
+    return result
+  })
+
 export const beginAgentFileSnapshot = async (input: {
   sessionId: string
   runId: string
@@ -797,6 +1113,12 @@ export const beginAgentFileSnapshot = async (input: {
 }): Promise<AgentFileSnapshotHandle | undefined> => {
   try {
     const start = await captureTree(input.projectRoot || getWorkspaceRoot())
+    const pendingRef = await createPendingSnapshotRef(
+      start.location,
+      input.sessionId,
+      input.runId,
+      start.tree
+    )
     let finishPromise: Promise<CompletedAgentFileSnapshot | undefined> | undefined
     return {
       finish: () => {
@@ -813,6 +1135,9 @@ export const beginAgentFileSnapshot = async (input: {
               files,
               completedAt
             }
+            if (files.length > 0) {
+              await protectRunSnapshot(start.location, input.sessionId, input.runId, snapshot)
+            }
             updateRunManifest(input.sessionId, input.runId, (manifest) => ({
               ...manifest,
               fileSnapshot: snapshot
@@ -821,6 +1146,8 @@ export const beginAgentFileSnapshot = async (input: {
           } catch (error) {
             console.warn('Failed to finalize Agent file snapshot:', (error as Error).message)
             return undefined
+          } finally {
+            await deleteSnapshotRef(start.location, pendingRef)
           }
         })
         return finishPromise

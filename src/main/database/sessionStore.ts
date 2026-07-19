@@ -130,6 +130,28 @@ export function loadSessions(): Session[] {
   return mergeAgentEventJournalsIntoSessions(sessions, eventJournals)
 }
 
+export function listSessionFileRestorePoints(): Array<{
+  sessionId: string
+  restorePoint: NonNullable<SessionRevertState['fileRestorePoint']>
+}> {
+  const rows = getDb()
+    .prepare('SELECT id, revertState FROM sessions WHERE revertState IS NOT NULL')
+    .all() as Array<{ id: string; revertState: string }>
+
+  return rows.flatMap((row) => {
+    const revert = parseSessionRevertState(row.revertState)
+    const restorePoint = revert?.fileRestorePoint
+    if (
+      !restorePoint ||
+      typeof restorePoint.projectRoot !== 'string' ||
+      !/^[a-f0-9]{40,64}$/i.test(restorePoint.tree)
+    ) {
+      return []
+    }
+    return [{ sessionId: row.id, restorePoint }]
+  })
+}
+
 function parseSessionRevertState(value: string | null): SessionRevertState | undefined {
   if (!value) return undefined
   try {

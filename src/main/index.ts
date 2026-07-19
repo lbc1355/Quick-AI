@@ -9,6 +9,7 @@ import { logger } from './logger'
 import { McpManager } from './mcpManager'
 import { registerHtmlRenderer } from './webRenderer'
 import { ensureSystemSkills, watchSkillFolders } from './skillManager'
+import { runAgentFileSnapshotMaintenance } from './agent/agentFileSnapshot'
 
 // IPC handlers
 import { registerStoreIpc } from './ipc/storeIpc'
@@ -24,6 +25,8 @@ let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let store: FileStore | null = null
 let stopSkillWatcher: (() => void) | null = null
+let snapshotMaintenanceTimeout: NodeJS.Timeout | null = null
+let snapshotMaintenanceInterval: NodeJS.Timeout | null = null
 let isWindowVisible = false
 let isFilePickerActive = false
 let isQuitting = false
@@ -370,6 +373,19 @@ function registerGlobalShortcut(): void {
   }
 }
 
+function maintainAgentFileSnapshots(): void {
+  void runAgentFileSnapshotMaintenance()
+    .then((result) => {
+      logger.info(
+        'Snapshots',
+        `Maintenance completed: ${result.repositories} repositories, ${result.protectedRefs} protected refs, ${result.deletedRefs} stale refs removed, ${result.errors} errors.`
+      )
+    })
+    .catch((error) => {
+      logger.warn('Snapshots', 'Maintenance failed:', (error as Error).message)
+    })
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(() => {
@@ -447,6 +463,11 @@ app.whenReady().then(() => {
   registerProjectIpc(windowController)
   registerBackgroundShellIpc()
 
+  snapshotMaintenanceTimeout = setTimeout(maintainAgentFileSnapshots, 30_000)
+  snapshotMaintenanceTimeout.unref()
+  snapshotMaintenanceInterval = setInterval(maintainAgentFileSnapshots, 24 * 60 * 60 * 1000)
+  snapshotMaintenanceInterval.unref()
+
   createWindow()
   createTray()
   registerGlobalShortcut()
@@ -464,6 +485,10 @@ app.on('before-quit', () => {
 
 // Clean up global shortcuts and MCP processes when app closes
 app.on('will-quit', () => {
+  if (snapshotMaintenanceTimeout) clearTimeout(snapshotMaintenanceTimeout)
+  if (snapshotMaintenanceInterval) clearInterval(snapshotMaintenanceInterval)
+  snapshotMaintenanceTimeout = null
+  snapshotMaintenanceInterval = null
   stopSkillWatcher?.()
   stopSkillWatcher = null
   globalShortcut.unregisterAll()

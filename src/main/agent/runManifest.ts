@@ -76,6 +76,50 @@ export function getRunManifestDir(sessionId: string): string {
   return join(app.getPath('userData'), 'run_manifests', safeId(sessionId))
 }
 
+export function getRunManifestRoot(): string {
+  return join(app.getPath('userData'), 'run_manifests')
+}
+
+export async function listRunManifests(): Promise<AgentRunManifest[]> {
+  let sessionDirs: import('fs').Dirent[]
+  try {
+    sessionDirs = await fsp.readdir(getRunManifestRoot(), { withFileTypes: true })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
+
+  const manifests: AgentRunManifest[] = []
+  for (const sessionDir of sessionDirs) {
+    if (!sessionDir.isDirectory()) continue
+    const directory = join(getRunManifestRoot(), sessionDir.name)
+    let files: import('fs').Dirent[]
+    try {
+      files = await fsp.readdir(directory, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const file of files) {
+      if (!file.isFile() || !file.name.endsWith('.json')) continue
+      try {
+        const parsed = JSON.parse(
+          await fsp.readFile(join(directory, file.name), 'utf-8')
+        ) as AgentRunManifest
+        if (
+          parsed.version === MANIFEST_VERSION &&
+          typeof parsed.sessionId === 'string' &&
+          typeof parsed.runId === 'string'
+        ) {
+          manifests.push(parsed)
+        }
+      } catch {
+        // Ignore incomplete/corrupt manifests; their snapshot refs are reclaimed after grace time.
+      }
+    }
+  }
+  return manifests
+}
+
 function uniq(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)))
 }

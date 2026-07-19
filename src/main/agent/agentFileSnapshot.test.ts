@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { execFileSync } from 'child_process'
 import { existsSync } from 'fs'
 import { mkdir, readFile, readdir, realpath, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
@@ -7,7 +8,8 @@ import {
   beginAgentFileSnapshot,
   previewAgentFileRevert,
   previewSessionFileTransition,
-  revertAgentFileChanges
+  revertAgentFileChanges,
+  runAgentFileSnapshotMaintenance
 } from './agentFileSnapshot'
 import { createRunManifest, loadRunManifest } from './runManifest'
 
@@ -23,6 +25,21 @@ vi.mock('electron', () => ({
 const createManifest = (runId: string): void => {
   createRunManifest({ runId, sessionId: 'session-1' })
 }
+
+const getSnapshotRepository = async (): Promise<string> => {
+  const repositoriesRoot = join(testRoot, 'agent_file_snapshots', 'repositories')
+  const [repositoryName] = await readdir(repositoriesRoot)
+  return join(repositoriesRoot, repositoryName)
+}
+
+const listSnapshotRefs = (repositoryDir: string): string[] =>
+  execFileSync(
+    'git',
+    [`--git-dir=${repositoryDir}`, 'for-each-ref', '--format=%(refname)', 'refs/quickai'],
+    { encoding: 'utf8', windowsHide: true }
+  )
+    .split(/\r?\n/)
+    .filter(Boolean)
 
 describe('agentFileSnapshot', () => {
   beforeEach(async () => {
@@ -143,6 +160,71 @@ describe('agentFileSnapshot', () => {
     })
   }, 20_000)
 
+  it('does not snapshot newly generated files larger than the safety limit', async () => {
+    createManifest('large-file-run')
+    const handle = await beginAgentFileSnapshot({
+      sessionId: 'session-1',
+      runId: 'large-file-run',
+      projectRoot
+    })
+
+    const largeFile = join(projectRoot, 'generated.bin')
+    await writeFile(largeFile, Buffer.alloc(2 * 1024 * 1024 + 1, 1))
+    await expect(handle?.finish()).resolves.toMatchObject({ files: [] })
+    expect(existsSync(largeFile)).toBe(true)
+  }, 20_000)
+
+  it('protects live run trees and removes stale managed refs during maintenance', async () => {
+    createManifest('maintained-run')
+    const handle = await beginAgentFileSnapshot({
+      sessionId: 'session-1',
+      runId: 'maintained-run',
+      projectRoot
+    })
+    await writeFile(join(projectRoot, 'maintained.txt'), 'kept\n', 'utf8')
+    const snapshot = await handle?.finish()
+    expect(snapshot).toBeDefined()
+
+    const repositoryDir = await getSnapshotRepository()
+    execFileSync(
+      'git',
+      [
+        `--git-dir=${repositoryDir}`,
+        'update-ref',
+        'refs/quickai/runs/orphan/end',
+        snapshot!.endTree
+      ],
+      { windowsHide: true }
+    )
+    execFileSync(
+      'git',
+      [
+        `--git-dir=${repositoryDir}`,
+        'update-ref',
+        'refs/quickai/pending/1-orphan',
+        snapshot!.startTree
+      ],
+      { windowsHide: true }
+    )
+
+    const result = await runAgentFileSnapshotMaintenance({
+      restorePoints: [],
+      now: Date.now(),
+      pruneAge: '30.days.ago'
+    })
+    expect(result).toMatchObject({
+      repositories: 1,
+      protectedRefs: 2,
+      deletedRefs: 2,
+      expiredPendingRefs: 1,
+      errors: 0
+    })
+    const refs = listSnapshotRefs(repositoryDir)
+    expect(refs.filter((ref) => ref.includes('/runs/'))).toHaveLength(2)
+    expect(refs).not.toContain('refs/quickai/runs/orphan/end')
+    expect(refs).not.toContain('refs/quickai/pending/1-orphan')
+  }, 20_000)
+
   it('blocks later edits unless the user explicitly forces the restore', async () => {
     await writeFile(join(projectRoot, 'file.txt'), 'before\n', 'utf8')
     createManifest('run-conflict')
@@ -215,6 +297,9 @@ describe('agentFileSnapshot', () => {
         direction: 'revert'
       })
     ).resolves.toMatchObject({ ok: false, conflicts: ['file.txt'] })
+    expect(
+      listSnapshotRefs(await getSnapshotRepository()).filter((ref) => ref.includes('/restores/'))
+    ).toHaveLength(0)
     const revertResult = await applySessionFileTransition({
       sessionId: 'session-1',
       runIds: ['run-a', 'run-b'],
@@ -223,6 +308,9 @@ describe('agentFileSnapshot', () => {
     })
     expect(revertResult).toMatchObject({ ok: true, conflicts: ['file.txt'] })
     expect(revertResult.restorePoint).toBeDefined()
+    expect(
+      listSnapshotRefs(await getSnapshotRepository()).filter((ref) => ref.includes('/restores/'))
+    ).toHaveLength(1)
     expect(await readFile(join(projectRoot, 'file.txt'), 'utf8')).toBe('before\n')
     expect(existsSync(join(projectRoot, 'a.txt'))).toBe(false)
     expect(existsSync(join(projectRoot, 'b.txt'))).toBe(false)
@@ -254,6 +342,9 @@ describe('agentFileSnapshot', () => {
         force: true
       })
     ).resolves.toMatchObject({ ok: true, conflicts: ['file.txt'] })
+    expect(
+      listSnapshotRefs(await getSnapshotRepository()).filter((ref) => ref.includes('/restores/'))
+    ).toHaveLength(0)
     expect(await readFile(join(projectRoot, 'file.txt'), 'utf8')).toBe(
       'user state before rollback\n'
     )

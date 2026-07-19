@@ -3,7 +3,11 @@ import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
 import { Session } from '../../shared/types'
 import { describeWithSqlite } from '../testSupport/nativeSqlite'
-import { computeSessionHash, planSessionPersist } from './sessionStore'
+import {
+  computeSessionHash,
+  listSessionFileRestorePoints,
+  planSessionPersist
+} from './sessionStore'
 import { closeDb, loadSessions, saveSessions } from '../database'
 
 const testDir = join(__dirname, '../../../temp-session-store-test')
@@ -235,5 +239,11 @@ describeWithSqlite('saveSessions incremental persistence', () => {
     closeDb()
 
     expect(loadSessions()[0].revert).toEqual(session.revert)
+    expect(listSessionFileRestorePoints()).toEqual([
+      {
+        sessionId: 'reverted',
+        restorePoint: session.revert?.fileRestorePoint
+      }
+    ])
   })
 })
