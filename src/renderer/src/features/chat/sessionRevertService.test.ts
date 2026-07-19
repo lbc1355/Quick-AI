@@ -48,7 +48,7 @@ describe('sessionRevertService', () => {
   it('stages and restores a rollback without losing trailing messages', () => {
     const staged = prepareSessionRevert({
       session: makeSession(),
-      boundaryMessageId: 'assistant-1',
+      boundaryMessageId: 'user-2',
       keptResources: [],
       now: 100
     })
@@ -57,7 +57,7 @@ describe('sessionRevertService', () => {
     expect(staged.contextEpoch).toBe(5)
     expect(staged.resources).toEqual([])
     expect(staged.revert).toMatchObject({
-      boundaryMessageId: 'assistant-1',
+      boundaryMessageId: 'user-2',
       runIds: ['run-2', 'run-2-resume'],
       revertedAt: 100
     })
@@ -81,12 +81,22 @@ describe('sessionRevertService', () => {
   it('commits the staged rollback while returning caches that may be pruned', () => {
     const staged = prepareSessionRevert({
       session: makeSession(),
-      boundaryMessageId: 'assistant-1',
+      boundaryMessageId: 'user-2',
       now: 100
     })
     const committed = commitSessionRevert(staged)
     expect(committed.session.revert).toBeUndefined()
     expect(committed.committedRunIds).toEqual(['run-2', 'run-2-resume'])
     expect(committed.originalResources).toEqual(makeSession().resources)
+  })
+
+  it('rejects assistant messages as rollback boundaries', () => {
+    expect(() =>
+      prepareSessionRevert({
+        session: makeSession(),
+        boundaryMessageId: 'assistant-1',
+        now: 100
+      })
+    ).toThrow('Only user messages can be reverted')
   })
 })

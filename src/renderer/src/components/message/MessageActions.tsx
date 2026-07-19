@@ -74,10 +74,10 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         <button
           className="msg-action-btn"
           onClick={onRevertSession}
-          title="暂存后续消息并把会话回退到此处"
+          title="撤回这条用户消息及其后续内容"
         >
           <History size={10} />
-          <span>回退到此处</span>
+          <span>撤回请求</span>
         </button>
       )}
       {canCopy && (

@@ -26,16 +26,18 @@ export const prepareSessionRevert = (input: {
     (message) => message.id === input.boundaryMessageId
   )
   if (boundaryIndex < 0) throw new Error(`Message not found: ${input.boundaryMessageId}`)
+  if (input.session.messages[boundaryIndex].role !== 'user') {
+    throw new Error('Only user messages can be reverted')
+  }
 
-  const revertedMessages = input.session.messages.slice(boundaryIndex + 1).map((message) => ({
+  const revertedMessages = input.session.messages.slice(boundaryIndex).map((message) => ({
     ...message,
     agentEvents: message.agentEvents ? compactAgentEvents(message.agentEvents) : undefined
   }))
-  if (revertedMessages.length === 0) throw new Error('There are no later messages to roll back')
 
   return advanceSessionContextEpoch({
     ...input.session,
-    messages: input.session.messages.slice(0, boundaryIndex + 1),
+    messages: input.session.messages.slice(0, boundaryIndex),
     resources: input.keptResources,
     revert: {
       boundaryMessageId: input.boundaryMessageId,

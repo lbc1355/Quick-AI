@@ -434,16 +434,12 @@ function App(): React.JSX.Element {
     }
   })
   const handleOpenSessionRevert = useStableEvent(async (message: Message): Promise<void> => {
-    if (isGenerating) return
+    if (isGenerating || message.role !== 'user') return
     const session = sessionsRef.current.find((candidate) => candidate.id === activeSessionId)
     if (!session || session.revert) return
     const boundaryIndex = session.messages.findIndex((candidate) => candidate.id === message.id)
     if (boundaryIndex < 0) return
-    const revertedMessages = session.messages.slice(boundaryIndex + 1)
-    if (revertedMessages.length === 0) {
-      toast.info('该消息已经是当前会话的最后一条消息。')
-      return
-    }
+    const revertedMessages = session.messages.slice(boundaryIndex)
     const runIds = collectMessageRunIds(revertedMessages)
     try {
       const preview = await window.api.previewSessionFileTransition({
@@ -1177,9 +1173,9 @@ function App(): React.JSX.Element {
                         onResumeAgentRun={handleResumeAgentRun}
                         onRevertAgentFiles={handleOpenAgentFileRevert}
                         canRevertSession={
+                          msg.role === 'user' &&
                           !activeSession?.revert &&
-                          !isCurrentSessionGenerating &&
-                          idx < activeMessages.length - 1
+                          !isCurrentSessionGenerating
                         }
                         onRevertSession={handleOpenSessionRevert}
                         onOpenBranch={(sessionId) => openSession(sessionId)}

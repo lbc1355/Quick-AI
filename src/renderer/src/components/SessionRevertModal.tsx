@@ -51,7 +51,7 @@ export const SessionRevertModal: React.FC<SessionRevertModalProps> = ({
           <div className="tool-detail-title-group">
             <History size={15} />
             <strong id="session-revert-title">
-              {restoring ? '恢复会话回退' : '回退会话到此处'}
+              {restoring ? '恢复已撤回内容' : '撤回这条请求'}
             </strong>
           </div>
           <button className="tool-detail-close" onClick={onClose} disabled={isApplying}>
@@ -63,7 +63,7 @@ export const SessionRevertModal: React.FC<SessionRevertModalProps> = ({
           <p className="agent-file-revert-summary">
             {restoring
               ? `将恢复 ${messageCount} 条暂存消息，并重新应用 ${preview.files.length} 个文件的 Agent 修改。`
-              : `将暂存隐藏后续 ${messageCount} 条消息，并把 ${preview.files.length} 个文件恢复到该时间点。`}
+              : `将撤回这条用户消息及其后续共 ${messageCount} 条消息，并撤销 ${preview.files.length} 个文件的 Agent 修改。`}
           </p>
 
           {preview.conflicts.length > 0 && (

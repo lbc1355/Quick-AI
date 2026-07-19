@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync } from 'fs'
-import { mkdir, readFile, rm, writeFile } from 'fs/promises'
+import { mkdir, readFile, readdir, realpath, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import {
   applySessionFileTransition,
@@ -77,6 +77,69 @@ describe('agentFileSnapshot', () => {
     expect(await readFile(join(projectRoot, 'ignored.txt'), 'utf8')).toBe('secret after\n')
     await expect(previewAgentFileRevert('session-1', 'run-1')).resolves.toMatchObject({
       alreadyReverted: true
+    })
+  }, 20_000)
+
+  it('captures and reverts files in the global workspace without a project root', async () => {
+    const workspaceRoot = join(testRoot, 'workspace')
+    const originalWorkspaceRoot = process.env.QUICKAI_WORKSPACE_ROOT
+    process.env.QUICKAI_WORKSPACE_ROOT = workspaceRoot
+
+    try {
+      await mkdir(workspaceRoot, { recursive: true })
+      createManifest('workspace-run')
+
+      const handle = await beginAgentFileSnapshot({
+        sessionId: 'session-1',
+        runId: 'workspace-run'
+      })
+      expect(handle).toBeDefined()
+
+      const createdFile = join(workspaceRoot, 'created.ts')
+      await writeFile(createdFile, 'export const value = 1\n', 'utf8')
+      const snapshot = await handle?.finish()
+
+      expect(snapshot).toMatchObject({
+        projectRoot: await realpath(workspaceRoot),
+        files: [{ path: 'created.ts', kind: 'added' }]
+      })
+
+      const result = await revertAgentFileChanges({
+        sessionId: 'session-1',
+        runId: 'workspace-run'
+      })
+      expect(result).toMatchObject({ ok: true, restoredFiles: ['created.ts'] })
+      expect(existsSync(createdFile)).toBe(false)
+    } finally {
+      if (originalWorkspaceRoot === undefined) delete process.env.QUICKAI_WORKSPACE_ROOT
+      else process.env.QUICKAI_WORKSPACE_ROOT = originalWorkspaceRoot
+    }
+  }, 20_000)
+
+  it('reinitializes an incomplete snapshot repository instead of disabling snapshots', async () => {
+    createManifest('initial-run')
+    const initialHandle = await beginAgentFileSnapshot({
+      sessionId: 'session-1',
+      runId: 'initial-run',
+      projectRoot
+    })
+    await initialHandle?.finish()
+
+    const repositoriesRoot = join(testRoot, 'agent_file_snapshots', 'repositories')
+    const [repositoryName] = await readdir(repositoriesRoot)
+    await rm(join(repositoriesRoot, repositoryName, 'objects'), { recursive: true, force: true })
+
+    createManifest('recovered-run')
+    const recoveredHandle = await beginAgentFileSnapshot({
+      sessionId: 'session-1',
+      runId: 'recovered-run',
+      projectRoot
+    })
+    expect(recoveredHandle).toBeDefined()
+
+    await writeFile(join(projectRoot, 'after-recovery.txt'), 'recovered\n', 'utf8')
+    await expect(recoveredHandle?.finish()).resolves.toMatchObject({
+      files: [{ path: 'after-recovery.txt', kind: 'added' }]
     })
   }, 20_000)
 

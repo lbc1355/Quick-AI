@@ -1,7 +1,7 @@
 import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { app } from 'electron'
-import { lstat, mkdir, realpath, rmdir, stat, unlink } from 'fs/promises'
+import { lstat, mkdir, realpath, rm, rmdir, stat, unlink } from 'fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import type {
   AgentFileChange,
@@ -14,6 +14,7 @@ import type {
   SessionFileTransitionPreview,
   SessionFileTransitionResult
 } from '../../shared/types'
+import { getWorkspaceRoot } from '../paths'
 import { loadRunManifest, updateRunManifest, type AgentRunManifest } from './runManifest'
 
 const MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024
@@ -100,13 +101,21 @@ const gitContextArgs = (location: SnapshotLocation): string[] => [
 ]
 
 const ensureSnapshotRepository = async (location: SnapshotLocation): Promise<void> => {
+  let repositoryValid = false
   try {
     const head = await stat(join(location.repositoryDir, 'HEAD'))
-    if (head.isFile()) return
+    if (head.isFile()) {
+      repositoryValid =
+        (
+          await runGit([`--git-dir=${location.repositoryDir}`, 'rev-parse', '--is-bare-repository'])
+        ).trim() === 'true'
+    }
   } catch {
     // Initialize below.
   }
+  if (repositoryValid) return
 
+  await rm(location.repositoryDir, { recursive: true, force: true })
   await mkdir(dirname(location.repositoryDir), { recursive: true })
   await runGit(['init', '--bare', location.repositoryDir])
   await runGit([`--git-dir=${location.repositoryDir}`, 'config', 'core.autocrlf', 'false'])
@@ -786,10 +795,8 @@ export const beginAgentFileSnapshot = async (input: {
   runId: string
   projectRoot?: string
 }): Promise<AgentFileSnapshotHandle | undefined> => {
-  if (!input.projectRoot) return undefined
-
   try {
-    const start = await captureTree(input.projectRoot)
+    const start = await captureTree(input.projectRoot || getWorkspaceRoot())
     let finishPromise: Promise<CompletedAgentFileSnapshot | undefined> | undefined
     return {
       finish: () => {
