@@ -35,9 +35,24 @@ describe('analyzeCommand', () => {
     expect(analyzeCommand('rm file.txt').level).toBe('requires_approval')
   })
 
-  it('flags multi-line and null-byte commands', () => {
-    expect(analyzeCommand('ls\nrm -rf /').level).toBe('dangerous')
+  it('flags null-byte commands', () => {
     expect(analyzeCommand('ls\0').level).toBe('dangerous')
+  })
+
+  it('classifies top-level multi-line commands segment by segment', () => {
+    expect(analyzeCommand('ls\ncat package.json').level).toBe('safe')
+    expect(analyzeCommand('ls\nnpm install').level).toBe('requires_approval')
+    expect(analyzeCommand('ls\nrm -rf /').level).toBe('dangerous')
+  })
+
+  it('allows newlines that are part of quoted command content', () => {
+    expect(analyzeCommand('echo "first\nsecond"').level).toBe('safe')
+    expect(analyzeCommand("Write-Output @'\nfirst\nsecond\n'@").level).toBe('requires_approval')
+  })
+
+  it('does not reject ordinary heredocs merely because they contain newlines', () => {
+    const command = "python - <<'PY'\nprint('hello')\nPY"
+    expect(analyzeCommand(command).level).toBe('requires_approval')
   })
 
   it('skips env-assignment prefixes when finding the primary command', () => {
@@ -77,6 +92,10 @@ describe('splitCommandSegments', () => {
   it('respects quotes', () => {
     expect(splitCommandSegments('echo "a; b" && ls')).toEqual(['echo "a; b"', 'ls'])
     expect(splitCommandSegments("echo 'x | y'")).toEqual(["echo 'x | y'"])
+    expect(splitCommandSegments('echo "first\nsecond"\nls')).toEqual([
+      'echo "first\nsecond"',
+      'ls'
+    ])
   })
 
   it('drops empty segments', () => {

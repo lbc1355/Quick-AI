@@ -53,6 +53,15 @@ describe('evaluateToolGuard', () => {
     expect(danger.reason).toContain('guardrail')
   })
 
+  it('asks for ordinary multi-line shell commands but denies a dangerous segment', () => {
+    expect(
+      evaluateToolGuard('shell', { command: 'ls\ncat package.json' }, 'allow', 'high').action
+    ).toBe('ask')
+    expect(
+      evaluateToolGuard('shell', { command: 'ls\nrm -rf /' }, 'allow', 'high').action
+    ).toBe('deny')
+  })
+
   it('escalates any high-risk tool to at least ask', () => {
     const v = evaluateToolGuard('some_high_risk_tool', {}, 'allow', 'high')
     expect(v.action).toBe('ask')

@@ -245,12 +245,9 @@ export function analyzeCommand(command: string): CommandSafetyVerdict {
     return { level: 'requires_approval', reason: 'Empty command.' }
   }
 
-  // Null bytes and multi-line commands are a strong smell of injection / obfuscation.
+  // Null bytes are never valid shell input here and commonly indicate injection / obfuscation.
   if (command.includes('\0')) {
     return { level: 'dangerous', reason: 'Command contains a null byte.' }
-  }
-  if (/\r?\n/.test(command.trim())) {
-    return { level: 'dangerous', reason: 'Multi-line command.' }
   }
 
   const lower = command.toLowerCase()
