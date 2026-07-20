@@ -1174,6 +1174,7 @@ function App(): React.JSX.Element {
                         onRevertAgentFiles={handleOpenAgentFileRevert}
                         canRevertSession={
                           msg.role === 'user' &&
+                          !msg.isSynthetic &&
                           !activeSession?.revert &&
                           !isCurrentSessionGenerating
                         }

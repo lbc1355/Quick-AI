@@ -259,6 +259,8 @@ export interface Message {
   cacheStats?: PromptCacheStats
   errorPayload?: RuntimeErrorPayload
   isCompactionSummary?: boolean
+  /** App-generated model input (for example a completed background task), not typed by the user. */
+  isSynthetic?: boolean
 }
 
 export interface ChatCompletionMessage {
@@ -627,6 +629,31 @@ export interface AdmitSessionPromptInput {
 export interface AdmitSessionPromptResult {
   disposition: 'steered' | 'queued' | 'duplicate'
   prompt: SessionPromptAdmission
+}
+
+export type BackgroundSubagentStatus = 'completed' | 'failed' | 'cancelled' | 'max_steps'
+
+/** Tool-layer completion payload; the agent host enriches it with parent-session routing data. */
+export interface BackgroundSubagentCompletion {
+  jobId: string
+  subagentId: string
+  parentToolCallId: string
+  task: string
+  label: string
+  status: BackgroundSubagentStatus
+  result?: string
+  error?: string
+  durationMs?: number
+}
+
+/** Main-to-renderer notification emitted after a background result is routed or rejected as stale. */
+export interface BackgroundSubagentResultNotification extends BackgroundSubagentCompletion {
+  sessionId: string
+  contextEpoch: number
+  parentRunId: string
+  parentAssistantMessageId?: string
+  disposition: 'steered' | 'queued' | 'stale'
+  prompt?: SessionPromptAdmission
 }
 
 export interface ChatRunOptions {

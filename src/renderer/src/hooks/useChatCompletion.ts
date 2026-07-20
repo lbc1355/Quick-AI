@@ -8,7 +8,8 @@ import {
   Session,
   Skill,
   RunMode,
-  SessionPromptAdmissionMode
+  SessionPromptAdmissionMode,
+  BackgroundSubagentResultNotification
 } from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
 import { startStreamingRun as startChatStreamingRun } from './chatStreaming'
@@ -25,7 +26,9 @@ import {
 } from '../features/chat/sessionMutationService'
 import {
   appendQueuedPromptToSession,
+  applyBackgroundSubagentNotification,
   applySteeredPromptToSession,
+  materializeBackgroundPrompt,
   prepareClaimedPromptRun
 } from '../features/chat/sessionPromptQueue'
 import { commitSessionRevert } from '../features/chat/sessionRevertService'
@@ -836,7 +839,7 @@ export const useChatCompletion = ({
         return
       }
 
-      const sourceSession = sessionsRef.current.find((session) => session.id === sessionId)
+      let sourceSession = sessionsRef.current.find((session) => session.id === sessionId)
       if (
         !sourceSession ||
         !admission.assistantMessageId ||
@@ -846,6 +849,8 @@ export const useChatCompletion = ({
         claimedAdmissionId = undefined
         return
       }
+
+      sourceSession = materializeBackgroundPrompt(sourceSession, admission)
 
       const reqId = createRunId('queued-run-')
       const prepared = prepareClaimedPromptRun(
@@ -921,6 +926,42 @@ export const useChatCompletion = ({
     }
   }
   drainQueuedPromptRef.current = drainNextQueuedPrompt
+
+  useEffect(() => {
+    return window.api.onBackgroundSubagentResult(
+      (notification: BackgroundSubagentResultNotification): void => {
+        const current = sessionsRef.current.find((session) => session.id === notification.sessionId)
+        if (!current || getSessionContextEpoch(current) !== notification.contextEpoch) return
+
+        const nextSessions = sessionsRef.current.map((session) =>
+          session.id === notification.sessionId
+            ? applyBackgroundSubagentNotification(
+                session,
+                notification,
+                activeGenerationSessionIdRef.current === notification.sessionId
+                  ? activeAssistantMessageIdRef.current || undefined
+                  : undefined
+              )
+            : session
+        )
+        sessionsRef.current = nextSessions
+        setSessions(nextSessions)
+        void window.api.storeSet('sessions', nextSessions).catch((error) => {
+          console.warn('Failed to persist background subagent result:', error)
+        })
+
+        if (
+          notification.disposition === 'queued' &&
+          activeSessionId === notification.sessionId &&
+          !isGeneratingRef.current
+        ) {
+          window.setTimeout(() => {
+            void drainQueuedPromptRef.current(notification.sessionId)
+          }, 25)
+        }
+      }
+    )
+  }, [activeSessionId, sessionsRef, setSessions])
 
   useEffect(() => {
     if (!activeSessionId || isGenerating) return

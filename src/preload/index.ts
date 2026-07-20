@@ -27,7 +27,8 @@ import {
   RevertAgentFileChangesResult,
   SessionFileTransitionInput,
   SessionFileTransitionPreview,
-  SessionFileTransitionResult
+  SessionFileTransitionResult,
+  BackgroundSubagentResultNotification
 } from '../shared/types'
 
 interface BackgroundShellInfo {
@@ -136,6 +137,18 @@ const api = {
     ipcRenderer.on('chat-chunk', listener)
     return (): void => {
       ipcRenderer.removeListener('chat-chunk', listener)
+    }
+  },
+  onBackgroundSubagentResult: (
+    callback: (notification: BackgroundSubagentResultNotification) => void
+  ): (() => void) => {
+    const listener = (
+      _event: IpcRendererEvent,
+      notification: BackgroundSubagentResultNotification
+    ): void => callback(notification)
+    ipcRenderer.on('background-subagent-result', listener)
+    return (): void => {
+      ipcRenderer.removeListener('background-subagent-result', listener)
     }
   },
   onSkillsUpdated: (callback: (skills: Skill[]) => void): (() => void) => {

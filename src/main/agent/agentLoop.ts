@@ -31,6 +31,7 @@ import { createAgentEventJournalWriter } from './agentEventJournal'
 import { compactStaleToolResultsForContextPressure } from './staleToolResultCompaction'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
 import { beginAgentFileSnapshot } from './agentFileSnapshot'
+import { deliverBackgroundSubagentResult } from './backgroundSubagentDelivery'
 import {
   captureCacheShape,
   commitCacheShapeForSession,
@@ -48,7 +49,15 @@ const sendEvent = (
 
 // The single Electron transport boundary for the tool layer: everything below runToolTurn only
 // sees these plain callbacks, never a BrowserWindow.
-const createAgentHostActions = (mainWindow: BrowserWindow): AgentHostActions => ({
+const createAgentHostActions = (
+  mainWindow: BrowserWindow,
+  parent: {
+    sessionId: string
+    contextEpoch: number
+    runId: string
+    assistantMessageId?: string
+  }
+): AgentHostActions => ({
   requestUserChoice: (request) => {
     if (!mainWindow.isDestroyed()) {
       mainWindow.webContents.send('user-choice-request', request)
@@ -59,6 +68,20 @@ const createAgentHostActions = (mainWindow: BrowserWindow): AgentHostActions => 
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
     mainWindow.focus()
+  },
+  publishBackgroundSubagentCompletion: (completion) => {
+    deliverBackgroundSubagentResult({
+      completion,
+      sessionId: parent.sessionId,
+      contextEpoch: parent.contextEpoch,
+      parentRunId: parent.runId,
+      parentAssistantMessageId: parent.assistantMessageId,
+      send: (notification) => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('background-subagent-result', notification)
+        }
+      }
+    })
   }
 })
 
@@ -171,7 +194,12 @@ export const runAgentLoop = async (
   })
   const runCtx = lifecycle.runCtx
   const signal = runCtx.signal
-  const hostActions = createAgentHostActions(mainWindow)
+  const hostActions = createAgentHostActions(mainWindow, {
+    sessionId: conversationId,
+    contextEpoch,
+    runId: reqId,
+    assistantMessageId: options.assistantMessageId
+  })
   const fileSnapshotHandle = await beginAgentFileSnapshot({
     sessionId: conversationId,
     runId: reqId,

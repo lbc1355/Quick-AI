@@ -809,7 +809,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                   {msg.role === 'user' ? (
                     <MessageActions
                       align="flex-end"
-                      canEdit={!isGenerating}
+                      canEdit={!isGenerating && !msg.isSynthetic}
                       canRegenerate={false}
                       canResume={false}
                       copied={copied}

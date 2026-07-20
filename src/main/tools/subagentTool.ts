@@ -1,4 +1,5 @@
 import { ToolArgs } from '../../shared/types'
+import { getRun } from '../agent/AgentRunContext'
 import { createToolResult } from './result'
 import { ToolDefinition, ToolExecutionContext, ToolExecutionResult } from './types'
 
@@ -8,6 +9,7 @@ export interface SubagentToolRequest {
   tools?: string[]
   maxSteps: number
   label?: string
+  background: boolean
 }
 
 const DEFAULT_MAX_STEPS = 4
@@ -42,7 +44,8 @@ export function normalizeSubagentRequest(args: ToolArgs): SubagentToolRequest {
     context: toTrimmedString(args.context),
     tools: normalizeToolNames(args.tools),
     maxSteps: normalizeMaxSteps(args.maxSteps),
-    label: toTrimmedString(args.label)
+    label: toTrimmedString(args.label),
+    background: args.background === true
   }
 }
 
@@ -54,11 +57,87 @@ export async function runSubagentTool(
   return runSubagentTask(request, ctx)
 }
 
+const backgroundJobId = (ctx: ToolExecutionContext): string =>
+  `background-subagent-${ctx.reqId}-${ctx.callId || Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+async function startBackgroundSubagent(
+  request: SubagentToolRequest,
+  ctx: ToolExecutionContext
+): Promise<ToolExecutionResult> {
+  if (!ctx.host?.publishBackgroundSubagentCompletion) {
+    throw new Error('Background subagent delivery is unavailable in this host.')
+  }
+
+  const [{ startBackgroundJob }, { runSubagentTask }] = await Promise.all([
+    import('../agent/backgroundJobManager'),
+    import('../agent/subagentRunner')
+  ])
+  const jobId = backgroundJobId(ctx)
+  const parentRun = getRun(ctx.reqId)
+  let completionEvent:
+    | Extract<import('../../shared/types').AgentEvent, { type: 'subagent_end' }>
+    | undefined
+
+  startBackgroundJob({
+    id: jobId,
+    type: 'subagent',
+    title: request.label || request.task,
+    run: async (signal) => {
+      let result: ToolExecutionResult | undefined
+      let failure: unknown
+      try {
+        result = await runSubagentTask(request, {
+          ...ctx,
+          signal,
+          emitEvent: (event) => {
+            if (event.type === 'subagent_end') completionEvent = event
+            ctx.emitEvent?.(event)
+          }
+        })
+      } catch (error) {
+        failure = error
+      }
+
+      const fallbackError =
+        failure instanceof Error ? failure.message : failure ? String(failure) : undefined
+      const status = completionEvent?.status || (signal.aborted ? 'cancelled' : 'failed')
+      try {
+        ctx.host?.publishBackgroundSubagentCompletion?.({
+          jobId,
+          subagentId: completionEvent?.subagentId || ctx.callId || jobId,
+          parentToolCallId: ctx.callId || '',
+          task: request.task,
+          label: request.label || (request.tools ? 'Custom' : 'General'),
+          status,
+          result: result?.resultForModel || completionEvent?.finalAnswer,
+          error: completionEvent?.error || fallbackError,
+          durationMs: completionEvent?.durationMs
+        })
+      } finally {
+        parentRun?.actionLog.save()
+      }
+
+      if (failure) throw failure
+    }
+  })
+
+  return createToolResult({
+    resultForModel: [
+      `Background subagent started with jobId ${jobId}.`,
+      'It will report back automatically when finished. Do not poll it or duplicate its task.',
+      'Continue with independent, non-overlapping work.'
+    ].join('\n'),
+    title: 'Background Subagent Started',
+    summary: `Running in background: ${request.label || request.task}`,
+    details: `Job ID: ${jobId}\n\nTask:\n${request.task}`
+  })
+}
+
 export const subagentTool: ToolDefinition = {
   name: 'subagent',
   title: 'Delegate to Subagent',
   description:
-    'Delegate a focused read-only research or code-inspection task to an isolated subagent. The subagent can use a bounded set of safe tools, cannot delegate again, and returns a concise result to the parent agent. Use this when a subtask can be investigated independently without modifying files or running shell commands.',
+    'Delegate a focused read-only research or code-inspection task to an isolated subagent. Set background=true only for independent work: it returns immediately and reports the result automatically when finished. Foreground remains the default when the result is needed before continuing.',
   tags: ['agent', 'subagent', 'delegate', 'parallel', 'research', 'inspect', '子任务', '子agent'],
   category: 'system',
   risk: 'medium',
@@ -91,6 +170,11 @@ export const subagentTool: ToolDefinition = {
         type: 'string',
         description:
           'Optional short role/label for this subagent, e.g. "General", "Research", "Coder".'
+      },
+      background: {
+        type: 'boolean',
+        description:
+          'Optional. Run asynchronously and return immediately. The result is delivered automatically; do not poll. Defaults to false.'
       }
     },
     required: ['task']
@@ -98,6 +182,7 @@ export const subagentTool: ToolDefinition = {
   execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
     const request = normalizeSubagentRequest(args)
     try {
+      if (request.background) return await startBackgroundSubagent(request, ctx)
       return await runSubagentTool(request, ctx)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

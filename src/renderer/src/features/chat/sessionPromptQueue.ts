@@ -1,4 +1,93 @@
-import type { Message, RunMode, Session } from '../../../../shared/types'
+import type {
+  BackgroundSubagentResultNotification,
+  Message,
+  RunMode,
+  Session,
+  SessionPromptAdmission
+} from '../../../../shared/types'
+import { applyAgentEventToMessage } from '../../../../shared/agentEventReducer'
+
+const BACKGROUND_RESULT_SOURCE_PREFIX = 'background-result-source-'
+
+const promptText = (admission: SessionPromptAdmission): string => {
+  const message = admission.messages.findLast((item) => item.role === 'user')
+  return typeof message?.content === 'string' ? message.content : '后台子任务已完成。'
+}
+
+export function materializeBackgroundPrompt(
+  session: Session,
+  admission: SessionPromptAdmission
+): Session {
+  if (!admission.sourceMessageId.startsWith(BACKGROUND_RESULT_SOURCE_PREFIX)) return session
+  if (!admission.assistantMessageId) return session
+  if (session.messages.some((message) => message.id === admission.sourceMessageId)) return session
+
+  return appendQueuedPromptToSession(
+    session,
+    {
+      id: admission.sourceMessageId,
+      role: 'user',
+      content: promptText(admission),
+      isSynthetic: true
+    },
+    {
+      id: admission.assistantMessageId,
+      role: 'assistant',
+      content: '⏳ 正在处理后台子任务结果',
+      reasoning_content: ''
+    }
+  )
+}
+
+export function applyBackgroundSubagentNotification(
+  session: Session,
+  notification: BackgroundSubagentResultNotification,
+  activeAssistantMessageId?: string
+): Session {
+  let changed = false
+  let completionAttached = false
+  let messages = session.messages.map((message) => {
+    const ownsSubagent = message.agentEvents?.some(
+      (event) => event.type === 'subagent_start' && event.subagentId === notification.subagentId
+    )
+    const ownsParentRun =
+      message.id === notification.parentAssistantMessageId ||
+      message.agentRunId === notification.parentRunId ||
+      message.agentRunIds?.includes(notification.parentRunId)
+    if (completionAttached || (!ownsSubagent && !ownsParentRun)) return message
+    completionAttached = true
+    changed = true
+    return applyAgentEventToMessage(message, {
+      type: 'subagent_end',
+      subagentId: notification.subagentId,
+      status: notification.status,
+      finalAnswer: notification.result,
+      error: notification.error,
+      durationMs: notification.durationMs
+    })
+  })
+
+  if (notification.disposition === 'steered' && notification.prompt) {
+    const sourceId = notification.prompt.sourceMessageId
+    if (!messages.some((message) => message.id === sourceId)) {
+      const source: Message = {
+        id: sourceId,
+        role: 'user',
+        content: promptText(notification.prompt),
+        isSynthetic: true
+      }
+      const assistantIndex = activeAssistantMessageId
+        ? messages.findIndex((message) => message.id === activeAssistantMessageId)
+        : -1
+      messages = [...messages]
+      if (assistantIndex >= 0) messages.splice(assistantIndex, 0, source)
+      else messages.push(source)
+      changed = true
+    }
+  }
+
+  return changed ? { ...session, messages, lastActiveTime: Date.now() } : session
+}
 
 export interface PreparedClaimedPromptRun {
   session: Session

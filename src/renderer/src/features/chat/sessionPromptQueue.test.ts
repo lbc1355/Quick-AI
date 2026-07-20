@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { Session } from '../../../../shared/types'
 import {
   appendQueuedPromptToSession,
+  applyBackgroundSubagentNotification,
   applySteeredPromptToSession,
+  materializeBackgroundPrompt,
   prepareClaimedPromptRun
 } from './sessionPromptQueue'
 
@@ -94,5 +96,114 @@ describe('session prompt queue UI mutations', () => {
     expect(
       prepared?.session.messages.find((message) => message.id === 'assistant-2')?.content
     ).toBe('Queued')
+  })
+
+  it('materializes a durable background result that has no renderer message pair yet', () => {
+    const materialized = materializeBackgroundPrompt(baseSession(), {
+      id: 'admission-bg',
+      sessionId: 'session-1',
+      contextEpoch: 2,
+      mode: 'steer',
+      status: 'running',
+      runMode: 'agent',
+      sourceMessageId: 'background-result-source-job-1',
+      assistantMessageId: 'background-result-assistant-job-1',
+      messages: [{ role: 'user', content: 'background result' }],
+      createdAt: 1,
+      updatedAt: 1
+    })
+
+    expect(materialized.messages.slice(-2)).toMatchObject([
+      { role: 'user', content: 'background result', isSynthetic: true },
+      { role: 'assistant' }
+    ])
+  })
+
+  it('records completion on the original subagent card and persists a steered result', () => {
+    const source: Session = {
+      ...baseSession(),
+      messages: baseSession().messages.map((message) =>
+        message.id === 'assistant-active'
+          ? {
+              ...message,
+              agentEvents: [
+                {
+                  type: 'subagent_start',
+                  subagentId: 'subagent-1',
+                  parentToolCallId: 'call-1',
+                  label: 'Research',
+                  task: 'Inspect',
+                  maxSteps: 4
+                }
+              ]
+            }
+          : message
+      )
+    }
+    const next = applyBackgroundSubagentNotification(
+      source,
+      {
+        jobId: 'job-1',
+        subagentId: 'subagent-1',
+        parentToolCallId: 'call-1',
+        task: 'Inspect',
+        label: 'Research',
+        status: 'completed',
+        result: 'Done',
+        sessionId: 'session-1',
+        contextEpoch: 0,
+        parentRunId: 'run-active',
+        disposition: 'steered',
+        prompt: {
+          id: 'admission-bg',
+          sessionId: 'session-1',
+          contextEpoch: 0,
+          mode: 'steer',
+          status: 'running',
+          runMode: 'agent',
+          sourceMessageId: 'background-result-source-job-1',
+          assistantMessageId: 'background-result-assistant-job-1',
+          messages: [{ role: 'user', content: 'background result' }],
+          createdAt: 1,
+          updatedAt: 1
+        }
+      },
+      'assistant-active'
+    )
+
+    expect(next.messages.map((message) => message.id)).toEqual([
+      'user-active',
+      'background-result-source-job-1',
+      'assistant-active'
+    ])
+    expect(next.messages[1]).toMatchObject({ isSynthetic: true, content: 'background result' })
+    expect(next.messages[2].agentEvents).toContainEqual(
+      expect.objectContaining({
+        type: 'subagent_end',
+        subagentId: 'subagent-1',
+        status: 'completed'
+      })
+    )
+  })
+
+  it('attaches a fast completion to the parent run before its start event is flushed', () => {
+    const next = applyBackgroundSubagentNotification(baseSession(), {
+      jobId: 'job-fast',
+      subagentId: 'subagent-fast',
+      parentToolCallId: 'call-fast',
+      task: 'Inspect',
+      label: 'Research',
+      status: 'completed',
+      result: 'Done',
+      sessionId: 'session-1',
+      contextEpoch: 0,
+      parentRunId: 'run-active',
+      parentAssistantMessageId: 'assistant-active',
+      disposition: 'queued'
+    })
+
+    expect(next.messages[1].agentEvents).toContainEqual(
+      expect.objectContaining({ type: 'subagent_end', subagentId: 'subagent-fast' })
+    )
   })
 })

@@ -26,7 +26,8 @@ import {
   RevertAgentFileChangesResult,
   SessionFileTransitionInput,
   SessionFileTransitionPreview,
-  SessionFileTransitionResult
+  SessionFileTransitionResult,
+  BackgroundSubagentResultNotification
 } from '../shared/types'
 
 declare global {
@@ -95,6 +96,9 @@ declare global {
       }>
       showNotification: (title: string, body: string) => void
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
+      onBackgroundSubagentResult: (
+        callback: (notification: BackgroundSubagentResultNotification) => void
+      ) => () => void
       onSkillsUpdated: (callback: (skills: Skill[]) => void) => () => void
       onWindowStateChanged: (callback: (state: WindowState) => void) => () => void
       onUserChoiceRequest: (callback: (request: UserChoiceRequest) => void) => () => void

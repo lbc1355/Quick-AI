@@ -36,8 +36,14 @@ describe('subagent tool', () => {
       task: 'inspect project',
       context: 'focus README',
       tools: ['file_read'],
-      maxSteps: 8
+      maxSteps: 8,
+      background: false
     })
+  })
+
+  it('enables background mode only for an explicit true value', () => {
+    expect(normalizeSubagentRequest({ task: 'inspect', background: true }).background).toBe(true)
+    expect(normalizeSubagentRequest({ task: 'inspect', background: 'true' }).background).toBe(false)
   })
 
   it('requires a non-empty task', () => {

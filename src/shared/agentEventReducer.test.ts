@@ -96,6 +96,42 @@ describe('mergeAgentEvents', () => {
       { type: 'task_update', tasks: [{ id: '1', title: 'Old', status: 'completed' }] }
     ])
   })
+
+  it('deduplicates background subagent completion events', () => {
+    const first = mergeAgentEvents([], {
+      type: 'subagent_end',
+      subagentId: 'subagent-1',
+      status: 'completed',
+      finalAnswer: 'first'
+    })
+    const updated = mergeAgentEvents(first, {
+      type: 'subagent_end',
+      subagentId: 'subagent-1',
+      status: 'completed',
+      finalAnswer: 'latest'
+    })
+
+    expect(updated).toHaveLength(1)
+    expect(updated[0]).toMatchObject({ type: 'subagent_end', finalAnswer: 'latest' })
+  })
+
+  it('keeps start before completion when a fast background result arrives first', () => {
+    const completed = mergeAgentEvents([], {
+      type: 'subagent_end',
+      subagentId: 'subagent-fast',
+      status: 'completed'
+    })
+    const ordered = mergeAgentEvents(completed, {
+      type: 'subagent_start',
+      subagentId: 'subagent-fast',
+      parentToolCallId: 'call-fast',
+      label: 'Research',
+      task: 'Inspect',
+      maxSteps: 4
+    })
+
+    expect(ordered.map((event) => event.type)).toEqual(['subagent_start', 'subagent_end'])
+  })
 })
 
 describe('applyAgentEventToMessage', () => {

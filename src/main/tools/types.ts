@@ -5,7 +5,8 @@ import {
   SessionResource,
   AgentEvent,
   ModelRuntimeConfig,
-  UserChoiceRequest
+  UserChoiceRequest,
+  BackgroundSubagentCompletion
 } from '../../shared/types'
 
 /**
@@ -18,6 +19,8 @@ export interface AgentHostActions {
   requestUserChoice?: (request: UserChoiceRequest) => void
   /** Bring the app window to the foreground, e.g. when a reminder notification is clicked. */
   focusWindow?: () => void
+  /** Route a detached subagent result back into its parent conversation. */
+  publishBackgroundSubagentCompletion?: (completion: BackgroundSubagentCompletion) => void
 }
 
 export interface ToolExecutionContext {

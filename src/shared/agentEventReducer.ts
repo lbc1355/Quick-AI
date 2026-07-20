@@ -54,6 +54,24 @@ export function mergeAgentEvents(
     return [...updatedEvents.filter((event) => event.type !== 'task_update'), newEvent]
   }
 
+  if (newEvent.type === 'subagent_start' || newEvent.type === 'subagent_end') {
+    const existingIdx = updatedEvents.findIndex(
+      (event) => event.type === newEvent.type && event.subagentId === newEvent.subagentId
+    )
+    if (existingIdx >= 0) {
+      updatedEvents[existingIdx] = newEvent
+    } else if (newEvent.type === 'subagent_start') {
+      const completedIdx = updatedEvents.findIndex(
+        (event) => event.type === 'subagent_end' && event.subagentId === newEvent.subagentId
+      )
+      if (completedIdx >= 0) updatedEvents.splice(completedIdx, 0, newEvent)
+      else updatedEvents.push(newEvent)
+    } else {
+      updatedEvents.push(newEvent)
+    }
+    return updatedEvents
+  }
+
   const lastEvent = updatedEvents[updatedEvents.length - 1]
   if (!lastEvent) {
     updatedEvents.push(newEvent)
