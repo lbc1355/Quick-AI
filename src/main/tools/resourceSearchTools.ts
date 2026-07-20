@@ -1,68 +1,15 @@
 import { ToolArgs } from '../../shared/types'
 import { loadResourceCache } from '../database'
+import { findInResource } from '../resourceCache'
 import { createResourceToolResult } from './resourceResult'
 import { ToolDefinition, ToolExecutionContext } from './types'
-
-type ResourceMatch = { offset: number; endOffset: number; snippet: string }
-
-function collectResourceMatches(
-  chunks: Array<{ text?: string | null; offset?: number | null; endOffset?: number | null }>,
-  query: string
-): ResourceMatch[] {
-  const queryLower = query.toLowerCase()
-  const matches: ResourceMatch[] = []
-
-  for (const chunk of chunks) {
-    if (!chunk.text) continue
-    const textLower = chunk.text.toLowerCase()
-    const idx = textLower.indexOf(queryLower)
-    if (idx !== -1) {
-      matches.push(createMatch(chunk, idx, query.length))
-    }
-  }
-
-  if (matches.length > 0) return matches
-
-  const words = queryLower.split(/\s+/).filter((word) => word.length > 1)
-  for (const chunk of chunks) {
-    if (!chunk.text) continue
-    const textLower = chunk.text.toLowerCase()
-    for (const word of words) {
-      const idx = textLower.indexOf(word)
-      if (idx !== -1) {
-        matches.push(createMatch(chunk, idx, word.length))
-        break
-      }
-    }
-  }
-
-  return matches
-}
-
-function createMatch(
-  chunk: { text?: string | null; offset?: number | null; endOffset?: number | null },
-  index: number,
-  length: number
-): ResourceMatch {
-  const text = chunk.text || ''
-  const matchStart = Math.max(0, index - 60)
-  const matchEnd = Math.min(text.length, index + length + 90)
-  let snippet = text.substring(matchStart, matchEnd)
-  if (matchStart > 0) snippet = '...' + snippet
-  if (matchEnd < text.length) snippet = snippet + '...'
-  return {
-    offset: chunk.offset || 0,
-    endOffset: chunk.endOffset || 0,
-    snippet
-  }
-}
 
 export const resourceSearchTools: Record<string, ToolDefinition> = {
   search_cached_resource: {
     name: 'search_cached_resource',
     title: 'Search Cached Resource',
     description:
-      'Searches inside a previously cached resource using a query string to find matching offsets and snippets.',
+      'Searches every cached line of a resource and returns matching line numbers. Works for files, pages, documents, and terminal output.',
     tags: [
       'cache',
       'resource',
@@ -89,6 +36,10 @@ export const resourceSearchTools: Record<string, ToolDefinition> = {
         query: {
           type: 'string',
           description: 'The search query or keywords to locate inside the resource text.'
+        },
+        maxMatches: {
+          type: 'number',
+          description: 'Optional maximum matches to return, from 1 to 50. Defaults to 15.'
         }
       },
       required: ['resourceId', 'query']
@@ -109,7 +60,11 @@ export const resourceSearchTools: Record<string, ToolDefinition> = {
         throw new Error(`Resource cache not found for ID: ${resourceId}`)
       }
 
-      const matches = collectResourceMatches(resourceData.chunks, query)
+      const maxMatches =
+        typeof args.maxMatches === 'number'
+          ? Math.min(50, Math.max(1, Math.floor(args.maxMatches)))
+          : 15
+      const matches = findInResource(resourceId, query, maxMatches)
       if (matches.length === 0) {
         return createResourceToolResult({
           resultForModel: `No matches found for query "${query}" in cached resource ${resourceId}.`,
@@ -123,10 +78,9 @@ export const resourceSearchTools: Record<string, ToolDefinition> = {
         ''
       ]
       matches.forEach((match, index) => {
-        bodyLines.push(`${index + 1}. Chunk Offset: ${match.offset}-${match.endOffset}`)
-        bodyLines.push(`   Snippet: "${match.snippet.replace(/\r?\n/g, ' ')}"`)
+        bodyLines.push(`${index + 1}. Line ${match.lineNumber}: ${match.text.slice(0, 500)}`)
         bodyLines.push(
-          `   Instruction: To read the full details, call read_cached_resource with {"resourceId":"${resourceId}","offset":${match.offset}}`
+          `   To inspect nearby lines: read_cached_resource {"resourceId":"${resourceId}","lineStart":${Math.max(1, match.lineNumber - 5)},"lineEnd":${match.lineNumber + 5}}`
         )
         bodyLines.push('')
       })
@@ -134,7 +88,7 @@ export const resourceSearchTools: Record<string, ToolDefinition> = {
       return createResourceToolResult({
         resultForModel: bodyLines.join('\n'),
         title: `Search Cache: "${query}"`,
-        summary: `Found ${matches.length} matching offsets`
+        summary: `Found ${matches.length} matching lines`
       })
     }
   }

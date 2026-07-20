@@ -28,25 +28,11 @@ import {
   SessionFileTransitionInput,
   SessionFileTransitionPreview,
   SessionFileTransitionResult,
+  BackgroundShellResultNotification,
   BackgroundSubagentResultNotification,
   BackgroundSubagentEventNotification,
   BackgroundJobInfo
 } from '../shared/types'
-
-interface BackgroundShellInfo {
-  id: string
-  command: string
-  status: string
-  pid?: number
-  createdAt: number
-  totalOutputChars: number
-}
-
-interface BackgroundShellLog {
-  output: string
-  status: string
-  totalOutputChars: number
-}
 
 // Custom APIs for renderer
 const api = {
@@ -153,6 +139,18 @@ const api = {
       ipcRenderer.removeListener('background-subagent-result', listener)
     }
   },
+  onBackgroundShellResult: (
+    callback: (notification: BackgroundShellResultNotification) => void
+  ): (() => void) => {
+    const listener = (
+      _event: IpcRendererEvent,
+      notification: BackgroundShellResultNotification
+    ): void => callback(notification)
+    ipcRenderer.on('background-shell-result', listener)
+    return (): void => {
+      ipcRenderer.removeListener('background-shell-result', listener)
+    }
+  },
   onBackgroundSubagentEvent: (
     callback: (notification: BackgroundSubagentEventNotification) => void
   ): (() => void) => {
@@ -207,12 +205,7 @@ const api = {
   backgroundJobList: (sessionId?: string): Promise<BackgroundJobInfo[]> =>
     ipcRenderer.invoke('background-job-list', sessionId),
   backgroundJobCancel: (id: string): Promise<BackgroundJobInfo> =>
-    ipcRenderer.invoke('background-job-cancel', id),
-  bgShellList: (sessionId?: string): Promise<BackgroundShellInfo[]> =>
-    ipcRenderer.invoke('bg-shell-list', sessionId),
-  bgShellReadLog: (id: string): Promise<BackgroundShellLog> =>
-    ipcRenderer.invoke('bg-shell-read-log', id),
-  bgShellStop: (id: string): Promise<void> => ipcRenderer.invoke('bg-shell-stop', id)
+    ipcRenderer.invoke('background-job-cancel', id)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

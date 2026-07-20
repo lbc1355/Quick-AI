@@ -26,7 +26,7 @@ export const shellTools: Record<string, ToolDefinition> = {
         background: {
           type: 'boolean',
           description:
-            'Optional. If true, starts the command in the background and returns a background processId immediately. Use this for dev servers, watchers, long-running processes (e.g. npm run dev). Defaults to false.'
+            'Optional. If true, starts a persistent background task and returns its processId immediately. The Agent is notified automatically when it finishes. Use this for dev servers, watchers, and long-running commands. Defaults to false.'
         },
         waitMs: {
           type: 'number',
@@ -131,7 +131,7 @@ export const shellTools: Record<string, ToolDefinition> = {
     name: 'shell_background_list',
     title: 'List Background Shell Processes',
     description:
-      'Lists background shell processes started in this app session, including processId, status, PID, command, and output size.',
+      'Lists persistent background shell tasks, including tasks recovered as interrupted after an app restart, with processId, status, PID, command, and output size.',
     tags: ['shell', 'background', 'list', 'processes'],
     category: 'shell',
     risk: 'low',

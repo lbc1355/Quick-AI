@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { projectCachedResourceReadWindow } from './cachedResourceTools'
+import {
+  projectCachedResourceLineWindow,
+  projectCachedResourceReadWindow
+} from './cachedResourceTools'
 
 const makeChunk = (
   overrides: Partial<Parameters<typeof projectCachedResourceReadWindow>[0]> = {}
@@ -38,5 +41,25 @@ describe('projectCachedResourceReadWindow', () => {
     expect(window.endOffset).toBe(11)
     expect(window.nextOffset).toBe(11)
     expect(window.text).toBe('6789a')
+  })
+
+  it('reads an inclusive line range with line numbers', () => {
+    const window = projectCachedResourceLineWindow('one\ntwo\nthree\nfour', {
+      lineStart: 2,
+      lineEnd: 3
+    })
+
+    expect(window).toMatchObject({ lineStart: 2, lineEnd: 3, totalLines: 4 })
+    expect(window.text).toContain('     2  two')
+    expect(window.text).toContain('     3  three')
+  })
+
+  it('reads the requested number of lines from the tail', () => {
+    const window = projectCachedResourceLineWindow('one\ntwo\nthree\nfour', { tailLines: 2 })
+
+    expect(window).toMatchObject({ lineStart: 3, lineEnd: 4, totalLines: 4 })
+    expect(window.text).not.toContain('two')
+    expect(window.text).toContain('three')
+    expect(window.text).toContain('four')
   })
 })

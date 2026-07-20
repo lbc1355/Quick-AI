@@ -1,11 +1,13 @@
 import { ToolArgs } from '../../shared/types'
-import { readResourceChunkWindow } from '../resourceCache'
+import { readResourceChunkWindow, readResourceFullText } from '../resourceCache'
 import { formatResourceOffsets, formatResourceRanges } from './resourceFormat'
 import { createResourceToolResult } from './resourceResult'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
 const MIN_READ_CACHED_RESOURCE_CHARS = 500
 const MAX_READ_CACHED_RESOURCE_CHARS = 16000
+const DEFAULT_RESOURCE_LINE_WINDOW = 200
+const MAX_RESOURCE_LINE_WINDOW = 1000
 
 interface CachedResourceReadWindow {
   text: string
@@ -13,6 +15,14 @@ interface CachedResourceReadWindow {
   endOffset: number
   nextOffset?: number
   maxChars?: number
+  warning?: string
+}
+
+export interface CachedResourceLineWindow {
+  text: string
+  lineStart: number
+  lineEnd: number
+  totalLines: number
   warning?: string
 }
 
@@ -59,12 +69,71 @@ export const projectCachedResourceReadWindow = (
   }
 }
 
+export const projectCachedResourceLineWindow = (
+  content: string,
+  options: { lineStart?: number; lineEnd?: number; tailLines?: number; maxChars?: number }
+): CachedResourceLineWindow => {
+  const lines = content ? content.split(/\r?\n/) : []
+  const totalLines = lines.length
+  if (totalLines === 0) return { text: '', lineStart: 0, lineEnd: 0, totalLines: 0 }
+
+  const warnings: string[] = []
+  let lineStart: number
+  let requestedEnd: number
+  if (options.tailLines !== undefined) {
+    const tailLines = Math.min(MAX_RESOURCE_LINE_WINDOW, Math.max(1, Math.floor(options.tailLines)))
+    lineStart = Math.max(1, totalLines - tailLines + 1)
+    requestedEnd = totalLines
+  } else {
+    const requestedStart = Math.max(1, Math.floor(options.lineStart || 1))
+    lineStart = Math.min(requestedStart, totalLines)
+    if (requestedStart > totalLines) {
+      warnings.push(`lineStart ${requestedStart} exceeds ${totalLines}; returned the last line.`)
+    }
+    const defaultEnd = lineStart + DEFAULT_RESOURCE_LINE_WINDOW - 1
+    requestedEnd = Math.max(lineStart, Math.floor(options.lineEnd || defaultEnd))
+    requestedEnd = Math.min(requestedEnd, lineStart + MAX_RESOURCE_LINE_WINDOW - 1)
+    requestedEnd = Math.min(requestedEnd, totalLines)
+  }
+
+  const maxChars = options.maxChars || MAX_READ_CACHED_RESOURCE_CHARS
+  const output: string[] = []
+  let outputChars = 0
+  let lineEnd = lineStart - 1
+  for (let lineNumber = lineStart; lineNumber <= requestedEnd; lineNumber++) {
+    const formatted = `${String(lineNumber).padStart(6, ' ')}  ${lines[lineNumber - 1]}`
+    const separatorChars = output.length > 0 ? 1 : 0
+    if (outputChars + separatorChars + formatted.length > maxChars) {
+      if (output.length === 0) {
+        output.push(formatted.slice(0, maxChars))
+        lineEnd = lineNumber
+      }
+      warnings.push(`Output was limited to ${maxChars} characters.`)
+      break
+    }
+    output.push(formatted)
+    outputChars += separatorChars + formatted.length
+    lineEnd = lineNumber
+  }
+
+  if (lineEnd < requestedEnd) {
+    warnings.push(`More cached lines are available from line ${lineEnd + 1}.`)
+  }
+  return {
+    text: output.join('\n'),
+    lineStart,
+    lineEnd,
+    totalLines,
+    ...(warnings.length > 0 ? { warning: warnings.join(' ') } : {})
+  }
+}
+
 export const cachedResourceTools: Record<string, ToolDefinition> = {
   list_cached_resources: {
     name: 'list_cached_resources',
     title: 'List Cached Resources',
     description:
-      'Lists cached resources available in the current conversation, including resource IDs and cached offsets. Use this before read_cached_resource or search_cached_resource when you need prior fetched files, web pages, or documents.',
+      'Lists cached resources available in the current conversation, including resource IDs and cached offsets. Use this before reading or searching prior files, pages, documents, or terminal output.',
     tags: ['cache', 'resource', 'list', 'history', 'local', 'cached'],
     category: 'system',
     risk: 'low',
@@ -104,6 +173,11 @@ export const cachedResourceTools: Record<string, ToolDefinition> = {
         lines.push(
           `   To read: read_cached_resource {"resourceId":"${resource.id}","offset":${resource.chunks?.[0]?.offset ?? 0}}`
         )
+        if (resource.kind === 'terminal') {
+          lines.push(
+            `   To read tail: read_cached_resource {"resourceId":"${resource.id}","tailLines":100}`
+          )
+        }
         lines.push('')
       })
 
@@ -122,8 +196,8 @@ export const cachedResourceTools: Record<string, ToolDefinition> = {
     name: 'read_cached_resource',
     title: 'Read Cached Resource',
     description:
-      'Reads the full text content of a previously fetched resource chunk using its resourceId and offset from the local cache.',
-    tags: ['cache', 'resource', 'read', 'local', 'history', 'window', 'offset'],
+      'Reads cached content by character offset, an inclusive line range, or a requested number of tail lines. Works for files, fetched pages, documents, and terminal output.',
+    tags: ['cache', 'resource', 'read', 'local', 'history', 'window', 'offset', 'line', 'tail'],
     category: 'system',
     risk: 'low',
     implemented: true,
@@ -139,7 +213,20 @@ export const cachedResourceTools: Record<string, ToolDefinition> = {
         offset: {
           type: 'number',
           description:
-            'The starting character offset of the chunk to read. Use list_cached_resources to discover readable offsets.'
+            'Optional starting character offset. Defaults to 0 when no line parameters are supplied.'
+        },
+        lineStart: {
+          type: 'number',
+          description: 'Optional 1-based first line to read.'
+        },
+        lineEnd: {
+          type: 'number',
+          description: 'Optional inclusive last line to read. Maximum 1000 lines per call.'
+        },
+        tailLines: {
+          type: 'number',
+          description:
+            'Optional number of lines to read from the end, up to 1000. Cannot be combined with lineStart or lineEnd.'
         },
         maxChars: {
           type: 'number',
@@ -147,24 +234,56 @@ export const cachedResourceTools: Record<string, ToolDefinition> = {
             'Optional maximum characters to return from the cached chunk. Clamped between 500 and 16000. If omitted, the full cached chunk is returned.'
         }
       },
-      required: ['resourceId', 'offset']
+      required: ['resourceId']
     },
     execute: async (args: ToolArgs, ctx: ToolExecutionContext) => {
       void ctx
       const resourceId = args.resourceId
-      const offset = args.offset
       if (typeof resourceId !== 'string' || !resourceId) {
         throw new Error('Missing or invalid resourceId parameter')
       }
+      const maxChars = normalizeMaxChars(args.maxChars)
+      const hasLineRange = args.lineStart !== undefined || args.lineEnd !== undefined
+      const hasTail = args.tailLines !== undefined
+      if (hasLineRange && hasTail) {
+        throw new Error('tailLines cannot be combined with lineStart or lineEnd')
+      }
+      if (hasLineRange || hasTail) {
+        const lineStart = args.lineStart
+        const lineEnd = args.lineEnd
+        const tailLines = args.tailLines
+        for (const [name, value] of [
+          ['lineStart', lineStart],
+          ['lineEnd', lineEnd],
+          ['tailLines', tailLines]
+        ] as const) {
+          if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value))) {
+            throw new Error(`Invalid ${name} parameter`)
+          }
+        }
+        const window = projectCachedResourceLineWindow(readResourceFullText(resourceId), {
+          ...(typeof lineStart === 'number' ? { lineStart } : {}),
+          ...(typeof lineEnd === 'number' ? { lineEnd } : {}),
+          ...(typeof tailLines === 'number' ? { tailLines } : {}),
+          ...(maxChars !== undefined ? { maxChars } : {})
+        })
+        const warning = window.warning ? `\nWarning: ${window.warning}` : ''
+        return createResourceToolResult({
+          resultForModel: `Resource ID: ${resourceId}\nTotal Lines: ${window.totalLines}\nReturned Lines: ${window.lineStart}-${window.lineEnd}${warning}\n\nContent (line-numbered):\n${window.text || '(empty resource)'}`,
+          title: `Read Cached Resource Lines: ${resourceId}`,
+          summary: `Read lines ${window.lineStart}-${window.lineEnd} of ${window.totalLines}`
+        })
+      }
+
+      const offset = args.offset ?? 0
       if (typeof offset !== 'number' || !Number.isFinite(offset)) {
-        throw new Error('Missing or invalid offset parameter')
+        throw new Error('Invalid offset parameter')
       }
 
       console.log(
         `[read_cached_resource] Reading cached resource ${resourceId} at offset ${offset}`
       )
       const chunk = await readResourceChunkWindow(resourceId, offset)
-      const maxChars = normalizeMaxChars(args.maxChars)
       const window = projectCachedResourceReadWindow(chunk, maxChars)
       const warning = window.warning ? `\nWarning: ${window.warning}` : ''
       const maxCharsLine = maxChars !== undefined ? `\nRequested Max Chars: ${maxChars}` : ''

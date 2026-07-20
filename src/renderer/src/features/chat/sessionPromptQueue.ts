@@ -1,6 +1,7 @@
 import type {
   BackgroundSubagentEventNotification,
   BackgroundSubagentResultNotification,
+  BackgroundShellResultNotification,
   Message,
   RunMode,
   Session,
@@ -11,7 +12,7 @@ import { BACKGROUND_RESULT_SOURCE_PREFIX } from './messageVisibility'
 
 const promptText = (admission: SessionPromptAdmission): string => {
   const message = admission.messages.findLast((item) => item.role === 'user')
-  return typeof message?.content === 'string' ? message.content : '后台子任务已完成。'
+  return typeof message?.content === 'string' ? message.content : '后台任务已完成。'
 }
 
 const ownsBackgroundSubagent = (
@@ -81,7 +82,7 @@ export function materializeBackgroundPrompt(
     {
       id: admission.assistantMessageId,
       role: 'assistant',
-      content: '⏳ 正在处理后台子任务结果',
+      content: '⏳ 正在处理后台任务结果',
       reasoning_content: ''
     }
   )
@@ -138,6 +139,45 @@ export function applyBackgroundSubagentNotification(
   }
 
   return changed ? { ...session, messages, lastActiveTime: Date.now() } : session
+}
+
+export function applyBackgroundShellNotification(
+  session: Session,
+  notification: BackgroundShellResultNotification,
+  activeAssistantMessageId?: string
+): Session {
+  let updated = session
+  const completedResource = notification.resource
+  if (completedResource) {
+    const existing = session.resources?.find((resource) => resource.id === completedResource.id)
+    const resource = {
+      ...completedResource,
+      runIds: Array.from(new Set([...(existing?.runIds || []), notification.parentRunId]))
+    }
+    const resources = existing
+      ? (session.resources || []).map((item) => (item.id === resource.id ? resource : item))
+      : [...(session.resources || []), resource]
+    updated = { ...updated, resources, lastActiveTime: Date.now() }
+  }
+
+  if (notification.disposition !== 'steered' || !notification.prompt) return updated
+  const sourceId = notification.prompt.sourceMessageId
+  if (updated.messages.some((message) => message.id === sourceId)) return updated
+
+  const source: Message = {
+    id: sourceId,
+    role: 'user',
+    content: promptText(notification.prompt),
+    isSynthetic: true,
+    isInternal: true
+  }
+  const assistantIndex = activeAssistantMessageId
+    ? updated.messages.findIndex((message) => message.id === activeAssistantMessageId)
+    : -1
+  const messages = [...updated.messages]
+  if (assistantIndex >= 0) messages.splice(assistantIndex, 0, source)
+  else messages.push(source)
+  return { ...updated, messages, lastActiveTime: Date.now() }
 }
 
 export interface PreparedClaimedPromptRun {

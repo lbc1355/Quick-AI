@@ -179,9 +179,10 @@ export async function saveResourceChunk(
   // Upsert the chunk
   upsertResourceChunk(resourceId, newChunk)
 
-  // Prune chunks if total text exceeds 2MB
-  const MAX_TEXT_CHARS = 2 * 1024 * 1024
-  pruneResourceChunks(resourceId, MAX_TEXT_CHARS)
+  // Terminal output can legitimately be much larger than fetched prose. Foreground shell enforces
+  // a 10MB stream cap; retain that output plus command/status framing instead of dropping its head.
+  const maxTextChars = kind === 'terminal' ? 12 * 1024 * 1024 : 2 * 1024 * 1024
+  pruneResourceChunks(resourceId, maxTextChars)
 
   // Get updated chunk metadata for range calculation
   const chunkMeta = getResourceChunksMetadata(resourceId)
@@ -344,6 +345,14 @@ export async function readResourceChunkWindow(
     requestedOffset,
     warning: `Requested offset ${requestedOffset} is beyond cached content.${resourceLength} Returned the last readable chunk ${last.offset}-${last.endOffset}. Cached ranges: ${formatRanges()}.`
   }
+}
+
+export function readResourceFullText(resourceId: string): string {
+  if (!RESOURCE_ID_PATTERN.test(resourceId)) throw new Error('Invalid resource ID')
+  if (!loadResourceCache(resourceId)) {
+    throw new Error(`Resource cache not found for ID: ${resourceId}`)
+  }
+  return getResourceFullText(resourceId)
 }
 
 // Look up a cached link by its inline id (for click_link).

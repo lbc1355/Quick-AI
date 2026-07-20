@@ -39,6 +39,8 @@ describeWithSqlite('backgroundJobStore', () => {
       description: 'Inspect the project',
       sessionId: 'session-1',
       status: 'running',
+      metadata: { command: 'npm run dev', pid: 42 },
+      output: 'ready\n',
       createdAt: 10,
       updatedAt: 10
     })
@@ -56,7 +58,9 @@ describeWithSqlite('backgroundJobStore', () => {
     expect(getBackgroundJobRecord('job-1')).toMatchObject({
       description: 'Inspect the project',
       sessionId: 'session-1',
-      status: 'running'
+      status: 'running',
+      metadata: { command: 'npm run dev', pid: 42 },
+      output: 'ready\n'
     })
     expect(listBackgroundJobRecords('session-1').map((job) => job.id)).toEqual(['job-1'])
     expect(listBackgroundJobRecords().map((job) => job.id)).toEqual(['job-2', 'job-1'])

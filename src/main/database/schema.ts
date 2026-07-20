@@ -150,6 +150,8 @@ export function createSchema(database: Database.Database): void {
       status      TEXT NOT NULL
                   CHECK (status IN ('running', 'completed', 'failed', 'cancelled', 'max_steps', 'interrupted')),
       error       TEXT,
+      metadata    TEXT,
+      output      TEXT,
       createdAt   INTEGER NOT NULL,
       updatedAt   INTEGER NOT NULL,
       completedAt INTEGER
@@ -185,6 +187,8 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")
   ensureColumn(database, 'session_prompt_inbox', 'contextEpoch', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn(database, 'background_jobs', 'metadata', 'TEXT')
+  ensureColumn(database, 'background_jobs', 'output', 'TEXT')
 }
 
 /** Add a column to an existing table if it is missing. Idempotent; safe to call on every boot. */

@@ -9,6 +9,7 @@ import {
   Skill,
   RunMode,
   SessionPromptAdmissionMode,
+  BackgroundShellResultNotification,
   BackgroundSubagentResultNotification,
   BackgroundSubagentEventNotification
 } from '../../../shared/types'
@@ -27,6 +28,7 @@ import {
 } from '../features/chat/sessionMutationService'
 import {
   appendQueuedPromptToSession,
+  applyBackgroundShellNotification,
   applyBackgroundSubagentEventNotification,
   applyBackgroundSubagentNotification,
   applySteeredPromptToSession,
@@ -1005,6 +1007,41 @@ export const useChatCompletion = ({
         setSessions(nextSessions)
         void window.api.storeSet('sessions', nextSessions).catch((error) => {
           console.warn('Failed to persist background subagent result:', error)
+        })
+
+        if (
+          notification.disposition === 'queued' &&
+          activeSessionId === notification.sessionId &&
+          !isGeneratingRef.current
+        ) {
+          window.setTimeout(() => {
+            void drainQueuedPromptRef.current(notification.sessionId)
+          }, 25)
+        }
+      }
+    )
+  }, [activeSessionId, sessionsRef, setSessions])
+
+  useEffect(() => {
+    return window.api.onBackgroundShellResult(
+      (notification: BackgroundShellResultNotification): void => {
+        const current = sessionsRef.current.find((session) => session.id === notification.sessionId)
+        if (!current || getSessionContextEpoch(current) !== notification.contextEpoch) return
+
+        const nextSessions = sessionsRef.current.map((session) => {
+          if (session.id !== notification.sessionId) return session
+          return applyBackgroundShellNotification(
+            session,
+            notification,
+            activeGenerationSessionIdRef.current === notification.sessionId
+              ? activeAssistantMessageIdRef.current || undefined
+              : undefined
+          )
+        })
+        sessionsRef.current = nextSessions
+        setSessions(nextSessions)
+        void window.api.storeSet('sessions', nextSessions).catch((error) => {
+          console.warn('Failed to persist background shell result:', error)
         })
 
         if (

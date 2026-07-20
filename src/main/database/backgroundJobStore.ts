@@ -9,6 +9,8 @@ interface BackgroundJobRow {
   sessionId: string | null
   status: BackgroundJobInfo['status']
   error: string | null
+  metadata: string | null
+  output: string | null
   createdAt: number
   updatedAt: number
   completedAt: number | null
@@ -26,18 +28,35 @@ const requireText = (value: unknown, name: string): string => {
 const optionalText = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() ? value.trim() : undefined
 
-const rowToJob = (row: BackgroundJobRow): BackgroundJobInfo => ({
-  id: row.id,
-  type: row.type,
-  title: row.title,
-  ...(row.description ? { description: row.description } : {}),
-  ...(row.sessionId ? { sessionId: row.sessionId } : {}),
-  status: row.status,
-  createdAt: row.createdAt,
-  updatedAt: row.updatedAt,
-  ...(row.completedAt !== null ? { completedAt: row.completedAt } : {}),
-  ...(row.error ? { error: row.error } : {})
-})
+const parseMetadata = (value: string | null): Record<string, unknown> | undefined => {
+  if (!value) return undefined
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const rowToJob = (row: BackgroundJobRow): BackgroundJobInfo => {
+  const metadata = parseMetadata(row.metadata)
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    ...(row.description ? { description: row.description } : {}),
+    ...(row.sessionId ? { sessionId: row.sessionId } : {}),
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    ...(row.completedAt !== null ? { completedAt: row.completedAt } : {}),
+    ...(row.error ? { error: row.error } : {}),
+    ...(metadata ? { metadata } : {}),
+    ...(row.output !== null ? { output: row.output } : {})
+  }
+}
 
 export function saveBackgroundJob(job: BackgroundJobInfo): BackgroundJobInfo {
   const normalized: BackgroundJobInfo = {
@@ -50,14 +69,16 @@ export function saveBackgroundJob(job: BackgroundJobInfo): BackgroundJobInfo {
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     ...(job.completedAt !== undefined ? { completedAt: job.completedAt } : {}),
-    ...(optionalText(job.error) ? { error: optionalText(job.error) } : {})
+    ...(optionalText(job.error) ? { error: optionalText(job.error) } : {}),
+    ...(job.metadata ? { metadata: { ...job.metadata } } : {}),
+    ...(job.output !== undefined ? { output: job.output } : {})
   }
 
   getDb()
     .prepare(
       `INSERT INTO background_jobs
-       (id, type, title, description, sessionId, status, error, createdAt, updatedAt, completedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (id, type, title, description, sessionId, status, error, metadata, output, createdAt, updatedAt, completedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          type = excluded.type,
          title = excluded.title,
@@ -65,6 +86,8 @@ export function saveBackgroundJob(job: BackgroundJobInfo): BackgroundJobInfo {
          sessionId = excluded.sessionId,
          status = excluded.status,
          error = excluded.error,
+         metadata = excluded.metadata,
+         output = excluded.output,
          updatedAt = excluded.updatedAt,
          completedAt = excluded.completedAt`
     )
@@ -76,6 +99,8 @@ export function saveBackgroundJob(job: BackgroundJobInfo): BackgroundJobInfo {
       normalized.sessionId ?? null,
       normalized.status,
       normalized.error ?? null,
+      normalized.metadata ? JSON.stringify(normalized.metadata) : null,
+      normalized.output ?? null,
       normalized.createdAt,
       normalized.updatedAt,
       normalized.completedAt ?? null

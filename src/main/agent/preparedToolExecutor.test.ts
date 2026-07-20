@@ -6,6 +6,8 @@ import { persistToolOutputResource } from './toolOutputResource'
 import { PreparedToolCall } from './toolCallPlanning'
 
 vi.mock('./toolOutputResource', () => ({
+  getToolOutputProjectionMode: (toolName: string) =>
+    toolName === 'shell' || toolName.startsWith('shell_background_') ? 'head_tail' : 'head',
   persistToolOutputResource: vi.fn()
 }))
 
@@ -289,6 +291,13 @@ describe('executePreparedToolCall', () => {
     expect(result.response.content).toContain('Head preview:\n0123456789')
     expect(result.response.content).not.toContain('tail-content')
     expect(result.action.resultContent).toBe(result.response.content)
+    expect(result.events[0]).toMatchObject({
+      type: 'tool_result',
+      result: {
+        summary: 'large output · large output cached',
+        details: expect.stringContaining('Resource ID: abcdef1234567890abcdef1234567890')
+      }
+    })
     expect(result.outputStore?.content).toBe(fullOutput)
     expect(result.outputStore?.activateToolNames).toEqual([
       'read_tool_output',
@@ -313,7 +322,8 @@ describe('executePreparedToolCall', () => {
         callId: 'call-large-cache',
         toolName: 'shell',
         content: fullOutput,
-        previewChars: 10
+        previewChars: 10,
+        projectionMode: 'head_tail'
       })
     )
     expect(outputEvents).toEqual([])

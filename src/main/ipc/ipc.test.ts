@@ -78,7 +78,6 @@ import { registerMemoryIpc } from './memoryIpc'
 import { registerCacheIpc } from './cacheIpc'
 import { registerWindowIpc } from './windowIpc'
 import { registerProjectIpc } from './projectIpc'
-import { registerBackgroundShellIpc } from './backgroundShellIpc'
 import { registerBackgroundJobIpc } from './backgroundJobIpc'
 import { registerGenerationIpc } from './generationIpc'
 import type { FileStore } from '../store'
@@ -162,13 +161,6 @@ describe('IPC Registration Modules', () => {
     expect(mockHandlers['revert-agent-file-changes']).toBeDefined()
     expect(mockHandlers['preview-session-file-transition']).toBeDefined()
     expect(mockHandlers['apply-session-file-transition']).toBeDefined()
-  })
-
-  it('registerBackgroundShellIpc registers background shell management channels', () => {
-    registerBackgroundShellIpc()
-    expect(mockHandlers['bg-shell-list']).toBeDefined()
-    expect(mockHandlers['bg-shell-read-log']).toBeDefined()
-    expect(mockHandlers['bg-shell-stop']).toBeDefined()
   })
 
   it('registerBackgroundJobIpc registers background task management channels', () => {

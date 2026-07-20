@@ -16,7 +16,7 @@ import {
   createSkippedToolCallResult,
   executeRuntimeToolCall
 } from './toolRuntime'
-import { persistToolOutputResource } from './toolOutputResource'
+import { getToolOutputProjectionMode, persistToolOutputResource } from './toolOutputResource'
 
 const TOOL_OUTPUT_RESOURCE_SPILLOVER_EXCLUDED_TOOLS = new Set([
   'fetch_url',
@@ -215,6 +215,7 @@ export async function executePreparedToolCall(
         toolName,
         content: runtimeResult.executionResult.resultForModel,
         previewChars: options.outputSpilloverThreshold,
+        projectionMode: getToolOutputProjectionMode(toolName),
         emitEvent: options.emitEvent
       })
     } catch (err) {

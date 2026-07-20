@@ -27,6 +27,7 @@ import {
   SessionFileTransitionInput,
   SessionFileTransitionPreview,
   SessionFileTransitionResult,
+  BackgroundShellResultNotification,
   BackgroundSubagentResultNotification,
   BackgroundSubagentEventNotification,
   BackgroundJobInfo
@@ -101,6 +102,9 @@ declare global {
       onBackgroundSubagentResult: (
         callback: (notification: BackgroundSubagentResultNotification) => void
       ) => () => void
+      onBackgroundShellResult: (
+        callback: (notification: BackgroundShellResultNotification) => void
+      ) => () => void
       onBackgroundSubagentEvent: (
         callback: (notification: BackgroundSubagentEventNotification) => void
       ) => () => void
@@ -119,22 +123,6 @@ declare global {
       mcpOpenConfig: () => Promise<void>
       backgroundJobList: (sessionId?: string) => Promise<BackgroundJobInfo[]>
       backgroundJobCancel: (id: string) => Promise<BackgroundJobInfo>
-      bgShellList: (sessionId?: string) => Promise<
-        Array<{
-          id: string
-          command: string
-          status: string
-          pid?: number
-          createdAt: number
-          totalOutputChars: number
-        }>
-      >
-      bgShellReadLog: (id: string) => Promise<{
-        output: string
-        status: string
-        totalOutputChars: number
-      }>
-      bgShellStop: (id: string) => Promise<void>
     }
   }
 }

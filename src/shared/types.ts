@@ -660,6 +660,42 @@ export interface BackgroundJobInfo {
   updatedAt: number
   completedAt?: number
   error?: string
+  /** Task-specific, JSON-serializable details such as a shell PID or output offsets. */
+  metadata?: Record<string, unknown>
+  /** Bounded task output retained for inspection after the owning process exits. */
+  output?: string
+}
+
+export interface BackgroundShellJobMetadata extends Record<string, unknown> {
+  command: string
+  cwd: string
+  pid?: number
+  exitCode?: number | null
+  signal?: string | null
+  resourceId?: string
+  outputBaseOffset: number
+  totalOutputChars: number
+  totalOutputLines?: number
+}
+
+export type BackgroundShellStatus = 'completed' | 'failed' | 'cancelled'
+
+/** Tool-layer completion payload; the agent host adds parent-session routing data. */
+export interface BackgroundShellCompletion {
+  jobId: string
+  parentToolCallId?: string
+  command: string
+  status: BackgroundShellStatus
+  output?: string
+  error?: string
+  exitCode?: number | null
+  signal?: string | null
+  durationMs?: number
+  resourceId?: string
+  resource?: SessionResource
+  totalOutputChars?: number
+  totalOutputLines?: number
+  outputTruncated?: boolean
 }
 
 /** Tool-layer completion payload; the agent host enriches it with parent-session routing data. */
@@ -691,6 +727,16 @@ export interface BackgroundSubagentEventNotification extends BackgroundSubagentL
 
 /** Main-to-renderer notification emitted after a background result is routed or rejected as stale. */
 export interface BackgroundSubagentResultNotification extends BackgroundSubagentCompletion {
+  sessionId: string
+  contextEpoch: number
+  parentRunId: string
+  parentAssistantMessageId?: string
+  disposition: 'steered' | 'queued' | 'stale'
+  prompt?: SessionPromptAdmission
+}
+
+/** Main-to-renderer notification emitted after a background shell result is routed. */
+export interface BackgroundShellResultNotification extends BackgroundShellCompletion {
   sessionId: string
   contextEpoch: number
   parentRunId: string

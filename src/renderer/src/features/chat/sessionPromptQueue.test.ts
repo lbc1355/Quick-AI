@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Session } from '../../../../shared/types'
 import {
   appendQueuedPromptToSession,
+  applyBackgroundShellNotification,
   applyBackgroundSubagentEventNotification,
   applyBackgroundSubagentNotification,
   applySteeredPromptToSession,
@@ -192,6 +193,63 @@ describe('session prompt queue UI mutations', () => {
         type: 'subagent_end',
         subagentId: 'subagent-1',
         status: 'completed'
+      })
+    )
+  })
+
+  it('inserts a steered shell result as an internal source before the active response', () => {
+    const next = applyBackgroundShellNotification(
+      baseSession(),
+      {
+        jobId: 'shell-1',
+        command: 'npm test',
+        status: 'completed',
+        output: 'passed',
+        resourceId: '11111111111111111111111111111111',
+        resource: {
+          id: '11111111111111111111111111111111',
+          kind: 'terminal',
+          source: 'shell-output://shell-1',
+          title: 'Shell output: npm test',
+          totalChars: 6,
+          fetchedRanges: [{ start: 0, end: 6 }],
+          status: 'complete',
+          chunks: [{ id: 'chunk-1', offset: 0, endOffset: 6, createdAt: 1 }],
+          createdAt: 1,
+          updatedAt: 1
+        },
+        sessionId: 'session-1',
+        contextEpoch: 0,
+        parentRunId: 'run-active',
+        disposition: 'steered',
+        prompt: {
+          id: 'background-result-admission-shell-1',
+          sessionId: 'session-1',
+          contextEpoch: 0,
+          mode: 'steer',
+          status: 'running',
+          runMode: 'agent',
+          sourceMessageId: 'background-result-source-shell-1',
+          assistantMessageId: 'background-result-assistant-shell-1',
+          messages: [{ role: 'user', content: 'shell result' }],
+          createdAt: 1,
+          updatedAt: 1
+        }
+      },
+      'assistant-active'
+    )
+
+    expect(next.messages.map((message) => message.id)).toEqual([
+      'user-active',
+      'background-result-source-shell-1',
+      'assistant-active'
+    ])
+    expect(next.messages[1]).toMatchObject({ isInternal: true, content: 'shell result' })
+    expect(next.resources).toContainEqual(
+      expect.objectContaining({
+        id: '11111111111111111111111111111111',
+        kind: 'terminal',
+        runIds: ['run-active']
       })
     )
   })

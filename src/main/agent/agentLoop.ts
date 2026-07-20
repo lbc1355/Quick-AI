@@ -32,6 +32,7 @@ import { compactStaleToolResultsForContextPressure } from './staleToolResultComp
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
 import { beginAgentFileSnapshot } from './agentFileSnapshot'
 import { deliverBackgroundSubagentResult } from './backgroundSubagentDelivery'
+import { deliverBackgroundShellResult } from './backgroundShellDelivery'
 import {
   captureCacheShape,
   commitCacheShapeForSession,
@@ -79,6 +80,20 @@ const createAgentHostActions = (
       send: (notification) => {
         if (!mainWindow.isDestroyed()) {
           mainWindow.webContents.send('background-subagent-result', notification)
+        }
+      }
+    })
+  },
+  publishBackgroundShellCompletion: (completion) => {
+    deliverBackgroundShellResult({
+      completion,
+      sessionId: parent.sessionId,
+      contextEpoch: parent.contextEpoch,
+      parentRunId: parent.runId,
+      parentAssistantMessageId: parent.assistantMessageId,
+      send: (notification) => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('background-shell-result', notification)
         }
       }
     })

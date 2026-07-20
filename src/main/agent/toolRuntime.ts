@@ -232,6 +232,15 @@ export function applyRuntimeToolCallResult(
   if (runtimeResult.status === 'success') {
     options.loopGuard.recordSuccess(toolName)
     const resultContent = options.toolOutputResource?.contentForModel ?? resultForModel
+    const projectedResultForUi = options.toolOutputResource
+      ? {
+          ...resultForUi,
+          summary: resultForUi.summary
+            ? `${resultForUi.summary} · large output cached`
+            : 'Large output cached as a resource',
+          details: resultContent
+        }
+      : resultForUi
     const outputStore =
       resultForModel.length > options.outputSpilloverThreshold
         ? {
@@ -264,7 +273,7 @@ export function applyRuntimeToolCallResult(
         {
           type: 'tool_result',
           callId,
-          result: resultForUi,
+          result: projectedResultForUi,
           step,
           stepId
         },

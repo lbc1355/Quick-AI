@@ -6,6 +6,7 @@ import {
   AgentEvent,
   ModelRuntimeConfig,
   UserChoiceRequest,
+  BackgroundShellCompletion,
   BackgroundSubagentCompletion,
   BackgroundSubagentLiveEvent
 } from '../../shared/types'
@@ -22,6 +23,8 @@ export interface AgentHostActions {
   focusWindow?: () => void
   /** Route a detached subagent result back into its parent conversation. */
   publishBackgroundSubagentCompletion?: (completion: BackgroundSubagentCompletion) => void
+  /** Route a detached shell result back into its parent conversation. */
+  publishBackgroundShellCompletion?: (completion: BackgroundShellCompletion) => void
   /** Stream detached subagent progress independently of the parent run transport. */
   publishBackgroundSubagentEvent?: (update: BackgroundSubagentLiveEvent) => void
 }

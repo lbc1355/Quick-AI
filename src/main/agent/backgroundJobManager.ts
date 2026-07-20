@@ -11,8 +11,14 @@ export interface StartBackgroundJobInput {
   title: string
   description?: string
   sessionId?: string
+  metadata?: Record<string, unknown>
+  output?: string
   run: (signal: AbortSignal) => Promise<void | BackgroundJobRunResult>
 }
+
+export type BackgroundJobUpdate = Partial<
+  Pick<BackgroundJobInfo, 'title' | 'description' | 'metadata' | 'output' | 'error'>
+>
 
 export interface BackgroundJobPersistence {
   get: (id: string) => BackgroundJobInfo | undefined
@@ -32,7 +38,10 @@ const MAX_RETAINED_LIVE_JOBS = 200
 const jobs = new Map<string, LiveBackgroundJob>()
 let persistence: BackgroundJobPersistence | undefined
 
-const snapshot = (job: BackgroundJobInfo): BackgroundJobInfo => ({ ...job })
+const snapshot = (job: BackgroundJobInfo): BackgroundJobInfo => ({
+  ...job,
+  ...(job.metadata ? { metadata: { ...job.metadata } } : {})
+})
 
 const save = (job: BackgroundJobInfo): void => {
   persistence?.save(snapshot(job))
@@ -80,6 +89,8 @@ export function startBackgroundJob(input: StartBackgroundJobInput): BackgroundJo
     title: input.title,
     ...(input.description ? { description: input.description } : {}),
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+    ...(input.metadata ? { metadata: { ...input.metadata } } : {}),
+    ...(input.output !== undefined ? { output: input.output } : {}),
     status: 'running',
     createdAt: now,
     updatedAt: now
@@ -117,6 +128,25 @@ export function startBackgroundJob(input: StartBackgroundJobInput): BackgroundJo
 export function getBackgroundJob(id: string): BackgroundJobInfo | undefined {
   const job = jobs.get(id)?.info || persistence?.get(id)
   return job ? snapshot(job) : undefined
+}
+
+/** Persist progress for a running task without changing its lifecycle status. */
+export function updateBackgroundJob(
+  id: string,
+  patch: BackgroundJobUpdate
+): BackgroundJobInfo | undefined {
+  const live = jobs.get(id)
+  const info = live?.info || persistence?.get(id)
+  if (!info) return undefined
+
+  if (patch.title !== undefined) info.title = patch.title
+  if (patch.description !== undefined) info.description = patch.description
+  if (patch.metadata !== undefined) info.metadata = { ...patch.metadata }
+  if (patch.output !== undefined) info.output = patch.output
+  if (patch.error !== undefined) info.error = patch.error
+  info.updatedAt = Date.now()
+  save(info)
+  return snapshot(info)
 }
 
 export function listBackgroundJobs(sessionId?: string): BackgroundJobInfo[] {

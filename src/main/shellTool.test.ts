@@ -1,7 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { ToolRegistry, getWorkspaceRoot } from './toolRegistry'
 import { decodeShellOutputForDisplay } from './tools/shell'
 import { clearBackgroundShellProcessesForTests } from './tools/backgroundShell'
+import { getBackgroundJob } from './agent/backgroundJobManager'
 
 describe('Shell Tool Execution', () => {
   const workspaceRoot = getWorkspaceRoot()
@@ -108,6 +109,46 @@ describe('Shell Tool Execution', () => {
       context
     )
     expect(stop.resultForModel).toContain(`Background ID: ${processId}`)
+  })
+
+  it('persists background shell output and notifies the Agent when it finishes', async () => {
+    const publishBackgroundShellCompletion = vi.fn()
+    const context = {
+      reqId: 'test-req',
+      callId: 'call-shell',
+      signal: new AbortController().signal,
+      host: { publishBackgroundShellCompletion }
+    }
+    const start = await ToolRegistry.shell.execute(
+      {
+        command: nodeEvalCommand("console.log('background done')"),
+        background: true,
+        waitMs: 0
+      },
+      context
+    )
+    const processId = start.resultForModel.match(/Background ID: (\S+)/)?.[1]
+    expect(processId).toBeDefined()
+
+    await vi.waitFor(
+      () => {
+        expect(publishBackgroundShellCompletion).toHaveBeenCalledWith(
+          expect.objectContaining({
+            jobId: processId,
+            parentToolCallId: 'call-shell',
+            status: 'completed',
+            output: expect.stringContaining('background done')
+          })
+        )
+      },
+      { timeout: 5_000 }
+    )
+    expect(getBackgroundJob(processId!)).toMatchObject({
+      type: 'shell',
+      status: 'completed',
+      output: expect.stringContaining('background done'),
+      metadata: expect.objectContaining({ command: expect.any(String), exitCode: 0 })
+    })
   })
   it('handles cancellation via AbortSignal', async () => {
     const controller = new AbortController()

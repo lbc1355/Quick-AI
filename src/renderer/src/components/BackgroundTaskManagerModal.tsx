@@ -1,16 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bot, Clock3, Info, Layers, Power, RefreshCw, Terminal, X } from 'lucide-react'
-import type { BackgroundJobInfo, BackgroundJobStatus } from '../../../shared/types'
+import type {
+  BackgroundJobInfo,
+  BackgroundJobStatus,
+  BackgroundShellJobMetadata
+} from '../../../shared/types'
 import { useToast } from '../contexts/ToastContext'
-
-interface BackgroundShellInfo {
-  id: string
-  command: string
-  status: string
-  pid?: number
-  createdAt: number
-  totalOutputChars: number
-}
 
 interface BackgroundTaskManagerModalProps {
   sessionId?: string
@@ -39,6 +34,9 @@ const formatDuration = (job: BackgroundJobInfo, now = Date.now()): string => {
   return `${minutes} 分 ${seconds} 秒`
 }
 
+const shellMetadata = (job: BackgroundJobInfo): Partial<BackgroundShellJobMetadata> =>
+  (job.metadata || {}) as Partial<BackgroundShellJobMetadata>
+
 export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProps> = ({
   sessionId,
   onClose
@@ -47,12 +45,8 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
   const [activeTab, setActiveTab] = useState<ManagerTab>('agents')
   const [jobs, setJobs] = useState<BackgroundJobInfo[]>([])
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
-  const [shells, setShells] = useState<BackgroundShellInfo[]>([])
   const [selectedShellId, setSelectedShellId] = useState<string | null>(null)
-  const [logs, setLogs] = useState('')
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
-  const [isLoadingShells, setIsLoadingShells] = useState(false)
-  const [isLoadingLogs, setIsLoadingLogs] = useState(false)
   const logTerminalRef = useRef<HTMLPreElement>(null)
 
   const fetchJobs = useCallback(
@@ -60,9 +54,18 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
       if (!silent) setIsLoadingJobs(true)
       try {
         const list = await window.api.backgroundJobList(sessionId)
+        const agentList = list.filter((job) => job.type === 'subagent')
+        const shellList = list.filter((job) => job.type === 'shell')
         setJobs(list)
         setSelectedJobId((current) =>
-          current && list.some((job) => job.id === current) ? current : list[0]?.id || null
+          current && agentList.some((job) => job.id === current)
+            ? current
+            : agentList[0]?.id || null
+        )
+        setSelectedShellId((current) =>
+          current && shellList.some((job) => job.id === current)
+            ? current
+            : shellList[0]?.id || null
         )
       } catch (error) {
         console.error('Failed to fetch background jobs', error)
@@ -73,72 +76,32 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
     [sessionId]
   )
 
-  const fetchShells = useCallback(
-    async (silent = false): Promise<void> => {
-      if (!silent) setIsLoadingShells(true)
-      try {
-        const list = await window.api.bgShellList(sessionId)
-        setShells(list)
-        setSelectedShellId((current) =>
-          current && list.some((shell) => shell.id === current) ? current : list[0]?.id || null
-        )
-      } catch (error) {
-        console.error('Failed to fetch background shell processes', error)
-      } finally {
-        setIsLoadingShells(false)
-      }
-    },
-    [sessionId]
-  )
-
-  const fetchLogs = useCallback(async (id: string, silent = false): Promise<void> => {
-    if (!silent) setIsLoadingLogs(true)
-    try {
-      const result = await window.api.bgShellReadLog(id)
-      setLogs(result.output || '(暂无日志输出)')
-      window.setTimeout(() => {
-        if (logTerminalRef.current) {
-          logTerminalRef.current.scrollTop = logTerminalRef.current.scrollHeight
-        }
-      }, 50)
-    } catch (error) {
-      console.error('Failed to read background shell logs', error)
-      setLogs(`读取日志失败：${error instanceof Error ? error.message : String(error)}`)
-    } finally {
-      setIsLoadingLogs(false)
-    }
-  }, [])
-
   useEffect(() => {
     void fetchJobs()
     const timer = window.setInterval(() => void fetchJobs(true), 2000)
     return () => window.clearInterval(timer)
   }, [fetchJobs])
 
-  useEffect(() => {
-    void fetchShells()
-    const timer = window.setInterval(() => void fetchShells(true), 3000)
-    return () => window.clearInterval(timer)
-  }, [fetchShells])
-
-  useEffect(() => {
-    if (!selectedShellId) {
-      setLogs('')
-      return undefined
-    }
-    void fetchLogs(selectedShellId)
-    const timer = window.setInterval(() => void fetchLogs(selectedShellId, true), 2000)
-    return () => window.clearInterval(timer)
-  }, [fetchLogs, selectedShellId])
+  const agentJobs = useMemo(() => jobs.filter((job) => job.type === 'subagent'), [jobs])
+  const shells = useMemo(() => jobs.filter((job) => job.type === 'shell'), [jobs])
 
   const selectedJob = useMemo(
-    () => jobs.find((job) => job.id === selectedJobId),
-    [jobs, selectedJobId]
+    () => agentJobs.find((job) => job.id === selectedJobId),
+    [agentJobs, selectedJobId]
   )
   const selectedShell = useMemo(
     () => shells.find((shell) => shell.id === selectedShellId),
     [selectedShellId, shells]
   )
+
+  useEffect(() => {
+    if (!selectedShell?.output) return
+    window.setTimeout(() => {
+      if (logTerminalRef.current) {
+        logTerminalRef.current.scrollTop = logTerminalRef.current.scrollHeight
+      }
+    }, 50)
+  }, [selectedShell?.output])
 
   const handleCancelJob = async (id: string): Promise<void> => {
     if (!window.confirm('确定要取消这个后台子 Agent 任务吗？')) return
@@ -153,18 +116,16 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
   const handleStopShell = async (id: string): Promise<void> => {
     if (!window.confirm('确定要终止该后台进程及其所有子进程吗？')) return
     try {
-      await window.api.bgShellStop(id)
-      await fetchShells(true)
-      await fetchLogs(id, true)
+      await window.api.backgroundJobCancel(id)
+      await fetchJobs(true)
     } catch (error) {
       toast.error(`停止进程失败：${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
-  const isRefreshing = activeTab === 'agents' ? isLoadingJobs : isLoadingShells
+  const isRefreshing = isLoadingJobs
   const refreshActiveTab = (): void => {
-    if (activeTab === 'agents') void fetchJobs()
-    else void fetchShells()
+    void fetchJobs()
   }
 
   return (
@@ -181,7 +142,7 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
             <Layers size={16} style={{ color: 'var(--color-primary)' }} />
             <h2>后台任务管理</h2>
             <span>
-              {jobs.length} 个 Agent · {shells.length} 个进程
+              {agentJobs.length} 个 Agent · {shells.length} 个进程
             </span>
           </div>
           <div className="bg-shell-header-actions">
@@ -225,10 +186,10 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
         {activeTab === 'agents' ? (
           <div className="bg-shell-body">
             <div className="bg-shell-sidebar">
-              {jobs.length === 0 ? (
+              {agentJobs.length === 0 ? (
                 <div className="background-manager-empty-list">当前会话没有后台子 Agent 任务。</div>
               ) : (
-                jobs.map((job) => (
+                agentJobs.map((job) => (
                   <button
                     type="button"
                     key={job.id}
@@ -328,23 +289,27 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
               {shells.length === 0 ? (
                 <div className="background-manager-empty-list">当前会话没有后台 Shell 进程。</div>
               ) : (
-                shells.map((shell) => (
-                  <button
-                    type="button"
-                    key={shell.id}
-                    onClick={() => setSelectedShellId(shell.id)}
-                    className={`bg-shell-item ${shell.id === selectedShellId ? 'selected' : ''}`}
-                  >
-                    <span className="bg-shell-item-left">
-                      <span className={`bg-shell-status-dot ${shell.status}`} />
-                      <span className="bg-shell-item-id">{shell.id}</span>
-                      <span className="bg-shell-item-cmd-preview" title={shell.command}>
-                        {shell.command}
+                shells.map((shell) => {
+                  const metadata = shellMetadata(shell)
+                  const command = metadata.command || shell.description || shell.title
+                  return (
+                    <button
+                      type="button"
+                      key={shell.id}
+                      onClick={() => setSelectedShellId(shell.id)}
+                      className={`bg-shell-item ${shell.id === selectedShellId ? 'selected' : ''}`}
+                    >
+                      <span className="bg-shell-item-left">
+                        <span className={`bg-shell-status-dot ${shell.status}`} />
+                        <span className="bg-shell-item-id">{shell.id}</span>
+                        <span className="bg-shell-item-cmd-preview" title={command}>
+                          {command}
+                        </span>
                       </span>
-                    </span>
-                    <span className="bg-shell-item-pid">PID: {shell.pid ?? 'n/a'}</span>
-                  </button>
-                ))
+                      <span className="bg-shell-item-pid">PID: {metadata.pid ?? 'n/a'}</span>
+                    </button>
+                  )
+                })
               )}
             </div>
 
@@ -353,9 +318,13 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
                 <>
                   <div className="bg-shell-terminal-header">
                     <div className="bg-shell-terminal-info">
-                      <div className="bg-shell-terminal-command">{selectedShell.command}</div>
+                      <div className="bg-shell-terminal-command">
+                        {shellMetadata(selectedShell).command ||
+                          selectedShell.description ||
+                          selectedShell.title}
+                      </div>
                       <span className="bg-shell-terminal-meta">
-                        PID: {selectedShell.pid ?? 'n/a'} · 创建于{' '}
+                        PID: {shellMetadata(selectedShell).pid ?? 'n/a'} · 创建于{' '}
                         {formatTime(selectedShell.createdAt)}
                         <span className="background-shell-info" title={selectedShell.id}>
                           <Info size={11} />
@@ -375,14 +344,8 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
                   </div>
                   <div className="bg-shell-terminal-container">
                     <pre ref={logTerminalRef} className="bg-shell-terminal-screen">
-                      {logs}
+                      {selectedShell.output || '(暂无日志输出)'}
                     </pre>
-                    {isLoadingLogs && (
-                      <div className="bg-shell-terminal-loading">
-                        <RefreshCw size={10} className="spin" />
-                        加载中
-                      </div>
-                    )}
                   </div>
                 </>
               ) : (

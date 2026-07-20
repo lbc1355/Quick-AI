@@ -5,7 +5,8 @@ import {
   configureBackgroundJobPersistence,
   getBackgroundJob,
   listBackgroundJobs,
-  startBackgroundJob
+  startBackgroundJob,
+  updateBackgroundJob
 } from './backgroundJobManager'
 import type { BackgroundJobInfo } from '../../shared/types'
 
@@ -62,6 +63,29 @@ describe('background job manager', () => {
     await flush()
 
     expect(getBackgroundJob('job-limited')?.status).toBe('max_steps')
+  })
+
+  it('persists task-specific metadata and bounded output updates', () => {
+    const metadata = { pid: 42, totalOutputChars: 0 }
+    startBackgroundJob({
+      id: 'job-output',
+      type: 'shell',
+      title: 'Build',
+      metadata,
+      output: '',
+      run: () => new Promise<void>(() => undefined)
+    })
+    metadata.pid = 99
+
+    updateBackgroundJob('job-output', {
+      metadata: { pid: 42, totalOutputChars: 5 },
+      output: 'hello'
+    })
+
+    expect(getBackgroundJob('job-output')).toMatchObject({
+      metadata: { pid: 42, totalOutputChars: 5 },
+      output: 'hello'
+    })
   })
 
   it('persists lifecycle changes and merges recovered records into listings', async () => {

@@ -26,7 +26,6 @@ import { registerCacheIpc } from './ipc/cacheIpc'
 import { registerGenerationIpc } from './ipc/generationIpc'
 import { registerWindowIpc } from './ipc/windowIpc'
 import { registerProjectIpc } from './ipc/projectIpc'
-import { registerBackgroundShellIpc } from './ipc/backgroundShellIpc'
 import { registerBackgroundJobIpc } from './ipc/backgroundJobIpc'
 
 let mainWindow: BrowserWindow | null = null
@@ -475,7 +474,6 @@ app.whenReady().then(() => {
 
   registerWindowIpc(windowController)
   registerProjectIpc(windowController)
-  registerBackgroundShellIpc()
   registerBackgroundJobIpc()
 
   snapshotMaintenanceTimeout = setTimeout(maintainAgentFileSnapshots, 30_000)

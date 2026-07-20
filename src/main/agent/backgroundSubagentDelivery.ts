@@ -1,11 +1,11 @@
 import type {
-  AdmitSessionPromptInput,
   BackgroundSubagentCompletion,
-  BackgroundSubagentResultNotification,
-  SessionPromptAdmission
+  BackgroundSubagentResultNotification
 } from '../../shared/types'
-import { admitSessionPrompt, markSessionPromptRunning } from '../database/sessionPromptStore'
-import { globalSessionCoordinator } from '../sessionCoordinator'
+import {
+  type BackgroundResultDeliveryDependencies,
+  routeBackgroundResult
+} from './backgroundResultDelivery'
 
 export interface DeliverBackgroundSubagentInput {
   completion: BackgroundSubagentCompletion
@@ -16,29 +16,7 @@ export interface DeliverBackgroundSubagentInput {
   send: (notification: BackgroundSubagentResultNotification) => void
 }
 
-export interface BackgroundSubagentDeliveryDependencies {
-  getContextEpoch: (sessionId: string) => number | undefined
-  admit: (input: AdmitSessionPromptInput) => { prompt: SessionPromptAdmission; inserted: boolean }
-  steer: (
-    sessionId: string,
-    prompt: {
-      admissionId: string
-      contextEpoch: number
-      messages: SessionPromptAdmission['messages']
-    }
-  ) => boolean
-  markRunning: (admissionId: string) => boolean
-  removeSteering: (sessionId: string, admissionId: string) => boolean
-}
-
-const defaultDependencies: BackgroundSubagentDeliveryDependencies = {
-  getContextEpoch: (sessionId) => globalSessionCoordinator.getContextEpoch(sessionId),
-  admit: admitSessionPrompt,
-  steer: (sessionId, prompt) => globalSessionCoordinator.steer(sessionId, prompt),
-  markRunning: markSessionPromptRunning,
-  removeSteering: (sessionId, admissionId) =>
-    globalSessionCoordinator.removeSteering(sessionId, admissionId)
-}
+export type BackgroundSubagentDeliveryDependencies = BackgroundResultDeliveryDependencies
 
 const renderResultPrompt = (completion: BackgroundSubagentCompletion): string => {
   const state =
@@ -56,59 +34,19 @@ const renderResultPrompt = (completion: BackgroundSubagentCompletion): string =>
     .join('\n')
 }
 
-const promptIds = (
-  jobId: string
-): { admissionId: string; sourceMessageId: string; assistantMessageId: string } => ({
-  admissionId: `background-result-admission-${jobId}`,
-  sourceMessageId: `background-result-source-${jobId}`,
-  assistantMessageId: `background-result-assistant-${jobId}`
-})
-
 export function deliverBackgroundSubagentResult(
   input: DeliverBackgroundSubagentInput,
-  dependencies: BackgroundSubagentDeliveryDependencies = defaultDependencies
+  dependencies?: BackgroundSubagentDeliveryDependencies
 ): BackgroundSubagentResultNotification {
-  const knownEpoch = dependencies.getContextEpoch(input.sessionId)
-  if (knownEpoch !== undefined && knownEpoch !== input.contextEpoch) {
-    const stale: BackgroundSubagentResultNotification = {
-      ...input.completion,
+  const route = routeBackgroundResult(
+    {
+      jobId: input.completion.jobId,
+      promptText: renderResultPrompt(input.completion),
       sessionId: input.sessionId,
-      contextEpoch: input.contextEpoch,
-      parentRunId: input.parentRunId,
-      parentAssistantMessageId: input.parentAssistantMessageId,
-      disposition: 'stale'
-    }
-    input.send(stale)
-    return stale
-  }
-
-  const ids = promptIds(input.completion.jobId)
-  const stored = dependencies.admit({
-    id: ids.admissionId,
-    sessionId: input.sessionId,
-    contextEpoch: input.contextEpoch,
-    mode: 'steer',
-    runMode: 'agent',
-    sourceMessageId: ids.sourceMessageId,
-    assistantMessageId: ids.assistantMessageId,
-    messages: [{ role: 'user', content: renderResultPrompt(input.completion) }]
-  })
-
-  let disposition: BackgroundSubagentResultNotification['disposition'] = 'queued'
-  if (
-    stored.prompt.status === 'pending' &&
-    dependencies.steer(input.sessionId, {
-      admissionId: stored.prompt.id,
-      contextEpoch: stored.prompt.contextEpoch,
-      messages: stored.prompt.messages
-    })
-  ) {
-    if (dependencies.markRunning(stored.prompt.id)) {
-      disposition = 'steered'
-    } else {
-      dependencies.removeSteering(input.sessionId, stored.prompt.id)
-    }
-  }
+      contextEpoch: input.contextEpoch
+    },
+    dependencies
+  )
 
   const notification: BackgroundSubagentResultNotification = {
     ...input.completion,
@@ -116,8 +54,8 @@ export function deliverBackgroundSubagentResult(
     contextEpoch: input.contextEpoch,
     parentRunId: input.parentRunId,
     parentAssistantMessageId: input.parentAssistantMessageId,
-    disposition,
-    prompt: stored.prompt
+    disposition: route.disposition,
+    ...(route.prompt ? { prompt: route.prompt } : {})
   }
   input.send(notification)
   return notification
