@@ -10,6 +10,13 @@ import { McpManager } from './mcpManager'
 import { registerHtmlRenderer } from './webRenderer'
 import { ensureSystemSkills, watchSkillFolders } from './skillManager'
 import { runAgentFileSnapshotMaintenance } from './agent/agentFileSnapshot'
+import { configureBackgroundJobPersistence } from './agent/backgroundJobManager'
+import {
+  getBackgroundJobRecord,
+  listBackgroundJobRecords,
+  pruneBackgroundJobRecords,
+  saveBackgroundJob
+} from './database'
 
 // IPC handlers
 import { registerStoreIpc } from './ipc/storeIpc'
@@ -20,6 +27,7 @@ import { registerGenerationIpc } from './ipc/generationIpc'
 import { registerWindowIpc } from './ipc/windowIpc'
 import { registerProjectIpc } from './ipc/projectIpc'
 import { registerBackgroundShellIpc } from './ipc/backgroundShellIpc'
+import { registerBackgroundJobIpc } from './ipc/backgroundJobIpc'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -392,6 +400,12 @@ app.whenReady().then(() => {
   logger.info('System', 'QuickAI App initializing...')
   // Initialize storage
   store = new FileStore()
+  configureBackgroundJobPersistence({
+    get: getBackgroundJobRecord,
+    list: listBackgroundJobRecords,
+    save: saveBackgroundJob,
+    prune: pruneBackgroundJobRecords
+  })
 
   // Wire the headless JS-page renderer into the web tools (enables fetch_url JS rendering).
   registerHtmlRenderer()
@@ -462,6 +476,7 @@ app.whenReady().then(() => {
   registerWindowIpc(windowController)
   registerProjectIpc(windowController)
   registerBackgroundShellIpc()
+  registerBackgroundJobIpc()
 
   snapshotMaintenanceTimeout = setTimeout(maintainAgentFileSnapshots, 30_000)
   snapshotMaintenanceTimeout.unref()

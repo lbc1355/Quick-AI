@@ -1,12 +1,7 @@
-export type BackgroundJobStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+import type { BackgroundJobInfo, BackgroundJobStatus } from '../../shared/types'
 
-export interface BackgroundJobInfo {
-  id: string
-  type: string
-  title: string
-  status: BackgroundJobStatus
-  createdAt: number
-  completedAt?: number
+export interface BackgroundJobRunResult {
+  status?: Exclude<BackgroundJobStatus, 'running' | 'interrupted'>
   error?: string
 }
 
@@ -14,92 +9,147 @@ export interface StartBackgroundJobInput {
   id: string
   type: string
   title: string
-  run: (signal: AbortSignal) => Promise<void>
+  description?: string
+  sessionId?: string
+  run: (signal: AbortSignal) => Promise<void | BackgroundJobRunResult>
+}
+
+export interface BackgroundJobPersistence {
+  get: (id: string) => BackgroundJobInfo | undefined
+  list: (sessionId?: string) => BackgroundJobInfo[]
+  save: (job: BackgroundJobInfo) => BackgroundJobInfo
+  prune: () => number
+}
+
+interface LiveBackgroundJob {
+  info: BackgroundJobInfo
+  controller: AbortController
 }
 
 const COMPLETED_JOB_TTL_MS = 60 * 60 * 1000
-const MAX_RETAINED_JOBS = 200
+const MAX_RETAINED_LIVE_JOBS = 200
 
-const jobs = new Map<string, BackgroundJobInfo & { controller: AbortController }>()
+const jobs = new Map<string, LiveBackgroundJob>()
+let persistence: BackgroundJobPersistence | undefined
 
 const snapshot = (job: BackgroundJobInfo): BackgroundJobInfo => ({ ...job })
 
-const prune = (now = Date.now()): void => {
+const save = (job: BackgroundJobInfo): void => {
+  persistence?.save(snapshot(job))
+}
+
+const pruneLive = (now = Date.now()): void => {
   for (const [id, job] of jobs) {
     if (
-      job.status !== 'running' &&
-      now - (job.completedAt || job.createdAt) > COMPLETED_JOB_TTL_MS
+      job.info.status !== 'running' &&
+      now - (job.info.completedAt || job.info.createdAt) > COMPLETED_JOB_TTL_MS
     ) {
       jobs.delete(id)
     }
   }
 
-  if (jobs.size <= MAX_RETAINED_JOBS) return
+  if (jobs.size <= MAX_RETAINED_LIVE_JOBS) return
   const removable = Array.from(jobs.values())
-    .filter((job) => job.status !== 'running')
-    .sort((a, b) => (a.completedAt || a.createdAt) - (b.completedAt || b.createdAt))
+    .filter((job) => job.info.status !== 'running')
+    .sort(
+      (a, b) => (a.info.completedAt || a.info.createdAt) - (b.info.completedAt || b.info.createdAt)
+    )
   for (const job of removable) {
-    if (jobs.size <= MAX_RETAINED_JOBS) break
-    jobs.delete(job.id)
+    if (jobs.size <= MAX_RETAINED_LIVE_JOBS) break
+    jobs.delete(job.info.id)
   }
+}
+
+export function configureBackgroundJobPersistence(
+  next: BackgroundJobPersistence | undefined
+): void {
+  persistence = next
 }
 
 export function startBackgroundJob(input: StartBackgroundJobInput): BackgroundJobInfo {
-  prune()
-  const existing = jobs.get(input.id)
+  pruneLive()
+  persistence?.prune()
+  const existing = jobs.get(input.id)?.info || persistence?.get(input.id)
   if (existing?.status === 'running') return snapshot(existing)
 
   const controller = new AbortController()
-  const job: BackgroundJobInfo & { controller: AbortController } = {
+  const now = Date.now()
+  const info: BackgroundJobInfo = {
     id: input.id,
     type: input.type,
     title: input.title,
+    ...(input.description ? { description: input.description } : {}),
+    ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     status: 'running',
-    createdAt: Date.now(),
-    controller
+    createdAt: now,
+    updatedAt: now
   }
-  jobs.set(job.id, job)
+  const job: LiveBackgroundJob = { info, controller }
+  jobs.set(info.id, job)
+  save(info)
 
   void input
     .run(controller.signal)
-    .then(() => {
-      if (job.status !== 'running') return
-      job.status = 'completed'
-      job.completedAt = Date.now()
+    .then((result) => {
+      if (info.status !== 'running') return
+      info.status = result?.status || 'completed'
+      info.error = result?.error
+      info.completedAt = Date.now()
+      info.updatedAt = info.completedAt
+      save(info)
     })
     .catch((error: unknown) => {
-      if (job.status !== 'running') return
-      job.status = controller.signal.aborted ? 'cancelled' : 'failed'
-      job.error = error instanceof Error ? error.message : String(error)
-      job.completedAt = Date.now()
+      if (info.status !== 'running') return
+      info.status = controller.signal.aborted ? 'cancelled' : 'failed'
+      info.error = error instanceof Error ? error.message : String(error)
+      info.completedAt = Date.now()
+      info.updatedAt = info.completedAt
+      save(info)
     })
-    .finally(() => prune())
+    .finally(() => {
+      pruneLive()
+      persistence?.prune()
+    })
 
-  return snapshot(job)
+  return snapshot(info)
 }
 
 export function getBackgroundJob(id: string): BackgroundJobInfo | undefined {
-  const job = jobs.get(id)
+  const job = jobs.get(id)?.info || persistence?.get(id)
   return job ? snapshot(job) : undefined
 }
 
-export function listBackgroundJobs(): BackgroundJobInfo[] {
-  prune()
-  return Array.from(jobs.values(), snapshot).sort((a, b) => a.createdAt - b.createdAt)
+export function listBackgroundJobs(sessionId?: string): BackgroundJobInfo[] {
+  pruneLive()
+  persistence?.prune()
+  const merged = new Map<string, BackgroundJobInfo>()
+  for (const job of persistence?.list(sessionId) || []) merged.set(job.id, job)
+  for (const { info } of jobs.values()) {
+    if (sessionId && info.sessionId !== sessionId) continue
+    merged.set(info.id, snapshot(info))
+  }
+  return Array.from(merged.values()).sort(
+    (a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id)
+  )
 }
 
 export function cancelBackgroundJob(id: string): BackgroundJobInfo | undefined {
-  const job = jobs.get(id)
-  if (!job) return undefined
-  if (job.status === 'running') {
-    job.status = 'cancelled'
-    job.completedAt = Date.now()
-    job.controller.abort()
+  const live = jobs.get(id)
+  const info = live?.info || persistence?.get(id)
+  if (!info) return undefined
+  if (info.status === 'running') {
+    info.status = live ? 'cancelled' : 'interrupted'
+    info.error = live ? undefined : '后台任务的运行进程已不存在。'
+    info.completedAt = Date.now()
+    info.updatedAt = info.completedAt
+    live?.controller.abort()
+    save(info)
   }
-  return snapshot(job)
+  return snapshot(info)
 }
 
 export function clearBackgroundJobsForTests(): void {
   for (const job of jobs.values()) job.controller.abort()
   jobs.clear()
+  persistence = undefined
 }

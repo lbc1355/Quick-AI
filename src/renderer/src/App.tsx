@@ -39,7 +39,7 @@ import { getActiveProviderApiKey } from '../../shared/providerKeyHelper'
 
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
-import { BgShellManagerModal } from './components/BgShellManagerModal'
+import { BackgroundTaskManagerModal } from './components/BackgroundTaskManagerModal'
 import { ChatInputArea } from './components/ChatInputArea'
 import { StickyUserMessage } from './components/StickyUserMessage'
 import { UserChoicePopup } from './components/UserChoicePopup'
@@ -132,7 +132,7 @@ const getMessageMinimapPreview = (message: Message): string => {
 function App(): React.JSX.Element {
   // Navigation
   const [showSettings, setShowSettings] = useState(false)
-  const [showBgShellManager, setShowBgShellManager] = useState(false)
+  const [showBackgroundTaskManager, setShowBackgroundTaskManager] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isPanelPinned, setIsPanelPinned] = useState(false)
   const [isSessionSwitching, setIsSessionSwitching] = useState(false)
@@ -1292,17 +1292,16 @@ function App(): React.JSX.Element {
               handleAbortGeneration={handleAbortGeneration}
               handleSendMessage={handleSendMessage}
               handleAdmitPrompt={handleAdmitPrompt}
-              onOpenBgShellManager={() => setShowBgShellManager(true)}
+              onOpenBackgroundTaskManager={() => setShowBackgroundTaskManager(true)}
             />
           </section>
         </div>
       )}
 
-      {/* Background Shell Processes Manager pop-up */}
-      {showBgShellManager && (
-        <BgShellManagerModal
+      {showBackgroundTaskManager && (
+        <BackgroundTaskManagerModal
           sessionId={activeSessionId}
-          onClose={() => setShowBgShellManager(false)}
+          onClose={() => setShowBackgroundTaskManager(false)}
         />
       )}
 

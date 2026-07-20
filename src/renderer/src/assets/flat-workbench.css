@@ -2791,7 +2791,7 @@ body {
   }
 }
 
-/* Background Shell Manager Modal Design */
+/* Background task manager */
 .bg-shell-overlay {
   position: fixed;
   top: 0;
@@ -2858,6 +2858,39 @@ body {
   gap: 6px;
 }
 
+.background-manager-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px var(--spacing-3);
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-header);
+}
+
+.background-manager-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--rounded-xs);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.background-manager-tabs button:hover {
+  background-color: var(--color-card-bg-hover);
+  color: var(--color-text-title);
+}
+
+.background-manager-tabs button.active {
+  border-color: var(--color-border-strong);
+  background-color: var(--color-card-bg-hover);
+  color: var(--color-primary);
+}
+
 .bg-shell-icon-btn {
   background: transparent;
   border: none;
@@ -2894,8 +2927,13 @@ body {
 }
 
 .bg-shell-item {
+  width: 100%;
   padding: var(--spacing-2) var(--spacing-3);
+  border: 0;
   border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
   cursor: pointer;
   transition: all 0.1s ease;
   display: flex;
@@ -2946,6 +2984,24 @@ body {
   background-color: var(--color-text-faint);
 }
 
+.bg-shell-status-dot.completed {
+  background-color: var(--color-success);
+}
+
+.bg-shell-status-dot.failed {
+  background-color: var(--color-danger);
+  box-shadow: 0 0 6px var(--color-danger);
+}
+
+.bg-shell-status-dot.cancelled,
+.bg-shell-status-dot.interrupted {
+  background-color: var(--color-text-faint);
+}
+
+.bg-shell-status-dot.max_steps {
+  background-color: var(--color-warning, #d69e2e);
+}
+
 .bg-shell-item-id {
   font-family: Consolas, monospace;
   font-size: 11px;
@@ -2974,6 +3030,37 @@ body {
   font-size: 10px;
   color: var(--color-text-faint);
   flex-shrink: 0;
+}
+
+.background-manager-empty-list {
+  padding: 40px 20px;
+  color: var(--color-text-faint);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.background-job-item-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.background-job-item-title {
+  overflow: hidden;
+  color: var(--color-text-title);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-job-item-status {
+  flex-shrink: 0;
+  color: var(--color-text-faint);
+  font-size: 9px;
 }
 
 .bg-shell-content {
@@ -3026,6 +3113,133 @@ body {
 .bg-shell-terminal-meta {
   font-size: 10px;
   color: var(--color-text-faint);
+}
+
+.background-job-status {
+  padding: 2px 6px;
+  border-radius: var(--rounded-sm);
+  background: var(--color-inline-code-bg);
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.background-job-status.running,
+.background-job-status.completed {
+  color: var(--color-success);
+}
+
+.background-job-status.failed {
+  color: var(--color-danger);
+}
+
+.background-job-status.max_steps {
+  color: var(--color-warning, #d69e2e);
+}
+
+.background-job-content {
+  background-color: var(--color-panel);
+}
+
+.background-job-details {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+  color: var(--color-text-muted);
+}
+
+.background-job-details section {
+  margin-bottom: 20px;
+}
+
+.background-job-details h3 {
+  margin: 0 0 8px;
+  color: var(--color-text-title);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.background-job-details p,
+.background-job-details pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.background-job-details p {
+  color: var(--color-text-title);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.background-job-details dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--rounded-sm);
+  background-color: var(--color-bg-darker);
+}
+
+.background-job-details dl div {
+  min-width: 0;
+}
+
+.background-job-details dt {
+  margin-bottom: 4px;
+  color: var(--color-text-faint);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.background-job-details dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--color-text-title);
+  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.background-job-duration {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.background-job-error {
+  margin-top: 18px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 28%, transparent);
+  border-radius: var(--rounded-sm);
+  background: color-mix(in srgb, var(--color-danger) 6%, transparent);
+}
+
+.background-job-error pre {
+  color: var(--color-danger);
+  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.background-job-note {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--color-text-faint);
+  background: var(--color-bg-darker);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.background-shell-info {
+  display: inline-flex;
+  margin-left: 8px;
+  vertical-align: middle;
+  cursor: help;
+  opacity: 0.6;
 }
 
 .bg-shell-terminate-btn {

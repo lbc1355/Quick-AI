@@ -28,7 +28,8 @@ import {
   SessionFileTransitionInput,
   SessionFileTransitionPreview,
   SessionFileTransitionResult,
-  BackgroundSubagentResultNotification
+  BackgroundSubagentResultNotification,
+  BackgroundJobInfo
 } from '../shared/types'
 
 interface BackgroundShellInfo {
@@ -190,6 +191,10 @@ const api = {
   mcpReloadServer: (name: string): Promise<McpServerStatus> =>
     ipcRenderer.invoke('mcp-reload-server', name),
   mcpOpenConfig: (): Promise<void> => ipcRenderer.invoke('mcp-open-config'),
+  backgroundJobList: (sessionId?: string): Promise<BackgroundJobInfo[]> =>
+    ipcRenderer.invoke('background-job-list', sessionId),
+  backgroundJobCancel: (id: string): Promise<BackgroundJobInfo> =>
+    ipcRenderer.invoke('background-job-cancel', id),
   bgShellList: (sessionId?: string): Promise<BackgroundShellInfo[]> =>
     ipcRenderer.invoke('bg-shell-list', sessionId),
   bgShellReadLog: (id: string): Promise<BackgroundShellLog> =>

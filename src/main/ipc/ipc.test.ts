@@ -79,6 +79,7 @@ import { registerCacheIpc } from './cacheIpc'
 import { registerWindowIpc } from './windowIpc'
 import { registerProjectIpc } from './projectIpc'
 import { registerBackgroundShellIpc } from './backgroundShellIpc'
+import { registerBackgroundJobIpc } from './backgroundJobIpc'
 import { registerGenerationIpc } from './generationIpc'
 import type { FileStore } from '../store'
 
@@ -168,6 +169,12 @@ describe('IPC Registration Modules', () => {
     expect(mockHandlers['bg-shell-list']).toBeDefined()
     expect(mockHandlers['bg-shell-read-log']).toBeDefined()
     expect(mockHandlers['bg-shell-stop']).toBeDefined()
+  })
+
+  it('registerBackgroundJobIpc registers background task management channels', () => {
+    registerBackgroundJobIpc()
+    expect(mockHandlers['background-job-list']).toBeDefined()
+    expect(mockHandlers['background-job-cancel']).toBeDefined()
   })
 
   it('registerWindowIpc routes actions to WindowController', () => {

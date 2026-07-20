@@ -48,7 +48,7 @@ interface ChatInputAreaProps {
   handleAbortGeneration: () => void
   handleSendMessage: (promptOverride?: string) => Promise<boolean>
   handleAdmitPrompt: (prompt: string, mode: SessionPromptAdmissionMode) => Promise<boolean>
-  onOpenBgShellManager: () => void
+  onOpenBackgroundTaskManager: () => void
 }
 interface ContextUsagePopoverItem {
   key: string
@@ -157,7 +157,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   handleAbortGeneration,
   handleSendMessage,
   handleAdmitPrompt,
-  onOpenBgShellManager
+  onOpenBackgroundTaskManager
 }) => {
   const draftValueRef = useRef(inputVal)
   const contextBaseTokenEstimateRef = useRef(contextBaseTokenEstimate)
@@ -434,7 +434,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           canSend={canSend}
           handleAbortGeneration={handleAbortGeneration}
           onSubmitDraft={submitDraft}
-          onOpenBgShellManager={onOpenBgShellManager}
+          onOpenBackgroundTaskManager={onOpenBackgroundTaskManager}
         />
       </div>
     </>

@@ -17,6 +17,13 @@ export {
 } from './database/sessionPromptStore'
 export { loadSkills, saveSkills } from './database/skillStore'
 export {
+  getBackgroundJobRecord,
+  listBackgroundJobRecords,
+  pruneBackgroundJobRecords,
+  recoverRunningBackgroundJobs,
+  saveBackgroundJob
+} from './database/backgroundJobStore'
+export {
   deleteResourceFromDb,
   getResourceChunkText,
   getResourceChunksMetadata,

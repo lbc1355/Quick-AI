@@ -23,7 +23,7 @@ interface ChatComposerProps {
   canSend: boolean
   handleAbortGeneration: () => void
   onSubmitDraft: (mode?: SessionPromptAdmissionMode) => void
-  onOpenBgShellManager: () => void
+  onOpenBackgroundTaskManager: () => void
 }
 
 export const ChatComposer: React.FC<ChatComposerProps> = ({
@@ -46,7 +46,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   canSend,
   handleAbortGeneration,
   onSubmitDraft,
-  onOpenBgShellManager
+  onOpenBackgroundTaskManager
 }) => {
   return (
     <div className="input-container">
@@ -86,8 +86,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
         <button
           type="button"
           className="input-action-btn"
-          onClick={onOpenBgShellManager}
-          title="后台进程管理"
+          onClick={onOpenBackgroundTaskManager}
+          title="后台任务管理"
           style={{
             cursor: 'pointer',
             margin: 0,

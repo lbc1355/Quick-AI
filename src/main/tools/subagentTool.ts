@@ -82,6 +82,8 @@ async function startBackgroundSubagent(
     id: jobId,
     type: 'subagent',
     title: request.label || request.task,
+    description: request.task,
+    sessionId: parentRun?.sessionId,
     run: async (signal) => {
       let result: ToolExecutionResult | undefined
       let failure: unknown
@@ -118,6 +120,7 @@ async function startBackgroundSubagent(
       }
 
       if (failure) throw failure
+      return { status, ...(completionEvent?.error ? { error: completionEvent.error } : {}) }
     }
   })
 

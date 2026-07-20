@@ -6,7 +6,9 @@ import {
   getDb,
   loadProjects,
   saveProjects,
-  recoverRunningSessionPrompts
+  recoverRunningSessionPrompts,
+  recoverRunningBackgroundJobs,
+  pruneBackgroundJobRecords
 } from './database'
 import { StorageSchema } from '../shared/types'
 import { recoverInterruptedAgentEventJournals } from './agent/agentEventJournal'
@@ -20,6 +22,8 @@ export class FileStore {
     // Initialize the database (creates file + migrates old JSON if needed)
     getDb()
     recoverRunningSessionPrompts()
+    recoverRunningBackgroundJobs()
+    pruneBackgroundJobRecords()
     const interruptedRuns = recoverInterruptedAgentEventJournals()
     for (const run of interruptedRuns) {
       const terminalEvent = [...run.events].reverse().find((event) => event.type === 'agent_end')

@@ -633,6 +633,28 @@ export interface AdmitSessionPromptResult {
 
 export type BackgroundSubagentStatus = 'completed' | 'failed' | 'cancelled' | 'max_steps'
 
+export type BackgroundJobStatus =
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'max_steps'
+  | 'interrupted'
+
+/** Persisted lifecycle metadata for a detached background task. */
+export interface BackgroundJobInfo {
+  id: string
+  type: string
+  title: string
+  description?: string
+  sessionId?: string
+  status: BackgroundJobStatus
+  createdAt: number
+  updatedAt: number
+  completedAt?: number
+  error?: string
+}
+
 /** Tool-layer completion payload; the agent host enriches it with parent-session routing data. */
 export interface BackgroundSubagentCompletion {
   jobId: string

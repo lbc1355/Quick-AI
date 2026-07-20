@@ -140,6 +140,24 @@ export function createSchema(database: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_session_prompt_inbox_open
       ON session_prompt_inbox(sessionId, status, createdAt, id);
+
+    CREATE TABLE IF NOT EXISTS background_jobs (
+      id          TEXT PRIMARY KEY,
+      type        TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      description TEXT,
+      sessionId   TEXT,
+      status      TEXT NOT NULL
+                  CHECK (status IN ('running', 'completed', 'failed', 'cancelled', 'max_steps', 'interrupted')),
+      error       TEXT,
+      createdAt   INTEGER NOT NULL,
+      updatedAt   INTEGER NOT NULL,
+      completedAt INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_background_jobs_session
+      ON background_jobs(sessionId, createdAt DESC);
+    CREATE INDEX IF NOT EXISTS idx_background_jobs_status
+      ON background_jobs(status, updatedAt DESC);
   `)
 
   // Additive column migrations for databases created before a column existed. CREATE TABLE

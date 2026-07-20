@@ -27,7 +27,8 @@ import {
   SessionFileTransitionInput,
   SessionFileTransitionPreview,
   SessionFileTransitionResult,
-  BackgroundSubagentResultNotification
+  BackgroundSubagentResultNotification,
+  BackgroundJobInfo
 } from '../shared/types'
 
 declare global {
@@ -112,6 +113,8 @@ declare global {
       mcpGetStatus: () => Promise<McpServerStatus[]>
       mcpReloadServer: (name: string) => Promise<McpServerStatus>
       mcpOpenConfig: () => Promise<void>
+      backgroundJobList: (sessionId?: string) => Promise<BackgroundJobInfo[]>
+      backgroundJobCancel: (id: string) => Promise<BackgroundJobInfo>
       bgShellList: (sessionId?: string) => Promise<
         Array<{
           id: string
