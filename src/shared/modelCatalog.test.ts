@@ -130,6 +130,15 @@ describe('modelCatalog', () => {
       apiModel: 'real-api-model',
       displayName: undefined,
       capabilities: ['text', 'tools'],
+      features: {
+        toolCalls: true,
+        parallelToolCalls: true,
+        reasoning: false,
+        vision: false,
+        promptCaching: false,
+        streamUsage: false
+      },
+      promptProfile: 'default',
       contextWindowTokens: 256000
     })
   })

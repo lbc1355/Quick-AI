@@ -896,5 +896,14 @@ export const parseAgentSteps = (
       .sort((a, b) => a.stepNumber - b.stepNumber)
   }
 
+  // Defensive compatibility for providers that put a normal answer exclusively in their
+  // reasoning field. Without this fallback the answer is visible while streaming, then the
+  // completed agent bubble has no finalAnswer and disappears entirely. This also repairs the
+  // display of messages persisted before the model-response normalizer was added.
+  if (run.status === 'completed' && !run.finalAnswer.trim() && run.finalReasoning.trim()) {
+    run.finalAnswer = run.finalReasoning
+    run.finalReasoning = ''
+  }
+
   return run
 }

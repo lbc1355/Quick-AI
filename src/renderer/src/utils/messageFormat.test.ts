@@ -213,6 +213,19 @@ describe('parseAgentSteps agent_message_delta', () => {
     expect(run.steps[0].reasoning).toBe('')
   })
 
+  it('keeps a completed reasoning-only response visible as the final answer', () => {
+    const events: AgentEvent[] = [
+      { type: 'reasoning', content: 'Hello from the gateway.', step: 1 },
+      { type: 'agent_end', status: 'completed' }
+    ]
+
+    const run = parseAgentSteps(events, '')
+
+    expect(run.finalAnswer).toBe('Hello from the gateway.')
+    expect(run.finalReasoning).toBe('')
+    expect(run.steps).toEqual([])
+  })
+
   it('attaches streaming tool output to the matching tool call', () => {
     const events: AgentEvent[] = [
       {

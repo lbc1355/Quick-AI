@@ -4,7 +4,8 @@ import {
   ModelRuntimeConfig,
   PromptCacheStats,
   ProviderEndpointType,
-  ProviderApiFormat
+  ProviderApiFormat,
+  ResolvedModelFeatureSupport
 } from '../../shared/types'
 import { detectProvider, getAdapter, ModelAdapter } from './modelAdapter'
 import { callChatCompletionsModel } from './callChatCompletionsModel'
@@ -168,12 +169,31 @@ export function getRequestModelId(options: CallModelOptions): string {
 }
 
 export function canUseTools(options: CallModelOptions): boolean {
+  const featureOverride = options.modelRuntime?.features?.toolCalls
+  if (featureOverride !== undefined) return featureOverride
   const capabilities = options.modelRuntime?.capabilities
   return !capabilities || capabilities.length === 0 || capabilities.includes('tools')
 }
 
+export function resolveModelFeatures(
+  options: CallModelOptions,
+  adapter: ModelAdapter = resolveModelAdapter(options)
+): ResolvedModelFeatureSupport {
+  const features = {
+    ...adapter.features,
+    ...(options.modelRuntime?.features || {})
+  }
+  if (!features.toolCalls) features.parallelToolCalls = false
+  return features
+}
+
 export function resolveApiFormat(options: CallModelOptions): ProviderApiFormat {
-  return options.modelRuntime?.apiFormat ?? options.apiFormat ?? 'chat-completions'
+  const format = options.modelRuntime?.apiFormat ?? options.apiFormat ?? 'chat-completions'
+  const adapter = resolveModelAdapter(options)
+  if (!adapter.apiFormats.includes(format)) {
+    throw new Error(`Provider adapter "${adapter.name}" does not support the ${format} API format.`)
+  }
+  return format
 }
 
 export async function callModel(

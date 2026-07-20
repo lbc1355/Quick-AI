@@ -362,6 +362,30 @@ export type ProviderApiFormat = 'chat-completions' | 'responses'
 
 export type ModelCapability = 'text' | 'vision' | 'tools' | 'reasoning'
 
+export type ModelPromptProfile = 'default' | 'gpt' | 'claude' | 'gemini' | 'reasoning'
+
+/**
+ * Transport and behavior features that are independent from content modalities. Optional values
+ * are inherited from the provider profile; model-level values override provider-level values.
+ */
+export interface ModelFeatureSupport {
+  toolCalls?: boolean
+  parallelToolCalls?: boolean
+  reasoning?: boolean
+  vision?: boolean
+  promptCaching?: boolean
+  streamUsage?: boolean
+}
+
+export interface ResolvedModelFeatureSupport {
+  toolCalls: boolean
+  parallelToolCalls: boolean
+  reasoning: boolean
+  vision: boolean
+  promptCaching: boolean
+  streamUsage: boolean
+}
+
 export interface ModelInfo {
   id: string
   apiId: string
@@ -369,6 +393,8 @@ export interface ModelInfo {
   displayName?: string
   endpointType: ProviderEndpointType
   capabilities?: ModelCapability[]
+  features?: ModelFeatureSupport
+  promptProfile?: ModelPromptProfile
   limit: {
     context: number
     output?: number
@@ -397,6 +423,8 @@ export interface ApiProvider {
   endpointType?: ProviderEndpointType
   models?: Record<string, ModelInfo>
   apiFormat?: ProviderApiFormat
+  features?: ModelFeatureSupport
+  promptProfile?: ModelPromptProfile
 }
 
 export interface ModelRuntimeConfig {
@@ -407,6 +435,8 @@ export interface ModelRuntimeConfig {
   apiModel: string
   displayName?: string
   capabilities?: ModelCapability[]
+  features?: ResolvedModelFeatureSupport
+  promptProfile?: ModelPromptProfile
   contextWindowTokens?: number
   apiFormat?: ProviderApiFormat
 }

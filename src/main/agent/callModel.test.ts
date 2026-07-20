@@ -1,5 +1,10 @@
 import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest'
-import { callModel, getPromptCacheStats, prepareMessagesForModel } from './callModel'
+import {
+  callModel,
+  getPromptCacheStats,
+  prepareMessagesForModel,
+  resolveApiFormat
+} from './callModel'
 import { chatMessagesToResponsesInput } from './responsesAdapter'
 import { ChatCompletionMessage } from '../../shared/types'
 
@@ -54,6 +59,20 @@ describe('prepareMessagesForModel', () => {
     ])
 
     expect(messages[0]).not.toHaveProperty('reasoning_content')
+  })
+})
+
+describe('resolveApiFormat', () => {
+  it('rejects an API format that the selected provider adapter does not support', () => {
+    expect(() =>
+      resolveApiFormat({
+        apiUrl: 'https://open.bigmodel.cn/api/paas/v4',
+        apiKey: 'k',
+        model: 'glm-4.5',
+        providerType: 'glm',
+        apiFormat: 'responses'
+      })
+    ).toThrow('does not support the responses API format')
   })
 })
 
@@ -147,6 +166,63 @@ describe('callModel retry behavior', () => {
     expect(onFinalChunk).toHaveBeenCalledWith('partial answer')
   })
 
+  it('promotes a reasoning-only terminal response to final content', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(
+        sseStream([sseLine({ reasoning_content: 'Hello from the gateway.' }), 'data: [DONE]\n'])
+      )
+    )
+
+    const onReasoning = vi.fn()
+    const onFinalChunk = vi.fn()
+    const result = await callModel(
+      { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model' },
+      [{ role: 'user', content: 'hi' }],
+      undefined,
+      undefined,
+      { onReasoning, onFinalChunk }
+    )
+
+    expect(result.content).toBe('Hello from the gateway.')
+    expect(result.reasoning_content).toBe('Hello from the gateway.')
+    expect(onReasoning).toHaveBeenCalledWith('Hello from the gateway.')
+    expect(onFinalChunk).toHaveBeenCalledOnce()
+    expect(onFinalChunk).toHaveBeenCalledWith('Hello from the gateway.')
+  })
+
+  it('does not promote reasoning from a tool-call turn', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(
+        sseStream([
+          sseLine({ reasoning_content: 'I need to inspect the file.' }),
+          sseLine({
+            tool_calls: [
+              {
+                index: 0,
+                id: 'call-read',
+                function: { name: 'file_read', arguments: '{"path":"README.md"}' }
+              }
+            ]
+          }),
+          'data: [DONE]\n'
+        ])
+      )
+    )
+
+    const onFinalChunk = vi.fn()
+    const result = await callModel(
+      { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model' },
+      [{ role: 'user', content: 'read the file' }],
+      undefined,
+      undefined,
+      { onReasoning: vi.fn(), onFinalChunk }
+    )
+
+    expect(result.content).toBe('')
+    expect(result.tool_calls).toHaveLength(1)
+    expect(onFinalChunk).not.toHaveBeenCalled()
+  })
+
   it('gives up after retries are exhausted on persistent transient failure', async () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'))
 
@@ -237,6 +313,38 @@ describe('callModel retry behavior', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
     expect(body.tools).toBeUndefined()
     expect(body.tool_choice).toBeUndefined()
+  })
+
+  it('lets resolved model features override adapter stream-usage defaults', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(sseStream([sseLine({ content: 'Hello' }), 'data: [DONE]\n']))
+    )
+
+    await callModel(
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'k',
+        model: 'custom-model',
+        modelRuntime: {
+          providerType: 'custom',
+          endpointType: 'openai-compatible',
+          modelId: 'custom-model',
+          apiModel: 'custom-model',
+          features: {
+            toolCalls: true,
+            parallelToolCalls: false,
+            reasoning: false,
+            vision: false,
+            promptCaching: false,
+            streamUsage: false
+          }
+        }
+      },
+      [{ role: 'user', content: 'hi' }]
+    )
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.stream_options).toBeUndefined()
   })
 
   it('reports tool call argument streaming progress', async () => {
@@ -445,6 +553,35 @@ describe('Responses API Compatibility', () => {
       cacheMissTokens: 60,
       hitRate: 40
     })
+  })
+
+  it('promotes a reasoning-only Responses result to final content', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(
+        sseStream([
+          'event: response.reasoning_summary_text.delta\ndata: {"delta":"Gateway answer"}\n',
+          'event: response.completed\ndata: {"response":{}}\n',
+          'data: [DONE]\n'
+        ])
+      )
+    )
+
+    const onFinalChunk = vi.fn()
+    const result = await callModel(
+      {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'k',
+        model: 'test-model',
+        apiFormat: 'responses'
+      },
+      [{ role: 'user', content: 'hi' }],
+      undefined,
+      undefined,
+      { onReasoning: vi.fn(), onFinalChunk }
+    )
+
+    expect(result.content).toBe('Gateway answer')
+    expect(onFinalChunk).toHaveBeenCalledWith('Gateway answer')
   })
 
   it('accumulates streamed function calls correctly', async () => {

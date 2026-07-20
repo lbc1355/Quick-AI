@@ -92,6 +92,25 @@ describe('prepareChatAgentMessages date injection', () => {
     expect(system).toBeDefined()
     expect(system!.content as string).toContain('Platform:')
   })
+
+  it('injects only the selected model-family prompt profile', () => {
+    const msgs = prepareChatAgentMessages(
+      [{ role: 'user', content: 'hi' }],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        modelId: 'claude',
+        apiModel: 'claude-sonnet',
+        promptProfile: 'claude'
+      }
+    )
+    const content = msgs.find((m) => m.role === 'system')!.content as string
+    expect(content).toContain('Model profile (Claude)')
+    expect(content).not.toContain('Model profile (GPT/Codex)')
+  })
 })
 
 describe('buildSkillMessages package files', () => {

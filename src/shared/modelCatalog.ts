@@ -4,14 +4,17 @@ import {
   getContextWindowInfo,
   normalizeContextWindowTokens
 } from './modelContext'
+import {
+  getProviderRuntimeProfile,
+  resolveModelFeatureSupport,
+  resolveModelPromptProfile
+} from './providerProfiles'
 
 export function getProviderEndpointType(
   provider: Pick<ApiProvider, 'type' | 'endpointType'>
 ): ProviderEndpointType {
   if (provider.endpointType) return provider.endpointType
-  if (provider.type === 'ollama') return 'ollama-openai'
-  if (provider.type === 'custom') return 'custom'
-  return 'openai-compatible'
+  return getProviderRuntimeProfile(provider.type).endpointType
 }
 
 export function createModelInfo(
@@ -32,6 +35,8 @@ export function createModelInfo(
     displayName: previous?.displayName,
     endpointType: previous?.endpointType || getProviderEndpointType(provider),
     capabilities: previous?.capabilities,
+    features: previous?.features,
+    promptProfile: previous?.promptProfile,
     limit: {
       context: normalizedContext,
       ...(previous?.limit?.output ? { output: previous.limit.output } : {})
@@ -131,11 +136,16 @@ export function getProviderModelRuntimeConfig(
     providerType: normalized.type,
     endpointType:
       modelInfo.endpointType || normalized.endpointType || getProviderEndpointType(normalized),
-    apiFormat: modelInfo.apiFormat ?? normalized.apiFormat ?? 'chat-completions',
+    apiFormat:
+      modelInfo.apiFormat ??
+      normalized.apiFormat ??
+      getProviderRuntimeProfile(normalized.type).apiFormat,
     modelId: modelInfo.id,
     apiModel: modelInfo.apiId || modelInfo.id,
     displayName: modelInfo.displayName,
     capabilities: modelInfo.capabilities,
+    features: resolveModelFeatureSupport(normalized, modelInfo),
+    promptProfile: resolveModelPromptProfile(normalized, modelInfo),
     contextWindowTokens: contextWindow
   }
 }

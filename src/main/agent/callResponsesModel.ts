@@ -1,5 +1,6 @@
 import { ChatCompletionMessage, ChatToolDeclaration, PromptCacheStats } from '../../shared/types'
 import { DEFAULT_RETRY_POLICY, isRetryableError } from './retryPolicy'
+import { promoteReasoningOnlyFinalAnswer } from './modelResponseNormalizer'
 import {
   CallModelCallbacks,
   CallModelOptions,
@@ -7,7 +8,9 @@ import {
   countGeneratedArgumentLines,
   extractPromptCacheStats,
   getRequestModelId,
+  prepareMessagesForModel,
   promptCacheStatsByMessage,
+  resolveModelAdapter,
   TOOL_CALL_PROGRESS_CHAR_INTERVAL,
   TOOL_CALL_PROGRESS_LINE_INTERVAL
 } from './callModel'
@@ -24,11 +27,17 @@ export async function callResponsesModel(
   signal?: AbortSignal,
   callbacks?: CallModelCallbacks
 ): Promise<ChatCompletionMessage> {
-  const responsesUrl = `${options.apiUrl.replace(/\/$/, '')}/responses`
+  const adapter = resolveModelAdapter(options)
+  const target = adapter.buildRequestTarget({
+    apiUrl: options.apiUrl,
+    apiKey: options.apiKey,
+    apiFormat: 'responses'
+  })
 
   // 1. Convert messages & tools to Responses format
-  const { instructions, input } = chatMessagesToResponsesInput(messages)
-  const body: Record<string, unknown> = {
+  const sanitizedMessages = adapter.sanitizeMessages(prepareMessagesForModel(messages))
+  const { instructions, input } = chatMessagesToResponsesInput(sanitizedMessages)
+  let body: Record<string, unknown> = {
     model: getRequestModelId(options),
     input,
     stream: true,
@@ -44,15 +53,14 @@ export async function callResponsesModel(
     body.tool_choice = 'auto'
   }
 
+  body = adapter.sanitizeBody(body)
+
   let streamingStarted = false
 
   const attempt = async (): Promise<ChatCompletionMessage> => {
-    const response = await fetch(responsesUrl, {
+    const response = await fetch(target.url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.apiKey ? { Authorization: `Bearer ${options.apiKey}` } : {})
-      },
+      headers: target.headers,
       body: JSON.stringify(body),
       signal
     })
@@ -315,6 +323,11 @@ export async function callResponsesModel(
       if (assistantMessage.tool_calls.length === 0) {
         delete assistantMessage.tool_calls
       }
+    }
+
+    const promotedFinalAnswer = promoteReasoningOnlyFinalAnswer(assistantMessage)
+    if (promotedFinalAnswer) {
+      emitFinal(promotedFinalAnswer)
     }
 
     if (promptCacheStats) {

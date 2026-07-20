@@ -1,4 +1,11 @@
-import { ChatCompletionMessage, ProviderEndpointType } from '../../shared/types'
+import {
+  ApiProvider,
+  ChatCompletionMessage,
+  ProviderApiFormat,
+  ProviderEndpointType,
+  ResolvedModelFeatureSupport
+} from '../../shared/types'
+import { getProviderRuntimeProfile } from '../../shared/providerProfiles'
 
 /**
  * Per-provider API compatibility adapter. Different LLM providers deviate from the OpenAI
@@ -8,14 +15,37 @@ import { ChatCompletionMessage, ProviderEndpointType } from '../../shared/types'
  */
 export interface ModelAdapter {
   readonly name: string
-  readonly supportsStreamUsage?: boolean
+  readonly features: ResolvedModelFeatureSupport
+  readonly apiFormats: readonly ProviderApiFormat[]
 
   /** Clean messages before sending. Must not mutate the input array. */
   sanitizeMessages(msgs: ChatCompletionMessage[]): ChatCompletionMessage[]
 
   /** Adjust the request body (tool_choice, etc.) before JSON.stringify. */
   sanitizeBody(body: Record<string, unknown>): Record<string, unknown>
+
+  /** Resolve the protocol-specific URL and authentication headers. */
+  buildRequestTarget(options: { apiUrl: string; apiKey: string; apiFormat: ProviderApiFormat }): {
+    url: string
+    headers: Record<string, string>
+  }
 }
+
+const adapterFeatures = (type: ApiProvider['type']): ResolvedModelFeatureSupport => ({
+  ...getProviderRuntimeProfile(type).features
+})
+
+const buildOpenAiRequestTarget: ModelAdapter['buildRequestTarget'] = ({
+  apiUrl,
+  apiKey,
+  apiFormat
+}) => ({
+  url: `${apiUrl.replace(/\/$/, '')}/${apiFormat === 'responses' ? 'responses' : 'chat/completions'}`,
+  headers: {
+    'Content-Type': 'application/json',
+    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+  }
+})
 
 // ---- Helpers ----
 
@@ -76,9 +106,11 @@ function stripToolMessageName(msgs: ChatCompletionMessage[]): ChatCompletionMess
 
 const openaiAdapter: ModelAdapter = {
   name: 'openai',
-  supportsStreamUsage: true,
+  features: adapterFeatures('custom'),
+  apiFormats: ['chat-completions', 'responses'],
   sanitizeMessages: stripReasoningContent,
-  sanitizeBody: (body) => body
+  sanitizeBody: (body) => body,
+  buildRequestTarget: buildOpenAiRequestTarget
 }
 
 const sanitizeStrictOpenAiCompatibleMessages = (
@@ -91,39 +123,50 @@ const sanitizeStrictOpenAiCompatibleMessages = (
   return cleaned
 }
 
-const createStrictOpenAiCompatibleAdapter = (name: string): ModelAdapter => ({
+const createStrictOpenAiCompatibleAdapter = (
+  name: string,
+  type: ApiProvider['type']
+): ModelAdapter => ({
   name,
-  supportsStreamUsage: true,
+  features: adapterFeatures(type),
+  apiFormats: ['chat-completions'],
   sanitizeMessages: sanitizeStrictOpenAiCompatibleMessages,
-  sanitizeBody: (body) => body
+  sanitizeBody: (body) => body,
+  buildRequestTarget: buildOpenAiRequestTarget
 })
 
 // ---- DeepSeek adapter ----
 
 const deepseekAdapter: ModelAdapter = {
   name: 'deepseek',
-  supportsStreamUsage: true,
+  features: adapterFeatures('deepseek'),
+  apiFormats: ['chat-completions'],
   sanitizeMessages: stripReasoningContent,
-  sanitizeBody: (body) => body
+  sanitizeBody: (body) => body,
+  buildRequestTarget: buildOpenAiRequestTarget
 }
 
 // ---- Kimi (Moonshot) adapter ----
 
 const kimiAdapter: ModelAdapter = {
   name: 'kimi',
-  supportsStreamUsage: true,
+  features: adapterFeatures('kimi'),
+  apiFormats: ['chat-completions'],
   sanitizeMessages: stripReasoningContent,
-  sanitizeBody: (body) => body
+  sanitizeBody: (body) => body,
+  buildRequestTarget: buildOpenAiRequestTarget
 }
 
 // ---- opencode adapter ----
 
-const opencodeAdapter = createStrictOpenAiCompatibleAdapter('opencode')
+const opencodeAdapter = createStrictOpenAiCompatibleAdapter('opencode', 'opencode')
 
 // ---- GLM (Zhipu) adapter ----
 
 const glmAdapter: ModelAdapter = {
   name: 'glm',
+  features: adapterFeatures('glm'),
+  apiFormats: ['chat-completions'],
   sanitizeMessages: (msgs) => {
     // GLM rejects non-standard fields strictly. Strip everything it doesn't recognise.
     let cleaned = stripReasoningContent(msgs)
@@ -140,16 +183,18 @@ const glmAdapter: ModelAdapter = {
       return copy
     }
     return body
-  }
+  },
+  buildRequestTarget: buildOpenAiRequestTarget
 }
 
 // ---- Xiaomi MiMo adapter ----
 
-const mimoAdapter = createStrictOpenAiCompatibleAdapter('mimo')
+const mimoAdapter = createStrictOpenAiCompatibleAdapter('mimo', 'mimo')
 
 const stepAdapter: ModelAdapter = {
   name: 'step',
-  supportsStreamUsage: true,
+  features: adapterFeatures('step'),
+  apiFormats: ['chat-completions'],
   sanitizeMessages: sanitizeStrictOpenAiCompatibleMessages,
   sanitizeBody: (body) => {
     const model = String(body.model || '').toLowerCase()
@@ -165,13 +210,16 @@ const stepAdapter: ModelAdapter = {
       }
     }
     return body
-  }
+  },
+  buildRequestTarget: buildOpenAiRequestTarget
 }
 
 // ---- Ollama adapter ----
 
 const ollamaAdapter: ModelAdapter = {
   name: 'ollama',
+  features: adapterFeatures('ollama'),
+  apiFormats: ['chat-completions'],
   sanitizeMessages: (msgs) => {
     // Ollama is lenient but reasoning_content may confuse some models.
     return stripReasoningContent(msgs)
@@ -184,7 +232,8 @@ const ollamaAdapter: ModelAdapter = {
       return copy
     }
     return body
-  }
+  },
+  buildRequestTarget: buildOpenAiRequestTarget
 }
 
 // ---- Provider detection ----

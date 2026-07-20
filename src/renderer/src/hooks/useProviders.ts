@@ -7,7 +7,8 @@ import {
   FetchedModelInfo,
   WebSearchProviderType,
   ApiKeyItem,
-  ProviderApiFormat
+  ProviderApiFormat,
+  ModelPromptProfile
 } from '../../../shared/types'
 import { normalizeContextWindowTokens } from '../../../shared/modelContext'
 import {
@@ -83,6 +84,7 @@ export interface UseProvidersReturn {
   handleDeleteProvider: (id: string) => Promise<void>
   handleChangeEditingProviderName: (name: string) => void
   handleChangeEditingProviderApiFormat: (format: ProviderApiFormat) => void
+  handleChangeEditingProviderPromptProfile: (profile?: ModelPromptProfile) => void
   handleAddManualModel: () => void
   handleFetchModels: () => Promise<void>
   handleRefreshModelContext: (modelId: string) => Promise<void>
@@ -614,6 +616,12 @@ export const useProviders = (): UseProvidersReturn => {
     )
   }
 
+  const handleChangeEditingProviderPromptProfile = (profile?: ModelPromptProfile): void => {
+    setProviders((prev) =>
+      prev.map((p) => (p.id === editingProviderId ? { ...p, promptProfile: profile } : p))
+    )
+  }
+
   return {
     apiKey,
     setApiKey,
@@ -677,6 +685,7 @@ export const useProviders = (): UseProvidersReturn => {
     handleDeleteProvider,
     handleChangeEditingProviderName,
     handleChangeEditingProviderApiFormat,
+    handleChangeEditingProviderPromptProfile,
     handleAddManualModel,
     handleFetchModels,
     handleRefreshModelContext,

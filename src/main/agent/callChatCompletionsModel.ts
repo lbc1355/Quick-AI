@@ -1,5 +1,6 @@
 import { ChatCompletionMessage, ChatToolDeclaration, PromptCacheStats } from '../../shared/types'
 import { DEFAULT_RETRY_POLICY, isRetryableError } from './retryPolicy'
+import { promoteReasoningOnlyFinalAnswer } from './modelResponseNormalizer'
 import {
   CallModelCallbacks,
   CallModelOptions,
@@ -10,6 +11,7 @@ import {
   prepareMessagesForModel,
   promptCacheStatsByMessage,
   resolveModelAdapter,
+  resolveModelFeatures,
   TOOL_CALL_PROGRESS_CHAR_INTERVAL,
   TOOL_CALL_PROGRESS_LINE_INTERVAL
 } from './callModel'
@@ -21,8 +23,13 @@ export async function callChatCompletionsModel(
   signal?: AbortSignal,
   callbacks?: CallModelCallbacks
 ): Promise<ChatCompletionMessage> {
-  const completionsUrl = `${options.apiUrl.replace(/\/$/, '')}/chat/completions`
   const adapter = resolveModelAdapter(options)
+  const features = resolveModelFeatures(options, adapter)
+  const target = adapter.buildRequestTarget({
+    apiUrl: options.apiUrl,
+    apiKey: options.apiKey,
+    apiFormat: 'chat-completions'
+  })
 
   const sanitizedMessages = adapter.sanitizeMessages(prepareMessagesForModel(messages))
 
@@ -32,7 +39,7 @@ export async function callChatCompletionsModel(
     stream: true
   }
 
-  if (adapter.supportsStreamUsage) {
+  if (features.streamUsage) {
     body.stream_options = { include_usage: true }
   }
 
@@ -47,12 +54,9 @@ export async function callChatCompletionsModel(
   let streamingStarted = false
 
   const attempt = async (): Promise<ChatCompletionMessage> => {
-    const response = await fetch(completionsUrl, {
+    const response = await fetch(target.url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.apiKey ? { Authorization: `Bearer ${options.apiKey}` } : {})
-      },
+      headers: target.headers,
       body: JSON.stringify(body),
       signal
     })
@@ -281,7 +285,10 @@ export async function callChatCompletionsModel(
       }
     }
 
-    if (!shouldStreamFinal) {
+    const promotedFinalAnswer = promoteReasoningOnlyFinalAnswer(assistantMessage)
+    if (promotedFinalAnswer) {
+      emitFinal(promotedFinalAnswer)
+    } else if (!shouldStreamFinal) {
       if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
         if (typeof assistantMessage.content === 'string' && assistantMessage.content) {
           emitFinal(assistantMessage.content)

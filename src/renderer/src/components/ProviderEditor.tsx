@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { ArrowLeft, Plus, RefreshCw, X, Eye, EyeOff, Trash2 } from 'lucide-react'
-import { ProviderApiFormat } from '../../../shared/types'
+import { ModelPromptProfile, ProviderApiFormat } from '../../../shared/types'
 import { getContextWindowInfo } from '../../../shared/modelContext'
 import { useSettings } from '../contexts/SettingsContext'
 
@@ -37,7 +37,8 @@ export const ProviderEditor: React.FC = () => {
     handleChangeApiKeyValue: onChangeApiKeyValue,
     handleAddApiKey: onAddApiKey,
     handleDeleteApiKey: onDeleteApiKey,
-    handleChangeEditingProviderApiFormat: onChangeApiFormat
+    handleChangeEditingProviderApiFormat: onChangeApiFormat,
+    handleChangeEditingProviderPromptProfile: onChangePromptProfile
   } = useSettings()
   const [visibleKeyIds, setVisibleKeyIds] = useState<Record<string, boolean>>({})
 
@@ -175,6 +176,27 @@ export const ProviderEditor: React.FC = () => {
               </select>
             </label>
           )}
+
+          <label className="settings-field">
+            <span className="settings-label">Prompt 适配</span>
+            <select
+              className="settings-select"
+              value={provider.promptProfile || 'auto'}
+              onChange={(e) =>
+                onChangePromptProfile(
+                  e.target.value === 'auto' ? undefined : (e.target.value as ModelPromptProfile)
+                )
+              }
+            >
+              <option value="auto">自动识别模型家族</option>
+              <option value="default">通用</option>
+              <option value="gpt">GPT / Codex</option>
+              <option value="claude">Claude</option>
+              <option value="gemini">Gemini</option>
+              <option value="reasoning">推理模型</option>
+            </select>
+            <small>只调整 Agent 行为提示，不改变 API 协议或模型 ID。</small>
+          </label>
 
           <label className="settings-field">
             <span className="settings-label">当前模型</span>

@@ -164,6 +164,7 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
       apiUrl: options.apiUrl,
       apiKey: options.apiKey,
       model: options.model,
+      modelRuntime: options.modelRuntime,
       systemPrompt: options.systemPrompt,
       skill: options.skill!,
       userInput: options.userInput || '',
@@ -185,7 +186,8 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
       options.resources,
       permissions,
       options.projectRoot,
-      options.projectName
+      options.projectName,
+      options.modelRuntime
     )
   }
 

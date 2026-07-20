@@ -1,4 +1,10 @@
-import { ApiProvider, AppSettings, ProviderApiFormat } from '../../shared/types'
+import {
+  ApiProvider,
+  AppSettings,
+  ModelFeatureSupport,
+  ModelPromptProfile,
+  ProviderApiFormat
+} from '../../shared/types'
 import { normalizeProviderModelCatalog } from '../../shared/modelCatalog'
 import { normalizeProviderApiKeys, getActiveProviderApiKey } from '../../shared/providerKeyHelper'
 import { getDb } from './connection'
@@ -29,6 +35,8 @@ export function loadSettings(): AppSettings {
     endpointType: string | null
     models: string
     apiFormat: string | null
+    promptProfile: string | null
+    features: string | null
   }>
 
   let permissions: { [toolName: string]: 'allow' | 'ask' | 'deny' } = {}
@@ -67,7 +75,9 @@ export function loadSettings(): AppSettings {
         modelContextWindows: JSON.parse(p.modelContextWindows || '{}'),
         endpointType: (p.endpointType || undefined) as ApiProvider['endpointType'],
         models: JSON.parse(p.models || '{}'),
-        apiFormat: (p.apiFormat || undefined) as ProviderApiFormat
+        apiFormat: (p.apiFormat || undefined) as ProviderApiFormat,
+        promptProfile: (p.promptProfile || undefined) as ModelPromptProfile,
+        features: JSON.parse(p.features || '{}') as ModelFeatureSupport
       })
 
       return normalizeProviderApiKeys(normalizedCatalog)
@@ -89,7 +99,7 @@ export function saveSettings(settings: AppSettings): void {
   const upsert = database.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
   const deleteProviders = database.prepare('DELETE FROM providers')
   const insert = database.prepare(
-    'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId, apiFormat) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId, apiFormat, promptProfile, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
 
   // Wrap the whole save in a single transaction: turns N independent fsync-per-statement
@@ -125,7 +135,9 @@ export function saveSettings(settings: AppSettings): void {
         JSON.stringify(withKeys.models || {}),
         JSON.stringify(withKeys.apiKeys || []),
         withKeys.activeApiKeyId || null,
-        withKeys.apiFormat || null
+        withKeys.apiFormat || null,
+        withKeys.promptProfile || null,
+        JSON.stringify(withKeys.features || {})
       )
     }
   })

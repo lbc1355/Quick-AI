@@ -9,6 +9,7 @@ import { getFirstMissingOffset } from '../resourceCache'
 import { buildMemoryInjection } from './memoryContext'
 import { loadSkillsFromFolders } from '../skillManager'
 import { buildDateContext } from '../../shared/promptDate'
+import { buildModelPromptProfile } from './modelPromptProfile'
 
 export const TOOL_DIRECTORY_BUDGET = 2000 // max chars injected into system prompt
 export const SKILL_DIRECTORY_BUDGET = 6000 // max chars injected into system prompt
@@ -210,6 +211,7 @@ export function buildSkillMessages(options: AgentSkillRunOptions): ChatCompletio
   const toolDirs = buildToolDirectorySummary(scope)
 
   const memorySegment = buildMemoryInjection()
+  const modelProfile = buildModelPromptProfile(options.modelRuntime)
 
   const msgs: ChatCompletionMessage[] = [
     {
@@ -217,6 +219,7 @@ export function buildSkillMessages(options: AgentSkillRunOptions): ChatCompletio
       content: `${baseSystemPrompt}You are QuickAI Agent Runner. Execute the installed Skill by reading its SKILL.md instructions.
 
 **Platform:** ${process.platform === 'win32' ? 'Windows (cmd.exe shell). Use Windows-native commands: findstr (not grep), dir (not ls), type (not cat), where (not which), del (not rm), copy / move (not cp / mv), mkdir / md (not mkdir). Paths use backslashes.' : process.platform === 'darwin' ? 'macOS (zsh shell). Use standard Unix commands.' : 'Linux (bash shell). Use standard Unix commands.'}
+${modelProfile ? `\n${modelProfile}` : ''}
 
 ${buildWorkspaceContextPrompt(options.projectRoot, options.projectName)}
 
@@ -297,16 +300,19 @@ export function prepareChatAgentMessages(
   resources?: SessionResource[],
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' },
   projectRoot?: string,
-  projectName?: string
+  projectName?: string,
+  modelRuntime?: AgentSkillRunOptions['modelRuntime']
 ): ChatCompletionMessage[] {
   void resources
   const toolDirs = buildToolDirectorySummary('all', permissions)
   const skillsSummary = buildAvailableSkillsSummary()
   const memorySegment = buildMemoryInjection()
+  const modelProfile = buildModelPromptProfile(modelRuntime)
 
   const agentInstructions = `You are QuickAI General Agent. You have access to tools that you can call to search the web, fetch pages, read, write, edit, and diff files (both inside the workspace, and outside the workspace via absolute paths which will trigger a user permission prompt), and search the codebase.
 
 **Platform:** ${process.platform === 'win32' ? 'Windows (cmd.exe shell). Use Windows-native commands: findstr (not grep), dir (not ls), type (not cat), where (not which), del (not rm), copy / move (not cp / mv), mkdir / md (not mkdir). Paths use backslashes.' : process.platform === 'darwin' ? 'macOS (zsh shell). Use standard Unix commands.' : 'Linux (bash shell). Use standard Unix commands.'}
+${modelProfile ? `\n${modelProfile}` : ''}
 
 ${buildWorkspaceContextPrompt(projectRoot, projectName)}
 
