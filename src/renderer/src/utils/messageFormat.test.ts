@@ -108,6 +108,61 @@ describe('parseAgentSteps agent_message_delta', () => {
     expect(run.steps).toEqual([])
   })
 
+  it('shows the latest unfinished model turn after steering starts another turn', () => {
+    const events: AgentEvent[] = [
+      {
+        type: 'agent_message_delta',
+        content: 'Draft before background result.',
+        step: 2,
+        stepId: 'run-1:step:2'
+      },
+      {
+        type: 'agent_message_delta',
+        content: 'Updated ',
+        step: 3,
+        stepId: 'run-1:step:3'
+      },
+      {
+        type: 'agent_message_delta',
+        content: 'answer streaming now.',
+        step: 3,
+        stepId: 'run-1:step:3'
+      }
+    ]
+
+    const run = parseAgentSteps(events, '')
+
+    expect(run.finalAnswer).toBe('Updated answer streaming now.')
+    expect(run.steps).toEqual([])
+  })
+
+  it('keeps a committed final answer ahead of older unfinished model turns', () => {
+    const events: AgentEvent[] = [
+      {
+        type: 'agent_message_delta',
+        content: 'Draft before steering.',
+        step: 2,
+        stepId: 'run-1:step:2'
+      },
+      {
+        type: 'agent_message_delta',
+        content: 'Committed answer.',
+        step: 3,
+        stepId: 'run-1:step:3'
+      },
+      {
+        type: 'final',
+        content: 'Committed answer.',
+        step: 3,
+        stepId: 'run-1:step:3'
+      }
+    ]
+
+    const run = parseAgentSteps(events, '')
+
+    expect(run.finalAnswer).toBe('Committed answer.')
+  })
+
   it('keeps reasoning from a forced final answer without attaching it to the last tool step', () => {
     const events: AgentEvent[] = [
       {

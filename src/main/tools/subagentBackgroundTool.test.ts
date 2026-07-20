@@ -48,6 +48,8 @@ describe('background subagent tool', () => {
 
   it('returns a running job before the child completes, then publishes its result', async () => {
     const publish = vi.fn()
+    const publishEvent = vi.fn()
+    const emitParentEvent = vi.fn()
     const result = await subagentTool.execute(
       { task: 'Inspect', background: true, label: 'Research' },
       {
@@ -55,13 +57,28 @@ describe('background subagent tool', () => {
         callId: 'call-1',
         signal: new AbortController().signal,
         agentModel: { apiUrl: 'https://example.test', apiKey: 'key', model: 'model' },
-        host: { publishBackgroundSubagentCompletion: publish }
+        emitEvent: emitParentEvent,
+        host: {
+          publishBackgroundSubagentCompletion: publish,
+          publishBackgroundSubagentEvent: publishEvent
+        }
       }
     )
 
     expect(result.resultForModel).toContain('Background subagent started')
     expect(finishSubagent).toBeTypeOf('function')
     expect(publish).not.toHaveBeenCalled()
+    expect(publishEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          type: 'subagent_start',
+          subagentId: 'call-1',
+          runId: expect.stringMatching(/^background-subagent-/),
+          sequence: 1
+        })
+      })
+    )
+    expect(emitParentEvent).not.toHaveBeenCalled()
 
     finishSubagent?.()
     await flush()
@@ -73,5 +90,16 @@ describe('background subagent tool', () => {
         result: 'Inspection complete'
       })
     )
+    expect(publishEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          type: 'subagent_end',
+          subagentId: 'call-1',
+          runId: expect.stringMatching(/^background-subagent-/),
+          sequence: 2
+        })
+      })
+    )
+    expect(emitParentEvent).not.toHaveBeenCalled()
   })
 })

@@ -77,6 +77,20 @@ describe('apiMessageBuilder pure functions', () => {
     })
   })
 
+  it('keeps internal messages in model context even though the chat UI hides them', () => {
+    const apiMsgs = buildApiMessages('', [
+      {
+        id: 'background-result-source-job-1',
+        role: 'user',
+        content: 'internal background result',
+        isSynthetic: true,
+        isInternal: true
+      }
+    ])
+
+    expect(apiMsgs).toEqual([{ role: 'user', content: 'internal background result' }])
+  })
+
   it('buildApiMessages keeps historical user date context stable across midnight', () => {
     const firstUserId = String(new Date('2026-06-08T12:00:00').getTime())
     const nextUserId = String(new Date('2026-06-09T12:00:00').getTime())

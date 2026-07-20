@@ -51,6 +51,7 @@ import { useSessionFamilyView } from './features/chat/useSessionFamilyView'
 import { useContextDiagnosticsState } from './features/chat/useContextDiagnosticsState'
 import { usePermissionPopupController } from './features/chat/usePermissionPopupController'
 import { useVirtualizedMessages, VIRTUAL_MESSAGE_GAP } from './features/chat/useVirtualizedMessages'
+import { getVisibleChatMessages } from './features/chat/messageVisibility'
 import { parseSubagentRuns } from './features/chat/useAgentMessageViewModel'
 import { useToast } from './contexts/ToastContext'
 import { advanceSessionContextEpoch, getSessionContextEpoch } from '../../shared/contextEpoch'
@@ -357,6 +358,14 @@ function App(): React.JSX.Element {
     activeSessionId
   )
   const activeMessages = activeSession?.messages ?? EMPTY_MESSAGES
+  const visibleChatMessages = useMemo(
+    () => getVisibleChatMessages(activeMessages),
+    [activeMessages]
+  )
+  const activeMessageIndexById = useMemo(
+    () => new Map(activeMessages.map((message, index) => [message.id, index])),
+    [activeMessages]
+  )
   const handleOpenAgentFileRevert = useStableEvent(async (message: Message): Promise<void> => {
     if (isGenerating || !message.agentRunId) return
     try {
@@ -616,7 +625,7 @@ function App(): React.JSX.Element {
     getEstimatedMessageTop
   })
   const virtualizedMessages = useVirtualizedMessages({
-    messages: activeMessages,
+    messages: visibleChatMessages,
     containerRef: messagesContainerRef,
     innerRef: messagesInnerRef
   })
@@ -941,7 +950,7 @@ function App(): React.JSX.Element {
   )
   const messageNavItems = useMemo(
     () =>
-      activeMessages.map((msg, idx) => {
+      visibleChatMessages.map((msg, idx) => {
         const kind = getMessageMinimapKind(msg)
         return {
           msg,
@@ -951,18 +960,22 @@ function App(): React.JSX.Element {
           preview: getMessageMinimapPreview(msg)
         }
       }),
-    [activeMessages]
+    [visibleChatMessages]
   )
   const virtualStickyUserMessageId = useMemo(() => {
     if (!virtualizedMessages.isVirtualized) return undefined
 
     for (let index = virtualizedMessages.firstVisibleIndex - 1; index >= 0; index -= 1) {
-      const message = activeMessages[index]
+      const message = visibleChatMessages[index]
       if (message?.role === 'user') return message.id
     }
 
     return null
-  }, [activeMessages, virtualizedMessages.firstVisibleIndex, virtualizedMessages.isVirtualized])
+  }, [
+    visibleChatMessages,
+    virtualizedMessages.firstVisibleIndex,
+    virtualizedMessages.isVirtualized
+  ])
   const stickyUserMessages = useMemo(
     () =>
       messageNavItems
@@ -1143,48 +1156,55 @@ function App(): React.JSX.Element {
                       }}
                     />
                   )}
-                  {virtualizedMessages.visibleMessages.map(({ message: msg, index: idx }) => (
-                    <div
-                      key={msg.id}
-                      data-virtual-message-id={msg.id}
-                      style={{
-                        width: '100%',
-                        marginBottom:
-                          virtualizedMessages.isVirtualized && idx < activeMessages.length - 1
-                            ? VIRTUAL_MESSAGE_GAP
-                            : undefined
-                      }}
-                    >
-                      <MessageBubble
-                        msg={msg}
-                        idx={idx}
-                        branchChildren={
-                          branchChildIndex[getBranchSourceKey(activeSessionId, msg.id)] || []
-                        }
-                        isGenerating={
-                          isCurrentSessionGenerating && idx === activeMessages.length - 1
-                        }
-                        editingMessageId={editingMessageId}
-                        editingText={editingText}
-                        onStartEdit={handleStartEdit}
-                        onCancelEdit={() => setEditingMessageId(null)}
-                        onSaveEdit={handleSaveEdit}
-                        onRegenerate={handleRegenerate}
-                        onResumeAgentRun={handleResumeAgentRun}
-                        onRevertAgentFiles={handleOpenAgentFileRevert}
-                        canRevertSession={
-                          msg.role === 'user' &&
-                          !msg.isSynthetic &&
-                          !activeSession?.revert &&
-                          !isCurrentSessionGenerating
-                        }
-                        onRevertSession={handleOpenSessionRevert}
-                        onOpenBranch={(sessionId) => openSession(sessionId)}
-                        onOpenSubagent={handleOpenSubagentRoute}
-                        onChangeEditingText={setEditingText}
-                      />
-                    </div>
-                  ))}
+                  {virtualizedMessages.visibleMessages.map(
+                    ({ message: msg, index: visibleIndex }) => {
+                      const messageIndex = activeMessageIndexById.get(msg.id) ?? visibleIndex
+                      return (
+                        <div
+                          key={msg.id}
+                          data-virtual-message-id={msg.id}
+                          style={{
+                            width: '100%',
+                            marginBottom:
+                              virtualizedMessages.isVirtualized &&
+                              visibleIndex < visibleChatMessages.length - 1
+                                ? VIRTUAL_MESSAGE_GAP
+                                : undefined
+                          }}
+                        >
+                          <MessageBubble
+                            msg={msg}
+                            idx={messageIndex}
+                            branchChildren={
+                              branchChildIndex[getBranchSourceKey(activeSessionId, msg.id)] || []
+                            }
+                            isGenerating={
+                              isCurrentSessionGenerating &&
+                              visibleIndex === visibleChatMessages.length - 1
+                            }
+                            editingMessageId={editingMessageId}
+                            editingText={editingText}
+                            onStartEdit={handleStartEdit}
+                            onCancelEdit={() => setEditingMessageId(null)}
+                            onSaveEdit={handleSaveEdit}
+                            onRegenerate={handleRegenerate}
+                            onResumeAgentRun={handleResumeAgentRun}
+                            onRevertAgentFiles={handleOpenAgentFileRevert}
+                            canRevertSession={
+                              msg.role === 'user' &&
+                              !msg.isSynthetic &&
+                              !activeSession?.revert &&
+                              !isCurrentSessionGenerating
+                            }
+                            onRevertSession={handleOpenSessionRevert}
+                            onOpenBranch={(sessionId) => openSession(sessionId)}
+                            onOpenSubagent={handleOpenSubagentRoute}
+                            onChangeEditingText={setEditingText}
+                          />
+                        </div>
+                      )
+                    }
+                  )}
                   {virtualizedMessages.isVirtualized &&
                     virtualizedMessages.bottomSpacerHeight > 0 && (
                       <div

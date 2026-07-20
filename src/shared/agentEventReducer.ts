@@ -7,6 +7,66 @@ const withLatestEventMetadata = <T extends AgentEvent>(previous: T, incoming: Ag
   timestamp: incoming.timestamp ?? previous.timestamp
 })
 
+type SubagentEvent = Extract<AgentEvent, { type: 'subagent_event' }>
+
+const mergeAdjacentSubagentDelta = (
+  previous: SubagentEvent,
+  incoming: SubagentEvent
+): SubagentEvent | undefined => {
+  if (previous.subagentId !== incoming.subagentId) return undefined
+  const previousInner = previous.event
+  const incomingInner = incoming.event
+
+  if (
+    previousInner.type === 'reasoning' &&
+    incomingInner.type === 'reasoning' &&
+    previousInner.stepId === incomingInner.stepId &&
+    previousInner.step === incomingInner.step
+  ) {
+    return {
+      ...withLatestEventMetadata(previous, incoming),
+      event: {
+        ...withLatestEventMetadata(previousInner, incomingInner),
+        content: previousInner.content + incomingInner.content
+      }
+    }
+  }
+
+  if (
+    previousInner.type === 'agent_message_delta' &&
+    incomingInner.type === 'agent_message_delta' &&
+    previousInner.stepId === incomingInner.stepId
+  ) {
+    return {
+      ...withLatestEventMetadata(previous, incoming),
+      event: {
+        ...withLatestEventMetadata(previousInner, incomingInner),
+        content: previousInner.content + incomingInner.content
+      }
+    }
+  }
+
+  if (
+    previousInner.type === 'tool_output_delta' &&
+    incomingInner.type === 'tool_output_delta' &&
+    previousInner.callId === incomingInner.callId &&
+    previousInner.stream === incomingInner.stream
+  ) {
+    return {
+      ...withLatestEventMetadata(previous, incoming),
+      event: {
+        ...withLatestEventMetadata(previousInner, incomingInner),
+        content: incomingInner.replace
+          ? incomingInner.content
+          : previousInner.content + incomingInner.content,
+        replace: incomingInner.replace || previousInner.replace
+      }
+    }
+  }
+
+  return undefined
+}
+
 export function mergeAgentEvents(
   currentEvents: AgentEvent[] | undefined,
   newEvent: AgentEvent
@@ -52,6 +112,17 @@ export function mergeAgentEvents(
 
   if (newEvent.type === 'task_update') {
     return [...updatedEvents.filter((event) => event.type !== 'task_update'), newEvent]
+  }
+
+  if (newEvent.type === 'subagent_event') {
+    const lastEvent = updatedEvents[updatedEvents.length - 1]
+    if (lastEvent?.type === 'subagent_event') {
+      const merged = mergeAdjacentSubagentDelta(lastEvent, newEvent)
+      if (merged) {
+        updatedEvents[updatedEvents.length - 1] = merged
+        return updatedEvents
+      }
+    }
   }
 
   if (newEvent.type === 'subagent_start' || newEvent.type === 'subagent_end') {

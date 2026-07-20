@@ -9,7 +9,8 @@ import {
   Skill,
   RunMode,
   SessionPromptAdmissionMode,
-  BackgroundSubagentResultNotification
+  BackgroundSubagentResultNotification,
+  BackgroundSubagentEventNotification
 } from '../../../shared/types'
 import { computeResourcePrune } from './useSessions'
 import { startStreamingRun as startChatStreamingRun } from './chatStreaming'
@@ -26,6 +27,7 @@ import {
 } from '../features/chat/sessionMutationService'
 import {
   appendQueuedPromptToSession,
+  applyBackgroundSubagentEventNotification,
   applyBackgroundSubagentNotification,
   applySteeredPromptToSession,
   materializeBackgroundPrompt,
@@ -181,6 +183,9 @@ export const useChatCompletion = ({
   const activeAssistantMessageIdRef = useRef<string | null>(null)
   const queueDrainInProgressRef = useRef(false)
   const drainQueuedPromptRef = useRef<(sessionId: string) => Promise<void>>(async () => undefined)
+  const backgroundSubagentEventQueueRef = useRef<BackgroundSubagentEventNotification[]>([])
+  const backgroundSubagentEventFrameRef = useRef<number | null>(null)
+  const flushBackgroundSubagentEventsRef = useRef<() => void>(() => undefined)
   const [runMode, setRunMode] = useState<RunMode>('chat')
 
   const setActiveReqId = (reqId: string | null): void => {
@@ -927,9 +932,61 @@ export const useChatCompletion = ({
   }
   drainQueuedPromptRef.current = drainNextQueuedPrompt
 
+  flushBackgroundSubagentEventsRef.current = (): void => {
+    const notifications = backgroundSubagentEventQueueRef.current
+    if (notifications.length === 0) return
+    backgroundSubagentEventQueueRef.current = []
+
+    let nextSessions = sessionsRef.current
+    let changed = false
+    for (const notification of notifications) {
+      const current = nextSessions.find((session) => session.id === notification.sessionId)
+      if (!current || getSessionContextEpoch(current) !== notification.contextEpoch) continue
+
+      nextSessions = nextSessions.map((session) => {
+        if (session.id !== notification.sessionId) return session
+        const next = applyBackgroundSubagentEventNotification(session, notification)
+        changed = changed || next !== session
+        return next
+      })
+    }
+
+    if (!changed) return
+    sessionsRef.current = nextSessions
+    setSessions(nextSessions)
+  }
+
+  useEffect(() => {
+    const unsubscribe = window.api.onBackgroundSubagentEvent(
+      (notification: BackgroundSubagentEventNotification): void => {
+        backgroundSubagentEventQueueRef.current.push(notification)
+        if (backgroundSubagentEventFrameRef.current !== null) return
+        backgroundSubagentEventFrameRef.current = window.requestAnimationFrame(() => {
+          backgroundSubagentEventFrameRef.current = null
+          flushBackgroundSubagentEventsRef.current()
+        })
+      }
+    )
+
+    return () => {
+      unsubscribe()
+      if (backgroundSubagentEventFrameRef.current !== null) {
+        window.cancelAnimationFrame(backgroundSubagentEventFrameRef.current)
+        backgroundSubagentEventFrameRef.current = null
+      }
+      backgroundSubagentEventQueueRef.current = []
+    }
+  }, [sessionsRef, setSessions])
+
   useEffect(() => {
     return window.api.onBackgroundSubagentResult(
       (notification: BackgroundSubagentResultNotification): void => {
+        if (backgroundSubagentEventFrameRef.current !== null) {
+          window.cancelAnimationFrame(backgroundSubagentEventFrameRef.current)
+          backgroundSubagentEventFrameRef.current = null
+        }
+        flushBackgroundSubagentEventsRef.current()
+
         const current = sessionsRef.current.find((session) => session.id === notification.sessionId)
         if (!current || getSessionContextEpoch(current) !== notification.contextEpoch) return
 

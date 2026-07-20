@@ -1,4 +1,4 @@
-import { ToolArgs } from '../../shared/types'
+import { AgentEvent, SubagentLifecycleEvent, ToolArgs } from '../../shared/types'
 import { getRun } from '../agent/AgentRunContext'
 import { createToolResult } from './result'
 import { ToolDefinition, ToolExecutionContext, ToolExecutionResult } from './types'
@@ -60,6 +60,11 @@ export async function runSubagentTool(
 const backgroundJobId = (ctx: ToolExecutionContext): string =>
   `background-subagent-${ctx.reqId}-${ctx.callId || Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
+const isSubagentLifecycleEvent = (event: AgentEvent): event is SubagentLifecycleEvent =>
+  event.type === 'subagent_start' ||
+  event.type === 'subagent_event' ||
+  event.type === 'subagent_end'
+
 async function startBackgroundSubagent(
   request: SubagentToolRequest,
   ctx: ToolExecutionContext
@@ -74,6 +79,7 @@ async function startBackgroundSubagent(
   ])
   const jobId = backgroundJobId(ctx)
   const parentRun = getRun(ctx.reqId)
+  let backgroundEventSequence = 0
   let completionEvent:
     | Extract<import('../../shared/types').AgentEvent, { type: 'subagent_end' }>
     | undefined
@@ -92,8 +98,23 @@ async function startBackgroundSubagent(
           ...ctx,
           signal,
           emitEvent: (event) => {
-            if (event.type === 'subagent_end') completionEvent = event
-            ctx.emitEvent?.(event)
+            if (!isSubagentLifecycleEvent(event)) {
+              ctx.emitEvent?.(event)
+              return
+            }
+            backgroundEventSequence += 1
+            const normalizedEvent: SubagentLifecycleEvent = {
+              ...event,
+              runId: jobId,
+              sequence: backgroundEventSequence,
+              timestamp: event.timestamp ?? Date.now()
+            }
+            if (normalizedEvent.type === 'subagent_end') completionEvent = normalizedEvent
+            if (ctx.host?.publishBackgroundSubagentEvent) {
+              ctx.host.publishBackgroundSubagentEvent({ jobId, event: normalizedEvent })
+            } else {
+              ctx.emitEvent?.(normalizedEvent)
+            }
           }
         })
       } catch (error) {

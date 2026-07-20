@@ -29,6 +29,7 @@ import {
   SessionFileTransitionPreview,
   SessionFileTransitionResult,
   BackgroundSubagentResultNotification,
+  BackgroundSubagentEventNotification,
   BackgroundJobInfo
 } from '../shared/types'
 
@@ -150,6 +151,18 @@ const api = {
     ipcRenderer.on('background-subagent-result', listener)
     return (): void => {
       ipcRenderer.removeListener('background-subagent-result', listener)
+    }
+  },
+  onBackgroundSubagentEvent: (
+    callback: (notification: BackgroundSubagentEventNotification) => void
+  ): (() => void) => {
+    const listener = (
+      _event: IpcRendererEvent,
+      notification: BackgroundSubagentEventNotification
+    ): void => callback(notification)
+    ipcRenderer.on('background-subagent-event', listener)
+    return (): void => {
+      ipcRenderer.removeListener('background-subagent-event', listener)
     }
   },
   onSkillsUpdated: (callback: (skills: Skill[]) => void): (() => void) => {

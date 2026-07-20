@@ -132,6 +132,74 @@ describe('mergeAgentEvents', () => {
 
     expect(ordered.map((event) => event.type)).toEqual(['subagent_start', 'subagent_end'])
   })
+
+  it('coalesces adjacent subagent message deltas for the same inner step', () => {
+    const first = mergeAgentEvents([], {
+      type: 'subagent_event',
+      subagentId: 'subagent-1',
+      sequence: 1,
+      event: {
+        type: 'agent_message_delta',
+        content: 'Inspection ',
+        step: 1,
+        stepId: 'subagent-1:step:1',
+        sequence: 10
+      }
+    })
+    const merged = mergeAgentEvents(first, {
+      type: 'subagent_event',
+      subagentId: 'subagent-1',
+      sequence: 2,
+      timestamp: 30,
+      event: {
+        type: 'agent_message_delta',
+        content: 'complete',
+        step: 1,
+        stepId: 'subagent-1:step:1',
+        sequence: 11,
+        timestamp: 25
+      }
+    })
+
+    expect(merged).toHaveLength(1)
+    expect(merged[0]).toMatchObject({
+      type: 'subagent_event',
+      subagentId: 'subagent-1',
+      sequence: 2,
+      timestamp: 30,
+      event: {
+        type: 'agent_message_delta',
+        content: 'Inspection complete',
+        sequence: 11,
+        timestamp: 25
+      }
+    })
+  })
+
+  it('keeps subagent deltas separate across inner steps', () => {
+    const first = mergeAgentEvents([], {
+      type: 'subagent_event',
+      subagentId: 'subagent-1',
+      event: {
+        type: 'agent_message_delta',
+        content: 'Step one',
+        step: 1,
+        stepId: 'subagent-1:step:1'
+      }
+    })
+    const separated = mergeAgentEvents(first, {
+      type: 'subagent_event',
+      subagentId: 'subagent-1',
+      event: {
+        type: 'agent_message_delta',
+        content: 'Step two',
+        step: 2,
+        stepId: 'subagent-1:step:2'
+      }
+    })
+
+    expect(separated).toHaveLength(2)
+  })
 })
 
 describe('applyAgentEventToMessage', () => {

@@ -604,6 +604,8 @@ export const parseAgentSteps = (
         }
       })
 
+      const hasCommittedFinalAnswer = events.some((event) => event.type === 'final')
+
       run.steps = groups
         .map((g): ParsedAgentStep | null => {
           const toolCallsList = Array.from(g.toolCalls.values())
@@ -614,7 +616,7 @@ export const parseAgentSteps = (
 
           if (isUnclassifiedModelMessage) {
             run.finalReasoning += g.reasoningTexts.join('')
-            if (!finalizedMessageStepIds.has(g.id) && !run.finalAnswer) {
+            if (!hasCommittedFinalAnswer && !finalizedMessageStepIds.has(g.id)) {
               run.finalAnswer = streamedMessage
             }
             return null

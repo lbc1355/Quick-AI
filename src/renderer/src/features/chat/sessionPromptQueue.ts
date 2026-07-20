@@ -1,4 +1,5 @@
 import type {
+  BackgroundSubagentEventNotification,
   BackgroundSubagentResultNotification,
   Message,
   RunMode,
@@ -6,12 +7,58 @@ import type {
   SessionPromptAdmission
 } from '../../../../shared/types'
 import { applyAgentEventToMessage } from '../../../../shared/agentEventReducer'
-
-const BACKGROUND_RESULT_SOURCE_PREFIX = 'background-result-source-'
+import { BACKGROUND_RESULT_SOURCE_PREFIX } from './messageVisibility'
 
 const promptText = (admission: SessionPromptAdmission): string => {
   const message = admission.messages.findLast((item) => item.role === 'user')
   return typeof message?.content === 'string' ? message.content : '后台子任务已完成。'
+}
+
+const ownsBackgroundSubagent = (
+  message: Message,
+  routing: {
+    parentRunId: string
+    parentAssistantMessageId?: string
+    subagentId?: string
+  }
+): boolean => {
+  if (routing.parentAssistantMessageId) {
+    return message.id === routing.parentAssistantMessageId
+  }
+
+  const ownsParentRun =
+    message.agentRunId === routing.parentRunId || message.agentRunIds?.includes(routing.parentRunId)
+  if (ownsParentRun) return true
+
+  const ownsSubagent = routing.subagentId
+    ? message.agentEvents?.some(
+        (event) => event.type === 'subagent_start' && event.subagentId === routing.subagentId
+      )
+    : false
+  return Boolean(ownsSubagent)
+}
+
+export function applyBackgroundSubagentEventNotification(
+  session: Session,
+  notification: BackgroundSubagentEventNotification
+): Session {
+  let changed = false
+  const subagentId = notification.event.subagentId
+  const messages = session.messages.map((message) => {
+    if (
+      changed ||
+      !ownsBackgroundSubagent(message, {
+        parentRunId: notification.parentRunId,
+        parentAssistantMessageId: notification.parentAssistantMessageId,
+        subagentId
+      })
+    ) {
+      return message
+    }
+    changed = true
+    return applyAgentEventToMessage(message, notification.event)
+  })
+  return changed ? { ...session, messages } : session
 }
 
 export function materializeBackgroundPrompt(
@@ -28,7 +75,8 @@ export function materializeBackgroundPrompt(
       id: admission.sourceMessageId,
       role: 'user',
       content: promptText(admission),
-      isSynthetic: true
+      isSynthetic: true,
+      isInternal: true
     },
     {
       id: admission.assistantMessageId,
@@ -47,14 +95,16 @@ export function applyBackgroundSubagentNotification(
   let changed = false
   let completionAttached = false
   let messages = session.messages.map((message) => {
-    const ownsSubagent = message.agentEvents?.some(
-      (event) => event.type === 'subagent_start' && event.subagentId === notification.subagentId
-    )
-    const ownsParentRun =
-      message.id === notification.parentAssistantMessageId ||
-      message.agentRunId === notification.parentRunId ||
-      message.agentRunIds?.includes(notification.parentRunId)
-    if (completionAttached || (!ownsSubagent && !ownsParentRun)) return message
+    if (
+      completionAttached ||
+      !ownsBackgroundSubagent(message, {
+        parentRunId: notification.parentRunId,
+        parentAssistantMessageId: notification.parentAssistantMessageId,
+        subagentId: notification.subagentId
+      })
+    ) {
+      return message
+    }
     completionAttached = true
     changed = true
     return applyAgentEventToMessage(message, {
@@ -74,7 +124,8 @@ export function applyBackgroundSubagentNotification(
         id: sourceId,
         role: 'user',
         content: promptText(notification.prompt),
-        isSynthetic: true
+        isSynthetic: true,
+        isInternal: true
       }
       const assistantIndex = activeAssistantMessageId
         ? messages.findIndex((message) => message.id === activeAssistantMessageId)

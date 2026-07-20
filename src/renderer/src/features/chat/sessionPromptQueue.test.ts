@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Session } from '../../../../shared/types'
 import {
   appendQueuedPromptToSession,
+  applyBackgroundSubagentEventNotification,
   applyBackgroundSubagentNotification,
   applySteeredPromptToSession,
   materializeBackgroundPrompt,
@@ -114,7 +115,12 @@ describe('session prompt queue UI mutations', () => {
     })
 
     expect(materialized.messages.slice(-2)).toMatchObject([
-      { role: 'user', content: 'background result', isSynthetic: true },
+      {
+        role: 'user',
+        content: 'background result',
+        isSynthetic: true,
+        isInternal: true
+      },
       { role: 'assistant' }
     ])
   })
@@ -176,13 +182,103 @@ describe('session prompt queue UI mutations', () => {
       'background-result-source-job-1',
       'assistant-active'
     ])
-    expect(next.messages[1]).toMatchObject({ isSynthetic: true, content: 'background result' })
+    expect(next.messages[1]).toMatchObject({
+      isSynthetic: true,
+      isInternal: true,
+      content: 'background result'
+    })
     expect(next.messages[2].agentEvents).toContainEqual(
       expect.objectContaining({
         type: 'subagent_end',
         subagentId: 'subagent-1',
         status: 'completed'
       })
+    )
+  })
+
+  it('routes detached subagent progress to the parent message after its run stream ends', () => {
+    const withStart = applyBackgroundSubagentEventNotification(baseSession(), {
+      jobId: 'job-live',
+      sessionId: 'session-1',
+      contextEpoch: 0,
+      parentRunId: 'run-active',
+      parentAssistantMessageId: 'assistant-active',
+      event: {
+        type: 'subagent_start',
+        subagentId: 'subagent-live',
+        parentToolCallId: 'call-live',
+        label: 'Research',
+        task: 'Inspect',
+        maxSteps: 4
+      }
+    })
+    const withDelta = applyBackgroundSubagentEventNotification(withStart, {
+      jobId: 'job-live',
+      sessionId: 'session-1',
+      contextEpoch: 0,
+      parentRunId: 'run-active',
+      parentAssistantMessageId: 'assistant-active',
+      event: {
+        type: 'subagent_event',
+        subagentId: 'subagent-live',
+        event: {
+          type: 'agent_message_delta',
+          content: 'Still streaming',
+          step: 1,
+          stepId: 'subagent-live:step:1'
+        }
+      }
+    })
+
+    expect(withDelta.messages[1].agentEvents).toMatchObject([
+      { type: 'subagent_start', subagentId: 'subagent-live' },
+      {
+        type: 'subagent_event',
+        subagentId: 'subagent-live',
+        event: { type: 'agent_message_delta', content: 'Still streaming' }
+      }
+    ])
+  })
+
+  it('prefers the explicit parent message when an older run reused a subagent id', () => {
+    const source: Session = {
+      ...baseSession(),
+      messages: [
+        {
+          id: 'assistant-old',
+          role: 'assistant',
+          content: 'old',
+          agentEvents: [
+            {
+              type: 'subagent_start',
+              subagentId: 'subagent-reused',
+              parentToolCallId: 'call-old',
+              label: 'Research',
+              task: 'Old task',
+              maxSteps: 4
+            }
+          ]
+        },
+        ...baseSession().messages
+      ]
+    }
+    const next = applyBackgroundSubagentEventNotification(source, {
+      jobId: 'job-new',
+      sessionId: 'session-1',
+      contextEpoch: 0,
+      parentRunId: 'run-active',
+      parentAssistantMessageId: 'assistant-active',
+      event: {
+        type: 'subagent_end',
+        subagentId: 'subagent-reused',
+        status: 'completed',
+        finalAnswer: 'new result'
+      }
+    })
+
+    expect(next.messages[0].agentEvents).toHaveLength(1)
+    expect(next.messages[2].agentEvents).toContainEqual(
+      expect.objectContaining({ type: 'subagent_end', finalAnswer: 'new result' })
     )
   })
 

@@ -28,6 +28,7 @@ import {
   SessionFileTransitionPreview,
   SessionFileTransitionResult,
   BackgroundSubagentResultNotification,
+  BackgroundSubagentEventNotification,
   BackgroundJobInfo
 } from '../shared/types'
 
@@ -99,6 +100,9 @@ declare global {
       onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
       onBackgroundSubagentResult: (
         callback: (notification: BackgroundSubagentResultNotification) => void
+      ) => () => void
+      onBackgroundSubagentEvent: (
+        callback: (notification: BackgroundSubagentEventNotification) => void
       ) => () => void
       onSkillsUpdated: (callback: (skills: Skill[]) => void) => () => void
       onWindowStateChanged: (callback: (state: WindowState) => void) => () => void

@@ -234,6 +234,11 @@ export type SubagentInnerEvent = Exclude<
   { type: 'subagent_start' | 'subagent_event' | 'subagent_end' }
 >
 
+export type SubagentLifecycleEvent = Extract<
+  AgentEvent,
+  { type: 'subagent_start' | 'subagent_event' | 'subagent_end' }
+>
+
 export interface TaskItem {
   id: string
   title: string
@@ -261,6 +266,8 @@ export interface Message {
   isCompactionSummary?: boolean
   /** App-generated model input (for example a completed background task), not typed by the user. */
   isSynthetic?: boolean
+  /** Model context that is persisted but intentionally omitted from the chat interface. */
+  isInternal?: boolean
 }
 
 export interface ChatCompletionMessage {
@@ -666,6 +673,20 @@ export interface BackgroundSubagentCompletion {
   result?: string
   error?: string
   durationMs?: number
+}
+
+/** Tool-to-host event emitted by a detached subagent independently of its parent run stream. */
+export interface BackgroundSubagentLiveEvent {
+  jobId: string
+  event: SubagentLifecycleEvent
+}
+
+/** Main-to-renderer live update that remains active after the parent run has finished. */
+export interface BackgroundSubagentEventNotification extends BackgroundSubagentLiveEvent {
+  sessionId: string
+  contextEpoch: number
+  parentRunId: string
+  parentAssistantMessageId?: string
 }
 
 /** Main-to-renderer notification emitted after a background result is routed or rejected as stale. */

@@ -10,6 +10,8 @@ import {
 import { StepProgressMessage, StepReasoningBlock, StepToolEvents } from './MessageBubble'
 import { SubagentRunState } from './SubagentRunCard'
 import { ToolDetailModal } from './message/ToolDetailModal'
+import { StreamingMarkdownPreview } from '../utils/streamingMarkdownPreview'
+import { useSmoothStreamText } from '../hooks/useSmoothStreamText'
 
 const SubagentStepBlock = React.memo<{
   step: ParsedAgentStep
@@ -55,6 +57,7 @@ const getShortTaskTitle = (task: string): string => {
 
 export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, onClose }) => {
   const [selectedToolCallId, setSelectedToolCallId] = useState<string | null>(null)
+  const isStreaming = subagent.status === 'running'
 
   const virtualMessage = useMemo((): Message => {
     return {
@@ -79,9 +82,11 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
   }, [parsedRun.steps, selectedToolCallId])
 
   const renderedFinalAnswer = useMemo(
-    () => (parsedRun.finalAnswer ? renderMessageContent(parsedRun.finalAnswer) : null),
-    [parsedRun.finalAnswer]
+    () =>
+      !isStreaming && parsedRun.finalAnswer ? renderMessageContent(parsedRun.finalAnswer) : null,
+    [isStreaming, parsedRun.finalAnswer]
   )
+  const smoothFinalAnswer = useSmoothStreamText(parsedRun.finalAnswer, isStreaming)
 
   return (
     <div
@@ -216,7 +221,13 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
           <div className="agent-event-final-text" style={{ flex: '0 0 auto', marginTop: '8px' }}>
             <StepReasoningBlock reasoning={parsedRun.finalReasoning} autoOpen={true} />
             {parsedRun.finalAnswer ? (
-              <div className="message-text subagent-final-answer">{renderedFinalAnswer}</div>
+              <div className="message-text subagent-final-answer">
+                {isStreaming ? (
+                  <StreamingMarkdownPreview text={smoothFinalAnswer} />
+                ) : (
+                  renderedFinalAnswer
+                )}
+              </div>
             ) : null}
 
             {subagent.error && (

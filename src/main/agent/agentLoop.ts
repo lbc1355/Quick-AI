@@ -82,6 +82,16 @@ const createAgentHostActions = (
         }
       }
     })
+  },
+  publishBackgroundSubagentEvent: (update) => {
+    if (mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('background-subagent-event', {
+      ...update,
+      sessionId: parent.sessionId,
+      contextEpoch: parent.contextEpoch,
+      parentRunId: parent.runId,
+      parentAssistantMessageId: parent.assistantMessageId
+    })
   }
 })
 
