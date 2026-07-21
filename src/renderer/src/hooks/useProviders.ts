@@ -544,7 +544,7 @@ export const useProviders = (): UseProvidersReturn => {
       throw new Error('鉴权 Header 名称无效。')
     }
     return {
-      accountId: `${editingProviderId || 'provider'}:default`,
+      accountId: editingProviderId || 'provider',
       providerId: editingProviderId || 'provider',
       baseUrl: apiUrl,
       auth:

@@ -29,6 +29,35 @@ export function createSchema(database: Database.Database): void {
       headers TEXT NOT NULL DEFAULT '{}'
     );
 
+    CREATE TABLE IF NOT EXISTS provider_definitions (
+      id             TEXT PRIMARY KEY,
+      name           TEXT NOT NULL,
+      type           TEXT NOT NULL,
+      endpointType   TEXT NOT NULL,
+      defaultModelId TEXT,
+      models         TEXT NOT NULL DEFAULT '{}',
+      modelContextWindows TEXT NOT NULL DEFAULT '{}',
+      transportId    TEXT,
+      apiFormat      TEXT,
+      promptProfile  TEXT,
+      features       TEXT NOT NULL DEFAULT '{}',
+      compatibility  TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS provider_accounts (
+      id             TEXT PRIMARY KEY,
+      providerId     TEXT NOT NULL REFERENCES provider_definitions(id) ON DELETE CASCADE,
+      name           TEXT NOT NULL,
+      apiUrl         TEXT NOT NULL,
+      apiKeys        TEXT NOT NULL DEFAULT '[]',
+      activeApiKeyId TEXT,
+      authType       TEXT NOT NULL DEFAULT 'bearer',
+      authHeader     TEXT,
+      headers        TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_provider_accounts_provider
+      ON provider_accounts(providerId);
+
     CREATE TABLE IF NOT EXISTS sessions (
       id             TEXT PRIMARY KEY,
       title          TEXT NOT NULL DEFAULT '',
@@ -197,6 +226,12 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'providers', 'authType', 'TEXT')
   ensureColumn(database, 'providers', 'authHeader', 'TEXT')
   ensureColumn(database, 'providers', 'headers', "TEXT NOT NULL DEFAULT '{}'")
+  ensureColumn(
+    database,
+    'provider_definitions',
+    'modelContextWindows',
+    "TEXT NOT NULL DEFAULT '{}'"
+  )
   ensureColumn(database, 'skills', 'entryPath', 'TEXT')
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")

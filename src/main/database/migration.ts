@@ -2,8 +2,7 @@ import Database from 'better-sqlite3'
 import { existsSync, readFileSync, readdirSync, renameSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { StorageSchema } from '../../shared/types'
-import { normalizeProviderModelCatalog } from '../../shared/modelCatalog'
-import { normalizeProviderApiKeys, getActiveProviderApiKey } from '../../shared/providerKeyHelper'
+import { saveProviderConfigurations } from './providerStore'
 
 export function migrateFromJson(database: Database.Database, dataDir: string): void {
   const storePath = join(dataDir, 'quickai_store.json')
@@ -42,6 +41,7 @@ function migrateStore(database: Database.Database, storePath: string): void {
       )
       insertSetting.run('systemPrompt', settings.systemPrompt || '')
       insertSetting.run('autoHideOnBlur', String(settings.autoHideOnBlur ?? true))
+      insertSetting.run('contextRetentionMode', settings.contextRetentionMode || 'default')
       insertSetting.run('theme', settings.theme || 'dark')
       insertSetting.run('activeProviderId', settings.activeProviderId || '')
       if (settings.providerPresetVersion !== undefined) {
@@ -51,41 +51,13 @@ function migrateStore(database: Database.Database, storePath: string): void {
       if (settings.permissions) {
         insertSetting.run('permissions', JSON.stringify(settings.permissions))
       }
+      if (settings.webSearch) {
+        insertSetting.run('webSearch', JSON.stringify(settings.webSearch))
+      }
 
       // ── Providers ──
       if (settings.providers && settings.providers.length > 0) {
-        const insertProvider = database.prepare(
-          `INSERT OR REPLACE INTO providers
-           (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId, apiFormat, transportId, promptProfile, features, compatibility, authType, authHeader, headers)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-        for (const p of settings.providers) {
-          const normalized = normalizeProviderModelCatalog(p)
-          const withKeys = normalizeProviderApiKeys(normalized)
-          const activeKeyVal = getActiveProviderApiKey(withKeys)
-          insertProvider.run(
-            withKeys.id,
-            withKeys.name,
-            withKeys.type || 'custom',
-            activeKeyVal,
-            withKeys.apiUrl,
-            withKeys.model,
-            JSON.stringify(withKeys.modelsList || []),
-            JSON.stringify(withKeys.modelContextWindows || {}),
-            withKeys.endpointType || null,
-            JSON.stringify(withKeys.models || {}),
-            JSON.stringify(withKeys.apiKeys || []),
-            withKeys.activeApiKeyId || null,
-            withKeys.apiFormat || null,
-            withKeys.transportId || null,
-            withKeys.promptProfile || null,
-            JSON.stringify(withKeys.features || {}),
-            JSON.stringify(withKeys.compatibility || {}),
-            withKeys.authType || null,
-            withKeys.authHeader || null,
-            JSON.stringify(withKeys.headers || {})
-          )
-        }
+        database.transaction(() => saveProviderConfigurations(database, settings.providers))()
       }
     }
 

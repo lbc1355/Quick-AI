@@ -5,8 +5,10 @@ import {
   getProviderConnectionApiKey,
   getProviderDefinition,
   hasLegacyConnectionParity,
+  composeProviderConfigurations,
   resolveProviderConnection,
-  resolveProviderSelection
+  resolveProviderSelection,
+  splitProviderConfigurations
 } from './providerConfig'
 
 const provider = (overrides: Partial<ApiProvider> = {}): ApiProvider => ({
@@ -41,7 +43,7 @@ describe('provider config boundaries', () => {
     const connection = resolveProviderConnection(account)
 
     expect(connection).toEqual({
-      accountId: 'provider-glm:default',
+      accountId: 'provider-glm',
       providerId: 'provider-glm',
       baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
       auth: { type: 'bearer', token: 'secret-2' },
@@ -49,6 +51,31 @@ describe('provider config boundaries', () => {
     })
     expect(getProviderConnectionApiKey(connection)).toBe('secret-2')
     expect(hasLegacyConnectionParity(provider())).toBe(true)
+  })
+
+  it('round-trips the compatibility view through split persistence records', () => {
+    const original = provider({
+      authType: 'header',
+      authHeader: 'X-API-Key',
+      modelContextWindows: { 'glm-4.7': 96000 }
+    })
+    const split = splitProviderConfigurations([original])
+
+    expect(split.definitions[0].defaultModelId).toBe('glm-4.7')
+    expect(JSON.stringify(split.definitions)).not.toContain('secret-2')
+    expect(JSON.stringify(split.accounts)).toContain('secret-2')
+
+    const [restored] = composeProviderConfigurations(split.definitions, split.accounts)
+    expect(restored).toMatchObject({
+      id: 'provider-glm',
+      model: 'glm-4.7',
+      apiUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      authType: 'header',
+      authHeader: 'X-API-Key',
+      activeApiKeyId: 'key-2'
+    })
+    expect(restored.apiKey).toBe('secret-2')
+    expect(restored.modelContextWindows?.['glm-4.7']).toBe(96000)
   })
 
   it('supports header-based authentication without changing transports', () => {

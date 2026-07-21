@@ -1,5 +1,6 @@
 import type {
   ApiProvider,
+  ModelInfo,
   ModelRuntimeConfig,
   ProviderAccount,
   ProviderDefinition,
@@ -21,6 +22,11 @@ export interface ResolvedProviderSelection {
   model: ModelRuntimeConfig
 }
 
+export interface SplitProviderConfigurations {
+  definitions: ProviderDefinition[]
+  accounts: ProviderAccount[]
+}
+
 /** Split the legacy combined ApiProvider record into static provider/model metadata. */
 export function getProviderDefinition(provider: ApiProvider): ProviderDefinition {
   const normalized = normalizeProviderModelCatalog(provider)
@@ -33,7 +39,9 @@ export function getProviderDefinition(provider: ApiProvider): ProviderDefinition
     name: normalized.name,
     type: normalized.type,
     endpointType: normalized.endpointType!,
+    defaultModelId: normalized.model,
     models: normalized.models || {},
+    modelContextWindows: { ...(normalized.modelContextWindows || {}) },
     transportId,
     apiFormat: normalized.apiFormat || transportIdToApiFormat(transportId),
     features: { ...runtime.features, ...(normalized.features || {}) },
@@ -47,7 +55,7 @@ export function getProviderAccount(provider: ApiProvider): ProviderAccount {
   const normalized = normalizeProviderApiKeys(provider)
   const accountDefaults = getProviderRegistration(provider.type)?.accountDefaults
   return {
-    id: `${provider.id}:default`,
+    id: provider.id,
     providerId: provider.id,
     name: provider.name,
     apiUrl: provider.apiUrl,
@@ -57,6 +65,72 @@ export function getProviderAccount(provider: ApiProvider): ProviderAccount {
     authHeader: provider.authHeader || accountDefaults?.authHeader,
     headers: { ...(accountDefaults?.headers || {}), ...(provider.headers || {}) }
   }
+}
+
+/** Rebuild the legacy renderer-facing provider view from canonical definition/account records. */
+export function composeProviderConfiguration(
+  definition: ProviderDefinition,
+  account: ProviderAccount
+): ApiProvider {
+  const modelEntries = Object.entries(definition.models || {}).map(([id, model]) => [
+    id,
+    { ...model, providerId: account.id }
+  ])
+  const models = Object.fromEntries(modelEntries) as Record<string, ModelInfo>
+  const modelsList = Object.keys(models).filter((id) => models[id]?.enabled !== false)
+  const defaultModelId =
+    (definition.defaultModelId && modelsList.includes(definition.defaultModelId)
+      ? definition.defaultModelId
+      : undefined) ||
+    modelsList[0] ||
+    ''
+  const activeKey = account.apiKeys.find((key) => key.id === account.activeApiKeyId)?.value || ''
+
+  return normalizeProviderApiKeys(
+    normalizeProviderModelCatalog({
+      id: account.id,
+      name: account.name || definition.name,
+      type: definition.type,
+      apiKey: activeKey,
+      apiKeys: account.apiKeys.map((key) => ({ ...key })),
+      activeApiKeyId: account.activeApiKeyId,
+      apiUrl: account.apiUrl,
+      authType: account.authType,
+      authHeader: account.authHeader,
+      headers: { ...(account.headers || {}) },
+      model: defaultModelId,
+      modelsList,
+      modelContextWindows: { ...(definition.modelContextWindows || {}) },
+      endpointType: definition.endpointType,
+      models,
+      transportId: definition.transportId,
+      apiFormat: definition.apiFormat,
+      features: definition.features,
+      compatibility: definition.compatibility,
+      promptProfile: definition.promptProfile
+    })
+  )
+}
+
+/** Convert the compatibility view into records suitable for split persistence. */
+export function splitProviderConfigurations(providers: ApiProvider[]): SplitProviderConfigurations {
+  return {
+    definitions: providers.map(getProviderDefinition),
+    accounts: providers.map(getProviderAccount)
+  }
+}
+
+export function composeProviderConfigurations(
+  definitions: ProviderDefinition[],
+  accounts: ProviderAccount[]
+): ApiProvider[] {
+  const definitionsById = new Map(definitions.map((definition) => [definition.id, definition]))
+  return accounts
+    .map((account) => {
+      const definition = definitionsById.get(account.providerId)
+      return definition ? composeProviderConfiguration(definition, account) : undefined
+    })
+    .filter((provider): provider is ApiProvider => Boolean(provider))
 }
 
 export function resolveProviderConnection(account: ProviderAccount): ResolvedProviderConnection {

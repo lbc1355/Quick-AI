@@ -457,7 +457,9 @@ export interface ProviderDefinition {
   name: string
   type: ProviderType
   endpointType: ProviderEndpointType
+  defaultModelId?: string
   models: Record<string, ModelInfo>
+  modelContextWindows?: Record<string, number>
   transportId?: ModelTransportId
   apiFormat?: ProviderApiFormat
   features?: ModelFeatureSupport
