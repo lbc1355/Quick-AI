@@ -5,9 +5,12 @@ import {
   normalizeContextWindowTokens
 } from './modelContext'
 import {
+  apiFormatToTransportId,
   getProviderRuntimeProfile,
+  resolveModelCompatibility,
   resolveModelFeatureSupport,
-  resolveModelPromptProfile
+  resolveModelPromptProfile,
+  transportIdToApiFormat
 } from './providerProfiles'
 
 export function getProviderEndpointType(
@@ -36,12 +39,14 @@ export function createModelInfo(
     endpointType: previous?.endpointType || getProviderEndpointType(provider),
     capabilities: previous?.capabilities,
     features: previous?.features,
+    compatibility: previous?.compatibility,
     promptProfile: previous?.promptProfile,
     limit: {
       context: normalizedContext,
       ...(previous?.limit?.output ? { output: previous.limit.output } : {})
     },
     enabled: previous?.enabled ?? true,
+    transportId: previous?.transportId,
     apiFormat: previous?.apiFormat
   }
 }
@@ -130,21 +135,27 @@ export function getProviderModelRuntimeConfig(
     normalizeContextWindowTokens(normalized.modelContextWindows?.[modelInfo.id]) ??
     normalizeContextWindowTokens(modelInfo.limit.context) ??
     getContextWindowInfo(modelInfo.id).tokens
+  const profile = getProviderRuntimeProfile(normalized.type)
+  const transportId =
+    modelInfo.transportId ??
+    (modelInfo.apiFormat ? apiFormatToTransportId(modelInfo.apiFormat) : undefined) ??
+    normalized.transportId ??
+    (normalized.apiFormat ? apiFormatToTransportId(normalized.apiFormat) : undefined) ??
+    profile.transportId
 
   return {
     providerId: normalized.id,
     providerType: normalized.type,
     endpointType:
       modelInfo.endpointType || normalized.endpointType || getProviderEndpointType(normalized),
-    apiFormat:
-      modelInfo.apiFormat ??
-      normalized.apiFormat ??
-      getProviderRuntimeProfile(normalized.type).apiFormat,
+    transportId,
+    apiFormat: transportIdToApiFormat(transportId),
     modelId: modelInfo.id,
     apiModel: modelInfo.apiId || modelInfo.id,
     displayName: modelInfo.displayName,
     capabilities: modelInfo.capabilities,
     features: resolveModelFeatureSupport(normalized, modelInfo),
+    compatibility: resolveModelCompatibility(normalized, modelInfo),
     promptProfile: resolveModelPromptProfile(normalized, modelInfo),
     contextWindowTokens: contextWindow
   }

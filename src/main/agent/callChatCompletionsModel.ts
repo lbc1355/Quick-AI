@@ -1,20 +1,16 @@
-import { ChatCompletionMessage, ChatToolDeclaration, PromptCacheStats } from '../../shared/types'
+import { ChatCompletionMessage, ChatToolDeclaration } from '../../shared/types'
 import { DEFAULT_RETRY_POLICY, isRetryableError } from './retryPolicy'
-import { promoteReasoningOnlyFinalAnswer } from './modelResponseNormalizer'
+import { ModelEventAccumulator, ModelEvent } from './modelEvents'
+import { buildOpenAICompatibleRequestTarget } from './modelRequestTarget'
+import type { CallModelCallbacks, CallModelOptions } from './modelCallTypes'
 import {
-  CallModelCallbacks,
-  CallModelOptions,
   canUseTools,
-  countGeneratedArgumentLines,
   extractPromptCacheStats,
   getRequestModelId,
-  prepareMessagesForModel,
   promptCacheStatsByMessage,
   resolveModelAdapter,
-  resolveModelFeatures,
-  TOOL_CALL_PROGRESS_CHAR_INTERVAL,
-  TOOL_CALL_PROGRESS_LINE_INTERVAL
-} from './callModel'
+  resolveModelFeatures
+} from './modelCallRuntime'
 
 export async function callChatCompletionsModel(
   options: CallModelOptions,
@@ -25,13 +21,15 @@ export async function callChatCompletionsModel(
 ): Promise<ChatCompletionMessage> {
   const adapter = resolveModelAdapter(options)
   const features = resolveModelFeatures(options, adapter)
-  const target = adapter.buildRequestTarget({
-    apiUrl: options.apiUrl,
-    apiKey: options.apiKey,
-    apiFormat: 'chat-completions'
-  })
+  const target = buildOpenAICompatibleRequestTarget(
+    {
+      apiUrl: options.apiUrl,
+      apiKey: options.apiKey
+    },
+    'chat/completions'
+  )
 
-  const sanitizedMessages = adapter.sanitizeMessages(prepareMessagesForModel(messages))
+  const sanitizedMessages = adapter.sanitizeMessages(messages)
 
   let body: Record<string, unknown> = {
     model: getRequestModelId(options),
@@ -72,90 +70,13 @@ export async function callChatCompletionsModel(
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
 
-    const assistantMessage: ChatCompletionMessage = {
-      role: 'assistant',
-      content: '',
-      reasoning_content: '',
-      tool_calls: []
-    }
-
+    const events = new ModelEventAccumulator(callbacks)
     let inThinkTag = false
-    let promptCacheStats: PromptCacheStats | undefined
-    const toolCallProgress = new Map<
-      number,
-      {
-        emittedStart: boolean
-        lastEmittedArgumentsLength: number
-        lastEmittedLineCount: number
-        lastToolName?: string
+    const emit = (event: Exclude<ModelEvent, { type: 'finish' }>): void => {
+      if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
+        streamingStarted = true
       }
-    >()
-
-    const emitReasoning = (content: string): void => {
-      streamingStarted = true
-      callbacks?.onReasoning(content)
-    }
-    const emitFinal = (content: string): void => {
-      streamingStarted = true
-      callbacks?.onFinalChunk(content)
-    }
-    const emitToolCallProgress = (
-      index: number,
-      toolCall: NonNullable<ChatCompletionMessage['tool_calls']>[number],
-      argumentsDeltaLength: number,
-      force = false
-    ): void => {
-      if (!callbacks?.onToolCallProgress) return
-
-      const toolName = toolCall.function.name || undefined
-      if (!toolName && !toolCall.id) return
-
-      const state = toolCallProgress.get(index) || {
-        emittedStart: false,
-        lastEmittedArgumentsLength: 0,
-        lastEmittedLineCount: 0,
-        lastToolName: undefined
-      }
-      const argumentsLength = toolCall.function.arguments.length
-      const generatedLineCount = countGeneratedArgumentLines(toolName, toolCall.function.arguments)
-      const shouldEmitStart = !state.emittedStart
-      const shouldEmitToolName = Boolean(toolName && toolName !== state.lastToolName)
-      const shouldEmitArguments =
-        argumentsLength - state.lastEmittedArgumentsLength >= TOOL_CALL_PROGRESS_CHAR_INTERVAL
-      const shouldEmitLines =
-        generatedLineCount > 0 &&
-        (state.lastEmittedLineCount === 0 ||
-          generatedLineCount - state.lastEmittedLineCount >= TOOL_CALL_PROGRESS_LINE_INTERVAL)
-      const shouldEmitFinal =
-        force &&
-        (argumentsLength !== state.lastEmittedArgumentsLength ||
-          generatedLineCount !== state.lastEmittedLineCount ||
-          toolName !== state.lastToolName)
-
-      if (
-        !shouldEmitStart &&
-        !shouldEmitToolName &&
-        !shouldEmitArguments &&
-        !shouldEmitLines &&
-        !shouldEmitFinal
-      ) {
-        return
-      }
-
-      callbacks.onToolCallProgress({
-        index,
-        id: toolCall.id || undefined,
-        toolName,
-        argumentsLength,
-        argumentsDeltaLength,
-        generatedLineCount
-      })
-      toolCallProgress.set(index, {
-        emittedStart: true,
-        lastEmittedArgumentsLength: argumentsLength,
-        lastEmittedLineCount: generatedLineCount,
-        lastToolName: toolName
-      })
+      events.consume(event)
     }
 
     try {
@@ -176,43 +97,24 @@ export async function callChatCompletionsModel(
             try {
               const json = JSON.parse(cleanLine.substring(6))
               const usageStats = extractPromptCacheStats(json.usage)
-              if (usageStats) {
-                promptCacheStats = usageStats
-              }
+              if (usageStats) emit({ type: 'usage', usage: usageStats })
               const delta = json.choices?.[0]?.delta
               if (!delta) continue
 
               if (delta.reasoning_content) {
-                assistantMessage.reasoning_content += delta.reasoning_content
-                emitReasoning(delta.reasoning_content)
+                emit({ type: 'reasoning-delta', delta: delta.reasoning_content })
               }
 
               if (delta.tool_calls) {
                 for (const tcDelta of delta.tool_calls) {
                   const idx = tcDelta.index
-                  if (!assistantMessage.tool_calls) assistantMessage.tool_calls = []
-                  if (!assistantMessage.tool_calls[idx]) {
-                    assistantMessage.tool_calls[idx] = {
-                      id: tcDelta.id || '',
-                      type: 'function',
-                      function: { name: tcDelta.function?.name || '', arguments: '' }
-                    }
-                  }
-                  if (tcDelta.id) {
-                    assistantMessage.tool_calls[idx].id = tcDelta.id
-                  }
-                  if (tcDelta.function?.name) {
-                    assistantMessage.tool_calls[idx].function.name = tcDelta.function.name
-                  }
-                  if (tcDelta.function?.arguments) {
-                    assistantMessage.tool_calls[idx].function.arguments +=
-                      tcDelta.function.arguments
-                  }
-                  emitToolCallProgress(
-                    idx,
-                    assistantMessage.tool_calls[idx],
-                    tcDelta.function?.arguments?.length || 0
-                  )
+                  emit({
+                    type: 'tool-call-delta',
+                    index: idx,
+                    id: tcDelta.id,
+                    name: tcDelta.function?.name,
+                    argumentsDelta: tcDelta.function?.arguments
+                  })
                 }
               }
 
@@ -223,11 +125,7 @@ export async function callChatCompletionsModel(
                   inThinkTag = true
                   const parts = contentChunk.split('<think>')
                   if (parts[0]) {
-                    if (typeof assistantMessage.content !== 'string') assistantMessage.content = ''
-                    assistantMessage.content += parts[0]
-                    if (shouldStreamFinal) {
-                      emitFinal(parts[0])
-                    }
+                    if (shouldStreamFinal) emit({ type: 'text-delta', delta: parts[0] })
                   }
                   contentChunk = parts.slice(1).join('<think>')
                 }
@@ -237,27 +135,16 @@ export async function callChatCompletionsModel(
                     inThinkTag = false
                     const parts = contentChunk.split('</think>')
                     if (parts[0]) {
-                      assistantMessage.reasoning_content += parts[0]
-                      emitReasoning(parts[0])
+                      emit({ type: 'reasoning-delta', delta: parts[0] })
                     }
                     if (parts[1]) {
-                      if (typeof assistantMessage.content !== 'string')
-                        assistantMessage.content = ''
-                      assistantMessage.content += parts[1]
-                      if (shouldStreamFinal) {
-                        emitFinal(parts[1])
-                      }
+                      if (shouldStreamFinal) emit({ type: 'text-delta', delta: parts[1] })
                     }
                   } else {
-                    assistantMessage.reasoning_content += contentChunk
-                    emitReasoning(contentChunk)
+                    emit({ type: 'reasoning-delta', delta: contentChunk })
                   }
                 } else {
-                  if (typeof assistantMessage.content !== 'string') assistantMessage.content = ''
-                  assistantMessage.content += contentChunk
-                  if (shouldStreamFinal) {
-                    emitFinal(contentChunk)
-                  }
+                  if (shouldStreamFinal) emit({ type: 'text-delta', delta: contentChunk })
                 }
               }
             } catch {
@@ -270,36 +157,8 @@ export async function callChatCompletionsModel(
       reader.releaseLock()
     }
 
-    assistantMessage.tool_calls?.forEach((toolCall, index) => {
-      if (toolCall) {
-        emitToolCallProgress(index, toolCall, 0, true)
-      }
-    })
-
-    if (assistantMessage.tool_calls) {
-      assistantMessage.tool_calls = assistantMessage.tool_calls.filter(
-        (tc) => tc && tc.function?.name
-      )
-      if (assistantMessage.tool_calls.length === 0) {
-        delete assistantMessage.tool_calls
-      }
-    }
-
-    const promotedFinalAnswer = promoteReasoningOnlyFinalAnswer(assistantMessage)
-    if (promotedFinalAnswer) {
-      emitFinal(promotedFinalAnswer)
-    } else if (!shouldStreamFinal) {
-      if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
-        if (typeof assistantMessage.content === 'string' && assistantMessage.content) {
-          emitFinal(assistantMessage.content)
-        }
-      }
-    }
-
-    if (promptCacheStats) {
-      promptCacheStatsByMessage.set(assistantMessage, promptCacheStats)
-    }
-
+    const assistantMessage = events.finalize()
+    if (events.usage) promptCacheStatsByMessage.set(assistantMessage, events.usage)
     return assistantMessage
   }
 

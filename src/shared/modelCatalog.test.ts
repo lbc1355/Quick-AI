@@ -125,6 +125,7 @@ describe('modelCatalog', () => {
       providerId: 'provider-glm',
       providerType: 'glm',
       endpointType: 'openai-compatible',
+      transportId: 'openai-chat-completions',
       apiFormat: 'chat-completions',
       modelId: 'friendly-name',
       apiModel: 'real-api-model',
@@ -137,6 +138,13 @@ describe('modelCatalog', () => {
         vision: false,
         promptCaching: false,
         streamUsage: false
+      },
+      compatibility: {
+        stripReasoningContent: true,
+        stripToolMessageName: true,
+        normalizeToolCallContent: true,
+        stripEmptyToolCalls: true,
+        omitToolChoice: true
       },
       promptProfile: 'default',
       contextWindowTokens: 256000

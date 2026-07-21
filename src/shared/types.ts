@@ -360,6 +360,12 @@ export type ProviderEndpointType = 'openai-compatible' | 'ollama-openai' | 'cust
 
 export type ProviderApiFormat = 'chat-completions' | 'responses'
 
+/**
+ * Canonical protocol driver used at runtime. `ProviderApiFormat` is kept as the persisted/UI
+ * compatibility field; transports are the extensible execution boundary.
+ */
+export type ModelTransportId = 'openai-chat-completions' | 'openai-responses'
+
 export type ModelCapability = 'text' | 'vision' | 'tools' | 'reasoning'
 
 export type ModelPromptProfile = 'default' | 'gpt' | 'claude' | 'gemini' | 'reasoning'
@@ -386,6 +392,28 @@ export interface ResolvedModelFeatureSupport {
   streamUsage: boolean
 }
 
+/**
+ * Small, typed request compatibility switches. They may be configured at provider or model
+ * level and are resolved before a request reaches a transport driver.
+ */
+export interface ModelCompatibilityProfile {
+  stripReasoningContent?: boolean
+  stripToolMessageName?: boolean
+  normalizeToolCallContent?: boolean
+  stripEmptyToolCalls?: boolean
+  omitToolChoice?: boolean
+  reasoningFormat?: 'deepseek-style'
+}
+
+export interface ResolvedModelCompatibilityProfile {
+  stripReasoningContent: boolean
+  stripToolMessageName: boolean
+  normalizeToolCallContent: boolean
+  stripEmptyToolCalls: boolean
+  omitToolChoice: boolean
+  reasoningFormat?: 'deepseek-style'
+}
+
 export interface ModelInfo {
   id: string
   apiId: string
@@ -394,12 +422,14 @@ export interface ModelInfo {
   endpointType: ProviderEndpointType
   capabilities?: ModelCapability[]
   features?: ModelFeatureSupport
+  compatibility?: ModelCompatibilityProfile
   promptProfile?: ModelPromptProfile
   limit: {
     context: number
     output?: number
   }
   enabled: boolean
+  transportId?: ModelTransportId
   apiFormat?: ProviderApiFormat
 }
 
@@ -422,8 +452,10 @@ export interface ApiProvider {
   modelContextWindows?: Record<string, number>
   endpointType?: ProviderEndpointType
   models?: Record<string, ModelInfo>
+  transportId?: ModelTransportId
   apiFormat?: ProviderApiFormat
   features?: ModelFeatureSupport
+  compatibility?: ModelCompatibilityProfile
   promptProfile?: ModelPromptProfile
 }
 
@@ -436,8 +468,10 @@ export interface ModelRuntimeConfig {
   displayName?: string
   capabilities?: ModelCapability[]
   features?: ResolvedModelFeatureSupport
+  compatibility?: ResolvedModelCompatibilityProfile
   promptProfile?: ModelPromptProfile
   contextWindowTokens?: number
+  transportId?: ModelTransportId
   apiFormat?: ProviderApiFormat
 }
 

@@ -1,18 +1,38 @@
 import {
   ApiProvider,
   ModelFeatureSupport,
+  ModelCompatibilityProfile,
   ModelInfo,
   ModelPromptProfile,
+  ModelTransportId,
   ProviderApiFormat,
   ProviderEndpointType,
+  ResolvedModelCompatibilityProfile,
   ResolvedModelFeatureSupport
 } from './types'
 
 export interface ProviderRuntimeProfile {
   endpointType: ProviderEndpointType
   apiFormat: ProviderApiFormat
+  transportId: ModelTransportId
+  supportedTransports: readonly ModelTransportId[]
   promptProfile: ModelPromptProfile
   features: ResolvedModelFeatureSupport
+  compatibility: ResolvedModelCompatibilityProfile
+  modelCompatibilityRules?: readonly ModelCompatibilityRule[]
+}
+
+interface ModelCompatibilityRule {
+  includes: readonly string[]
+  compatibility: ModelCompatibilityProfile
+}
+
+type ProviderRuntimeProfileOverrides = Omit<
+  Partial<ProviderRuntimeProfile>,
+  'features' | 'compatibility'
+> & {
+  features?: Partial<ResolvedModelFeatureSupport>
+  compatibility?: ModelCompatibilityProfile
 }
 
 const OPENAI_COMPATIBLE_FEATURES: ResolvedModelFeatureSupport = {
@@ -24,37 +44,78 @@ const OPENAI_COMPATIBLE_FEATURES: ResolvedModelFeatureSupport = {
   streamUsage: true
 }
 
-const profile = (overrides: Partial<ProviderRuntimeProfile> = {}): ProviderRuntimeProfile => ({
-  endpointType: 'openai-compatible',
-  apiFormat: 'chat-completions',
-  promptProfile: 'default',
-  features: { ...OPENAI_COMPATIBLE_FEATURES },
-  ...overrides,
-  ...(overrides.features
-    ? { features: { ...OPENAI_COMPATIBLE_FEATURES, ...overrides.features } }
-    : {})
-})
+const OPENAI_COMPATIBLE_COMPATIBILITY: ResolvedModelCompatibilityProfile = {
+  stripReasoningContent: true,
+  stripToolMessageName: false,
+  normalizeToolCallContent: false,
+  stripEmptyToolCalls: false,
+  omitToolChoice: false
+}
+
+const STRICT_OPENAI_COMPATIBILITY: ResolvedModelCompatibilityProfile = {
+  ...OPENAI_COMPATIBLE_COMPATIBILITY,
+  stripToolMessageName: true,
+  normalizeToolCallContent: true,
+  stripEmptyToolCalls: true
+}
+
+const profile = (overrides: ProviderRuntimeProfileOverrides = {}): ProviderRuntimeProfile => {
+  const { features, compatibility, ...rest } = overrides
+  return {
+    endpointType: 'openai-compatible',
+    apiFormat: 'chat-completions',
+    transportId: 'openai-chat-completions',
+    supportedTransports: ['openai-chat-completions'],
+    promptProfile: 'default',
+    ...rest,
+    features: { ...OPENAI_COMPATIBLE_FEATURES, ...(features || {}) },
+    compatibility: { ...OPENAI_COMPATIBLE_COMPATIBILITY, ...(compatibility || {}) }
+  }
+}
 
 export const PROVIDER_RUNTIME_PROFILES: Record<ApiProvider['type'], ProviderRuntimeProfile> = {
-  opencode: profile(),
+  opencode: profile({ compatibility: STRICT_OPENAI_COMPATIBILITY }),
   deepseek: profile(),
   kimi: profile(),
-  glm: profile({ features: { ...OPENAI_COMPATIBLE_FEATURES, streamUsage: false } }),
-  mimo: profile(),
-  step: profile(),
+  glm: profile({
+    features: { ...OPENAI_COMPATIBLE_FEATURES, streamUsage: false },
+    compatibility: { ...STRICT_OPENAI_COMPATIBILITY, omitToolChoice: true }
+  }),
+  mimo: profile({ compatibility: STRICT_OPENAI_COMPATIBILITY }),
+  step: profile({
+    compatibility: STRICT_OPENAI_COMPATIBILITY,
+    modelCompatibilityRules: [
+      {
+        includes: ['flash', 'r-mini', 'reason', 'router'],
+        compatibility: { reasoningFormat: 'deepseek-style' }
+      }
+    ]
+  }),
   ollama: profile({
     endpointType: 'ollama-openai',
     features: {
       ...OPENAI_COMPATIBLE_FEATURES,
       parallelToolCalls: false,
       streamUsage: false
-    }
+    },
+    compatibility: { omitToolChoice: true }
   }),
-  custom: profile({ endpointType: 'custom' })
+  custom: profile({
+    endpointType: 'custom',
+    supportedTransports: ['openai-chat-completions', 'openai-responses']
+  })
 }
 
 export function getProviderRuntimeProfile(type: ApiProvider['type']): ProviderRuntimeProfile {
   return PROVIDER_RUNTIME_PROFILES[type] || PROVIDER_RUNTIME_PROFILES.custom
+}
+
+export function apiFormatToTransportId(format: ProviderApiFormat): ModelTransportId {
+  return format === 'responses' ? 'openai-responses' : 'openai-chat-completions'
+}
+
+export function transportIdToApiFormat(transportId: ModelTransportId): ProviderApiFormat {
+  return transportId === 'openai-responses' ? 'responses' : 'chat-completions'
 }
 
 export function inferModelPromptProfile(
@@ -102,6 +163,25 @@ export function resolveModelFeatureSupport(
   }
   if (!resolved.toolCalls) resolved.parallelToolCalls = false
   return resolved
+}
+
+export function resolveModelCompatibility(
+  provider: Pick<ApiProvider, 'type' | 'compatibility'>,
+  model: Pick<ModelInfo, 'apiId' | 'id' | 'compatibility'>
+): ResolvedModelCompatibilityProfile {
+  const profile = getProviderRuntimeProfile(provider.type)
+  const modelId = (model.apiId || model.id).trim().toLowerCase()
+  const inferred = (profile.modelCompatibilityRules || [])
+    .filter((rule) => rule.includes.some((part) => modelId.includes(part)))
+    .reduce<ModelCompatibilityProfile>((result, rule) => ({ ...result, ...rule.compatibility }), {})
+
+  return {
+    ...OPENAI_COMPATIBLE_COMPATIBILITY,
+    ...profile.compatibility,
+    ...(provider.compatibility || {}),
+    ...inferred,
+    ...(model.compatibility || {})
+  }
 }
 
 export function resolveModelPromptProfile(

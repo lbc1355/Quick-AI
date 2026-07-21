@@ -1,19 +1,15 @@
-import { ChatCompletionMessage, ChatToolDeclaration, PromptCacheStats } from '../../shared/types'
+import { ChatCompletionMessage, ChatToolDeclaration } from '../../shared/types'
 import { DEFAULT_RETRY_POLICY, isRetryableError } from './retryPolicy'
-import { promoteReasoningOnlyFinalAnswer } from './modelResponseNormalizer'
+import { ModelEventAccumulator, ModelEvent } from './modelEvents'
+import { buildOpenAICompatibleRequestTarget } from './modelRequestTarget'
+import type { CallModelCallbacks, CallModelOptions } from './modelCallTypes'
 import {
-  CallModelCallbacks,
-  CallModelOptions,
   canUseTools,
-  countGeneratedArgumentLines,
   extractPromptCacheStats,
   getRequestModelId,
-  prepareMessagesForModel,
   promptCacheStatsByMessage,
-  resolveModelAdapter,
-  TOOL_CALL_PROGRESS_CHAR_INTERVAL,
-  TOOL_CALL_PROGRESS_LINE_INTERVAL
-} from './callModel'
+  resolveModelAdapter
+} from './modelCallRuntime'
 import { chatMessagesToResponsesInput, chatToolsToResponsesTools } from './responsesAdapter'
 
 interface FatalMarkedError extends Error {
@@ -28,14 +24,16 @@ export async function callResponsesModel(
   callbacks?: CallModelCallbacks
 ): Promise<ChatCompletionMessage> {
   const adapter = resolveModelAdapter(options)
-  const target = adapter.buildRequestTarget({
-    apiUrl: options.apiUrl,
-    apiKey: options.apiKey,
-    apiFormat: 'responses'
-  })
+  const target = buildOpenAICompatibleRequestTarget(
+    {
+      apiUrl: options.apiUrl,
+      apiKey: options.apiKey
+    },
+    'responses'
+  )
 
   // 1. Convert messages & tools to Responses format
-  const sanitizedMessages = adapter.sanitizeMessages(prepareMessagesForModel(messages))
+  const sanitizedMessages = adapter.sanitizeMessages(messages)
   const { instructions, input } = chatMessagesToResponsesInput(sanitizedMessages)
   let body: Record<string, unknown> = {
     model: getRequestModelId(options),
@@ -76,90 +74,13 @@ export async function callResponsesModel(
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
 
-    const assistantMessage: ChatCompletionMessage = {
-      role: 'assistant',
-      content: '',
-      reasoning_content: '',
-      tool_calls: []
-    }
-
-    let promptCacheStats: PromptCacheStats | undefined
+    const events = new ModelEventAccumulator(callbacks)
     const itemIdToIndex = new Map<string, number>()
-    const toolCallProgress = new Map<
-      number,
-      {
-        emittedStart: boolean
-        lastEmittedArgumentsLength: number
-        lastEmittedLineCount: number
-        lastToolName?: string
+    const emit = (event: Exclude<ModelEvent, { type: 'finish' }>): void => {
+      if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
+        streamingStarted = true
       }
-    >()
-
-    const emitReasoning = (content: string): void => {
-      streamingStarted = true
-      callbacks?.onReasoning(content)
-    }
-    const emitFinal = (content: string): void => {
-      streamingStarted = true
-      callbacks?.onFinalChunk(content)
-    }
-    const emitToolCallProgress = (
-      index: number,
-      toolCall: NonNullable<ChatCompletionMessage['tool_calls']>[number],
-      argumentsDeltaLength: number,
-      force = false
-    ): void => {
-      if (!callbacks?.onToolCallProgress) return
-
-      const toolName = toolCall.function.name || undefined
-      if (!toolName && !toolCall.id) return
-
-      const state = toolCallProgress.get(index) || {
-        emittedStart: false,
-        lastEmittedArgumentsLength: 0,
-        lastEmittedLineCount: 0,
-        lastToolName: undefined
-      }
-      const argumentsLength = toolCall.function.arguments.length
-      const generatedLineCount = countGeneratedArgumentLines(toolName, toolCall.function.arguments)
-      const shouldEmitStart = !state.emittedStart
-      const shouldEmitToolName = Boolean(toolName && toolName !== state.lastToolName)
-      const shouldEmitArguments =
-        argumentsLength - state.lastEmittedArgumentsLength >= TOOL_CALL_PROGRESS_CHAR_INTERVAL
-      const shouldEmitLines =
-        generatedLineCount > 0 &&
-        (state.lastEmittedLineCount === 0 ||
-          generatedLineCount - state.lastEmittedLineCount >= TOOL_CALL_PROGRESS_LINE_INTERVAL)
-      const shouldEmitFinal =
-        force &&
-        (argumentsLength !== state.lastEmittedArgumentsLength ||
-          generatedLineCount !== state.lastEmittedLineCount ||
-          toolName !== state.lastToolName)
-
-      if (
-        !shouldEmitStart &&
-        !shouldEmitToolName &&
-        !shouldEmitArguments &&
-        !shouldEmitLines &&
-        !shouldEmitFinal
-      ) {
-        return
-      }
-
-      callbacks.onToolCallProgress({
-        index,
-        id: toolCall.id || undefined,
-        toolName,
-        argumentsLength,
-        argumentsDeltaLength,
-        generatedLineCount
-      })
-      toolCallProgress.set(index, {
-        emittedStart: true,
-        lastEmittedArgumentsLength: argumentsLength,
-        lastEmittedLineCount: generatedLineCount,
-        lastToolName: toolName
-      })
+      events.consume(event)
     }
 
     let currentEvent = ''
@@ -192,15 +113,12 @@ export async function callResponsesModel(
               if (type === 'response.output_text.delta') {
                 const text = json.delta
                 if (text) {
-                  if (typeof assistantMessage.content !== 'string') assistantMessage.content = ''
-                  assistantMessage.content += text
-                  emitFinal(text)
+                  emit({ type: 'text-delta', delta: text })
                 }
               } else if (type === 'response.reasoning_summary_text.delta') {
                 const text = json.delta
                 if (text) {
-                  assistantMessage.reasoning_content += text
-                  emitReasoning(text)
+                  emit({ type: 'reasoning-delta', delta: text })
                 }
               } else if (
                 type === 'response.function_call_arguments.delta' ||
@@ -211,32 +129,31 @@ export async function callResponsesModel(
 
                 if (itemId && delta) {
                   let idx = itemIdToIndex.get(itemId)
+                  const isNew = idx === undefined
                   if (idx === undefined) {
-                    if (!assistantMessage.tool_calls) assistantMessage.tool_calls = []
-                    idx = assistantMessage.tool_calls.length
-                    assistantMessage.tool_calls.push({
-                      id: itemId, // fallback to itemId if added event wasn't sent first
-                      type: 'function',
-                      function: { name: json.name || '', arguments: '' }
-                    })
+                    idx = itemIdToIndex.size
                     itemIdToIndex.set(itemId, idx)
                   }
-
-                  const toolCalls = assistantMessage.tool_calls
-                  if (toolCalls && toolCalls[idx]) {
-                    toolCalls[idx].function.arguments += delta
-                    emitToolCallProgress(idx, toolCalls[idx], delta.length)
-                  }
+                  emit({
+                    type: 'tool-call-delta',
+                    index: idx,
+                    id: json.call_id || (isNew ? itemId : undefined),
+                    name: json.name,
+                    argumentsDelta: delta
+                  })
                 }
               } else if (type === 'response.function_call_arguments.done') {
                 const itemId = json.item_id
                 const finalArguments = json.arguments
                 if (itemId && finalArguments !== undefined) {
                   const idx = itemIdToIndex.get(itemId)
-                  const toolCalls = assistantMessage.tool_calls
-                  if (idx !== undefined && toolCalls && toolCalls[idx]) {
-                    toolCalls[idx].function.arguments = finalArguments
-                    emitToolCallProgress(idx, toolCalls[idx], 0, true)
+                  if (idx !== undefined) {
+                    emit({
+                      type: 'tool-call-delta',
+                      index: idx,
+                      arguments: finalArguments,
+                      complete: true
+                    })
                   }
                 }
               } else if (type === 'response.output_item.added') {
@@ -246,20 +163,9 @@ export async function callResponsesModel(
                   const callId = item.call_id || itemId // call_xxx (use as true tool_call_id)
                   const name = item.name
                   if (itemId && callId) {
-                    if (!assistantMessage.tool_calls) assistantMessage.tool_calls = []
-                    let idx = assistantMessage.tool_calls.findIndex((tc) => tc.id === callId)
-                    if (idx === -1) {
-                      idx = assistantMessage.tool_calls.length
-                      assistantMessage.tool_calls.push({
-                        id: callId,
-                        type: 'function',
-                        function: { name: name || '', arguments: '' }
-                      })
-                    } else {
-                      if (name) assistantMessage.tool_calls[idx].function.name = name
-                    }
+                    const idx = itemIdToIndex.get(itemId) ?? itemIdToIndex.size
                     itemIdToIndex.set(itemId, idx)
-                    emitToolCallProgress(idx, assistantMessage.tool_calls[idx], 0)
+                    emit({ type: 'tool-call-delta', index: idx, id: callId, name })
                   }
                 }
               } else if (
@@ -270,24 +176,13 @@ export async function callResponsesModel(
                 const callId = json.call_id || itemId
                 const name = json.name
                 if (itemId && callId) {
-                  if (!assistantMessage.tool_calls) assistantMessage.tool_calls = []
-                  let idx = assistantMessage.tool_calls.findIndex((tc) => tc.id === callId)
-                  if (idx === -1) {
-                    idx = assistantMessage.tool_calls.length
-                    assistantMessage.tool_calls.push({
-                      id: callId,
-                      type: 'function',
-                      function: { name: name || '', arguments: '' }
-                    })
-                  }
+                  const idx = itemIdToIndex.get(itemId) ?? itemIdToIndex.size
                   itemIdToIndex.set(itemId, idx)
-                  emitToolCallProgress(idx, assistantMessage.tool_calls[idx], 0)
+                  emit({ type: 'tool-call-delta', index: idx, id: callId, name })
                 }
               } else if (type === 'response.completed' || type === 'response.done') {
                 const usageStats = extractPromptCacheStats(json.response?.usage)
-                if (usageStats) {
-                  promptCacheStats = usageStats
-                }
+                if (usageStats) emit({ type: 'usage', usage: usageStats })
               } else if (type === 'response.failed' || type === 'error') {
                 const errMsg =
                   json.error?.message ||
@@ -310,30 +205,8 @@ export async function callResponsesModel(
       reader.releaseLock()
     }
 
-    assistantMessage.tool_calls?.forEach((toolCall, index) => {
-      if (toolCall) {
-        emitToolCallProgress(index, toolCall, 0, true)
-      }
-    })
-
-    if (assistantMessage.tool_calls) {
-      assistantMessage.tool_calls = assistantMessage.tool_calls.filter(
-        (tc) => tc && tc.function?.name
-      )
-      if (assistantMessage.tool_calls.length === 0) {
-        delete assistantMessage.tool_calls
-      }
-    }
-
-    const promotedFinalAnswer = promoteReasoningOnlyFinalAnswer(assistantMessage)
-    if (promotedFinalAnswer) {
-      emitFinal(promotedFinalAnswer)
-    }
-
-    if (promptCacheStats) {
-      promptCacheStatsByMessage.set(assistantMessage, promptCacheStats)
-    }
-
+    const assistantMessage = events.finalize()
+    if (events.usage) promptCacheStatsByMessage.set(assistantMessage, events.usage)
     return assistantMessage
   }
 

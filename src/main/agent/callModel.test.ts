@@ -3,7 +3,8 @@ import {
   callModel,
   getPromptCacheStats,
   prepareMessagesForModel,
-  resolveApiFormat
+  resolveApiFormat,
+  resolveTransportId
 } from './callModel'
 import { chatMessagesToResponsesInput } from './responsesAdapter'
 import { ChatCompletionMessage } from '../../shared/types'
@@ -74,6 +75,18 @@ describe('resolveApiFormat', () => {
       })
     ).toThrow('does not support the responses API format')
   })
+
+  it('maps legacy formats onto canonical transports', () => {
+    expect(
+      resolveTransportId({
+        apiUrl: 'https://api.example.com',
+        apiKey: 'k',
+        model: 'gpt-5',
+        providerType: 'custom',
+        apiFormat: 'responses'
+      })
+    ).toBe('openai-responses')
+  })
 })
 
 describe('callModel retry behavior', () => {
@@ -98,12 +111,13 @@ describe('callModel retry behavior', () => {
       )
 
     const onFinalChunk = vi.fn()
+    const onEvent = vi.fn()
     const promise = callModel(
       { apiUrl: 'https://api.example.com', apiKey: 'k', model: 'test-model' },
       [{ role: 'user', content: 'hi' }],
       undefined,
       undefined,
-      { onReasoning: vi.fn(), onFinalChunk }
+      { onReasoning: vi.fn(), onFinalChunk, onEvent }
     )
 
     // First attempt fails -> backoff timer (1000ms) -> second attempt succeeds
@@ -114,6 +128,7 @@ describe('callModel retry behavior', () => {
     expect(result.content).toBe('Hello')
     expect(onFinalChunk).toHaveBeenCalledTimes(1)
     expect(onFinalChunk).toHaveBeenCalledWith('Hello')
+    expect(onEvent.mock.calls.map(([event]) => event.type)).toEqual(['text-delta', 'finish'])
   })
 
   it('does not retry a non-retryable API error', async () => {
@@ -518,6 +533,7 @@ describe('Responses API Compatibility', () => {
 
     const onFinalChunk = vi.fn()
     const onReasoning = vi.fn()
+    const onEvent = vi.fn()
 
     const result = await callModel(
       {
@@ -529,7 +545,7 @@ describe('Responses API Compatibility', () => {
       [{ role: 'user', content: 'hi' }],
       undefined,
       undefined,
-      { onReasoning, onFinalChunk }
+      { onReasoning, onFinalChunk, onEvent }
     )
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -538,6 +554,12 @@ describe('Responses API Compatibility', () => {
     expect(result.reasoning_content).toBe('Thinking')
     expect(onFinalChunk).toHaveBeenCalledWith('Hello')
     expect(onReasoning).toHaveBeenCalledWith('Thinking')
+    expect(onEvent.mock.calls.map(([event]) => event.type)).toEqual([
+      'text-delta',
+      'reasoning-delta',
+      'usage',
+      'finish'
+    ])
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
     expect(body.store).toBe(false)
