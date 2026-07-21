@@ -432,6 +432,7 @@ export const runAgentLoop = async (
         modelConfig: {
           apiUrl: options.apiUrl,
           apiKey: options.apiKey,
+          providerConnection: options.providerConnection,
           model: options.model,
           modelRuntime: options.modelRuntime
         },
@@ -492,6 +493,7 @@ export const runAgentLoop = async (
           agentModel: {
             apiUrl: options.apiUrl,
             apiKey: options.apiKey,
+            providerConnection: options.providerConnection,
             model: options.model,
             modelRuntime: options.modelRuntime,
             contextWindowTokens: options.contextWindowTokens
@@ -547,6 +549,7 @@ export const runAgentLoop = async (
       modelConfig: {
         apiUrl: options.apiUrl,
         apiKey: options.apiKey,
+        providerConnection: options.providerConnection,
         model: options.model,
         modelRuntime: options.modelRuntime
       },

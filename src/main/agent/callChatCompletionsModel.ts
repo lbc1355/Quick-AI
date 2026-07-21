@@ -9,6 +9,7 @@ import {
   getRequestModelId,
   promptCacheStatsByMessage,
   resolveModelAdapter,
+  resolveModelConnection,
   resolveModelFeatures
 } from './modelCallRuntime'
 
@@ -22,10 +23,7 @@ export async function callChatCompletionsModel(
   const adapter = resolveModelAdapter(options)
   const features = resolveModelFeatures(options, adapter)
   const target = buildOpenAICompatibleRequestTarget(
-    {
-      apiUrl: options.apiUrl,
-      apiKey: options.apiKey
-    },
+    resolveModelConnection(options),
     'chat/completions'
   )
 

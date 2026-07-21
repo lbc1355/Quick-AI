@@ -56,8 +56,8 @@ function migrateStore(database: Database.Database, storePath: string): void {
       if (settings.providers && settings.providers.length > 0) {
         const insertProvider = database.prepare(
           `INSERT OR REPLACE INTO providers
-           (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId, apiFormat)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId, apiFormat, transportId, promptProfile, features, compatibility, authType, authHeader, headers)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         for (const p of settings.providers) {
           const normalized = normalizeProviderModelCatalog(p)
@@ -76,7 +76,14 @@ function migrateStore(database: Database.Database, storePath: string): void {
             JSON.stringify(withKeys.models || {}),
             JSON.stringify(withKeys.apiKeys || []),
             withKeys.activeApiKeyId || null,
-            withKeys.apiFormat || null
+            withKeys.apiFormat || null,
+            withKeys.transportId || null,
+            withKeys.promptProfile || null,
+            JSON.stringify(withKeys.features || {}),
+            JSON.stringify(withKeys.compatibility || {}),
+            withKeys.authType || null,
+            withKeys.authHeader || null,
+            JSON.stringify(withKeys.headers || {})
           )
         }
       }

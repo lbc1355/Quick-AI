@@ -5,6 +5,7 @@ import {
   Message,
   ModelRuntimeConfig,
   Project,
+  ResolvedProviderConnection,
   Session,
   Skill,
   RunMode,
@@ -56,6 +57,7 @@ interface UseChatCompletionProps {
   projects: Project[]
   apiKey: string
   apiUrl: string
+  providerConnection?: ResolvedProviderConnection
   selectedModel: string
   modelRuntimeConfig?: ModelRuntimeConfig
   contextWindowTokens?: number
@@ -157,6 +159,7 @@ export const useChatCompletion = ({
   projects,
   apiKey,
   apiUrl,
+  providerConnection,
   selectedModel,
   modelRuntimeConfig,
   contextWindowTokens,
@@ -202,6 +205,7 @@ export const useChatCompletion = ({
   const latestRequestConfigRef = useRef({
     apiKey,
     apiUrl,
+    providerConnection,
     selectedModel,
     modelRuntimeConfig,
     contextWindowTokens,
@@ -213,6 +217,7 @@ export const useChatCompletion = ({
     latestRequestConfigRef.current = {
       apiKey,
       apiUrl,
+      providerConnection,
       selectedModel,
       modelRuntimeConfig,
       contextWindowTokens,
@@ -223,6 +228,7 @@ export const useChatCompletion = ({
   }, [
     apiKey,
     apiUrl,
+    providerConnection,
     selectedModel,
     modelRuntimeConfig,
     contextWindowTokens,
@@ -463,6 +469,7 @@ export const useChatCompletion = ({
       const result = await window.api.compactContext({
         apiUrl: requestConfig.apiUrl,
         apiKey: requestConfig.apiKey,
+        providerConnection: requestConfig.providerConnection,
         model: requestConfig.selectedModel,
         modelRuntime: requestConfig.modelRuntimeConfig,
         messages: currentSession.messages.filter((m) => m.id !== 'temp-compaction-placeholder'),
@@ -669,6 +676,7 @@ export const useChatCompletion = ({
         window.api.startChatCompletion(reqId, {
           apiUrl: requestConfig.apiUrl,
           apiKey: requestConfig.apiKey,
+          providerConnection: requestConfig.providerConnection,
           model: requestConfig.selectedModel,
           modelRuntime: requestConfig.modelRuntimeConfig,
           contextWindowTokens: requestConfig.contextWindowTokens,
@@ -896,6 +904,7 @@ export const useChatCompletion = ({
           window.api.startChatCompletion(reqId, {
             apiUrl: requestConfig.apiUrl,
             apiKey: requestConfig.apiKey,
+            providerConnection: requestConfig.providerConnection,
             model: requestConfig.selectedModel,
             modelRuntime: requestConfig.modelRuntimeConfig,
             contextWindowTokens: requestConfig.contextWindowTokens,
@@ -1139,6 +1148,7 @@ export const useChatCompletion = ({
         window.api.startAgentSkill(reqId, {
           apiUrl: requestConfig.apiUrl,
           apiKey: requestConfig.apiKey,
+          providerConnection: requestConfig.providerConnection,
           model: requestConfig.selectedModel,
           modelRuntime: requestConfig.modelRuntimeConfig,
           contextWindowTokens: requestConfig.contextWindowTokens,
@@ -1278,6 +1288,7 @@ export const useChatCompletion = ({
         window.api.startChatCompletion(reqId, {
           apiUrl: requestConfig.apiUrl,
           apiKey: requestConfig.apiKey,
+          providerConnection: requestConfig.providerConnection,
           model: requestConfig.selectedModel,
           modelRuntime: requestConfig.modelRuntimeConfig,
           contextWindowTokens: requestConfig.contextWindowTokens,

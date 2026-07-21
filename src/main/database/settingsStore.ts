@@ -1,9 +1,12 @@
 import {
   ApiProvider,
   AppSettings,
+  ModelCompatibilityProfile,
   ModelFeatureSupport,
   ModelPromptProfile,
-  ProviderApiFormat
+  ModelTransportId,
+  ProviderApiFormat,
+  ProviderAuthType
 } from '../../shared/types'
 import { normalizeProviderModelCatalog } from '../../shared/modelCatalog'
 import { normalizeProviderApiKeys, getActiveProviderApiKey } from '../../shared/providerKeyHelper'
@@ -35,8 +38,13 @@ export function loadSettings(): AppSettings {
     endpointType: string | null
     models: string
     apiFormat: string | null
+    transportId: string | null
     promptProfile: string | null
     features: string | null
+    compatibility: string | null
+    authType: string | null
+    authHeader: string | null
+    headers: string | null
   }>
 
   let permissions: { [toolName: string]: 'allow' | 'ask' | 'deny' } = {}
@@ -75,9 +83,14 @@ export function loadSettings(): AppSettings {
         modelContextWindows: JSON.parse(p.modelContextWindows || '{}'),
         endpointType: (p.endpointType || undefined) as ApiProvider['endpointType'],
         models: JSON.parse(p.models || '{}'),
+        transportId: (p.transportId || undefined) as ModelTransportId,
         apiFormat: (p.apiFormat || undefined) as ProviderApiFormat,
         promptProfile: (p.promptProfile || undefined) as ModelPromptProfile,
-        features: JSON.parse(p.features || '{}') as ModelFeatureSupport
+        features: JSON.parse(p.features || '{}') as ModelFeatureSupport,
+        compatibility: JSON.parse(p.compatibility || '{}') as ModelCompatibilityProfile,
+        authType: (p.authType || undefined) as ProviderAuthType,
+        authHeader: p.authHeader || undefined,
+        headers: JSON.parse(p.headers || '{}') as Record<string, string>
       })
 
       return normalizeProviderApiKeys(normalizedCatalog)
@@ -99,7 +112,7 @@ export function saveSettings(settings: AppSettings): void {
   const upsert = database.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
   const deleteProviders = database.prepare('DELETE FROM providers')
   const insert = database.prepare(
-    'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId, apiFormat, promptProfile, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO providers (id, name, type, apiKey, apiUrl, model, modelsList, modelContextWindows, endpointType, models, apiKeys, activeApiKeyId, apiFormat, transportId, promptProfile, features, compatibility, authType, authHeader, headers) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
 
   // Wrap the whole save in a single transaction: turns N independent fsync-per-statement
@@ -136,8 +149,13 @@ export function saveSettings(settings: AppSettings): void {
         JSON.stringify(withKeys.apiKeys || []),
         withKeys.activeApiKeyId || null,
         withKeys.apiFormat || null,
+        withKeys.transportId || null,
         withKeys.promptProfile || null,
-        JSON.stringify(withKeys.features || {})
+        JSON.stringify(withKeys.features || {}),
+        JSON.stringify(withKeys.compatibility || {}),
+        withKeys.authType || null,
+        withKeys.authHeader || null,
+        JSON.stringify(withKeys.headers || {})
       )
     }
   })

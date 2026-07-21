@@ -5,6 +5,7 @@ import {
   SessionResource,
   AgentEvent,
   ModelRuntimeConfig,
+  ResolvedProviderConnection,
   UserChoiceRequest,
   BackgroundShellCompletion,
   BackgroundSubagentCompletion,
@@ -38,6 +39,7 @@ export interface ToolExecutionContext {
   agentModel?: {
     apiUrl: string
     apiKey: string
+    providerConnection?: ResolvedProviderConnection
     model: string
     modelRuntime?: ModelRuntimeConfig
     contextWindowTokens?: number

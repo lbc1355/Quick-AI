@@ -31,11 +31,8 @@ import {
   getBranchSourceKey
 } from './utils/branchDisplay'
 import { getSessionGenerationState } from './utils/generationState'
-import {
-  getProviderModelContextWindowInfo,
-  getProviderModelRuntimeConfig
-} from '../../shared/modelCatalog'
-import { getActiveProviderApiKey } from '../../shared/providerKeyHelper'
+import { getProviderModelContextWindowInfo } from '../../shared/modelCatalog'
+import { getProviderConnectionApiKey, resolveProviderSelection } from '../../shared/providerConfig'
 
 import { AppHeader } from './components/AppHeader'
 import { SessionSidebar } from './components/SessionSidebar'
@@ -199,15 +196,15 @@ function App(): React.JSX.Element {
     [activeProviderId, providers]
   )
   const runningModelName = useMemo(() => activeProviderConfig?.model || '', [activeProviderConfig])
-  const runningApiKey = useMemo(
-    () => (activeProviderConfig ? getActiveProviderApiKey(activeProviderConfig) : ''),
-    [activeProviderConfig]
-  )
-  const runningApiUrl = useMemo(() => activeProviderConfig?.apiUrl || '', [activeProviderConfig])
-  const activeModelRuntimeConfig = useMemo(
-    () => getProviderModelRuntimeConfig(activeProviderConfig, runningModelName),
+  const activeProviderSelection = useMemo(
+    () => resolveProviderSelection(activeProviderConfig, runningModelName),
     [activeProviderConfig, runningModelName]
   )
+  const runningApiKey = activeProviderSelection
+    ? getProviderConnectionApiKey(activeProviderSelection.connection)
+    : ''
+  const runningApiUrl = activeProviderSelection?.connection.baseUrl || ''
+  const activeModelRuntimeConfig = activeProviderSelection?.model
   const activeModelContextWindowTokens =
     activeModelRuntimeConfig?.contextWindowTokens ??
     getProviderModelContextWindowInfo(activeProviderConfig, runningModelName).tokens
@@ -335,6 +332,7 @@ function App(): React.JSX.Element {
     projects,
     apiKey: runningApiKey,
     apiUrl: runningApiUrl,
+    providerConnection: activeProviderSelection?.connection,
     selectedModel: runningModelName,
     modelRuntimeConfig: activeModelRuntimeConfig,
     contextWindowTokens: activeModelContextWindowTokens,

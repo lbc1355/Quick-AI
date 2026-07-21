@@ -293,6 +293,40 @@ describe('callModel retry behavior', () => {
     expect(body.tool_choice).toBeUndefined()
   })
 
+  it('uses a resolved provider connection for endpoint and authentication', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(sseStream([sseLine({ content: 'Hello' }), 'data: [DONE]\n']))
+    )
+
+    await callModel(
+      {
+        model: 'custom-model',
+        providerConnection: {
+          accountId: 'custom:default',
+          providerId: 'custom',
+          baseUrl: 'https://gateway.example/v1/',
+          auth: { type: 'header', name: 'api-key', value: 'custom-secret' },
+          headers: { 'X-Client': 'quick-ai' }
+        },
+        modelRuntime: {
+          providerType: 'custom',
+          endpointType: 'openai-compatible',
+          modelId: 'custom-model',
+          apiModel: 'custom-model'
+        }
+      },
+      [{ role: 'user', content: 'hi' }]
+    )
+
+    expect(fetchMock.mock.calls[0][0]).toBe('https://gateway.example/v1/chat/completions')
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+      'Content-Type': 'application/json',
+      'X-Client': 'quick-ai',
+      'api-key': 'custom-secret'
+    })
+    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization')
+  })
+
   it('does not declare tools when the selected model runtime explicitly lacks tool capability', async () => {
     fetchMock.mockResolvedValue(
       okResponse(sseStream([sseLine({ content: 'Hello' }), 'data: [DONE]\n']))

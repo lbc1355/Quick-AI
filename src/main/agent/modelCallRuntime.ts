@@ -3,6 +3,7 @@ import {
   ModelTransportId,
   PromptCacheStats,
   ProviderApiFormat,
+  ResolvedProviderConnection,
   ResolvedModelFeatureSupport
 } from '../../shared/types'
 import { apiFormatToTransportId, transportIdToApiFormat } from '../../shared/providerProfiles'
@@ -107,6 +108,19 @@ export function getRequestModelId(options: CallModelOptions): string {
   return options.modelRuntime?.apiModel?.trim() || options.model
 }
 
+export function resolveModelConnection(options: CallModelOptions): ResolvedProviderConnection {
+  if (options.providerConnection) return options.providerConnection
+  const baseUrl = options.apiUrl?.trim() || ''
+  if (!baseUrl) throw new Error('Provider API URL is not configured.')
+  return {
+    accountId: `${options.modelRuntime?.providerId || options.providerType || 'legacy'}:default`,
+    providerId: options.modelRuntime?.providerId || options.providerType || 'legacy',
+    baseUrl,
+    auth: options.apiKey ? { type: 'bearer', token: options.apiKey } : { type: 'none' },
+    headers: {}
+  }
+}
+
 export function resolveModelAdapter(options: CallModelOptions): ModelAdapter {
   const providerType = options.modelRuntime?.providerType ?? options.providerType
   const endpointType = options.modelRuntime?.endpointType ?? options.endpointType
@@ -116,7 +130,7 @@ export function resolveModelAdapter(options: CallModelOptions): ModelAdapter {
   if (providerType || endpointType) {
     return getAdapter(providerType, endpointType, modelId, compatibility)
   }
-  return detectProvider(options.apiUrl, modelId, compatibility)
+  return detectProvider(resolveModelConnection(options).baseUrl, modelId, compatibility)
 }
 
 export function canUseTools(options: CallModelOptions): boolean {

@@ -1,7 +1,4 @@
-export interface ProviderConnection {
-  apiUrl: string
-  apiKey: string
-}
+import type { ResolvedProviderConnection } from '../../shared/types'
 
 export interface ModelRequestTarget {
   url: string
@@ -10,14 +7,23 @@ export interface ModelRequestTarget {
 
 /** OpenAI-compatible authentication shared by the built-in protocol transports. */
 export function buildOpenAICompatibleRequestTarget(
-  connection: ProviderConnection,
+  connection: ResolvedProviderConnection,
   endpointPath: string
 ): ModelRequestTarget {
+  const baseUrl = connection.baseUrl.trim()
+  if (!baseUrl) throw new Error('Provider API URL is not configured.')
+  const authHeaders: Record<string, string> = {}
+  if (connection.auth.type === 'bearer' && connection.auth.token) {
+    authHeaders.Authorization = `Bearer ${connection.auth.token}`
+  } else if (connection.auth.type === 'header' && connection.auth.value) {
+    authHeaders[connection.auth.name] = connection.auth.value
+  }
   return {
-    url: `${connection.apiUrl.replace(/\/$/, '')}/${endpointPath}`,
+    url: `${baseUrl.replace(/\/$/, '')}/${endpointPath}`,
     headers: {
       'Content-Type': 'application/json',
-      ...(connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {})
+      ...connection.headers,
+      ...authHeaders
     }
   }
 }

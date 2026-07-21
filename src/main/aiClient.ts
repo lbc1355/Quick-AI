@@ -1,5 +1,10 @@
 import { BrowserWindow } from 'electron'
-import { ChatCompletionMessage, FetchedModelInfo, ModelRuntimeConfig } from '../shared/types'
+import {
+  ChatCompletionMessage,
+  FetchedModelInfo,
+  ModelRuntimeConfig,
+  ResolvedProviderConnection
+} from '../shared/types'
 import { normalizeRuntimeError } from '../shared/runtimeErrors'
 import { callModel, getPromptCacheStats } from './agent/callModel'
 import { loadMemoryContextPrompt } from './agent/memoryContext'
@@ -47,6 +52,7 @@ export async function handleChatCompletion(
   options: {
     apiUrl: string
     apiKey: string
+    providerConnection?: ResolvedProviderConnection
     model: string
     modelRuntime?: ModelRuntimeConfig
     messages: ChatCompletionMessage[]
@@ -54,7 +60,7 @@ export async function handleChatCompletion(
     contextEpoch?: number
   }
 ): Promise<void> {
-  const { apiUrl, apiKey, model, modelRuntime, messages } = options
+  const { apiUrl, apiKey, providerConnection, model, modelRuntime, messages } = options
   const contextEpoch = normalizeContextEpoch(options.contextEpoch)
   const controller = new AbortController()
   activeChatSessions.set(reqId, controller)
@@ -68,7 +74,7 @@ export async function handleChatCompletion(
     // into reasoning, which the previous inline parser ignored.
     const startTime = Date.now()
     const assistantMessage = await callModel(
-      { apiUrl, apiKey, model, modelRuntime },
+      { apiUrl, apiKey, providerConnection, model, modelRuntime },
       messagesWithMemory,
       undefined,
       controller.signal,

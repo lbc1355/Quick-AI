@@ -153,6 +153,7 @@ export async function compactContextWithModel(
     {
       apiUrl: request.apiUrl,
       apiKey: request.apiKey,
+      providerConnection: request.providerConnection,
       model: request.model,
       modelRuntime: request.modelRuntime
     },

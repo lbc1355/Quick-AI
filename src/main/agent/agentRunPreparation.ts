@@ -31,6 +31,7 @@ export interface AgentSteeringControls {
 export interface AgentRunOptions extends AgentSteeringControls {
   apiUrl: string
   apiKey: string
+  providerConnection?: AgentSkillRunOptions['providerConnection']
   model: string
   modelRuntime?: AgentSkillRunOptions['modelRuntime']
   contextWindowTokens?: number

@@ -8,7 +8,8 @@ import {
   extractPromptCacheStats,
   getRequestModelId,
   promptCacheStatsByMessage,
-  resolveModelAdapter
+  resolveModelAdapter,
+  resolveModelConnection
 } from './modelCallRuntime'
 import { chatMessagesToResponsesInput, chatToolsToResponsesTools } from './responsesAdapter'
 
@@ -24,13 +25,7 @@ export async function callResponsesModel(
   callbacks?: CallModelCallbacks
 ): Promise<ChatCompletionMessage> {
   const adapter = resolveModelAdapter(options)
-  const target = buildOpenAICompatibleRequestTarget(
-    {
-      apiUrl: options.apiUrl,
-      apiKey: options.apiKey
-    },
-    'responses'
-  )
+  const target = buildOpenAICompatibleRequestTarget(resolveModelConnection(options), 'responses')
 
   // 1. Convert messages & tools to Responses format
   const sanitizedMessages = adapter.sanitizeMessages(messages)

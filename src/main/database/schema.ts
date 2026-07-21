@@ -20,8 +20,13 @@ export function createSchema(database: Database.Database): void {
       models TEXT NOT NULL DEFAULT '{}',
       activeApiKeyId TEXT,
       apiFormat TEXT,
+      transportId TEXT,
       promptProfile TEXT,
-      features TEXT NOT NULL DEFAULT '{}'
+      features TEXT NOT NULL DEFAULT '{}',
+      compatibility TEXT NOT NULL DEFAULT '{}',
+      authType TEXT,
+      authHeader TEXT,
+      headers TEXT NOT NULL DEFAULT '{}'
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
@@ -185,8 +190,13 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'providers', 'apiKeys', "TEXT NOT NULL DEFAULT '[]'")
   ensureColumn(database, 'providers', 'activeApiKeyId', 'TEXT')
   ensureColumn(database, 'providers', 'apiFormat', 'TEXT')
+  ensureColumn(database, 'providers', 'transportId', 'TEXT')
   ensureColumn(database, 'providers', 'promptProfile', 'TEXT')
   ensureColumn(database, 'providers', 'features', "TEXT NOT NULL DEFAULT '{}'")
+  ensureColumn(database, 'providers', 'compatibility', "TEXT NOT NULL DEFAULT '{}'")
+  ensureColumn(database, 'providers', 'authType', 'TEXT')
+  ensureColumn(database, 'providers', 'authHeader', 'TEXT')
+  ensureColumn(database, 'providers', 'headers', "TEXT NOT NULL DEFAULT '{}'")
   ensureColumn(database, 'skills', 'entryPath', 'TEXT')
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")

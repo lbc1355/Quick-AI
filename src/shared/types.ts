@@ -360,6 +360,18 @@ export type ProviderEndpointType = 'openai-compatible' | 'ollama-openai' | 'cust
 
 export type ProviderApiFormat = 'chat-completions' | 'responses'
 
+export type ProviderType =
+  | 'opencode'
+  | 'deepseek'
+  | 'kimi'
+  | 'ollama'
+  | 'glm'
+  | 'mimo'
+  | 'step'
+  | 'custom'
+
+export type ProviderAuthType = 'bearer' | 'header' | 'none'
+
 /**
  * Canonical protocol driver used at runtime. `ProviderApiFormat` is kept as the persisted/UI
  * compatibility field; transports are the extensible execution boundary.
@@ -439,10 +451,51 @@ export interface ApiKeyItem {
   value: string
 }
 
+/** Static provider/model metadata, independent from credentials and endpoint account details. */
+export interface ProviderDefinition {
+  id: string
+  name: string
+  type: ProviderType
+  endpointType: ProviderEndpointType
+  models: Record<string, ModelInfo>
+  transportId?: ModelTransportId
+  apiFormat?: ProviderApiFormat
+  features?: ModelFeatureSupport
+  compatibility?: ModelCompatibilityProfile
+  promptProfile?: ModelPromptProfile
+}
+
+/** Mutable connection/account data for one provider definition. */
+export interface ProviderAccount {
+  id: string
+  providerId: string
+  name: string
+  apiUrl: string
+  apiKeys: ApiKeyItem[]
+  activeApiKeyId?: string
+  authType: ProviderAuthType
+  authHeader?: string
+  headers?: Record<string, string>
+}
+
+export type ProviderConnectionAuth =
+  | { type: 'bearer'; token: string }
+  | { type: 'header'; name: string; value: string }
+  | { type: 'none' }
+
+/** Fully selected account connection consumed by model transports. */
+export interface ResolvedProviderConnection {
+  accountId: string
+  providerId: string
+  baseUrl: string
+  auth: ProviderConnectionAuth
+  headers: Record<string, string>
+}
+
 export interface ApiProvider {
   id: string
   name: string
-  type: 'opencode' | 'deepseek' | 'kimi' | 'ollama' | 'glm' | 'mimo' | 'step' | 'custom'
+  type: ProviderType
   apiKey: string
   apiKeys?: ApiKeyItem[]
   activeApiKeyId?: string
@@ -457,6 +510,9 @@ export interface ApiProvider {
   features?: ModelFeatureSupport
   compatibility?: ModelCompatibilityProfile
   promptProfile?: ModelPromptProfile
+  authType?: ProviderAuthType
+  authHeader?: string
+  headers?: Record<string, string>
 }
 
 export interface ModelRuntimeConfig {
@@ -595,6 +651,7 @@ export interface AutocompleteItem {
 export interface AgentSkillRunOptions {
   apiUrl: string
   apiKey: string
+  providerConnection?: ResolvedProviderConnection
   model: string
   modelRuntime?: ModelRuntimeConfig
   contextWindowTokens?: number
@@ -812,6 +869,7 @@ export interface BackgroundShellResultNotification extends BackgroundShellComple
 export interface ChatRunOptions {
   apiUrl: string
   apiKey: string
+  providerConnection?: ResolvedProviderConnection
   model: string
   modelRuntime?: ModelRuntimeConfig
   contextWindowTokens?: number
@@ -840,6 +898,7 @@ export interface ChatRunOptions {
 export interface ContextCompactionRequest {
   apiUrl: string
   apiKey: string
+  providerConnection?: ResolvedProviderConnection
   model: string
   modelRuntime?: ModelRuntimeConfig
   messages: Message[]

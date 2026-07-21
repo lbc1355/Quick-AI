@@ -18,6 +18,7 @@ export {
   prepareMessagesForModel,
   promptCacheStatsByMessage,
   resolveApiFormat,
+  resolveModelConnection,
   resolveModelAdapter,
   resolveModelFeatures,
   resolveTransportId

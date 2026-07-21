@@ -286,6 +286,7 @@ export async function runSubagentTask(
         {
           apiUrl: ctx.agentModel.apiUrl,
           apiKey: ctx.agentModel.apiKey,
+          providerConnection: ctx.agentModel.providerConnection,
           model: ctx.agentModel.model,
           modelRuntime: ctx.agentModel.modelRuntime
         },
@@ -399,6 +400,7 @@ export async function runSubagentTask(
         {
           apiUrl: ctx.agentModel.apiUrl,
           apiKey: ctx.agentModel.apiKey,
+          providerConnection: ctx.agentModel.providerConnection,
           model: ctx.agentModel.model,
           modelRuntime: ctx.agentModel.modelRuntime
         },

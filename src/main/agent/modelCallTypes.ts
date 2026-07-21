@@ -4,13 +4,16 @@ import type {
   ModelRuntimeConfig,
   ModelTransportId,
   ProviderApiFormat,
-  ProviderEndpointType
+  ProviderEndpointType,
+  ResolvedProviderConnection
 } from '../../shared/types'
 import type { ModelEvent } from './modelEvents'
 
 export interface CallModelOptions {
-  apiUrl: string
-  apiKey: string
+  /** Legacy connection fields; new callers should pass providerConnection. */
+  apiUrl?: string
+  apiKey?: string
+  providerConnection?: ResolvedProviderConnection
   model: string
   providerType?: ModelRuntimeConfig['providerType']
   endpointType?: ProviderEndpointType
