@@ -21,7 +21,12 @@ import {
   normalizeProviderApiKeys,
   getActiveProviderApiKey
 } from '../../../shared/providerKeyHelper'
-import { ensureCoreProviderPresets, getProviderPreset } from '../utils/providerPresets'
+import { ensureCoreProviderPresets } from '../utils/providerPresets'
+import {
+  createProviderFromRegistration,
+  getProviderRegistration,
+  getRegisteredProviderAuthType
+} from '../../../shared/providerRegistry'
 import {
   isValidProviderAuthHeader,
   ProviderHeaderItem,
@@ -189,9 +194,7 @@ export const useProviders = (): UseProvidersReturn => {
         if (activeProv) {
           setApiKey(getActiveProviderApiKey(activeProv))
           setApiUrl(activeProv.apiUrl || '')
-          setProviderAuthType(
-            activeProv.authType || (activeProv.type === 'ollama' ? 'none' : 'bearer')
-          )
+          setProviderAuthType(activeProv.authType || getRegisteredProviderAuthType(activeProv.type))
           setProviderAuthHeader(activeProv.authHeader || 'X-API-Key')
           setProviderHeaders(providerHeadersToItems(activeProv.headers))
           setSelectedModel(activeProv.model || '')
@@ -240,9 +243,7 @@ export const useProviders = (): UseProvidersReturn => {
         setActiveApiKeyId(withKeys.activeApiKeyId || '')
         setApiKey(getActiveProviderApiKey(withKeys))
         setApiUrl(activeProv.apiUrl || '')
-        setProviderAuthType(
-          activeProv.authType || (activeProv.type === 'ollama' ? 'none' : 'bearer')
-        )
+        setProviderAuthType(activeProv.authType || getRegisteredProviderAuthType(activeProv.type))
         setProviderAuthHeader(activeProv.authHeader || 'X-API-Key')
         setProviderHeaders(providerHeadersToItems(activeProv.headers))
         setSelectedModel(activeProv.model || '')
@@ -347,20 +348,22 @@ export const useProviders = (): UseProvidersReturn => {
   }
 
   const handleAddProvider = async (name: string, type: ApiProvider['type']): Promise<void> => {
-    const preset = getProviderPreset(type)
-    const customName = name.trim() || preset?.name || `${type.toUpperCase()}-配置`
+    const registration = getProviderRegistration(type)
+    const customName = name.trim() || registration?.definition.name || `${type.toUpperCase()}-配置`
     const newId = `provider-custom-${Date.now()}`
-    const newProv: ApiProvider = normalizeProviderModelCatalog({
-      id: newId,
-      name: customName,
-      type,
-      apiKey: '',
-      apiUrl: preset ? preset.apiUrl : '',
-      authType: preset?.authType || 'bearer',
-      model: preset ? preset.defaultModel : '',
-      modelsList: preset ? [...preset.modelsList] : [],
-      modelContextWindows: {}
-    })
+    const newProv: ApiProvider = registration
+      ? createProviderFromRegistration(registration, { id: newId, name: customName })
+      : normalizeProviderModelCatalog({
+          id: newId,
+          name: customName,
+          type,
+          apiKey: '',
+          apiUrl: '',
+          authType: 'bearer',
+          model: '',
+          modelsList: [],
+          modelContextWindows: {}
+        })
     const withKeys = normalizeProviderApiKeys(newProv)
     const updated = [...providers, withKeys]
     setProviders(updated)
@@ -375,14 +378,14 @@ export const useProviders = (): UseProvidersReturn => {
     setApiKeys(withKeys.apiKeys || [])
     setActiveApiKeyId(withKeys.activeApiKeyId || '')
     setApiKey('')
-    setApiUrl(preset ? preset.apiUrl : '')
-    setProviderAuthType(preset?.authType || 'bearer')
-    setProviderAuthHeader('X-API-Key')
-    setProviderHeaders([])
-    setSelectedModel(preset ? preset.defaultModel : '')
-    setModelsList(preset ? [...preset.modelsList] : [])
+    setApiUrl(registration?.accountDefaults.apiUrl || '')
+    setProviderAuthType(registration?.accountDefaults.authType || 'bearer')
+    setProviderAuthHeader(registration?.accountDefaults.authHeader || 'X-API-Key')
+    setProviderHeaders(providerHeadersToItems(registration?.accountDefaults.headers))
+    setSelectedModel(registration?.definition.defaultModel || '')
+    setModelsList(registration ? [...registration.definition.models] : [])
     setModelContextWindows({})
-    setFetchModelsUrl(`${(preset ? preset.apiUrl : '').replace(/\/$/, '')}/models`)
+    setFetchModelsUrl(`${(registration?.accountDefaults.apiUrl || '').replace(/\/$/, '')}/models`)
     setIsEditingProviderDetail(true)
   }
 
@@ -396,7 +399,7 @@ export const useProviders = (): UseProvidersReturn => {
       setActiveApiKeyId(withKeys.activeApiKeyId || '')
       setApiKey(getActiveProviderApiKey(withKeys))
       setApiUrl(target.apiUrl || '')
-      setProviderAuthType(target.authType || (target.type === 'ollama' ? 'none' : 'bearer'))
+      setProviderAuthType(target.authType || getRegisteredProviderAuthType(target.type))
       setProviderAuthHeader(target.authHeader || 'X-API-Key')
       setProviderHeaders(providerHeadersToItems(target.headers))
       setSelectedModel(target.model || '')
@@ -420,7 +423,7 @@ export const useProviders = (): UseProvidersReturn => {
       setActiveApiKeyId(withKeys.activeApiKeyId || '')
       setApiKey(getActiveProviderApiKey(withKeys))
       setApiUrl(target.apiUrl || '')
-      setProviderAuthType(target.authType || (target.type === 'ollama' ? 'none' : 'bearer'))
+      setProviderAuthType(target.authType || getRegisteredProviderAuthType(target.type))
       setProviderAuthHeader(target.authHeader || 'X-API-Key')
       setProviderHeaders(providerHeadersToItems(target.headers))
       setSelectedModel(target.model || '')
@@ -447,7 +450,7 @@ export const useProviders = (): UseProvidersReturn => {
       setActiveApiKeyId(withKeys.activeApiKeyId || '')
       setApiKey(getActiveProviderApiKey(withKeys))
       setApiUrl(target.apiUrl || '')
-      setProviderAuthType(target.authType || (target.type === 'ollama' ? 'none' : 'bearer'))
+      setProviderAuthType(target.authType || getRegisteredProviderAuthType(target.type))
       setProviderAuthHeader(target.authHeader || 'X-API-Key')
       setProviderHeaders(providerHeadersToItems(target.headers))
       setSelectedModel(target.model || '')

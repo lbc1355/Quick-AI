@@ -7,6 +7,12 @@ import type {
 } from './types'
 import { getProviderModelRuntimeConfig, normalizeProviderModelCatalog } from './modelCatalog'
 import { getActiveProviderApiKey, normalizeProviderApiKeys } from './providerKeyHelper'
+import { getProviderRegistration, getRegisteredProviderAuthType } from './providerRegistry'
+import {
+  apiFormatToTransportId,
+  getProviderRuntimeProfile,
+  transportIdToApiFormat
+} from './providerProfiles'
 
 export interface ResolvedProviderSelection {
   definition: ProviderDefinition
@@ -18,23 +24,28 @@ export interface ResolvedProviderSelection {
 /** Split the legacy combined ApiProvider record into static provider/model metadata. */
 export function getProviderDefinition(provider: ApiProvider): ProviderDefinition {
   const normalized = normalizeProviderModelCatalog(provider)
+  const runtime = getProviderRuntimeProfile(normalized.type)
+  const transportId =
+    normalized.transportId ||
+    (normalized.apiFormat ? apiFormatToTransportId(normalized.apiFormat) : runtime.transportId)
   return {
     id: normalized.id,
     name: normalized.name,
     type: normalized.type,
     endpointType: normalized.endpointType!,
     models: normalized.models || {},
-    transportId: normalized.transportId,
-    apiFormat: normalized.apiFormat,
-    features: normalized.features,
-    compatibility: normalized.compatibility,
-    promptProfile: normalized.promptProfile
+    transportId,
+    apiFormat: normalized.apiFormat || transportIdToApiFormat(transportId),
+    features: { ...runtime.features, ...(normalized.features || {}) },
+    compatibility: { ...runtime.compatibility, ...(normalized.compatibility || {}) },
+    promptProfile: normalized.promptProfile || runtime.promptProfile
   }
 }
 
 /** Split mutable URL/authentication data out of the legacy combined ApiProvider record. */
 export function getProviderAccount(provider: ApiProvider): ProviderAccount {
   const normalized = normalizeProviderApiKeys(provider)
+  const accountDefaults = getProviderRegistration(provider.type)?.accountDefaults
   return {
     id: `${provider.id}:default`,
     providerId: provider.id,
@@ -42,9 +53,9 @@ export function getProviderAccount(provider: ApiProvider): ProviderAccount {
     apiUrl: provider.apiUrl,
     apiKeys: normalized.apiKeys || [],
     activeApiKeyId: normalized.activeApiKeyId,
-    authType: provider.authType || (provider.type === 'ollama' ? 'none' : 'bearer'),
-    authHeader: provider.authHeader,
-    headers: { ...(provider.headers || {}) }
+    authType: provider.authType || getRegisteredProviderAuthType(provider.type),
+    authHeader: provider.authHeader || accountDefaults?.authHeader,
+    headers: { ...(accountDefaults?.headers || {}), ...(provider.headers || {}) }
   }
 }
 

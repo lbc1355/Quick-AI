@@ -12,7 +12,7 @@ export interface ProviderHeadersResult {
 const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
 
 export function providerHeadersToItems(
-  headers: Record<string, string> | undefined
+  headers: Readonly<Record<string, string>> | undefined
 ): ProviderHeaderItem[] {
   return Object.entries(headers || {}).map(([name, value], index) => ({
     id: `header-${index}-${name}`,

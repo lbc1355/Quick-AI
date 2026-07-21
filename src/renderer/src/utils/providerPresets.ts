@@ -1,109 +1,26 @@
-import { ApiProvider, AppSettings } from '../../../shared/types'
+import type { ApiProvider, AppSettings } from '../../../shared/types'
 import { normalizeProviderModelCatalog } from '../../../shared/modelCatalog'
-
-export interface ProviderPreset {
-  type: ApiProvider['type']
-  name: string
-  apiUrl: string
-  modelsList: string[]
-  defaultModel: string
-  authType?: ApiProvider['authType']
-}
+import {
+  CORE_PROVIDER_TYPES,
+  createProviderFromRegistration,
+  getProviderRegistration,
+  getRegisteredProviderAuthType,
+  type ProviderRegistration
+} from '../../../shared/providerRegistry'
 
 export const PROVIDER_PRESET_VERSION = 3
 
-const CORE_PROVIDER_TYPES: ApiProvider['type'][] = ['opencode', 'glm', 'kimi', 'mimo', 'step']
-
-export const PROVIDER_PRESETS: ProviderPreset[] = [
-  {
-    type: 'opencode',
-    name: 'opencode',
-    apiUrl: 'https://opencode.ai/zen/v1',
-    modelsList: ['deepseek-v4-flash-free', 'deepseek-v4-pro', 'qwen3-coder-plus'],
-    defaultModel: 'deepseek-v4-flash-free'
-  },
-  {
-    type: 'glm',
-    name: 'GLM',
-    apiUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    modelsList: ['glm-4.5-air', 'glm-4.5', 'glm-4.6', 'glm-4.7', 'glm-5', 'glm-4-flash'],
-    defaultModel: 'glm-4.5-air'
-  },
-  {
-    type: 'kimi',
-    name: 'Kimi',
-    apiUrl: 'https://api.moonshot.cn/v1',
-    modelsList: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'kimi-k2-0711-preview'],
-    defaultModel: 'moonshot-v1-8k'
-  },
-  {
-    type: 'mimo',
-    name: 'MiMo',
-    apiUrl: 'https://api.mimo.xiaomi.com/v1',
-    modelsList: ['mimo-v2.5-pro', 'mimo-v2.5', 'mimo-v2-pro', 'mimo-v2-flash'],
-    defaultModel: 'mimo-v2.5-pro'
-  },
-  {
-    type: 'deepseek',
-    name: 'DeepSeek',
-    apiUrl: 'https://api.deepseek.com/v1',
-    modelsList: ['deepseek-chat', 'deepseek-reasoner'],
-    defaultModel: 'deepseek-chat'
-  },
-  {
-    type: 'ollama',
-    name: 'Local Ollama',
-    apiUrl: 'http://localhost:11434/v1',
-    modelsList: ['deepseek-r1:8b', 'llama3'],
-    defaultModel: 'deepseek-r1:8b',
-    authType: 'none'
-  },
-  {
-    type: 'step',
-    name: '阶跃星辰',
-    apiUrl: 'https://api.stepfun.com/step_plan/v1',
-    modelsList: [
-      'step-3.7-flash',
-      'step-3.5-flash',
-      'step-router-v1',
-      'step-1-8k',
-      'step-1-32k',
-      'step-1-128k',
-      'step-2-16k'
-    ],
-    defaultModel: 'step-3.7-flash'
-  },
-  {
-    type: 'custom',
-    name: '自定义服务商',
-    apiUrl: '',
-    modelsList: ['custom-model'],
-    defaultModel: 'custom-model'
-  }
-]
-
-export const getProviderPreset = (type: ApiProvider['type']): ProviderPreset | undefined =>
-  PROVIDER_PRESETS.find((preset) => preset.type === type)
-
-export const getProviderTypeLabel = (type: ApiProvider['type']): string =>
-  getProviderPreset(type)?.name || type
-
-export const buildProviderFromPreset = (preset: ProviderPreset): ApiProvider =>
-  normalizeProviderModelCatalog({
-    id: `provider-${preset.type}`,
-    name: preset.name,
-    type: preset.type,
-    apiKey: '',
-    apiUrl: preset.apiUrl,
-    authType: preset.authType || 'bearer',
-    model: preset.defaultModel,
-    modelsList: [...preset.modelsList]
-  })
-
-const providerMatchesPreset = (provider: ApiProvider, preset: ProviderPreset): boolean => {
-  if (provider.type === preset.type) return true
-  if (provider.name.trim().toLowerCase() === preset.name.toLowerCase()) return true
-  if (preset.apiUrl && provider.apiUrl.trim().toLowerCase() === preset.apiUrl.toLowerCase()) {
+const providerMatchesRegistration = (
+  provider: ApiProvider,
+  registration: ProviderRegistration
+): boolean => {
+  const { definition, accountDefaults } = registration
+  if (provider.type === definition.type) return true
+  if (provider.name.trim().toLowerCase() === definition.name.toLowerCase()) return true
+  if (
+    accountDefaults.apiUrl &&
+    provider.apiUrl.trim().toLowerCase() === accountDefaults.apiUrl.toLowerCase()
+  ) {
     return true
   }
   return false
@@ -119,11 +36,13 @@ export function ensureCoreProviderPresets(settings: AppSettings): {
 
   if (shouldInstallCorePresets) {
     for (const type of CORE_PROVIDER_TYPES) {
-      const preset = getProviderPreset(type)
-      if (!preset) continue
-      const exists = providers.some((provider) => providerMatchesPreset(provider, preset))
+      const registration = getProviderRegistration(type)
+      if (!registration) continue
+      const exists = providers.some((provider) =>
+        providerMatchesRegistration(provider, registration)
+      )
       if (!exists) {
-        providers.push(buildProviderFromPreset(preset))
+        providers.push(createProviderFromRegistration(registration))
         changed = true
       }
     }
@@ -137,13 +56,9 @@ export function ensureCoreProviderPresets(settings: AppSettings): {
 
   const normalizedProviders = providers.map((provider) => {
     const normalized = normalizeProviderModelCatalog(provider)
-    const preset = getProviderPreset(normalized.type)
     return {
       ...normalized,
-      authType:
-        normalized.authType ||
-        preset?.authType ||
-        (normalized.type === 'ollama' ? 'none' : 'bearer')
+      authType: normalized.authType || getRegisteredProviderAuthType(normalized.type)
     }
   })
   changed =

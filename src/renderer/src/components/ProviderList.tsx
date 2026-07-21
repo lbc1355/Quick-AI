@@ -2,7 +2,10 @@ import React from 'react'
 import { Check, Pencil, Plus, Server, Trash2 } from 'lucide-react'
 import { ApiProvider } from '../../../shared/types'
 import { getProviderModels } from '../../../shared/modelCatalog'
-import { getProviderTypeLabel, PROVIDER_PRESETS } from '../utils/providerPresets'
+import {
+  getRegisteredProviderTypeLabel,
+  PROVIDER_REGISTRATIONS
+} from '../../../shared/providerRegistry'
 import { useSettings } from '../contexts/SettingsContext'
 
 export const ProviderList: React.FC = () => {
@@ -68,9 +71,9 @@ export const ProviderList: React.FC = () => {
                 value={newProviderType}
                 onChange={(e) => setNewProviderType(e.target.value as ApiProvider['type'])}
               >
-                {PROVIDER_PRESETS.map((preset) => (
-                  <option key={preset.type} value={preset.type}>
-                    {preset.name}
+                {PROVIDER_REGISTRATIONS.map(({ definition }) => (
+                  <option key={definition.type} value={definition.type}>
+                    {definition.name}
                   </option>
                 ))}
               </select>
@@ -121,7 +124,9 @@ export const ProviderList: React.FC = () => {
                     <span className="provider-name" title={provider.name}>
                       {provider.name}
                     </span>
-                    <span className="provider-type">{getProviderTypeLabel(provider.type)}</span>
+                    <span className="provider-type">
+                      {getRegisteredProviderTypeLabel(provider.type)}
+                    </span>
                   </div>
                 </div>
                 <div className="provider-url" title={provider.apiUrl || '未设置 API 地址'}>

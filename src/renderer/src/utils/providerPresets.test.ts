@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest'
+import type { AppSettings } from '../../../shared/types'
 import {
-  buildProviderFromPreset,
-  ensureCoreProviderPresets,
-  getProviderPreset
-} from './providerPresets'
-import { AppSettings } from '../../../shared/types'
+  createProviderFromRegistration,
+  getProviderRegistration
+} from '../../../shared/providerRegistry'
+import { ensureCoreProviderPresets } from './providerPresets'
 
 describe('providerPresets', () => {
-  it('builds preset providers with normalized model catalog metadata', () => {
-    const preset = getProviderPreset('opencode')
-    expect(preset).toBeDefined()
+  it('builds registered providers with normalized model catalog metadata', () => {
+    const registration = getProviderRegistration('opencode')
+    expect(registration).toBeDefined()
 
-    const provider = buildProviderFromPreset(preset!)
+    const provider = createProviderFromRegistration(registration!)
 
     expect(provider.modelsList).toEqual([
       'deepseek-v4-flash-free',
@@ -70,7 +70,7 @@ describe('providerPresets', () => {
       activeProviderId: 'provider-opencode',
       systemPrompt: '',
       autoHideOnBlur: true,
-      providerPresetVersion: 2
+      providerPresetVersion: 3
     }
 
     const { settings: repaired, changed } = ensureCoreProviderPresets(settings)
@@ -79,13 +79,13 @@ describe('providerPresets', () => {
     expect(repaired.providers[0].models?.['deepseek-v4-flash-free']?.limit.context).toBe(128000)
   })
 
-  it('builds step preset provider correctly', () => {
-    const preset = getProviderPreset('step')
-    expect(preset).toBeDefined()
-    expect(preset?.name).toBe('阶跃星辰')
-    expect(preset?.apiUrl).toBe('https://api.stepfun.com/step_plan/v1')
+  it('uses the shared registration for step defaults', () => {
+    const registration = getProviderRegistration('step')
+    expect(registration).toBeDefined()
+    expect(registration?.definition.name).toBe('阶跃星辰')
+    expect(registration?.accountDefaults.apiUrl).toBe('https://api.stepfun.com/step_plan/v1')
 
-    const provider = buildProviderFromPreset(preset!)
+    const provider = createProviderFromRegistration(registration!)
     expect(provider.modelsList).toContain('step-3.7-flash')
     expect(provider.models?.['step-3.7-flash']).toBeDefined()
   })
