@@ -11,6 +11,7 @@ import { loadMemoryContextPrompt } from './agent/memoryContext'
 import { injectMemoryContext } from './agent/memoryPrompts'
 import { estimateTokens } from './agent/tokenEstimator'
 import { normalizeContextEpoch } from '../shared/contextEpoch'
+import { buildProviderRequestHeaders } from './agent/modelRequestTarget'
 
 interface ModelItem {
   id?: string
@@ -185,13 +186,19 @@ function uniqueFetchedModels(models: FetchedModelInfo[]): FetchedModelInfo[] {
   return result
 }
 
-export async function fetchModels(fetchUrl: string, apiKey: string): Promise<FetchedModelInfo[]> {
+export async function fetchModels(
+  fetchUrl: string,
+  apiKey: string,
+  providerConnection?: ResolvedProviderConnection
+): Promise<FetchedModelInfo[]> {
   if (!fetchUrl) return []
   try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`
-    }
+    const headers = providerConnection
+      ? buildProviderRequestHeaders(providerConnection, { 'Content-Type': 'application/json' })
+      : {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+        }
     const response = await fetch(fetchUrl, { method: 'GET', headers })
     if (!response.ok) {
       throw new Error(`Fetch failed: ${response.status} ${response.statusText}`)

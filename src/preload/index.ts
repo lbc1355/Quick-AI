@@ -31,7 +31,8 @@ import {
   BackgroundShellResultNotification,
   BackgroundSubagentResultNotification,
   BackgroundSubagentEventNotification,
-  BackgroundJobInfo
+  BackgroundJobInfo,
+  ResolvedProviderConnection
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -187,8 +188,12 @@ const api = {
   },
   showNotification: (title: string, body: string): void =>
     ipcRenderer.send('show-notification', title, body),
-  fetchModels: (fetchUrl: string, apiKey: string): Promise<FetchedModelInfo[]> =>
-    ipcRenderer.invoke('fetch-models', fetchUrl, apiKey),
+  fetchModels: (
+    fetchUrl: string,
+    apiKey: string,
+    providerConnection?: ResolvedProviderConnection
+  ): Promise<FetchedModelInfo[]> =>
+    ipcRenderer.invoke('fetch-models', fetchUrl, apiKey, providerConnection),
   listMemoryEntries: (): Promise<Array<{ id: string; label: string; kind: string }>> =>
     ipcRenderer.invoke('memory-entries'),
   readMemoryEntry: (id: string): Promise<string> => ipcRenderer.invoke('memory-entry-read', id),

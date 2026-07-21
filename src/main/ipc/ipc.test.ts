@@ -252,8 +252,9 @@ describe('IPC Registration Modules', () => {
     expect(tools).toContainEqual(expect.objectContaining({ name: 'tool1' }))
 
     // Test fetch-models
-    mockHandlers['fetch-models']({} as IpcMainInvokeEvent, 'url', 'key')
-    expect(fetchModels).toHaveBeenCalledWith('url', 'key')
+    const providerConnection = { providerId: 'provider' }
+    mockHandlers['fetch-models']({} as IpcMainInvokeEvent, 'url', 'key', providerConnection)
+    expect(fetchModels).toHaveBeenCalledWith('url', 'key', providerConnection)
 
     mockListeners['advance-session-context']({} as IpcMainEvent, 'session-epoch-ipc', 4)
     expect(promptStoreMocks.cancelStaleSessionPrompts).toHaveBeenCalledWith('session-epoch-ipc', 4)

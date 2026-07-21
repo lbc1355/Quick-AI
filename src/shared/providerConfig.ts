@@ -42,7 +42,7 @@ export function getProviderAccount(provider: ApiProvider): ProviderAccount {
     apiUrl: provider.apiUrl,
     apiKeys: normalized.apiKeys || [],
     activeApiKeyId: normalized.activeApiKeyId,
-    authType: provider.authType || 'bearer',
+    authType: provider.authType || (provider.type === 'ollama' ? 'none' : 'bearer'),
     authHeader: provider.authHeader,
     headers: { ...(provider.headers || {}) }
   }

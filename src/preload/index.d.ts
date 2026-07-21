@@ -30,7 +30,8 @@ import {
   BackgroundShellResultNotification,
   BackgroundSubagentResultNotification,
   BackgroundSubagentEventNotification,
-  BackgroundJobInfo
+  BackgroundJobInfo,
+  ResolvedProviderConnection
 } from '../shared/types'
 
 declare global {
@@ -111,7 +112,11 @@ declare global {
       onSkillsUpdated: (callback: (skills: Skill[]) => void) => () => void
       onWindowStateChanged: (callback: (state: WindowState) => void) => () => void
       onUserChoiceRequest: (callback: (request: UserChoiceRequest) => void) => () => void
-      fetchModels: (fetchUrl: string, apiKey: string) => Promise<FetchedModelInfo[]>
+      fetchModels: (
+        fetchUrl: string,
+        apiKey: string,
+        providerConnection?: ResolvedProviderConnection
+      ) => Promise<FetchedModelInfo[]>
       listMemoryEntries: () => Promise<Array<{ id: string; label: string; kind: string }>>
       readMemoryEntry: (id: string) => Promise<string>
       writeMemoryEntry: (id: string, content: string) => Promise<{ ok: boolean }>

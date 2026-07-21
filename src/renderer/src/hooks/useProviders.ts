@@ -7,8 +7,10 @@ import {
   FetchedModelInfo,
   WebSearchProviderType,
   ApiKeyItem,
+  ProviderAuthType,
   ProviderApiFormat,
-  ModelPromptProfile
+  ModelPromptProfile,
+  ResolvedProviderConnection
 } from '../../../shared/types'
 import { normalizeContextWindowTokens } from '../../../shared/modelContext'
 import {
@@ -20,6 +22,12 @@ import {
   getActiveProviderApiKey
 } from '../../../shared/providerKeyHelper'
 import { ensureCoreProviderPresets, getProviderPreset } from '../utils/providerPresets'
+import {
+  isValidProviderAuthHeader,
+  ProviderHeaderItem,
+  providerHeaderItemsToRecord,
+  providerHeadersToItems
+} from '../utils/providerHeaderEditor'
 
 export interface UseProvidersReturn {
   apiKey: string
@@ -70,6 +78,14 @@ export interface UseProvidersReturn {
   setApiKeys: React.Dispatch<React.SetStateAction<ApiKeyItem[]>>
   activeApiKeyId: string
   setActiveApiKeyId: React.Dispatch<React.SetStateAction<string>>
+  providerAuthType: ProviderAuthType
+  setProviderAuthType: React.Dispatch<React.SetStateAction<ProviderAuthType>>
+  providerAuthHeader: string
+  setProviderAuthHeader: React.Dispatch<React.SetStateAction<string>>
+  providerHeaders: ProviderHeaderItem[]
+  handleAddProviderHeader: () => void
+  handleChangeProviderHeader: (id: string, field: 'name' | 'value', value: string) => void
+  handleDeleteProviderHeader: (id: string) => void
   handleSelectApiKey: (id: string) => void
   handleChangeApiKeyItemName: (id: string, name: string) => void
   handleChangeApiKeyValue: (id: string, value: string) => void
@@ -131,6 +147,9 @@ export const useProviders = (): UseProvidersReturn => {
   // API keys editing states
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([])
   const [activeApiKeyId, setActiveApiKeyId] = useState<string>('')
+  const [providerAuthType, setProviderAuthType] = useState<ProviderAuthType>('bearer')
+  const [providerAuthHeader, setProviderAuthHeader] = useState('X-API-Key')
+  const [providerHeaders, setProviderHeaders] = useState<ProviderHeaderItem[]>([])
 
   // Add provider form states
   const [showAddForm, setShowAddForm] = useState(false)
@@ -170,6 +189,11 @@ export const useProviders = (): UseProvidersReturn => {
         if (activeProv) {
           setApiKey(getActiveProviderApiKey(activeProv))
           setApiUrl(activeProv.apiUrl || '')
+          setProviderAuthType(
+            activeProv.authType || (activeProv.type === 'ollama' ? 'none' : 'bearer')
+          )
+          setProviderAuthHeader(activeProv.authHeader || 'X-API-Key')
+          setProviderHeaders(providerHeadersToItems(activeProv.headers))
           setSelectedModel(activeProv.model || '')
           setModelsList(activeProv.modelsList || [])
           setModelContextWindows(activeProv.modelContextWindows || {})
@@ -216,6 +240,11 @@ export const useProviders = (): UseProvidersReturn => {
         setActiveApiKeyId(withKeys.activeApiKeyId || '')
         setApiKey(getActiveProviderApiKey(withKeys))
         setApiUrl(activeProv.apiUrl || '')
+        setProviderAuthType(
+          activeProv.authType || (activeProv.type === 'ollama' ? 'none' : 'bearer')
+        )
+        setProviderAuthHeader(activeProv.authHeader || 'X-API-Key')
+        setProviderHeaders(providerHeadersToItems(activeProv.headers))
         setSelectedModel(activeProv.model || '')
         setModelsList(activeProv.modelsList || [])
         setModelContextWindows(activeProv.modelContextWindows || {})
@@ -276,6 +305,16 @@ export const useProviders = (): UseProvidersReturn => {
       }
       sanitizedContextWindows[model] = normalized
     }
+    const headerResult = providerHeaderItemsToRecord(providerHeaders)
+    if (headerResult.error) {
+      toast.warning(headerResult.error)
+      return
+    }
+    const normalizedAuthHeader = providerAuthHeader.trim()
+    if (providerAuthType === 'header' && !isValidProviderAuthHeader(normalizedAuthHeader)) {
+      toast.warning('鉴权 Header 名称无效。')
+      return
+    }
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
     if (savedSettings) {
       // Find the active key value to sync legacy apiKey string
@@ -290,6 +329,9 @@ export const useProviders = (): UseProvidersReturn => {
             apiKeys,
             activeApiKeyId,
             apiUrl,
+            authType: providerAuthType,
+            authHeader: providerAuthType === 'header' ? normalizedAuthHeader : undefined,
+            headers: headerResult.headers,
             model: selectedModel,
             modelsList,
             modelContextWindows: sanitizedContextWindows
@@ -314,6 +356,7 @@ export const useProviders = (): UseProvidersReturn => {
       type,
       apiKey: '',
       apiUrl: preset ? preset.apiUrl : '',
+      authType: preset?.authType || 'bearer',
       model: preset ? preset.defaultModel : '',
       modelsList: preset ? [...preset.modelsList] : [],
       modelContextWindows: {}
@@ -333,6 +376,9 @@ export const useProviders = (): UseProvidersReturn => {
     setActiveApiKeyId(withKeys.activeApiKeyId || '')
     setApiKey('')
     setApiUrl(preset ? preset.apiUrl : '')
+    setProviderAuthType(preset?.authType || 'bearer')
+    setProviderAuthHeader('X-API-Key')
+    setProviderHeaders([])
     setSelectedModel(preset ? preset.defaultModel : '')
     setModelsList(preset ? [...preset.modelsList] : [])
     setModelContextWindows({})
@@ -350,6 +396,9 @@ export const useProviders = (): UseProvidersReturn => {
       setActiveApiKeyId(withKeys.activeApiKeyId || '')
       setApiKey(getActiveProviderApiKey(withKeys))
       setApiUrl(target.apiUrl || '')
+      setProviderAuthType(target.authType || (target.type === 'ollama' ? 'none' : 'bearer'))
+      setProviderAuthHeader(target.authHeader || 'X-API-Key')
+      setProviderHeaders(providerHeadersToItems(target.headers))
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
       setModelContextWindows(target.modelContextWindows || {})
@@ -371,6 +420,9 @@ export const useProviders = (): UseProvidersReturn => {
       setActiveApiKeyId(withKeys.activeApiKeyId || '')
       setApiKey(getActiveProviderApiKey(withKeys))
       setApiUrl(target.apiUrl || '')
+      setProviderAuthType(target.authType || (target.type === 'ollama' ? 'none' : 'bearer'))
+      setProviderAuthHeader(target.authHeader || 'X-API-Key')
+      setProviderHeaders(providerHeadersToItems(target.headers))
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
       setModelContextWindows(target.modelContextWindows || {})
@@ -395,6 +447,9 @@ export const useProviders = (): UseProvidersReturn => {
       setActiveApiKeyId(withKeys.activeApiKeyId || '')
       setApiKey(getActiveProviderApiKey(withKeys))
       setApiUrl(target.apiUrl || '')
+      setProviderAuthType(target.authType || (target.type === 'ollama' ? 'none' : 'bearer'))
+      setProviderAuthHeader(target.authHeader || 'X-API-Key')
+      setProviderHeaders(providerHeadersToItems(target.headers))
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
       setModelContextWindows(target.modelContextWindows || {})
@@ -452,6 +507,23 @@ export const useProviders = (): UseProvidersReturn => {
     }
   }
 
+  const handleAddProviderHeader = (): void => {
+    setProviderHeaders((previous) => [
+      ...previous,
+      { id: `header-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: '', value: '' }
+    ])
+  }
+
+  const handleChangeProviderHeader = (id: string, field: 'name' | 'value', value: string): void => {
+    setProviderHeaders((previous) =>
+      previous.map((header) => (header.id === id ? { ...header, [field]: value } : header))
+    )
+  }
+
+  const handleDeleteProviderHeader = (id: string): void => {
+    setProviderHeaders((previous) => previous.filter((header) => header.id !== id))
+  }
+
   const handleAddManualModel = (): void => {
     const val = manualModelInput.trim()
     if (!val) return
@@ -461,12 +533,33 @@ export const useProviders = (): UseProvidersReturn => {
     setManualModelInput('')
   }
 
+  const getEditingProviderConnection = (): ResolvedProviderConnection => {
+    const headerResult = providerHeaderItemsToRecord(providerHeaders)
+    if (headerResult.error) throw new Error(headerResult.error)
+    const normalizedAuthHeader = providerAuthHeader.trim()
+    if (providerAuthType === 'header' && !isValidProviderAuthHeader(normalizedAuthHeader)) {
+      throw new Error('鉴权 Header 名称无效。')
+    }
+    return {
+      accountId: `${editingProviderId || 'provider'}:default`,
+      providerId: editingProviderId || 'provider',
+      baseUrl: apiUrl,
+      auth:
+        providerAuthType === 'none'
+          ? { type: 'none' }
+          : providerAuthType === 'header'
+            ? { type: 'header', name: normalizedAuthHeader, value: apiKey }
+            : { type: 'bearer', token: apiKey },
+      headers: headerResult.headers || {}
+    }
+  }
+
   const handleFetchModels = async (): Promise<void> => {
     const url = fetchModelsUrl.trim()
     if (!url) return
     setIsFetchingModels(true)
     try {
-      const fetched = await window.api.fetchModels(url, apiKey)
+      const fetched = await window.api.fetchModels(url, apiKey, getEditingProviderConnection())
       if (fetched && fetched.length > 0) {
         setFetchedModels(fetched)
         setModelContextWindows((prev) => {
@@ -507,7 +600,7 @@ export const useProviders = (): UseProvidersReturn => {
 
     setRefreshingModelContextId(modelId)
     try {
-      const fetched = await window.api.fetchModels(url, apiKey)
+      const fetched = await window.api.fetchModels(url, apiKey, getEditingProviderConnection())
       setFetchedModels(fetched)
       const matched = findFetchedModel(fetched, modelId)
       if (matched?.contextWindowTokens) {
@@ -671,6 +764,14 @@ export const useProviders = (): UseProvidersReturn => {
     setApiKeys,
     activeApiKeyId,
     setActiveApiKeyId,
+    providerAuthType,
+    setProviderAuthType,
+    providerAuthHeader,
+    setProviderAuthHeader,
+    providerHeaders,
+    handleAddProviderHeader,
+    handleChangeProviderHeader,
+    handleDeleteProviderHeader,
     handleSelectApiKey,
     handleChangeApiKeyItemName,
     handleChangeApiKeyValue,

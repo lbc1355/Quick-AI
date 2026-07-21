@@ -5,13 +5,10 @@ export interface ModelRequestTarget {
   headers: Record<string, string>
 }
 
-/** OpenAI-compatible authentication shared by the built-in protocol transports. */
-export function buildOpenAICompatibleRequestTarget(
+export function buildProviderRequestHeaders(
   connection: ResolvedProviderConnection,
-  endpointPath: string
-): ModelRequestTarget {
-  const baseUrl = connection.baseUrl.trim()
-  if (!baseUrl) throw new Error('Provider API URL is not configured.')
+  baseHeaders: Record<string, string> = {}
+): Record<string, string> {
   const authHeaders: Record<string, string> = {}
   if (connection.auth.type === 'bearer' && connection.auth.token) {
     authHeaders.Authorization = `Bearer ${connection.auth.token}`
@@ -19,11 +16,21 @@ export function buildOpenAICompatibleRequestTarget(
     authHeaders[connection.auth.name] = connection.auth.value
   }
   return {
+    ...baseHeaders,
+    ...connection.headers,
+    ...authHeaders
+  }
+}
+
+/** OpenAI-compatible authentication shared by the built-in protocol transports. */
+export function buildOpenAICompatibleRequestTarget(
+  connection: ResolvedProviderConnection,
+  endpointPath: string
+): ModelRequestTarget {
+  const baseUrl = connection.baseUrl.trim()
+  if (!baseUrl) throw new Error('Provider API URL is not configured.')
+  return {
     url: `${baseUrl.replace(/\/$/, '')}/${endpointPath}`,
-    headers: {
-      'Content-Type': 'application/json',
-      ...connection.headers,
-      ...authHeaders
-    }
+    headers: buildProviderRequestHeaders(connection, { 'Content-Type': 'application/json' })
   }
 }

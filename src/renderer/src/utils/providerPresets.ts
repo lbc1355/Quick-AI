@@ -7,6 +7,7 @@ export interface ProviderPreset {
   apiUrl: string
   modelsList: string[]
   defaultModel: string
+  authType?: ApiProvider['authType']
 }
 
 export const PROVIDER_PRESET_VERSION = 3
@@ -54,7 +55,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     name: 'Local Ollama',
     apiUrl: 'http://localhost:11434/v1',
     modelsList: ['deepseek-r1:8b', 'llama3'],
-    defaultModel: 'deepseek-r1:8b'
+    defaultModel: 'deepseek-r1:8b',
+    authType: 'none'
   },
   {
     type: 'step',
@@ -93,6 +95,7 @@ export const buildProviderFromPreset = (preset: ProviderPreset): ApiProvider =>
     type: preset.type,
     apiKey: '',
     apiUrl: preset.apiUrl,
+    authType: preset.authType || 'bearer',
     model: preset.defaultModel,
     modelsList: [...preset.modelsList]
   })
@@ -132,7 +135,17 @@ export function ensureCoreProviderPresets(settings: AppSettings): {
       ? settings.activeProviderId
       : providers[0]?.id || ''
 
-  const normalizedProviders = providers.map(normalizeProviderModelCatalog)
+  const normalizedProviders = providers.map((provider) => {
+    const normalized = normalizeProviderModelCatalog(provider)
+    const preset = getProviderPreset(normalized.type)
+    return {
+      ...normalized,
+      authType:
+        normalized.authType ||
+        preset?.authType ||
+        (normalized.type === 'ollama' ? 'none' : 'bearer')
+    }
+  })
   changed =
     changed ||
     normalizedProviders.some((provider, index) => {
@@ -140,6 +153,7 @@ export function ensureCoreProviderPresets(settings: AppSettings): {
       return (
         !original ||
         original.endpointType !== provider.endpointType ||
+        original.authType !== provider.authType ||
         JSON.stringify(original.models || {}) !== JSON.stringify(provider.models || {}) ||
         JSON.stringify(original.modelContextWindows || {}) !==
           JSON.stringify(provider.modelContextWindows || {})

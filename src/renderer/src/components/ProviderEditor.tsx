@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { ArrowLeft, Plus, RefreshCw, X, Eye, EyeOff, Trash2 } from 'lucide-react'
-import { ModelPromptProfile, ProviderApiFormat } from '../../../shared/types'
+import { ModelPromptProfile, ProviderApiFormat, ProviderAuthType } from '../../../shared/types'
 import { getContextWindowInfo } from '../../../shared/modelContext'
 import { useSettings } from '../contexts/SettingsContext'
 
@@ -20,6 +20,11 @@ export const ProviderEditor: React.FC = () => {
     refreshingModelContextId,
     apiKeys,
     activeApiKeyId,
+    providerAuthType,
+    setProviderAuthType,
+    providerAuthHeader,
+    setProviderAuthHeader,
+    providerHeaders,
     setIsEditingProviderDetail,
     setSelectedModel,
     setManualModelInput,
@@ -37,6 +42,9 @@ export const ProviderEditor: React.FC = () => {
     handleChangeApiKeyValue: onChangeApiKeyValue,
     handleAddApiKey: onAddApiKey,
     handleDeleteApiKey: onDeleteApiKey,
+    handleAddProviderHeader: onAddProviderHeader,
+    handleChangeProviderHeader: onChangeProviderHeader,
+    handleDeleteProviderHeader: onDeleteProviderHeader,
     handleChangeEditingProviderApiFormat: onChangeApiFormat,
     handleChangeEditingProviderPromptProfile: onChangePromptProfile
   } = useSettings()
@@ -82,75 +90,104 @@ export const ProviderEditor: React.FC = () => {
             />
           </label>
 
-          <div className="settings-field api-keys-management-field">
-            <div className="api-keys-management-header">
-              <span className="settings-label">API Key 管理</span>
-              <button
-                type="button"
-                className="settings-secondary-btn icon-left add-key-btn"
-                onClick={onAddApiKey}
-              >
-                <Plus size={12} />
-                <span>添加 Key</span>
-              </button>
-            </div>
+          <label className="settings-field">
+            <span className="settings-label">鉴权方式</span>
+            <select
+              className="settings-select"
+              value={providerAuthType}
+              onChange={(event) => setProviderAuthType(event.target.value as ProviderAuthType)}
+            >
+              <option value="bearer">Bearer Token</option>
+              <option value="header">指定 Header</option>
+              <option value="none">无需鉴权</option>
+            </select>
+            <small>鉴权信息由账号连接层统一转换，协议驱动不再直接处理 API Key。</small>
+          </label>
 
-            <div className="api-keys-list">
-              {apiKeys.map((keyItem) => {
-                const isSelected = activeApiKeyId === keyItem.id
-                const isVisible = visibleKeyIds[keyItem.id] || false
+          {providerAuthType === 'header' && (
+            <label className="settings-field">
+              <span className="settings-label">鉴权 Header</span>
+              <input
+                type="text"
+                className="settings-input"
+                placeholder="X-API-Key"
+                value={providerAuthHeader}
+                onChange={(event) => setProviderAuthHeader(event.target.value)}
+              />
+            </label>
+          )}
 
-                return (
-                  <div key={keyItem.id} className={`api-key-row ${isSelected ? 'active' : ''}`}>
-                    <div className="api-key-select" title="启用该 Key">
+          {providerAuthType !== 'none' && (
+            <div className="settings-field api-keys-management-field">
+              <div className="api-keys-management-header">
+                <span className="settings-label">API Key 管理</span>
+                <button
+                  type="button"
+                  className="settings-secondary-btn icon-left add-key-btn"
+                  onClick={onAddApiKey}
+                >
+                  <Plus size={12} />
+                  <span>添加 Key</span>
+                </button>
+              </div>
+
+              <div className="api-keys-list">
+                {apiKeys.map((keyItem) => {
+                  const isSelected = activeApiKeyId === keyItem.id
+                  const isVisible = visibleKeyIds[keyItem.id] || false
+
+                  return (
+                    <div key={keyItem.id} className={`api-key-row ${isSelected ? 'active' : ''}`}>
+                      <div className="api-key-select" title="启用该 Key">
+                        <input
+                          type="radio"
+                          name="activeProviderKey"
+                          checked={isSelected}
+                          onChange={() => onSelectApiKey(keyItem.id)}
+                        />
+                      </div>
+
                       <input
-                        type="radio"
-                        name="activeProviderKey"
-                        checked={isSelected}
-                        onChange={() => onSelectApiKey(keyItem.id)}
+                        type="text"
+                        className="settings-input api-key-name-input"
+                        placeholder="Key 名称"
+                        value={keyItem.name}
+                        onChange={(e) => onChangeApiKeyItemName(keyItem.id, e.target.value)}
                       />
-                    </div>
 
-                    <input
-                      type="text"
-                      className="settings-input api-key-name-input"
-                      placeholder="Key 名称"
-                      value={keyItem.name}
-                      onChange={(e) => onChangeApiKeyItemName(keyItem.id, e.target.value)}
-                    />
+                      <div className="api-key-value-wrapper">
+                        <input
+                          type={isVisible ? 'text' : 'password'}
+                          className="settings-input api-key-value-input"
+                          placeholder="sk-..."
+                          value={keyItem.value}
+                          onChange={(e) => onChangeApiKeyValue(keyItem.id, e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="api-key-action-btn toggle-visibility-btn"
+                          onClick={() => toggleKeyVisibility(keyItem.id)}
+                          title={isVisible ? '隐藏' : '显示'}
+                        >
+                          {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
 
-                    <div className="api-key-value-wrapper">
-                      <input
-                        type={isVisible ? 'text' : 'password'}
-                        className="settings-input api-key-value-input"
-                        placeholder="sk-..."
-                        value={keyItem.value}
-                        onChange={(e) => onChangeApiKeyValue(keyItem.id, e.target.value)}
-                      />
                       <button
                         type="button"
-                        className="api-key-action-btn toggle-visibility-btn"
-                        onClick={() => toggleKeyVisibility(keyItem.id)}
-                        title={isVisible ? '隐藏' : '显示'}
+                        className="api-key-action-btn delete-key-btn"
+                        onClick={() => onDeleteApiKey(keyItem.id)}
+                        disabled={apiKeys.length <= 1}
+                        title="删除该 Key"
                       >
-                        {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                        <Trash2 size={14} />
                       </button>
                     </div>
-
-                    <button
-                      type="button"
-                      className="api-key-action-btn delete-key-btn"
-                      onClick={() => onDeleteApiKey(keyItem.id)}
-                      disabled={apiKeys.length <= 1}
-                      title="删除该 Key"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           <label className="settings-field">
             <span className="settings-label">API Base URL</span>
@@ -162,6 +199,66 @@ export const ProviderEditor: React.FC = () => {
               onChange={(e) => onChangeApiUrl(e.target.value)}
             />
           </label>
+
+          <div className="settings-field provider-headers-field">
+            <div className="api-keys-management-header">
+              <span className="settings-label">附加 Headers</span>
+              <button
+                type="button"
+                className="settings-secondary-btn icon-left add-key-btn"
+                onClick={onAddProviderHeader}
+              >
+                <Plus size={12} />
+                <span>添加 Header</span>
+              </button>
+            </div>
+            {providerHeaders.length === 0 ? (
+              <small>没有附加 Header。鉴权 Header 不需要在这里重复填写。</small>
+            ) : (
+              <div className="provider-headers-list">
+                {providerHeaders.map((header) => (
+                  <div key={header.id} className="provider-header-row">
+                    <input
+                      type="text"
+                      className="settings-input"
+                      placeholder="Header 名称"
+                      value={header.name}
+                      onChange={(event) =>
+                        onChangeProviderHeader(header.id, 'name', event.target.value)
+                      }
+                    />
+                    <div className="api-key-value-wrapper provider-header-value-input">
+                      <input
+                        type={visibleKeyIds[header.id] ? 'text' : 'password'}
+                        className="settings-input api-key-value-input"
+                        placeholder="Header 值"
+                        value={header.value}
+                        onChange={(event) =>
+                          onChangeProviderHeader(header.id, 'value', event.target.value)
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="api-key-action-btn toggle-visibility-btn"
+                        onClick={() => toggleKeyVisibility(header.id)}
+                        title={visibleKeyIds[header.id] ? '隐藏' : '显示'}
+                      >
+                        {visibleKeyIds[header.id] ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="api-key-action-btn delete-key-btn"
+                      onClick={() => onDeleteProviderHeader(header.id)}
+                      title="删除 Header"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {provider.type === 'custom' && (
             <label className="settings-field">
