@@ -1,7 +1,7 @@
 import React from 'react'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AgentEvent, ToolResultUi } from '../../../shared/types'
 import { renderHighlightedCode } from './codeHighlight'
@@ -224,8 +224,8 @@ const renderInlineMathChildren = (children: React.ReactNode, keyPrefix: string):
     return child
   })
 
-const markdownComponents = {
-  code: ({ className, children, ...props }: React.ComponentProps<'code'>) => {
+const markdownComponents: Components = {
+  code: ({ className, children, node: _node, ...props }) => {
     const content = Array.isArray(children) ? children.join('') : (children as string)
     return (
       <code
@@ -244,25 +244,25 @@ const markdownComponents = {
       </code>
     )
   },
-  p: ({ children, ...props }: React.ComponentProps<'p'>) => (
+  p: ({ children, node: _node, ...props }) => (
     <p {...props}>{renderInlineMathChildren(children, 'p')}</p>
   ),
-  li: ({ children, ...props }: React.ComponentProps<'li'>) => (
+  li: ({ children, node: _node, ...props }) => (
     <li {...props}>{renderInlineMathChildren(children, 'li')}</li>
   ),
-  td: ({ children, ...props }: React.ComponentProps<'td'>) => (
+  td: ({ children, node: _node, ...props }) => (
     <td {...props}>{renderInlineMathChildren(children, 'td')}</td>
   ),
-  th: ({ children, ...props }: React.ComponentProps<'th'>) => (
+  th: ({ children, node: _node, ...props }) => (
     <th {...props}>{renderInlineMathChildren(children, 'th')}</th>
   ),
-  strong: ({ children, ...props }: React.ComponentProps<'strong'>) => (
+  strong: ({ children, node: _node, ...props }) => (
     <strong {...props}>{renderInlineMathChildren(children, 'strong')}</strong>
   ),
-  em: ({ children, ...props }: React.ComponentProps<'em'>) => (
+  em: ({ children, node: _node, ...props }) => (
     <em {...props}>{renderInlineMathChildren(children, 'em')}</em>
   ),
-  a: ({ href, children, ...props }: React.ComponentProps<'a'>) => (
+  a: ({ href, children, node: _node, ...props }) => (
     <a href={href} target="_blank" rel="noreferrer" {...props}>
       {renderInlineMathChildren(children, 'a')}
     </a>
@@ -278,88 +278,184 @@ const renderMarkdownPart = (markdown: string, key: string): React.ReactNode => {
   )
 }
 
-// Custom text formatter — uses react-markdown with GFM support for rich rendering,
-// while preserving custom code-block (with copy button) and KaTeX math rendering.
-export const renderMessageContent = (text: string): React.ReactNode => {
-  if (!text) return null
-  const parts = text.split(/(```[\s\S]*?```)/g)
+export type MessageMarkdownBlock =
+  | { type: 'markdown'; text: string }
+  | { type: 'code'; lang: string; code: string; closed: boolean }
 
-  return parts.map((part, idx) => {
-    if (part.startsWith('```')) {
-      const match = part.match(/```(\w*)\n([\s\S]*?)```/)
-      const lang = match ? match[1] : ''
-      const code = match ? match[2] : part.slice(3, -3)
-      return (
-        <div
-          key={`code-blk-${idx}`}
-          className="code-block-container"
+const FENCE_START_PATTERN = /(^|\n)[\t ]{0,3}(`{3,}|~{3,})[\t ]*([^\r\n]*)(?:\r?\n|$)/g
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * Split fenced code from prose while accepting an unfinished trailing fence.
+ * Open and closed fences deliberately have the same block shape so completing a
+ * streamed response does not replace the code block's DOM structure.
+ */
+export const parseMessageMarkdownBlocks = (text: string): MessageMarkdownBlock[] => {
+  if (!text) return []
+
+  const blocks: MessageMarkdownBlock[] = []
+  let cursor = 0
+  FENCE_START_PATTERN.lastIndex = 0
+
+  for (let match = FENCE_START_PATTERN.exec(text); match; match = FENCE_START_PATTERN.exec(text)) {
+    const openerStart = match.index + match[1].length
+    if (openerStart > cursor) {
+      blocks.push({ type: 'markdown', text: text.slice(cursor, openerStart) })
+    }
+
+    const fence = match[2]
+    const fenceCharacter = escapeRegExp(fence[0])
+    const closePattern = new RegExp(
+      `^[\\t ]{0,3}${fenceCharacter}{${fence.length},}[\\t ]*(?:\\r?$)`,
+      'm'
+    )
+    const codeStart = FENCE_START_PATTERN.lastIndex
+    const remaining = text.slice(codeStart)
+    const closeMatch = closePattern.exec(remaining)
+    const lang = match[3].trim().split(/\s+/, 1)[0] || ''
+
+    if (!closeMatch) {
+      blocks.push({ type: 'code', lang, code: remaining, closed: false })
+      cursor = text.length
+      break
+    }
+
+    const closeStart = codeStart + closeMatch.index
+    blocks.push({
+      type: 'code',
+      lang,
+      code: text.slice(codeStart, closeStart),
+      closed: true
+    })
+    cursor = closeStart + closeMatch[0].length
+    FENCE_START_PATTERN.lastIndex = cursor
+  }
+
+  if (cursor < text.length) {
+    blocks.push({ type: 'markdown', text: text.slice(cursor) })
+  }
+
+  return blocks
+}
+
+const MessageCodeBlock = React.memo<{
+  block: Extract<MessageMarkdownBlock, { type: 'code' }>
+}>(({ block }) => {
+  const label = block.lang || 'code'
+
+  return (
+    <div
+      className="code-block-container"
+      data-streaming={!block.closed ? 'true' : undefined}
+      aria-busy={!block.closed}
+      style={{
+        margin: '8px 0',
+        border: '1px solid var(--color-code-block-border)',
+        borderRadius: '8px',
+        overflow: 'hidden'
+      }}
+    >
+      <div
+        style={{
+          background: 'var(--color-code-block-header-bg)',
+          padding: '6px 12px',
+          fontSize: '11.5px',
+          borderBottom: '1px solid var(--color-code-block-border)',
+          color: 'var(--color-code-block-header-text)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          userSelect: 'none'
+        }}
+      >
+        <span>{label}</span>
+        <button
+          type="button"
           style={{
-            margin: '8px 0',
-            border: '1px solid var(--color-code-block-border)',
-            borderRadius: '8px',
-            overflow: 'hidden'
+            appearance: 'none',
+            padding: 0,
+            border: 0,
+            background: 'transparent',
+            cursor: 'pointer',
+            color: 'var(--color-primary)',
+            font: 'inherit'
           }}
+          onClick={(): Promise<void> => navigator.clipboard.writeText(block.code)}
         >
-          <div
-            style={{
-              background: 'var(--color-code-block-header-bg)',
-              padding: '6px 12px',
-              fontSize: '11.5px',
-              borderBottom: '1px solid var(--color-code-block-border)',
-              color: 'var(--color-code-block-header-text)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              userSelect: 'none'
-            }}
-          >
-            <span>{lang || 'code'}</span>
-            <span
-              style={{ cursor: 'pointer', color: 'var(--color-primary)' }}
-              onClick={(): Promise<void> => navigator.clipboard.writeText(code)}
-            >
-              复制
-            </span>
-          </div>
-          <pre
-            style={{
-              margin: 0,
-              padding: '10px',
-              overflowX: 'auto',
-              background: 'var(--color-code-block-bg)',
-              color: 'var(--color-code-block-text)',
-              fontFamily: 'Consolas, monospace',
-              fontSize: '12px'
-            }}
-          >
-            <code>{renderHighlightedCode(code, lang)}</code>
-          </pre>
+          复制
+        </button>
+      </div>
+      <pre
+        style={{
+          margin: 0,
+          padding: '10px',
+          overflowX: 'auto',
+          background: 'var(--color-code-block-bg)',
+          color: 'var(--color-code-block-text)',
+          fontFamily: 'Consolas, monospace',
+          fontSize: '12px'
+        }}
+      >
+        <code>{renderHighlightedCode(block.code, block.lang)}</code>
+      </pre>
+    </div>
+  )
+})
+MessageCodeBlock.displayName = 'MessageCodeBlock'
+
+const renderMarkdownWithMath = (markdown: string, blockIndex: number): React.ReactNode => {
+  const blockParts = markdown.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g)
+  return blockParts.map((blockPart, mathIndex) => {
+    if (!blockPart) return null
+    if (blockPart.startsWith('$$') && blockPart.endsWith('$$')) {
+      return (
+        <div key={`math-dollar-${blockIndex}-${mathIndex}`} className="math-block">
+          {renderMath(blockPart.slice(2, -2), true)}
         </div>
       )
-    } else {
-      // Split by block math $$...$$ and \[...\]
-      const blockParts = part.split(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\])/g)
-      return blockParts.map((blockPart, bIdx) => {
-        if (!blockPart) return null
-        if (blockPart.startsWith('$$') && blockPart.endsWith('$$')) {
-          const math = blockPart.slice(2, -2)
-          return (
-            <div key={`math-b-${idx}-${bIdx}`} className="math-block">
-              {renderMath(math, true)}
-            </div>
-          )
-        }
-        if (blockPart.startsWith('\\[') && blockPart.endsWith('\\]')) {
-          const math = blockPart.slice(2, -2)
-          return (
-            <div key={`math-b-${idx}-${bIdx}`} className="math-block">
-              {renderMath(math, true)}
-            </div>
-          )
-        }
-        return renderMarkdownPart(blockPart, `md-${idx}-${bIdx}`)
-      })
     }
+    if (blockPart.startsWith('\\[') && blockPart.endsWith('\\]')) {
+      return (
+        <div key={`math-bracket-${blockIndex}-${mathIndex}`} className="math-block">
+          {renderMath(blockPart.slice(2, -2), true)}
+        </div>
+      )
+    }
+    return renderMarkdownPart(blockPart, `md-${blockIndex}-${mathIndex}`)
   })
+}
+
+export interface MessageMarkdownProps {
+  text: string
+  streaming?: boolean
+}
+
+/** A single Markdown renderer shared by streaming and completed assistant messages. */
+export const MessageMarkdown = React.memo<MessageMarkdownProps>(({ text }) => {
+  const blocks = React.useMemo(() => parseMessageMarkdownBlocks(text), [text])
+  if (blocks.length === 0) return null
+
+  return (
+    <>
+      {blocks.map((block, index) => {
+        if (block.type === 'code') {
+          return <MessageCodeBlock key={`code-${index}`} block={block} />
+        }
+        return (
+          <React.Fragment key={`markdown-${index}`}>
+            {renderMarkdownWithMath(block.text, index)}
+          </React.Fragment>
+        )
+      })}
+    </>
+  )
+})
+MessageMarkdown.displayName = 'MessageMarkdown'
+
+// Compatibility helper for non-streaming call sites.
+export const renderMessageContent = (text: string): React.ReactNode => {
+  if (!text) return null
+  return <MessageMarkdown text={text} />
 }
 
 // Get the visual tag badge colors for the autocomplete triggers

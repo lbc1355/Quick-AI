@@ -10,7 +10,12 @@ import {
   Loader2
 } from 'lucide-react'
 import { RuntimeErrorPanel } from './errors/RuntimeErrorPanel'
-import { renderMessageContent, ParsedAgentStep, ParsedToolCall } from '../utils/messageFormat'
+import {
+  MessageMarkdown,
+  renderMessageContent,
+  ParsedAgentStep,
+  ParsedToolCall
+} from '../utils/messageFormat'
 import { type BranchChildInfo } from '../utils/branchDisplay'
 import { MessageActions } from './message/MessageActions'
 import { SubagentRunCard } from './SubagentRunCard'
@@ -19,7 +24,6 @@ import { ToolDetailModal } from './message/ToolDetailModal'
 import { useAgentMessageViewModel } from '../features/chat/useAgentMessageViewModel'
 import { formatToolArgsSummary } from './message/toolDisplay'
 import { useSmoothStreamText } from '../hooks/useSmoothStreamText'
-import { StreamingMarkdownPreview } from '../utils/streamingMarkdownPreview'
 
 const formatWorkedDuration = (seconds: number, stepsCount: number): string => {
   if (seconds > 0) {
@@ -274,12 +278,10 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onOpenSubagent,
     onChangeEditingText
   }) => {
-    const useLightweightStreamingRender =
-      isGenerating && msg.role === 'assistant' && !msg.isRuntimeError
+    const isStreamingAssistant = isGenerating && msg.role === 'assistant' && !msg.isRuntimeError
     const vm = useAgentMessageViewModel({
       msg,
-      isGenerating,
-      renderRichContent: !useLightweightStreamingRender
+      isGenerating
     })
     const {
       isExpanded,
@@ -303,8 +305,6 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       parsedRun,
       selectedToolCall,
       finalReplyText,
-      renderedFinalAnswer,
-      renderedCleanContent,
       handleCopy,
       cacheHitRateText,
       generationDurationText,
@@ -320,11 +320,11 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     } = vm
     const smoothCleanContent = useSmoothStreamText(
       cleanContent,
-      useLightweightStreamingRender && !hasStructuredEvents
+      isStreamingAssistant && !hasStructuredEvents
     )
     const smoothFinalAnswer = useSmoothStreamText(
       parsedRun.finalAnswer,
-      useLightweightStreamingRender && (hasStructuredEvents || parsedRun.steps.length > 0)
+      isStreamingAssistant && (hasStructuredEvents || parsedRun.steps.length > 0)
     )
 
     const isEditing = editingMessageId === msg.id
@@ -655,11 +655,12 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                               autoStateKey={reasoningAutoStateKey}
                             />
                             {parsedRun.finalAnswer ? (
-                              useLightweightStreamingRender ? (
-                                <StreamingMarkdownPreview text={smoothFinalAnswer} />
-                              ) : (
-                                renderedFinalAnswer
-                              )
+                              <MessageMarkdown
+                                text={
+                                  isStreamingAssistant ? smoothFinalAnswer : parsedRun.finalAnswer
+                                }
+                                streaming={isStreamingAssistant}
+                              />
                             ) : null}
                             {msg.isRuntimeError && (
                               <RuntimeErrorPanel
@@ -726,11 +727,12 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           error={msg.errorPayload || msg.content}
                           onRetry={() => onRegenerate(idx)}
                         />
-                      ) : useLightweightStreamingRender ? (
-                        <StreamingMarkdownPreview text={smoothCleanContent} />
                       ) : (
                         <>
-                          {renderedCleanContent}
+                          <MessageMarkdown
+                            text={isStreamingAssistant ? smoothCleanContent : cleanContent}
+                            streaming={isStreamingAssistant}
+                          />
                           {(generationDurationText ||
                             msg.tokenSpeed !== undefined ||
                             cacheHitRateText) && (

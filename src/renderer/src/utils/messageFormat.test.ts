@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AgentEvent } from '../../../shared/types'
-import { parseAgentSteps, renderMessageContent } from './messageFormat'
+import {
+  MessageMarkdown,
+  parseAgentSteps,
+  parseMessageMarkdownBlocks,
+  renderMessageContent
+} from './messageFormat'
 
 describe('renderMessageContent', () => {
   it('keeps inline math inside the surrounding markdown paragraph', () => {
@@ -17,6 +22,53 @@ describe('renderMessageContent', () => {
     expect(html.match(/<p/g) || []).toHaveLength(1)
     expect(html).toContain('，每个')
     expect(html).toContain('内部还有空间展平。')
+  })
+
+  it('uses rich markdown while the response is still streaming', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(MessageMarkdown, {
+        text: '**bold**\n\n| A | B |\n| --- | --- |\n| 1 | 2 |',
+        streaming: true
+      })
+    )
+
+    expect(html).toContain('>bold</strong>')
+    expect(html).toContain('<table>')
+    expect(html).not.toContain('streaming-plain-text')
+  })
+
+  it('keeps the same code block shell before and after a fence closes', () => {
+    const openHtml = renderToStaticMarkup(
+      React.createElement(MessageMarkdown, {
+        text: 'Before\n\n```ts\nconst answer = 42',
+        streaming: true
+      })
+    )
+    const closedHtml = renderToStaticMarkup(
+      React.createElement(MessageMarkdown, {
+        text: 'Before\n\n```ts\nconst answer = 42\n```'
+      })
+    )
+
+    expect(openHtml).toContain('class="code-block-container"')
+    expect(closedHtml).toContain('class="code-block-container"')
+    expect(openHtml).toContain('<span>ts</span><button')
+    expect(closedHtml).toContain('<span>ts</span><button')
+    expect(openHtml).toMatch(/const<\/span> answer/)
+    expect(closedHtml).toMatch(/const<\/span> answer/)
+  })
+
+  it('projects prose and unfinished fenced code into stable block types', () => {
+    expect(parseMessageMarkdownBlocks('Intro\n\n```js\nconsole.log(1)')).toEqual([
+      { type: 'markdown', text: 'Intro\n\n' },
+      { type: 'code', lang: 'js', code: 'console.log(1)', closed: false }
+    ])
+
+    expect(parseMessageMarkdownBlocks('Intro\n\n```js\nconsole.log(1)\n```\nDone')).toEqual([
+      { type: 'markdown', text: 'Intro\n\n' },
+      { type: 'code', lang: 'js', code: 'console.log(1)\n', closed: true },
+      { type: 'markdown', text: '\nDone' }
+    ])
   })
 })
 

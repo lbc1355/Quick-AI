@@ -2,15 +2,14 @@ import React, { useState, useMemo } from 'react'
 import { X } from 'lucide-react'
 import { AgentEvent, Message } from '../../../shared/types'
 import {
+  MessageMarkdown,
   parseAgentSteps,
-  renderMessageContent,
   ParsedToolCall,
   ParsedAgentStep
 } from '../utils/messageFormat'
 import { StepProgressMessage, StepReasoningBlock, StepToolEvents } from './MessageBubble'
 import { SubagentRunState } from './SubagentRunCard'
 import { ToolDetailModal } from './message/ToolDetailModal'
-import { StreamingMarkdownPreview } from '../utils/streamingMarkdownPreview'
 import { useSmoothStreamText } from '../hooks/useSmoothStreamText'
 
 const SubagentStepBlock = React.memo<{
@@ -81,11 +80,6 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
     return null
   }, [parsedRun.steps, selectedToolCallId])
 
-  const renderedFinalAnswer = useMemo(
-    () =>
-      !isStreaming && parsedRun.finalAnswer ? renderMessageContent(parsedRun.finalAnswer) : null,
-    [isStreaming, parsedRun.finalAnswer]
-  )
   const smoothFinalAnswer = useSmoothStreamText(parsedRun.finalAnswer, isStreaming)
 
   return (
@@ -222,11 +216,10 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
             <StepReasoningBlock reasoning={parsedRun.finalReasoning} autoOpen={true} />
             {parsedRun.finalAnswer ? (
               <div className="message-text subagent-final-answer">
-                {isStreaming ? (
-                  <StreamingMarkdownPreview text={smoothFinalAnswer} />
-                ) : (
-                  renderedFinalAnswer
-                )}
+                <MessageMarkdown
+                  text={isStreaming ? smoothFinalAnswer : parsedRun.finalAnswer}
+                  streaming={isStreaming}
+                />
               </div>
             ) : null}
 

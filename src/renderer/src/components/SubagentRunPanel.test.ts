@@ -24,8 +24,8 @@ const makeSubagent = (status: SubagentRunState['status']): SubagentRunState => (
   status
 })
 
-describe('SubagentRunPanel streaming renderer', () => {
-  it('uses the lightweight preview while the subagent is running', () => {
+describe('SubagentRunPanel unified markdown renderer', () => {
+  it('uses rich markdown while the subagent is running', () => {
     const html = renderToStaticMarkup(
       React.createElement(SubagentRunPanel, {
         subagent: makeSubagent('running'),
@@ -33,11 +33,11 @@ describe('SubagentRunPanel streaming renderer', () => {
       })
     )
 
-    expect(html).toContain('streaming-plain-text')
-    expect(html).toContain('**streaming answer**')
+    expect(html).not.toContain('streaming-plain-text')
+    expect(html).toMatch(/<strong[^>]*>streaming answer<\/strong>/)
   })
 
-  it('switches to rich markdown after the subagent completes', () => {
+  it('keeps using the same rich markdown renderer after completion', () => {
     const html = renderToStaticMarkup(
       React.createElement(SubagentRunPanel, {
         subagent: makeSubagent('completed'),

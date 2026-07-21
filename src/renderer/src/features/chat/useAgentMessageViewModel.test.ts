@@ -71,13 +71,18 @@ class HookSimulator {
 
 const sim = new HookSimulator()
 
-vi.mock('react', () => ({
-  useState: (init: any) => sim.useState(init),
-  useMemo: (fn: any) => sim.useMemo(fn),
-  useCallback: (fn: any) => sim.useCallback(fn),
-  useEffect: (fn: any, deps: any) => sim.useEffect(fn, deps),
-  useRef: (init: any) => sim.useRef(init)
-}))
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>()
+  return {
+    ...actual,
+    default: actual,
+    useState: (init: any) => sim.useState(init),
+    useMemo: (fn: any) => sim.useMemo(fn),
+    useCallback: (fn: any) => sim.useCallback(fn),
+    useEffect: (fn: any, deps: any) => sim.useEffect(fn, deps),
+    useRef: (init: any) => sim.useRef(init)
+  }
+})
 
 // Mock window.api or clipboard since they might run in electron environment
 Object.defineProperty(global, 'navigator', {
@@ -365,23 +370,5 @@ describe('useAgentMessageViewModel hook', () => {
 
     vm.handleCopy()
     expect(global.navigator.clipboard.writeText).toHaveBeenCalledWith('Final reply content')
-  })
-
-  it('can skip rich content rendering for streaming hot paths', () => {
-    const msg: Message = {
-      id: '1710000000000',
-      role: 'assistant',
-      content: 'Final reply content'
-    }
-
-    const vm = useAgentMessageViewModel({
-      msg,
-      isGenerating: true,
-      renderRichContent: false
-    })
-
-    expect(vm.cleanContent).toBe('Final reply content')
-    expect(vm.finalReplyText).toBe('Final reply content')
-    expect(vm.renderedCleanContent).toBeNull()
   })
 })

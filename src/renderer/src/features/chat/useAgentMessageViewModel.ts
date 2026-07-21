@@ -5,8 +5,7 @@ import {
   parseAgentLogs,
   parseAgentSteps,
   ParsedAgentStep,
-  ParsedToolCall,
-  renderMessageContent
+  ParsedToolCall
 } from '../../utils/messageFormat'
 import { shortBranchRunId } from '../../utils/branchDisplay'
 import {
@@ -84,15 +83,10 @@ const getPersistedAgentElapsedSeconds = (events?: AgentEvent[]): number => {
 export interface UseAgentMessageViewModelProps {
   msg: Message
   isGenerating: boolean
-  renderRichContent?: boolean
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function useAgentMessageViewModel({
-  msg,
-  isGenerating,
-  renderRichContent = true
-}: UseAgentMessageViewModelProps) {
+export function useAgentMessageViewModel({ msg, isGenerating }: UseAgentMessageViewModelProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const [activeSubagentId, setActiveSubagentId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -232,18 +226,6 @@ export function useAgentMessageViewModel({
   }, [parsedRun.steps, selectedToolCallId])
 
   const finalReplyText = hasStructuredEvents ? parsedRun.finalAnswer : cleanContent
-
-  const renderedFinalAnswer = useMemo(
-    () =>
-      renderRichContent && parsedRun.finalAnswer
-        ? renderMessageContent(parsedRun.finalAnswer)
-        : null,
-    [parsedRun.finalAnswer, renderRichContent]
-  )
-  const renderedCleanContent = useMemo(
-    () => (renderRichContent && cleanContent ? renderMessageContent(cleanContent) : null),
-    [cleanContent, renderRichContent]
-  )
 
   const handleCopy = (): void => {
     if (!finalReplyText) return
@@ -409,8 +391,6 @@ export function useAgentMessageViewModel({
     parsedRun,
     selectedToolCall,
     finalReplyText,
-    renderedFinalAnswer,
-    renderedCleanContent,
     handleCopy,
     totalToolsCount,
     failedToolsCount,
