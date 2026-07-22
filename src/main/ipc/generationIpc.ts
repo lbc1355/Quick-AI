@@ -191,8 +191,8 @@ export function registerGenerationIpc(store: FileStore): void {
       .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name))
   })
 
-  ipcMain.handle('fetch-models', (_event, fetchUrl, apiKey, providerConnection) => {
-    return fetchModels(fetchUrl, apiKey, providerConnection)
+  ipcMain.handle('fetch-models', (_event, request) => {
+    return fetchModels(request)
   })
 
   ipcMain.on('start-chat-completion', (event, reqId, options) => {

@@ -5,6 +5,7 @@ import type {
   ProviderApiFormat,
   ProviderAuthType,
   ProviderEndpointType,
+  ProviderModelDiscoveryPolicy,
   ProviderType,
   ResolvedModelCompatibilityProfile,
   ResolvedModelFeatureSupport
@@ -93,13 +94,42 @@ export interface ProviderRegistration {
   definition: ProviderRegistrationDefinition
   accountDefaults: ProviderRegistrationAccountDefaults
   runtime: ProviderRuntimeProfile
+  modelDiscovery: ProviderModelDiscoveryPolicy
+}
+
+export function createProviderModelDiscoveryPolicy(
+  overrides: Partial<ProviderModelDiscoveryPolicy> = {}
+): ProviderModelDiscoveryPolicy {
+  return {
+    endpointPath: 'models',
+    collectionPaths: ['data', 'models', 'data.models', '$'],
+    idPaths: ['id', 'name', 'model'],
+    displayNamePaths: ['displayName', 'display_name', 'label'],
+    contextWindowPaths: [
+      'context_length',
+      'context_window',
+      'contextWindow',
+      'contextWindowTokens',
+      'max_context_length',
+      'max_context_tokens',
+      'max_context_window',
+      'max_input_tokens',
+      'input_token_limit',
+      'max_model_len',
+      'max_sequence_length',
+      'limit.context'
+    ],
+    capabilityPaths: ['capabilities', 'supported_capabilities', 'supported_features'],
+    ...overrides
+  }
 }
 
 const registration = (
   definition: ProviderRegistrationDefinition,
   accountDefaults: ProviderRegistrationAccountDefaults,
-  runtime: ProviderRuntimeProfile = createProviderRuntimeProfile()
-): ProviderRegistration => ({ definition, accountDefaults, runtime })
+  runtime: ProviderRuntimeProfile = createProviderRuntimeProfile(),
+  modelDiscovery: ProviderModelDiscoveryPolicy = createProviderModelDiscoveryPolicy()
+): ProviderRegistration => ({ definition, accountDefaults, runtime, modelDiscovery })
 
 export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
   registration(
@@ -244,7 +274,7 @@ export function validateProviderRegistrations(
   const seenTypes = new Set<ProviderType>()
 
   for (const item of registrations) {
-    const { definition, runtime } = item
+    const { definition, runtime, modelDiscovery } = item
     if (seenTypes.has(definition.type)) {
       errors.push(`Duplicate provider type: ${definition.type}`)
     }
@@ -262,6 +292,12 @@ export function validateProviderRegistrations(
     }
     if (!runtime.features.toolCalls && runtime.features.parallelToolCalls) {
       errors.push(`${definition.type}: parallel tools require tool-call support`)
+    }
+    if (!modelDiscovery.endpointPath.trim()) {
+      errors.push(`${definition.type}: model discovery endpoint is empty`)
+    }
+    if (modelDiscovery.collectionPaths.length === 0 || modelDiscovery.idPaths.length === 0) {
+      errors.push(`${definition.type}: model discovery field paths are incomplete`)
     }
   }
 

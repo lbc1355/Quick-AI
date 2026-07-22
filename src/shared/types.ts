@@ -372,6 +372,15 @@ export type ProviderType =
 
 export type ProviderAuthType = 'bearer' | 'header' | 'none'
 
+export interface ProviderModelDiscoveryPolicy {
+  endpointPath: string
+  collectionPaths: readonly string[]
+  idPaths: readonly string[]
+  displayNamePaths: readonly string[]
+  contextWindowPaths: readonly string[]
+  capabilityPaths: readonly string[]
+}
+
 /**
  * Canonical protocol driver used at runtime. `ProviderApiFormat` is kept as the persisted/UI
  * compatibility field; transports are the extensible execution boundary.
@@ -537,6 +546,13 @@ export interface FetchedModelInfo {
   id: string
   displayName?: string
   contextWindowTokens?: number
+  capabilities?: ModelCapability[]
+}
+
+export interface ProviderModelDiscoveryRequest {
+  fetchUrl: string
+  providerType: ProviderType
+  providerConnection: ResolvedProviderConnection
 }
 
 export type ContextRetentionMode = 'default' | 'cache-priority'

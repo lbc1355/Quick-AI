@@ -28,6 +28,10 @@ import {
 } from '../../../shared/providerRegistry'
 import { createProviderFromRegistration } from '../../../shared/providerFactory'
 import {
+  mergeDiscoveredModelMetadata,
+  resolveProviderModelDiscoveryUrl
+} from '../../../shared/providerModelDiscovery'
+import {
   isValidProviderAuthHeader,
   ProviderHeaderItem,
   providerHeaderItemsToRecord,
@@ -169,6 +173,10 @@ export const useProviders = (): UseProvidersReturn => {
   const [fetchedModels, setFetchedModels] = useState<FetchedModelInfo[]>([])
   const [showModelsModal, setShowModelsModal] = useState(false)
 
+  useEffect(() => {
+    setFetchedModels([])
+  }, [editingProviderId])
+
   // Load configuration and data on startup
   useEffect(() => {
     const initSettings = async (): Promise<void> => {
@@ -200,7 +208,9 @@ export const useProviders = (): UseProvidersReturn => {
           setSelectedModel(activeProv.model || '')
           setModelsList(activeProv.modelsList || [])
           setModelContextWindows(activeProv.modelContextWindows || {})
-          setFetchModelsUrl(`${(activeProv.apiUrl || '').replace(/\/$/, '')}/models`)
+          setFetchModelsUrl(
+            resolveProviderModelDiscoveryUrl(activeProv.type, activeProv.apiUrl || '')
+          )
         }
 
         setSystemPrompt(upgradedSettings.systemPrompt || '')
@@ -249,7 +259,9 @@ export const useProviders = (): UseProvidersReturn => {
         setSelectedModel(activeProv.model || '')
         setModelsList(activeProv.modelsList || [])
         setModelContextWindows(activeProv.modelContextWindows || {})
-        setFetchModelsUrl(`${(activeProv.apiUrl || '').replace(/\/$/, '')}/models`)
+        setFetchModelsUrl(
+          resolveProviderModelDiscoveryUrl(activeProv.type, activeProv.apiUrl || '')
+        )
         setEditingProviderId(activeProviderId)
       }
     }
@@ -258,7 +270,8 @@ export const useProviders = (): UseProvidersReturn => {
   // Update fetch models URL when API URL changes
   const handleApiUrlChange = (newUrl: string): void => {
     setApiUrl(newUrl)
-    setFetchModelsUrl(`${newUrl.replace(/\/$/, '')}/models`)
+    const providerType = providers.find((provider) => provider.id === editingProviderId)?.type
+    setFetchModelsUrl(resolveProviderModelDiscoveryUrl(providerType || 'custom', newUrl))
   }
 
   const handleSaveGlobalSettings = async (): Promise<void> => {
@@ -324,19 +337,22 @@ export const useProviders = (): UseProvidersReturn => {
 
       savedSettings.providers = providers.map((p) => {
         if (p.id === editingProviderId) {
-          return normalizeProviderModelCatalog({
-            ...p,
-            apiKey: activeKeyVal,
-            apiKeys,
-            activeApiKeyId,
-            apiUrl,
-            authType: providerAuthType,
-            authHeader: providerAuthType === 'header' ? normalizedAuthHeader : undefined,
-            headers: headerResult.headers,
-            model: selectedModel,
-            modelsList,
-            modelContextWindows: sanitizedContextWindows
-          })
+          return mergeDiscoveredModelMetadata(
+            {
+              ...p,
+              apiKey: activeKeyVal,
+              apiKeys,
+              activeApiKeyId,
+              apiUrl,
+              authType: providerAuthType,
+              authHeader: providerAuthType === 'header' ? normalizedAuthHeader : undefined,
+              headers: headerResult.headers,
+              model: selectedModel,
+              modelsList,
+              modelContextWindows: sanitizedContextWindows
+            },
+            fetchedModels
+          )
         }
         return p
       })
@@ -385,7 +401,9 @@ export const useProviders = (): UseProvidersReturn => {
     setSelectedModel(registration?.definition.defaultModel || '')
     setModelsList(registration ? [...registration.definition.models] : [])
     setModelContextWindows({})
-    setFetchModelsUrl(`${(registration?.accountDefaults.apiUrl || '').replace(/\/$/, '')}/models`)
+    setFetchModelsUrl(
+      resolveProviderModelDiscoveryUrl(type, registration?.accountDefaults.apiUrl || '')
+    )
     setIsEditingProviderDetail(true)
   }
 
@@ -405,7 +423,7 @@ export const useProviders = (): UseProvidersReturn => {
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
       setModelContextWindows(target.modelContextWindows || {})
-      setFetchModelsUrl(`${(target.apiUrl || '').replace(/\/$/, '')}/models`)
+      setFetchModelsUrl(resolveProviderModelDiscoveryUrl(target.type, target.apiUrl || ''))
     }
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
     if (savedSettings) {
@@ -429,7 +447,7 @@ export const useProviders = (): UseProvidersReturn => {
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
       setModelContextWindows(target.modelContextWindows || {})
-      setFetchModelsUrl(`${(target.apiUrl || '').replace(/\/$/, '')}/models`)
+      setFetchModelsUrl(resolveProviderModelDiscoveryUrl(target.type, target.apiUrl || ''))
     }
     setIsEditingProviderDetail(true)
   }
@@ -456,7 +474,7 @@ export const useProviders = (): UseProvidersReturn => {
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
       setModelContextWindows(target.modelContextWindows || {})
-      setFetchModelsUrl(`${(target.apiUrl || '').replace(/\/$/, '')}/models`)
+      setFetchModelsUrl(resolveProviderModelDiscoveryUrl(target.type, target.apiUrl || ''))
     }
 
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
@@ -557,12 +575,19 @@ export const useProviders = (): UseProvidersReturn => {
     }
   }
 
+  const getEditingProviderType = (): ApiProvider['type'] =>
+    providers.find((provider) => provider.id === editingProviderId)?.type || 'custom'
+
   const handleFetchModels = async (): Promise<void> => {
     const url = fetchModelsUrl.trim()
     if (!url) return
     setIsFetchingModels(true)
     try {
-      const fetched = await window.api.fetchModels(url, apiKey, getEditingProviderConnection())
+      const fetched = await window.api.fetchModels({
+        fetchUrl: url,
+        providerType: getEditingProviderType(),
+        providerConnection: getEditingProviderConnection()
+      })
       if (fetched && fetched.length > 0) {
         setFetchedModels(fetched)
         setModelContextWindows((prev) => {
@@ -603,7 +628,11 @@ export const useProviders = (): UseProvidersReturn => {
 
     setRefreshingModelContextId(modelId)
     try {
-      const fetched = await window.api.fetchModels(url, apiKey, getEditingProviderConnection())
+      const fetched = await window.api.fetchModels({
+        fetchUrl: url,
+        providerType: getEditingProviderType(),
+        providerConnection: getEditingProviderConnection()
+      })
       setFetchedModels(fetched)
       const matched = findFetchedModel(fetched, modelId)
       if (matched?.contextWindowTokens) {

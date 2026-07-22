@@ -3,6 +3,7 @@ import {
   ChatCompletionMessage,
   FetchedModelInfo,
   ModelRuntimeConfig,
+  ProviderModelDiscoveryRequest,
   ResolvedProviderConnection
 } from '../shared/types'
 import { normalizeRuntimeError } from '../shared/runtimeErrors'
@@ -12,32 +13,13 @@ import { injectMemoryContext } from './agent/memoryPrompts'
 import { estimateTokens } from './agent/tokenEstimator'
 import { normalizeContextEpoch } from '../shared/contextEpoch'
 import { buildProviderRequestHeaders } from './agent/modelRequestTarget'
-
-interface ModelItem {
-  id?: string
-  name?: string
-  model?: string
-  display_name?: string
-  displayName?: string
-  context_length?: number | string
-  context_window?: number | string
-  contextWindow?: number | string
-  contextWindowTokens?: number | string
-  max_context_length?: number | string
-  max_context_tokens?: number | string
-  max_context_window?: number | string
-  max_input_tokens?: number | string
-  input_token_limit?: number | string
-  max_model_len?: number | string
-  max_sequence_length?: number | string
-}
-
-interface FetchModelsResponse {
-  data?: ModelItem[]
-  models?: ModelItem[]
-}
+import {
+  getProviderModelDiscoveryPolicy,
+  normalizeProviderModelDiscoveryResponse
+} from '../shared/providerModelDiscovery'
 
 const activeChatSessions = new Map<string, AbortController>()
+const activeModelDiscoveries = new Map<string, Promise<FetchedModelInfo[]>>()
 
 export function abortChatCompletion(reqId: string): void {
   const controller = activeChatSessions.get(reqId)
@@ -127,88 +109,40 @@ export async function handleChatCompletion(
   }
 }
 
-const CONTEXT_FIELD_NAMES = [
-  'context_length',
-  'context_window',
-  'contextWindow',
-  'contextWindowTokens',
-  'max_context_length',
-  'max_context_tokens',
-  'max_context_window',
-  'max_input_tokens',
-  'input_token_limit',
-  'max_model_len',
-  'max_sequence_length'
-]
+export function fetchModels(request: ProviderModelDiscoveryRequest): Promise<FetchedModelInfo[]> {
+  const { fetchUrl, providerConnection, providerType } = request
+  if (!fetchUrl) return Promise.resolve([])
+  const discoveryKey = `${providerConnection.accountId}\n${providerType}\n${fetchUrl}`
+  const active = activeModelDiscoveries.get(discoveryKey)
+  if (active) return active
 
-function normalizeFetchedContextTokens(value: unknown): number | undefined {
-  const numeric = typeof value === 'string' ? Number(value.trim()) : value
-  if (typeof numeric !== 'number' || !Number.isFinite(numeric)) return undefined
-  const rounded = Math.round(numeric)
-  if (rounded < 2000 || rounded > 10000000) return undefined
-  return rounded
+  const discovery = performModelDiscovery(request)
+  activeModelDiscoveries.set(discoveryKey, discovery)
+  void discovery.then(
+    () => activeModelDiscoveries.delete(discoveryKey),
+    () => activeModelDiscoveries.delete(discoveryKey)
+  )
+  return discovery
 }
 
-function getFetchedModelContextTokens(model: ModelItem): number | undefined {
-  const record = model as Record<string, unknown>
-  for (const field of CONTEXT_FIELD_NAMES) {
-    const normalized = normalizeFetchedContextTokens(record[field])
-    if (normalized) return normalized
-  }
-  return undefined
-}
-
-function normalizeFetchedModel(item: ModelItem | string): FetchedModelInfo | undefined {
-  if (typeof item === 'string') {
-    const id = item.trim()
-    return id ? { id } : undefined
-  }
-
-  const id = (item.id || item.name || item.model || '').trim()
-  if (!id) return undefined
-  const displayName = (item.displayName || item.display_name || '').trim() || undefined
-  const contextWindowTokens = getFetchedModelContextTokens(item)
-  return {
-    id,
-    ...(displayName ? { displayName } : {}),
-    ...(contextWindowTokens ? { contextWindowTokens } : {})
-  }
-}
-
-function uniqueFetchedModels(models: FetchedModelInfo[]): FetchedModelInfo[] {
-  const seen = new Set<string>()
-  const result: FetchedModelInfo[] = []
-  for (const model of models) {
-    if (seen.has(model.id)) continue
-    seen.add(model.id)
-    result.push(model)
-  }
-  return result
-}
-
-export async function fetchModels(
-  fetchUrl: string,
-  apiKey: string,
-  providerConnection?: ResolvedProviderConnection
+async function performModelDiscovery(
+  request: ProviderModelDiscoveryRequest
 ): Promise<FetchedModelInfo[]> {
-  if (!fetchUrl) return []
+  const { fetchUrl, providerConnection, providerType } = request
   try {
-    const headers = providerConnection
-      ? buildProviderRequestHeaders(providerConnection, { 'Content-Type': 'application/json' })
-      : {
-          'Content-Type': 'application/json',
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
-        }
+    const headers = buildProviderRequestHeaders(providerConnection, {
+      'Content-Type': 'application/json'
+    })
     const response = await fetch(fetchUrl, { method: 'GET', headers })
     if (!response.ok) {
       throw new Error(`Fetch failed: ${response.status} ${response.statusText}`)
     }
 
-    let data: FetchModelsResponse | ModelItem[] | string[]
+    let data: unknown
     if (typeof response.text === 'function') {
       const text = await response.text()
       try {
-        data = JSON.parse(text) as FetchModelsResponse | ModelItem[] | string[]
+        data = JSON.parse(text) as unknown
       } catch {
         const snippet = text.trim().slice(0, 100)
         throw new Error(
@@ -216,23 +150,12 @@ export async function fetchModels(
         )
       }
     } else {
-      data = (await response.json()) as FetchModelsResponse | ModelItem[] | string[]
+      data = await response.json()
     }
-
-    let models: FetchedModelInfo[] = []
-
-    if (data && typeof data === 'object') {
-      if ('data' in data && Array.isArray(data.data)) {
-        models = data.data.map(normalizeFetchedModel).filter(Boolean) as FetchedModelInfo[]
-      } else if ('models' in data && Array.isArray(data.models)) {
-        models = data.models.map(normalizeFetchedModel).filter(Boolean) as FetchedModelInfo[]
-      } else if (Array.isArray(data)) {
-        models = (data as (ModelItem | string)[])
-          .map(normalizeFetchedModel)
-          .filter(Boolean) as FetchedModelInfo[]
-      }
-    }
-    return uniqueFetchedModels(models)
+    return normalizeProviderModelDiscoveryResponse(
+      data,
+      getProviderModelDiscoveryPolicy(providerType)
+    )
   } catch (error) {
     const err = error as Error
     console.error('Fetch models error:', err)
