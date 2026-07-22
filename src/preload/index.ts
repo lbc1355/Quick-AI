@@ -33,7 +33,8 @@ import {
   BackgroundSubagentEventNotification,
   BackgroundJobInfo,
   ProviderModelDiscoveryRequest,
-  ProviderModelDiscoveryCache
+  ProviderModelDiscoveryCache,
+  ProviderConnectionTestResult
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -191,6 +192,10 @@ const api = {
     ipcRenderer.send('show-notification', title, body),
   fetchModels: (request: ProviderModelDiscoveryRequest): Promise<FetchedModelInfo[]> =>
     ipcRenderer.invoke('fetch-models', request),
+  testProviderConnection: (
+    request: ProviderModelDiscoveryRequest
+  ): Promise<ProviderConnectionTestResult> =>
+    ipcRenderer.invoke('test-provider-connection', request),
   setProviderModelDiscoveryCache: (
     accountId: string,
     cache: ProviderModelDiscoveryCache

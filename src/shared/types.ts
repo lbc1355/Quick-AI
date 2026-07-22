@@ -567,6 +567,30 @@ export interface ProviderModelDiscoveryRequest {
   providerConnection: ResolvedProviderConnection
 }
 
+export type ProviderConnectionDiagnosticCode =
+  | 'ok'
+  | 'authentication'
+  | 'permission'
+  | 'not_found'
+  | 'rate_limited'
+  | 'server_error'
+  | 'http_error'
+  | 'timeout'
+  | 'invalid_response'
+  | 'empty_catalog'
+  | 'network_error'
+
+export interface ProviderConnectionTestResult {
+  ok: boolean
+  code: ProviderConnectionDiagnosticCode
+  message: string
+  endpoint: string
+  checkedAt: number
+  latencyMs: number
+  status?: number
+  modelCount?: number
+}
+
 export type ContextRetentionMode = 'default' | 'cache-priority'
 
 export interface CachePriorityRetainedRunRef {

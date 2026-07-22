@@ -1,6 +1,11 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import type { FileStore } from '../store'
-import { handleChatCompletion, fetchModels, abortChatCompletion } from '../aiClient'
+import {
+  handleChatCompletion,
+  fetchModels,
+  testProviderConnection,
+  abortChatCompletion
+} from '../aiClient'
 import {
   runAgentSkill,
   runGeneralAgent,
@@ -193,6 +198,10 @@ export function registerGenerationIpc(store: FileStore): void {
 
   ipcMain.handle('fetch-models', (_event, request) => {
     return fetchModels(request)
+  })
+
+  ipcMain.handle('test-provider-connection', (_event, request) => {
+    return testProviderConnection(request)
   })
 
   ipcMain.on('start-chat-completion', (event, reqId, options) => {

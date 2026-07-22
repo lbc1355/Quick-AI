@@ -1713,6 +1713,25 @@
   padding: 0 12px;
 }
 
+.connection-test-btn {
+  height: 32px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.provider-connection-diagnostic {
+  margin-top: 5px;
+  line-height: 1.45;
+}
+
+.provider-connection-diagnostic.success {
+  color: var(--color-success);
+}
+
+.provider-connection-diagnostic.error {
+  color: var(--color-danger);
+}
+
 .provider-model-discovery-status {
   margin-top: 5px;
   color: var(--color-text-muted);

@@ -42,6 +42,7 @@ vi.mock('electron', () => {
 vi.mock('../aiClient', () => ({
   handleChatCompletion: vi.fn(),
   fetchModels: vi.fn(),
+  testProviderConnection: vi.fn(),
   abortChatCompletion: vi.fn()
 }))
 
@@ -83,7 +84,12 @@ import { registerGenerationIpc } from './generationIpc'
 import type { FileStore } from '../store'
 
 // Import mocks to assert on them
-import { handleChatCompletion, fetchModels, abortChatCompletion } from '../aiClient'
+import {
+  handleChatCompletion,
+  fetchModels,
+  testProviderConnection,
+  abortChatCompletion
+} from '../aiClient'
 import {
   runGeneralAgent,
   runAgentSkill,
@@ -260,6 +266,7 @@ describe('IPC Registration Modules', () => {
     expect(mockHandlers['cancel-session-prompt']).toBeDefined()
     expect(mockHandlers['requeue-session-prompt']).toBeDefined()
     expect(mockHandlers['fetch-models']).toBeDefined()
+    expect(mockHandlers['test-provider-connection']).toBeDefined()
     expect(mockListeners['start-chat-completion']).toBeDefined()
     expect(mockListeners['start-agent-skill']).toBeDefined()
     expect(mockListeners['advance-session-context']).toBeDefined()
@@ -275,6 +282,8 @@ describe('IPC Registration Modules', () => {
     const discoveryRequest = { fetchUrl: 'url', providerType: 'custom' }
     mockHandlers['fetch-models']({} as IpcMainInvokeEvent, discoveryRequest)
     expect(fetchModels).toHaveBeenCalledWith(discoveryRequest)
+    mockHandlers['test-provider-connection']({} as IpcMainInvokeEvent, discoveryRequest)
+    expect(testProviderConnection).toHaveBeenCalledWith(discoveryRequest)
 
     mockListeners['advance-session-context']({} as IpcMainEvent, 'session-epoch-ipc', 4)
     expect(promptStoreMocks.cancelStaleSessionPrompts).toHaveBeenCalledWith('session-epoch-ipc', 4)

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { Search, X, Minus, Plus } from 'lucide-react'
-import { FetchedModelInfo } from '../../../shared/types'
+import { FetchedModelInfo, ModelCapability } from '../../../shared/types'
 
 interface ModelsModalProps {
   fetchedModels: FetchedModelInfo[]
@@ -17,6 +17,19 @@ const TEXT = {
   remove: '\u79fb\u9664\u6b64\u6a21\u578b',
   add: '\u6dfb\u52a0\u6b64\u6a21\u578b',
   done: '\u5b8c\u6210'
+}
+
+const CAPABILITY_LABELS: Record<ModelCapability, string> = {
+  text: '文本',
+  vision: '视觉',
+  tools: '工具',
+  reasoning: '推理'
+}
+
+const formatContextWindow = (tokens: number): string => {
+  if (tokens >= 1_000_000) return `${Number((tokens / 1_000_000).toFixed(1))}M context`
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K context`
+  return `${tokens} context`
 }
 
 export const ModelsModal: React.FC<ModelsModalProps> = ({
@@ -64,11 +77,29 @@ export const ModelsModal: React.FC<ModelsModalProps> = ({
             const isAdded = modelsList.includes(model.id)
             return (
               <div key={model.id} className="modal-list-item">
-                <span className="modal-model-id" title={model.displayName || model.id}>
-                  {model.id}
-                </span>
+                <div className="modal-model-details">
+                  <span className="modal-model-id" title={model.displayName || model.id}>
+                    {model.displayName || model.id}
+                  </span>
+                  {model.displayName && model.displayName !== model.id && (
+                    <small className="modal-model-api-id">{model.id}</small>
+                  )}
+                  {(model.contextWindowTokens || model.capabilities?.length) && (
+                    <div className="modal-model-metadata">
+                      {model.contextWindowTokens && (
+                        <span>{formatContextWindow(model.contextWindowTokens)}</span>
+                      )}
+                      {model.capabilities?.map((capability) => (
+                        <span key={capability} className={`model-capability-badge ${capability}`}>
+                          {CAPABILITY_LABELS[capability]}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {isAdded ? (
                   <button
+                    type="button"
                     className="modal-action-btn remove"
                     onClick={() => onToggleModel(model)}
                     title={TEXT.remove}
@@ -77,6 +108,7 @@ export const ModelsModal: React.FC<ModelsModalProps> = ({
                   </button>
                 ) : (
                   <button
+                    type="button"
                     className="modal-action-btn add"
                     onClick={() => onToggleModel(model)}
                     title={TEXT.add}

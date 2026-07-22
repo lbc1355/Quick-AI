@@ -3,6 +3,8 @@ import {
   ChatCompletionMessage,
   FetchedModelInfo,
   ModelRuntimeConfig,
+  ProviderConnectionDiagnosticCode,
+  ProviderConnectionTestResult,
   ProviderModelDiscoveryRequest,
   ResolvedProviderConnection
 } from '../shared/types'
@@ -20,6 +22,18 @@ import {
 
 const activeChatSessions = new Map<string, AbortController>()
 const activeModelDiscoveries = new Map<string, Promise<FetchedModelInfo[]>>()
+const PROVIDER_CONNECTION_TEST_TIMEOUT_MS = 15_000
+
+class ProviderModelDiscoveryError extends Error {
+  constructor(
+    message: string,
+    readonly code: ProviderConnectionDiagnosticCode,
+    readonly status?: number
+  ) {
+    super(message)
+    this.name = 'ProviderModelDiscoveryError'
+  }
+}
 
 export function abortChatCompletion(reqId: string): void {
   const controller = activeChatSessions.get(reqId)
@@ -126,16 +140,25 @@ export function fetchModels(request: ProviderModelDiscoveryRequest): Promise<Fet
 }
 
 async function performModelDiscovery(
-  request: ProviderModelDiscoveryRequest
+  request: ProviderModelDiscoveryRequest,
+  signal?: AbortSignal
 ): Promise<FetchedModelInfo[]> {
   const { fetchUrl, providerConnection, providerType } = request
   try {
     const headers = buildProviderRequestHeaders(providerConnection, {
       'Content-Type': 'application/json'
     })
-    const response = await fetch(fetchUrl, { method: 'GET', headers })
+    const response = await fetch(fetchUrl, {
+      method: 'GET',
+      headers,
+      ...(signal ? { signal } : {})
+    })
     if (!response.ok) {
-      throw new Error(`Fetch failed: ${response.status} ${response.statusText}`)
+      throw new ProviderModelDiscoveryError(
+        `Fetch failed: ${response.status} ${response.statusText}`,
+        classifyProviderHttpStatus(response.status),
+        response.status
+      )
     }
 
     let data: unknown
@@ -145,8 +168,9 @@ async function performModelDiscovery(
         data = JSON.parse(text) as unknown
       } catch {
         const snippet = text.trim().slice(0, 100)
-        throw new Error(
-          `Failed to parse models response as JSON. Response body starts with: "${snippet}"`
+        throw new ProviderModelDiscoveryError(
+          `Failed to parse models response as JSON. Response body starts with: "${snippet}"`,
+          'invalid_response'
         )
       }
     } else {
@@ -159,6 +183,79 @@ async function performModelDiscovery(
   } catch (error) {
     const err = error as Error
     console.error('Fetch models error:', err)
-    throw new Error(err.message || 'Network error')
+    if (err instanceof ProviderModelDiscoveryError) throw err
+    throw error instanceof Error ? error : new Error(String(error || 'Network error'))
+  }
+}
+
+function classifyProviderHttpStatus(status: number): ProviderConnectionDiagnosticCode {
+  if (status === 401) return 'authentication'
+  if (status === 403) return 'permission'
+  if (status === 404) return 'not_found'
+  if (status === 429) return 'rate_limited'
+  if (status >= 500) return 'server_error'
+  return 'http_error'
+}
+
+const getProviderConnectionFailure = (
+  error: unknown
+): {
+  code: ProviderConnectionDiagnosticCode
+  message: string
+  status?: number
+} => {
+  if (error instanceof ProviderModelDiscoveryError) {
+    return { code: error.code, message: error.message, status: error.status }
+  }
+  if (error instanceof Error && error.name === 'AbortError') {
+    return {
+      code: 'timeout',
+      message: `Connection test timed out after ${PROVIDER_CONNECTION_TEST_TIMEOUT_MS / 1000}s`
+    }
+  }
+  const message = error instanceof Error ? error.message : String(error || 'Network error')
+  return { code: 'network_error', message }
+}
+
+export async function testProviderConnection(
+  request: ProviderModelDiscoveryRequest
+): Promise<ProviderConnectionTestResult> {
+  const startedAt = Date.now()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), PROVIDER_CONNECTION_TEST_TIMEOUT_MS)
+  try {
+    const models = await performModelDiscovery(request, controller.signal)
+    const checkedAt = Date.now()
+    if (models.length === 0) {
+      return {
+        ok: false,
+        code: 'empty_catalog',
+        message: 'Connection succeeded, but the endpoint returned no models',
+        endpoint: request.fetchUrl,
+        checkedAt,
+        latencyMs: checkedAt - startedAt,
+        modelCount: 0
+      }
+    }
+    return {
+      ok: true,
+      code: 'ok',
+      message: `Connection succeeded and returned ${models.length} models`,
+      endpoint: request.fetchUrl,
+      checkedAt,
+      latencyMs: checkedAt - startedAt,
+      modelCount: models.length
+    }
+  } catch (error) {
+    const checkedAt = Date.now()
+    return {
+      ok: false,
+      ...getProviderConnectionFailure(error),
+      endpoint: request.fetchUrl,
+      checkedAt,
+      latencyMs: checkedAt - startedAt
+    }
+  } finally {
+    clearTimeout(timeout)
   }
 }

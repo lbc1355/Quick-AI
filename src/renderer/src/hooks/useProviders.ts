@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useToast } from '../contexts/ToastContext'
 import {
   ApiProvider,
@@ -12,7 +12,8 @@ import {
   ModelPromptProfile,
   ResolvedProviderConnection,
   ProviderModelDiscoveryCache,
-  ProviderModelDiscoveryRequest
+  ProviderModelDiscoveryRequest,
+  ProviderConnectionTestResult
 } from '../../../shared/types'
 import { normalizeContextWindowTokens } from '../../../shared/modelContext'
 import {
@@ -101,6 +102,8 @@ export interface UseProvidersReturn {
   fetchModelsUrl: string
   setFetchModelsUrl: React.Dispatch<React.SetStateAction<string>>
   isFetchingModels: boolean
+  isTestingProviderConnection: boolean
+  providerConnectionTest?: ProviderConnectionTestResult
   refreshingModelContextId: string | null
   fetchedModels: FetchedModelInfo[]
   showModelsModal: boolean
@@ -134,6 +137,7 @@ export interface UseProvidersReturn {
   handleChangeEditingProviderPromptProfile: (profile?: ModelPromptProfile) => void
   handleAddManualModel: () => void
   handleFetchModels: () => Promise<void>
+  handleTestProviderConnection: () => Promise<void>
   handleRefreshModelContext: (modelId: string) => Promise<void>
   handleRemoveModelDirectly: (modelId: string) => void
   handleToggleModelSelection: (model: FetchedModelInfo) => void
@@ -191,6 +195,10 @@ export const useProviders = (): UseProvidersReturn => {
   const [manualModelInput, setManualModelInput] = useState('')
   const [fetchModelsUrl, setFetchModelsUrl] = useState('https://opencode.ai/zen/v1/models')
   const [isFetchingModels, setIsFetchingModels] = useState(false)
+  const [isTestingProviderConnection, setIsTestingProviderConnection] = useState(false)
+  const [providerConnectionTest, setProviderConnectionTest] =
+    useState<ProviderConnectionTestResult>()
+  const connectionTestRequestId = useRef(0)
   const [refreshingModelContextId, setRefreshingModelContextId] = useState<string | null>(null)
   const [fetchedModels, setFetchedModels] = useState<FetchedModelInfo[]>([])
   const [showModelsModal, setShowModelsModal] = useState(false)
@@ -228,6 +236,19 @@ export const useProviders = (): UseProvidersReturn => {
     const sourceUrl = fetchModelsUrl.trim() || getPreferredModelDiscoveryUrl(provider)
     setFetchedModels(getCachedProviderModels(provider.modelDiscovery, sourceUrl))
   }, [editingProviderId, fetchModelsUrl, providers])
+
+  useEffect(() => {
+    connectionTestRequestId.current += 1
+    setIsTestingProviderConnection(false)
+    setProviderConnectionTest(undefined)
+  }, [
+    apiKey,
+    editingProviderId,
+    fetchModelsUrl,
+    providerAuthHeader,
+    providerAuthType,
+    providerHeaders
+  ])
 
   // Load configuration and data on startup
   useEffect(() => {
@@ -728,6 +749,41 @@ export const useProviders = (): UseProvidersReturn => {
     }
   }
 
+  const handleTestProviderConnection = async (): Promise<void> => {
+    const url = fetchModelsUrl.trim()
+    if (!url) return
+    const requestId = connectionTestRequestId.current + 1
+    connectionTestRequestId.current = requestId
+    setIsTestingProviderConnection(true)
+    setProviderConnectionTest(undefined)
+    try {
+      const result = await window.api.testProviderConnection({
+        fetchUrl: url,
+        providerType: getEditingProviderType(),
+        providerConnection: getEditingProviderConnection()
+      })
+      if (connectionTestRequestId.current === requestId) {
+        setProviderConnectionTest(result)
+      }
+    } catch (error) {
+      if (connectionTestRequestId.current === requestId) {
+        const checkedAt = Date.now()
+        setProviderConnectionTest({
+          ok: false,
+          code: 'network_error',
+          message: error instanceof Error ? error.message : String(error || 'Connection failed'),
+          endpoint: url,
+          checkedAt,
+          latencyMs: 0
+        })
+      }
+    } finally {
+      if (connectionTestRequestId.current === requestId) {
+        setIsTestingProviderConnection(false)
+      }
+    }
+  }
+
   const findFetchedModel = (
     fetched: FetchedModelInfo[],
     modelId: string
@@ -920,6 +976,8 @@ export const useProviders = (): UseProvidersReturn => {
     fetchModelsUrl,
     setFetchModelsUrl,
     isFetchingModels,
+    isTestingProviderConnection,
+    providerConnectionTest,
     refreshingModelContextId,
     fetchedModels,
     showModelsModal,
@@ -953,6 +1011,7 @@ export const useProviders = (): UseProvidersReturn => {
     handleChangeEditingProviderPromptProfile,
     handleAddManualModel,
     handleFetchModels,
+    handleTestProviderConnection,
     handleRefreshModelContext,
     handleRemoveModelDirectly,
     handleToggleModelSelection,

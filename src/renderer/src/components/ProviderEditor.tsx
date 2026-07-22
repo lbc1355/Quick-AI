@@ -1,6 +1,11 @@
 import React, { useState } from 'react'
 import { ArrowLeft, Plus, RefreshCw, X, Eye, EyeOff, Trash2 } from 'lucide-react'
-import { ModelPromptProfile, ProviderApiFormat, ProviderAuthType } from '../../../shared/types'
+import {
+  ModelPromptProfile,
+  ProviderApiFormat,
+  ProviderAuthType,
+  ProviderConnectionTestResult
+} from '../../../shared/types'
 import { getContextWindowInfo } from '../../../shared/modelContext'
 import { useSettings } from '../contexts/SettingsContext'
 
@@ -14,6 +19,27 @@ const formatDiscoveryTime = (timestamp: number): string =>
     minute: '2-digit'
   })
 
+const CONNECTION_FAILURE_LABELS: Record<
+  Exclude<ProviderConnectionTestResult['code'], 'ok'>,
+  string
+> = {
+  authentication: '鉴权失败，请检查 API Key',
+  permission: '账号无权访问模型列表',
+  not_found: '模型列表端点不存在',
+  rate_limited: '请求被限流，请稍后重试',
+  server_error: '服务商服务器异常',
+  http_error: '服务商返回 HTTP 错误',
+  timeout: '连接超时',
+  invalid_response: '响应不是有效的模型列表 JSON',
+  empty_catalog: '连接成功，但没有返回模型',
+  network_error: '网络连接失败'
+}
+
+const formatConnectionDiagnostic = (result: ProviderConnectionTestResult): string =>
+  result.ok
+    ? `连接正常 · ${result.latencyMs} ms · ${result.modelCount || 0} 个模型`
+    : `${CONNECTION_FAILURE_LABELS[result.code as Exclude<typeof result.code, 'ok'>]}：${result.message}`
+
 export const ProviderEditor: React.FC = () => {
   const {
     editingProviderId,
@@ -25,6 +51,8 @@ export const ProviderEditor: React.FC = () => {
     manualModelInput,
     fetchModelsUrl,
     isFetchingModels,
+    isTestingProviderConnection,
+    providerConnectionTest,
     refreshingModelContextId,
     apiKeys,
     activeApiKeyId,
@@ -42,6 +70,7 @@ export const ProviderEditor: React.FC = () => {
     handleApiUrlChange: onChangeApiUrl,
     handleAddManualModel: onAddManualModel,
     handleFetchModels: onFetchModels,
+    handleTestProviderConnection: onTestProviderConnection,
     handleRefreshModelContext: onRefreshModelContext,
     handleRemoveModelDirectly: onRemoveModel,
     handleChangeModelContextWindow: onChangeModelContextWindow,
@@ -357,13 +386,29 @@ export const ProviderEditor: React.FC = () => {
               />
               <button
                 type="button"
+                className="settings-secondary-btn connection-test-btn"
+                onClick={onTestProviderConnection}
+                disabled={isTestingProviderConnection || isFetchingModels}
+              >
+                {isTestingProviderConnection ? '测试中' : '测试'}
+              </button>
+              <button
+                type="button"
                 className="settings-save-btn fetch-models-btn"
                 onClick={onFetchModels}
-                disabled={isFetchingModels}
+                disabled={isFetchingModels || isTestingProviderConnection}
               >
                 {isFetchingModels ? '获取中' : '获取'}
               </button>
             </div>
+            {providerConnectionTest && (
+              <small
+                className={`provider-connection-diagnostic ${providerConnectionTest.ok ? 'success' : 'error'}`}
+                title={providerConnectionTest.endpoint}
+              >
+                {formatConnectionDiagnostic(providerConnectionTest)}
+              </small>
+            )}
             {modelDiscovery && (
               <small
                 className={`provider-model-discovery-status ${modelDiscovery.error ? 'error' : ''}`}

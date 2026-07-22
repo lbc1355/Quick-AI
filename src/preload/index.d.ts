@@ -32,7 +32,8 @@ import {
   BackgroundSubagentEventNotification,
   BackgroundJobInfo,
   ProviderModelDiscoveryRequest,
-  ProviderModelDiscoveryCache
+  ProviderModelDiscoveryCache,
+  ProviderConnectionTestResult
 } from '../shared/types'
 
 declare global {
@@ -114,6 +115,9 @@ declare global {
       onWindowStateChanged: (callback: (state: WindowState) => void) => () => void
       onUserChoiceRequest: (callback: (request: UserChoiceRequest) => void) => () => void
       fetchModels: (request: ProviderModelDiscoveryRequest) => Promise<FetchedModelInfo[]>
+      testProviderConnection: (
+        request: ProviderModelDiscoveryRequest
+      ) => Promise<ProviderConnectionTestResult>
       setProviderModelDiscoveryCache: (
         accountId: string,
         cache: ProviderModelDiscoveryCache
