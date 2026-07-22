@@ -10,7 +10,8 @@ import {
   recoverRunningBackgroundJobs,
   pruneBackgroundJobRecords
 } from './database'
-import { StorageSchema } from '../shared/types'
+import { ProviderModelDiscoveryCache, StorageSchema } from '../shared/types'
+import { saveProviderModelDiscoveryCache } from './database/providerStore'
 import { recoverInterruptedAgentEventJournals } from './agent/agentEventJournal'
 import { finishRunManifest } from './agent/runManifest'
 import { loadSkillsFromFolders, saveSkillsToFolders } from './skillManager'
@@ -77,5 +78,13 @@ export class FileStore {
 
   public getStorePath(): string {
     return getDb().name
+  }
+
+  public setProviderModelDiscoveryCache(
+    accountId: string,
+    cache: ProviderModelDiscoveryCache
+  ): boolean {
+    if (!this.ready) throw new Error('Store not initialized')
+    return saveProviderModelDiscoveryCache(getDb(), accountId, cache)
   }
 }

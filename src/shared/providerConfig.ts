@@ -14,6 +14,7 @@ import {
   getProviderRuntimeProfile,
   transportIdToApiFormat
 } from './providerProfiles'
+import { normalizeProviderModelDiscoveryCache } from './providerModelDiscoveryCache'
 
 export interface ResolvedProviderSelection {
   definition: ProviderDefinition
@@ -63,7 +64,8 @@ export function getProviderAccount(provider: ApiProvider): ProviderAccount {
     activeApiKeyId: normalized.activeApiKeyId,
     authType: provider.authType || getRegisteredProviderAuthType(provider.type),
     authHeader: provider.authHeader || accountDefaults?.authHeader,
-    headers: { ...(accountDefaults?.headers || {}), ...(provider.headers || {}) }
+    headers: { ...(accountDefaults?.headers || {}), ...(provider.headers || {}) },
+    modelDiscovery: normalizeProviderModelDiscoveryCache(provider.modelDiscovery)
   }
 }
 
@@ -98,6 +100,7 @@ export function composeProviderConfiguration(
       authType: account.authType,
       authHeader: account.authHeader,
       headers: { ...(account.headers || {}) },
+      modelDiscovery: normalizeProviderModelDiscoveryCache(account.modelDiscovery),
       model: defaultModelId,
       modelsList,
       modelContextWindows: { ...(definition.modelContextWindows || {}) },

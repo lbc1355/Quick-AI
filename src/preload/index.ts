@@ -32,7 +32,8 @@ import {
   BackgroundSubagentResultNotification,
   BackgroundSubagentEventNotification,
   BackgroundJobInfo,
-  ProviderModelDiscoveryRequest
+  ProviderModelDiscoveryRequest,
+  ProviderModelDiscoveryCache
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -190,6 +191,10 @@ const api = {
     ipcRenderer.send('show-notification', title, body),
   fetchModels: (request: ProviderModelDiscoveryRequest): Promise<FetchedModelInfo[]> =>
     ipcRenderer.invoke('fetch-models', request),
+  setProviderModelDiscoveryCache: (
+    accountId: string,
+    cache: ProviderModelDiscoveryCache
+  ): Promise<boolean> => ipcRenderer.invoke('provider-model-discovery-cache-set', accountId, cache),
   listMemoryEntries: (): Promise<Array<{ id: string; label: string; kind: string }>> =>
     ipcRenderer.invoke('memory-entries'),
   readMemoryEntry: (id: string): Promise<string> => ipcRenderer.invoke('memory-entry-read', id),

@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ApiProvider, AppSettings } from '../../shared/types'
 import { createSchema } from './schema'
-import { loadProviderConfigurations } from './providerStore'
+import { loadProviderConfigurations, saveProviderModelDiscoveryCache } from './providerStore'
 import { loadSettingsFromDatabase, saveSettingsToDatabase } from './settingsStore'
 
 const provider = (): ApiProvider => ({
@@ -22,7 +22,14 @@ const provider = (): ApiProvider => ({
   headers: { 'X-Tenant': 'quick-ai' },
   model: 'glm-4.7',
   modelsList: ['glm-4.7'],
-  modelContextWindows: { 'glm-4.7': 96000 }
+  modelContextWindows: { 'glm-4.7': 96000 },
+  modelDiscovery: {
+    sourceUrl: 'https://open.bigmodel.cn/api/paas/v4/models',
+    models: [{ id: 'glm-4.7', contextWindowTokens: 96000 }],
+    checkedAt: 200,
+    refreshedAt: 100,
+    error: 'temporary outage'
+  }
 })
 
 describe('provider persistence', () => {
@@ -79,6 +86,7 @@ describe('provider persistence', () => {
 
     expect(JSON.stringify(definition)).not.toContain('secret-backup')
     expect(String(account.apiKeys)).toContain('secret-backup')
+    expect(String(account.modelDiscovery)).toContain('glm-4.7')
     expect(legacyCount.count).toBe(0)
 
     const loaded = loadSettingsFromDatabase(database)
@@ -93,6 +101,13 @@ describe('provider persistence', () => {
       headers: { 'X-Tenant': 'quick-ai' }
     })
     expect(loaded.providers[0].modelContextWindows?.['glm-4.7']).toBe(96000)
+    expect(loaded.providers[0].modelDiscovery).toEqual({
+      sourceUrl: 'https://open.bigmodel.cn/api/paas/v4/models',
+      models: [{ id: 'glm-4.7', contextWindowTokens: 96000 }],
+      checkedAt: 200,
+      refreshedAt: 100,
+      error: 'temporary outage'
+    })
   })
 
   it('migrates the legacy combined provider table on first read', () => {
@@ -145,5 +160,39 @@ describe('provider persistence', () => {
     expect(
       (database.prepare('SELECT COUNT(*) AS count FROM providers').get() as { count: number }).count
     ).toBe(0)
+  })
+
+  it('updates one account discovery cache without rewriting provider settings', () => {
+    const settings: AppSettings = {
+      providers: [provider()],
+      activeProviderId: 'provider-work',
+      systemPrompt: 'system',
+      autoHideOnBlur: true
+    }
+    saveSettingsToDatabase(database, settings)
+
+    const updated = saveProviderModelDiscoveryCache(database, 'provider-work', {
+      sourceUrl: 'https://open.bigmodel.cn/api/paas/v4/models',
+      models: [{ id: 'glm-new' }],
+      checkedAt: 300,
+      refreshedAt: 300
+    })
+
+    expect(updated).toBe(true)
+    const loaded = loadSettingsFromDatabase(database)
+    expect(loaded.systemPrompt).toBe('system')
+    expect(loaded.providers[0].model).toBe('glm-4.7')
+    expect(loaded.providers[0].modelDiscovery?.models).toEqual([{ id: 'glm-new' }])
+    expect(
+      saveProviderModelDiscoveryCache(database, 'missing', {
+        sourceUrl: 'https://missing.test/models',
+        models: []
+      })
+    ).toBe(false)
+
+    saveSettingsToDatabase(database, settings)
+    expect(loadSettingsFromDatabase(database).providers[0].modelDiscovery?.models).toEqual([
+      { id: 'glm-new' }
+    ])
   })
 })

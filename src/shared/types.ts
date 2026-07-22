@@ -381,6 +381,16 @@ export interface ProviderModelDiscoveryPolicy {
   capabilityPaths: readonly string[]
 }
 
+/** Last-known model catalog for one provider account. Discovery is account scoped because
+ * endpoints and credentials may expose different model sets for the same provider type. */
+export interface ProviderModelDiscoveryCache {
+  sourceUrl: string
+  models: FetchedModelInfo[]
+  checkedAt?: number
+  refreshedAt?: number
+  error?: string
+}
+
 /**
  * Canonical protocol driver used at runtime. `ProviderApiFormat` is kept as the persisted/UI
  * compatibility field; transports are the extensible execution boundary.
@@ -487,6 +497,7 @@ export interface ProviderAccount {
   authType: ProviderAuthType
   authHeader?: string
   headers?: Record<string, string>
+  modelDiscovery?: ProviderModelDiscoveryCache
 }
 
 export type ProviderConnectionAuth =
@@ -524,6 +535,7 @@ export interface ApiProvider {
   authType?: ProviderAuthType
   authHeader?: string
   headers?: Record<string, string>
+  modelDiscovery?: ProviderModelDiscoveryCache
 }
 
 export interface ModelRuntimeConfig {

@@ -12,6 +12,7 @@ import type {
   ProviderAuthType,
   ProviderDefinition,
   ProviderEndpointType,
+  ProviderModelDiscoveryCache,
   ProviderType
 } from '../../shared/types'
 import { normalizeProviderModelCatalog } from '../../shared/modelCatalog'
@@ -21,6 +22,7 @@ import {
   splitProviderConfigurations
 } from '../../shared/providerConfig'
 import { getRegisteredProviderAuthType } from '../../shared/providerRegistry'
+import { normalizeProviderModelDiscoveryCache } from '../../shared/providerModelDiscoveryCache'
 
 interface LegacyProviderRow {
   id: string
@@ -43,6 +45,7 @@ interface LegacyProviderRow {
   authType: string | null
   authHeader: string | null
   headers: string | null
+  modelDiscovery?: string | null
 }
 
 interface ProviderDefinitionRow {
@@ -70,6 +73,12 @@ interface ProviderAccountRow {
   authType: string
   authHeader: string | null
   headers: string | null
+  modelDiscovery: string | null
+}
+
+interface ProviderDiscoveryCacheRow {
+  id: string
+  modelDiscovery: string | null
 }
 
 const parseJson = <T>(value: string | null | undefined, fallback: T): T => {
@@ -84,6 +93,19 @@ const parseAuthType = (value: string | null | undefined, type: ProviderType): Pr
   value === 'header' || value === 'none' || value === 'bearer'
     ? value
     : getRegisteredProviderAuthType(type)
+
+const selectNewestDiscoveryCache = (
+  incoming: ProviderModelDiscoveryCache | undefined,
+  persisted: ProviderModelDiscoveryCache | undefined
+): ProviderModelDiscoveryCache | undefined => {
+  const normalizedIncoming = normalizeProviderModelDiscoveryCache(incoming)
+  const normalizedPersisted = normalizeProviderModelDiscoveryCache(persisted)
+  if (!normalizedIncoming) return normalizedPersisted
+  if (!normalizedPersisted) return normalizedIncoming
+  const incomingTime = normalizedIncoming.checkedAt ?? normalizedIncoming.refreshedAt ?? 0
+  const persistedTime = normalizedPersisted.checkedAt ?? normalizedPersisted.refreshedAt ?? 0
+  return persistedTime >= incomingTime ? normalizedPersisted : normalizedIncoming
+}
 
 function loadCanonicalProviders(database: Database.Database): ApiProvider[] {
   const definitionRows = database
@@ -119,7 +141,8 @@ function loadCanonicalProviders(database: Database.Database): ApiProvider[] {
       activeApiKeyId: row.activeApiKeyId || undefined,
       authType: parseAuthType(row.authType, definitionTypes.get(row.providerId)!),
       authHeader: row.authHeader || undefined,
-      headers: parseJson<Record<string, string>>(row.headers, {})
+      headers: parseJson<Record<string, string>>(row.headers, {}),
+      modelDiscovery: normalizeProviderModelDiscoveryCache(parseJson(row.modelDiscovery, undefined))
     }))
 
   return composeProviderConfigurations(definitions, accounts)
@@ -151,7 +174,8 @@ function loadLegacyProviders(database: Database.Database): ApiProvider[] {
       compatibility: parseJson<ModelCompatibilityProfile>(row.compatibility, {}),
       authType: parseAuthType(row.authType, type),
       authHeader: row.authHeader || undefined,
-      headers: parseJson<Record<string, string>>(row.headers, {})
+      headers: parseJson<Record<string, string>>(row.headers, {}),
+      modelDiscovery: normalizeProviderModelDiscoveryCache(parseJson(row.modelDiscovery, undefined))
     })
 
     return normalizeProviderApiKeys(normalizedCatalog)
@@ -163,6 +187,15 @@ export function saveProviderConfigurations(
   database: Database.Database,
   providers: ApiProvider[]
 ): void {
+  const persistedDiscoveryRows = database
+    .prepare('SELECT id, modelDiscovery FROM provider_accounts')
+    .all() as ProviderDiscoveryCacheRow[]
+  const persistedDiscoveryCaches = new Map(
+    persistedDiscoveryRows.map((row) => [
+      row.id,
+      normalizeProviderModelDiscoveryCache(parseJson(row.modelDiscovery, undefined))
+    ])
+  )
   const deleteAccounts = database.prepare('DELETE FROM provider_accounts')
   const deleteDefinitions = database.prepare('DELETE FROM provider_definitions')
   const deleteLegacyProviders = database.prepare('DELETE FROM providers')
@@ -173,8 +206,8 @@ export function saveProviderConfigurations(
   )
   const insertAccount = database.prepare(
     `INSERT OR REPLACE INTO provider_accounts
-      (id, providerId, name, apiUrl, apiKeys, activeApiKeyId, authType, authHeader, headers)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, providerId, name, apiUrl, apiKeys, activeApiKeyId, authType, authHeader, headers, modelDiscovery)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const { definitions, accounts } = splitProviderConfigurations(providers)
 
@@ -197,6 +230,10 @@ export function saveProviderConfigurations(
     )
   }
   for (const account of accounts) {
+    const modelDiscovery = selectNewestDiscoveryCache(
+      account.modelDiscovery,
+      persistedDiscoveryCaches.get(account.id)
+    )
     insertAccount.run(
       account.id,
       account.providerId,
@@ -206,7 +243,8 @@ export function saveProviderConfigurations(
       account.activeApiKeyId || null,
       account.authType,
       account.authHeader || null,
-      JSON.stringify(account.headers || {})
+      JSON.stringify(account.headers || {}),
+      JSON.stringify(modelDiscovery || {})
     )
   }
   deleteLegacyProviders.run()
@@ -222,4 +260,19 @@ export function loadProviderConfigurations(database: Database.Database): ApiProv
     database.transaction(() => saveProviderConfigurations(database, legacy))()
   }
   return legacy
+}
+
+/** Update only one account's discovery cache so a background refresh cannot overwrite unrelated
+ * settings that may have changed while the network request was in flight. */
+export function saveProviderModelDiscoveryCache(
+  database: Database.Database,
+  accountId: string,
+  cache: ProviderModelDiscoveryCache
+): boolean {
+  const normalized = normalizeProviderModelDiscoveryCache(cache)
+  if (!normalized) return false
+  const result = database
+    .prepare('UPDATE provider_accounts SET modelDiscovery = ? WHERE id = ?')
+    .run(JSON.stringify(normalized), accountId)
+  return result.changes > 0
 }

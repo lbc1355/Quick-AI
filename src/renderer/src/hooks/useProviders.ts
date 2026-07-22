@@ -10,7 +10,9 @@ import {
   ProviderAuthType,
   ProviderApiFormat,
   ModelPromptProfile,
-  ResolvedProviderConnection
+  ResolvedProviderConnection,
+  ProviderModelDiscoveryCache,
+  ProviderModelDiscoveryRequest
 } from '../../../shared/types'
 import { normalizeContextWindowTokens } from '../../../shared/modelContext'
 import {
@@ -32,11 +34,31 @@ import {
   resolveProviderModelDiscoveryUrl
 } from '../../../shared/providerModelDiscovery'
 import {
+  canRefreshProviderModelsInBackground,
+  completeProviderModelDiscovery,
+  failProviderModelDiscovery,
+  getCachedProviderModels,
+  shouldRefreshProviderModels
+} from '../../../shared/providerModelDiscoveryCache'
+import { getProviderAccount, resolveProviderConnection } from '../../../shared/providerConfig'
+import {
   isValidProviderAuthHeader,
   ProviderHeaderItem,
   providerHeaderItemsToRecord,
   providerHeadersToItems
 } from '../utils/providerHeaderEditor'
+
+const getPreferredModelDiscoveryUrl = (provider: ApiProvider): string =>
+  provider.modelDiscovery?.sourceUrl ||
+  resolveProviderModelDiscoveryUrl(provider.type, provider.apiUrl || '')
+
+const createStoredProviderDiscoveryRequest = (
+  provider: ApiProvider
+): ProviderModelDiscoveryRequest => ({
+  fetchUrl: getPreferredModelDiscoveryUrl(provider),
+  providerType: provider.type,
+  providerConnection: resolveProviderConnection(getProviderAccount(provider))
+})
 
 export interface UseProvidersReturn {
   apiKey: string
@@ -173,9 +195,39 @@ export const useProviders = (): UseProvidersReturn => {
   const [fetchedModels, setFetchedModels] = useState<FetchedModelInfo[]>([])
   const [showModelsModal, setShowModelsModal] = useState(false)
 
+  const applyProviderModelDiscoveryCache = (
+    providerId: string,
+    cache: ProviderModelDiscoveryCache,
+    updateVisibleModels = true
+  ): void => {
+    setProviders((previous) =>
+      previous.map((provider) =>
+        provider.id === providerId ? { ...provider, modelDiscovery: cache } : provider
+      )
+    )
+    if (updateVisibleModels) {
+      setFetchedModels(getCachedProviderModels(cache, cache.sourceUrl))
+    }
+    void window.api
+      .setProviderModelDiscoveryCache(providerId, cache)
+      .then((saved) => {
+        if (!saved)
+          console.warn(`Provider account not found while saving model cache: ${providerId}`)
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to persist provider model discovery cache:', error)
+      })
+  }
+
   useEffect(() => {
-    setFetchedModels([])
-  }, [editingProviderId])
+    const provider = providers.find((item) => item.id === editingProviderId)
+    if (!provider) {
+      setFetchedModels([])
+      return
+    }
+    const sourceUrl = fetchModelsUrl.trim() || getPreferredModelDiscoveryUrl(provider)
+    setFetchedModels(getCachedProviderModels(provider.modelDiscovery, sourceUrl))
+  }, [editingProviderId, fetchModelsUrl, providers])
 
   // Load configuration and data on startup
   useEffect(() => {
@@ -208,9 +260,52 @@ export const useProviders = (): UseProvidersReturn => {
           setSelectedModel(activeProv.model || '')
           setModelsList(activeProv.modelsList || [])
           setModelContextWindows(activeProv.modelContextWindows || {})
-          setFetchModelsUrl(
-            resolveProviderModelDiscoveryUrl(activeProv.type, activeProv.apiUrl || '')
+          const discoveryRequest = createStoredProviderDiscoveryRequest(activeProv)
+          setFetchModelsUrl(discoveryRequest.fetchUrl)
+          setFetchedModels(
+            getCachedProviderModels(activeProv.modelDiscovery, discoveryRequest.fetchUrl)
           )
+          if (
+            shouldRefreshProviderModels(activeProv.modelDiscovery, discoveryRequest.fetchUrl) &&
+            canRefreshProviderModelsInBackground(discoveryRequest)
+          ) {
+            void window.api
+              .fetchModels(discoveryRequest)
+              .then(
+                (models) => {
+                  if (models.length === 0) {
+                    throw new Error('Provider returned an empty model catalog')
+                  }
+                  applyProviderModelDiscoveryCache(
+                    activeProv.id,
+                    completeProviderModelDiscovery(discoveryRequest.fetchUrl, models),
+                    false
+                  )
+                },
+                (error: unknown) => {
+                  applyProviderModelDiscoveryCache(
+                    activeProv.id,
+                    failProviderModelDiscovery(
+                      activeProv.modelDiscovery,
+                      discoveryRequest.fetchUrl,
+                      error
+                    ),
+                    false
+                  )
+                }
+              )
+              .catch((error: unknown) => {
+                applyProviderModelDiscoveryCache(
+                  activeProv.id,
+                  failProviderModelDiscovery(
+                    activeProv.modelDiscovery,
+                    discoveryRequest.fetchUrl,
+                    error
+                  ),
+                  false
+                )
+              })
+          }
         }
 
         setSystemPrompt(upgradedSettings.systemPrompt || '')
@@ -259,9 +354,7 @@ export const useProviders = (): UseProvidersReturn => {
         setSelectedModel(activeProv.model || '')
         setModelsList(activeProv.modelsList || [])
         setModelContextWindows(activeProv.modelContextWindows || {})
-        setFetchModelsUrl(
-          resolveProviderModelDiscoveryUrl(activeProv.type, activeProv.apiUrl || '')
-        )
+        setFetchModelsUrl(getPreferredModelDiscoveryUrl(activeProv))
         setEditingProviderId(activeProviderId)
       }
     }
@@ -423,7 +516,7 @@ export const useProviders = (): UseProvidersReturn => {
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
       setModelContextWindows(target.modelContextWindows || {})
-      setFetchModelsUrl(resolveProviderModelDiscoveryUrl(target.type, target.apiUrl || ''))
+      setFetchModelsUrl(getPreferredModelDiscoveryUrl(target))
     }
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
     if (savedSettings) {
@@ -447,7 +540,7 @@ export const useProviders = (): UseProvidersReturn => {
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
       setModelContextWindows(target.modelContextWindows || {})
-      setFetchModelsUrl(resolveProviderModelDiscoveryUrl(target.type, target.apiUrl || ''))
+      setFetchModelsUrl(getPreferredModelDiscoveryUrl(target))
     }
     setIsEditingProviderDetail(true)
   }
@@ -474,7 +567,7 @@ export const useProviders = (): UseProvidersReturn => {
       setSelectedModel(target.model || '')
       setModelsList(target.modelsList || [])
       setModelContextWindows(target.modelContextWindows || {})
-      setFetchModelsUrl(resolveProviderModelDiscoveryUrl(target.type, target.apiUrl || ''))
+      setFetchModelsUrl(getPreferredModelDiscoveryUrl(target))
     }
 
     const savedSettings = (await window.api.storeGet('settings')) as AppSettings
@@ -582,6 +675,7 @@ export const useProviders = (): UseProvidersReturn => {
     const url = fetchModelsUrl.trim()
     if (!url) return
     setIsFetchingModels(true)
+    const editingProvider = providers.find((provider) => provider.id === editingProviderId)
     try {
       const fetched = await window.api.fetchModels({
         fetchUrl: url,
@@ -589,6 +683,12 @@ export const useProviders = (): UseProvidersReturn => {
         providerConnection: getEditingProviderConnection()
       })
       if (fetched && fetched.length > 0) {
+        if (editingProvider) {
+          applyProviderModelDiscoveryCache(
+            editingProvider.id,
+            completeProviderModelDiscovery(url, fetched)
+          )
+        }
         setFetchedModels(fetched)
         setModelContextWindows((prev) => {
           const next = { ...prev }
@@ -601,10 +701,26 @@ export const useProviders = (): UseProvidersReturn => {
         })
         setShowModelsModal(true)
       } else {
+        if (editingProvider) {
+          applyProviderModelDiscoveryCache(
+            editingProvider.id,
+            failProviderModelDiscovery(
+              editingProvider.modelDiscovery,
+              url,
+              'Provider returned an empty model catalog'
+            )
+          )
+        }
         toast.warning('未能获取到有效的模型列表，请检查 Base URL 或 API Key。')
       }
     } catch (e) {
       const err = e as Error
+      if (editingProvider) {
+        applyProviderModelDiscoveryCache(
+          editingProvider.id,
+          failProviderModelDiscovery(editingProvider.modelDiscovery, url, err)
+        )
+      }
       console.error(err)
       toast.error(`获取模型列表失败: ${err.message || err}`)
     } finally {
@@ -627,12 +743,22 @@ export const useProviders = (): UseProvidersReturn => {
     }
 
     setRefreshingModelContextId(modelId)
+    const editingProvider = providers.find((provider) => provider.id === editingProviderId)
     try {
       const fetched = await window.api.fetchModels({
         fetchUrl: url,
         providerType: getEditingProviderType(),
         providerConnection: getEditingProviderConnection()
       })
+      if (fetched.length === 0) {
+        throw new Error('Provider returned an empty model catalog')
+      }
+      if (editingProvider) {
+        applyProviderModelDiscoveryCache(
+          editingProvider.id,
+          completeProviderModelDiscovery(url, fetched)
+        )
+      }
       setFetchedModels(fetched)
       const matched = findFetchedModel(fetched, modelId)
       if (matched?.contextWindowTokens) {
@@ -650,6 +776,12 @@ export const useProviders = (): UseProvidersReturn => {
       }
     } catch (e) {
       const err = e as Error
+      if (editingProvider) {
+        applyProviderModelDiscoveryCache(
+          editingProvider.id,
+          failProviderModelDiscovery(editingProvider.modelDiscovery, url, err)
+        )
+      }
       console.error(err)
       toast.error(`获取 ${modelId} 的上下文长度失败: ${err.message || err}`)
     } finally {

@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import type { FileStore } from '../store'
 import type { StorageSchema } from '../../shared/types'
+import type { ProviderModelDiscoveryCache } from '../../shared/types'
 
 const ALLOWED_STORE_KEYS = ['sessions', 'settings', 'skills', 'projects']
 
@@ -34,4 +35,17 @@ export function registerStoreIpc(
       version: '1.0.0'
     }
   })
+
+  ipcMain.handle(
+    'provider-model-discovery-cache-set',
+    (_event, accountId: string, cache: ProviderModelDiscoveryCache) => {
+      if (typeof accountId !== 'string' || !accountId.trim()) {
+        throw new Error('Provider account id is required')
+      }
+      if (!cache || typeof cache !== 'object' || !Array.isArray(cache.models)) {
+        throw new Error('Provider model discovery cache is invalid')
+      }
+      return store.setProviderModelDiscoveryCache(accountId.trim(), cache)
+    }
+  )
 }

@@ -31,7 +31,8 @@ import {
   BackgroundSubagentResultNotification,
   BackgroundSubagentEventNotification,
   BackgroundJobInfo,
-  ProviderModelDiscoveryRequest
+  ProviderModelDiscoveryRequest,
+  ProviderModelDiscoveryCache
 } from '../shared/types'
 
 declare global {
@@ -113,6 +114,10 @@ declare global {
       onWindowStateChanged: (callback: (state: WindowState) => void) => () => void
       onUserChoiceRequest: (callback: (request: UserChoiceRequest) => void) => () => void
       fetchModels: (request: ProviderModelDiscoveryRequest) => Promise<FetchedModelInfo[]>
+      setProviderModelDiscoveryCache: (
+        accountId: string,
+        cache: ProviderModelDiscoveryCache
+      ) => Promise<boolean>
       listMemoryEntries: () => Promise<Array<{ id: string; label: string; kind: string }>>
       readMemoryEntry: (id: string) => Promise<string>
       writeMemoryEntry: (id: string, content: string) => Promise<{ ok: boolean }>

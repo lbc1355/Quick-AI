@@ -6,6 +6,14 @@ import { useSettings } from '../contexts/SettingsContext'
 
 const formatContextTokens = (tokens: number): string => `${tokens.toLocaleString()} tokens`
 
+const formatDiscoveryTime = (timestamp: number): string =>
+  new Date(timestamp).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+
 export const ProviderEditor: React.FC = () => {
   const {
     editingProviderId,
@@ -63,6 +71,10 @@ export const ProviderEditor: React.FC = () => {
     }))
   }
   if (!provider) return null
+  const modelDiscovery =
+    provider.modelDiscovery?.sourceUrl === fetchModelsUrl.trim()
+      ? provider.modelDiscovery
+      : undefined
 
   return (
     <div className="provider-editor">
@@ -352,6 +364,20 @@ export const ProviderEditor: React.FC = () => {
                 {isFetchingModels ? '获取中' : '获取'}
               </button>
             </div>
+            {modelDiscovery && (
+              <small
+                className={`provider-model-discovery-status ${modelDiscovery.error ? 'error' : ''}`}
+                title={modelDiscovery.error}
+              >
+                {modelDiscovery.error
+                  ? `上次检查失败，继续使用已缓存的 ${modelDiscovery.models.length} 个模型：${modelDiscovery.error}`
+                  : `已缓存 ${modelDiscovery.models.length} 个模型${
+                      modelDiscovery.refreshedAt
+                        ? ` · 更新于 ${formatDiscoveryTime(modelDiscovery.refreshedAt)}`
+                        : ''
+                    }`}
+              </small>
+            )}
           </div>
 
           <div className="model-context-list">

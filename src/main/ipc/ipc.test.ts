@@ -108,7 +108,8 @@ describe('IPC Registration Modules', () => {
     const mockStore = {
       get: vi.fn().mockReturnValue('mockValue'),
       set: vi.fn(),
-      getStorePath: vi.fn().mockReturnValue('/mock/path')
+      getStorePath: vi.fn().mockReturnValue('/mock/path'),
+      setProviderModelDiscoveryCache: vi.fn().mockReturnValue(true)
     } as unknown as FileStore
 
     const onSkillsUpdated = vi.fn()
@@ -118,6 +119,7 @@ describe('IPC Registration Modules', () => {
     expect(mockHandlers['store-get']).toBeDefined()
     expect(mockHandlers['store-set']).toBeDefined()
     expect(mockHandlers['get-app-info']).toBeDefined()
+    expect(mockHandlers['provider-model-discovery-cache-set']).toBeDefined()
 
     // Test store-get
     const getResult = mockHandlers['store-get']({} as IpcMainInvokeEvent, 'settings')
@@ -134,6 +136,24 @@ describe('IPC Registration Modules', () => {
     // Test skills callback trigger
     mockHandlers['store-set']({} as IpcMainInvokeEvent, 'skills', [])
     expect(onSkillsUpdated).toHaveBeenCalled()
+
+    const discoveryCache = {
+      sourceUrl: 'https://api.test/models',
+      models: [{ id: 'model-1' }],
+      checkedAt: 100,
+      refreshedAt: 100
+    }
+    expect(
+      mockHandlers['provider-model-discovery-cache-set'](
+        {} as IpcMainInvokeEvent,
+        'account-1',
+        discoveryCache
+      )
+    ).toBe(true)
+    expect(mockStore.setProviderModelDiscoveryCache).toHaveBeenCalledWith(
+      'account-1',
+      discoveryCache
+    )
   })
 
   it('registerMcpIpc registers config and status channels', () => {

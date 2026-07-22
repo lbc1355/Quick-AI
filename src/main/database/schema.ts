@@ -26,7 +26,8 @@ export function createSchema(database: Database.Database): void {
       compatibility TEXT NOT NULL DEFAULT '{}',
       authType TEXT,
       authHeader TEXT,
-      headers TEXT NOT NULL DEFAULT '{}'
+      headers TEXT NOT NULL DEFAULT '{}',
+      modelDiscovery TEXT NOT NULL DEFAULT '{}'
     );
 
     CREATE TABLE IF NOT EXISTS provider_definitions (
@@ -53,7 +54,8 @@ export function createSchema(database: Database.Database): void {
       activeApiKeyId TEXT,
       authType       TEXT NOT NULL DEFAULT 'bearer',
       authHeader     TEXT,
-      headers        TEXT NOT NULL DEFAULT '{}'
+      headers        TEXT NOT NULL DEFAULT '{}',
+      modelDiscovery TEXT NOT NULL DEFAULT '{}'
     );
     CREATE INDEX IF NOT EXISTS idx_provider_accounts_provider
       ON provider_accounts(providerId);
@@ -226,12 +228,14 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'providers', 'authType', 'TEXT')
   ensureColumn(database, 'providers', 'authHeader', 'TEXT')
   ensureColumn(database, 'providers', 'headers', "TEXT NOT NULL DEFAULT '{}'")
+  ensureColumn(database, 'providers', 'modelDiscovery', "TEXT NOT NULL DEFAULT '{}'")
   ensureColumn(
     database,
     'provider_definitions',
     'modelContextWindows',
     "TEXT NOT NULL DEFAULT '{}'"
   )
+  ensureColumn(database, 'provider_accounts', 'modelDiscovery', "TEXT NOT NULL DEFAULT '{}'")
   ensureColumn(database, 'skills', 'entryPath', 'TEXT')
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")

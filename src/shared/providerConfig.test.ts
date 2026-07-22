@@ -57,7 +57,14 @@ describe('provider config boundaries', () => {
     const original = provider({
       authType: 'header',
       authHeader: 'X-API-Key',
-      modelContextWindows: { 'glm-4.7': 96000 }
+      modelContextWindows: { 'glm-4.7': 96000 },
+      modelDiscovery: {
+        sourceUrl: 'https://open.bigmodel.cn/api/paas/v4/models',
+        models: [{ id: 'glm-4.7', capabilities: ['text', 'tools'] }],
+        checkedAt: 200,
+        refreshedAt: 100,
+        error: 'offline'
+      }
     })
     const split = splitProviderConfigurations([original])
 
@@ -76,6 +83,9 @@ describe('provider config boundaries', () => {
     })
     expect(restored.apiKey).toBe('secret-2')
     expect(restored.modelContextWindows?.['glm-4.7']).toBe(96000)
+    expect(restored.modelDiscovery).toEqual(original.modelDiscovery)
+    expect(restored.modelDiscovery).not.toBe(original.modelDiscovery)
+    expect(restored.modelDiscovery?.models).not.toBe(original.modelDiscovery?.models)
   })
 
   it('supports header-based authentication without changing transports', () => {

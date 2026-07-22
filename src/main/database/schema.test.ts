@@ -15,7 +15,14 @@ describe('database schema', () => {
     expect(statements).toContain('CREATE TABLE IF NOT EXISTS provider_definitions')
     expect(statements).toContain('CREATE TABLE IF NOT EXISTS provider_accounts')
     expect(statements).toContain('providerId     TEXT NOT NULL REFERENCES provider_definitions')
-    for (const column of ['transportId', 'compatibility', 'authType', 'authHeader', 'headers']) {
+    for (const column of [
+      'transportId',
+      'compatibility',
+      'authType',
+      'authHeader',
+      'headers',
+      'modelDiscovery'
+    ]) {
       expect(statements).toContain(column)
     }
   })
