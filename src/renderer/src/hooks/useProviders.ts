@@ -23,10 +23,10 @@ import {
 } from '../../../shared/providerKeyHelper'
 import { ensureCoreProviderPresets } from '../utils/providerPresets'
 import {
-  createProviderFromRegistration,
   getProviderRegistration,
   getRegisteredProviderAuthType
 } from '../../../shared/providerRegistry'
+import { createProviderFromRegistration } from '../../../shared/providerFactory'
 import {
   isValidProviderAuthHeader,
   ProviderHeaderItem,

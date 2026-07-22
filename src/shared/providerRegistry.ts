@@ -1,6 +1,78 @@
-import { normalizeProviderModelCatalog } from './modelCatalog'
-import { getProviderRuntimeProfile } from './providerProfiles'
-import type { ApiProvider, ProviderAuthType, ProviderType } from './types'
+import type {
+  ModelCompatibilityProfile,
+  ModelPromptProfile,
+  ModelTransportId,
+  ProviderApiFormat,
+  ProviderAuthType,
+  ProviderEndpointType,
+  ProviderType,
+  ResolvedModelCompatibilityProfile,
+  ResolvedModelFeatureSupport
+} from './types'
+
+export interface ProviderRuntimeProfile {
+  endpointType: ProviderEndpointType
+  apiFormat: ProviderApiFormat
+  transportId: ModelTransportId
+  supportedTransports: readonly ModelTransportId[]
+  promptProfile: ModelPromptProfile
+  features: ResolvedModelFeatureSupport
+  compatibility: ResolvedModelCompatibilityProfile
+  modelCompatibilityRules?: readonly ModelCompatibilityRule[]
+}
+
+export interface ModelCompatibilityRule {
+  includes: readonly string[]
+  compatibility: ModelCompatibilityProfile
+}
+
+type ProviderRuntimeProfileOverrides = Omit<
+  Partial<ProviderRuntimeProfile>,
+  'features' | 'compatibility'
+> & {
+  features?: Partial<ResolvedModelFeatureSupport>
+  compatibility?: ModelCompatibilityProfile
+}
+
+const OPENAI_COMPATIBLE_FEATURES: ResolvedModelFeatureSupport = {
+  toolCalls: true,
+  parallelToolCalls: true,
+  reasoning: false,
+  vision: false,
+  promptCaching: false,
+  streamUsage: true
+}
+
+const OPENAI_COMPATIBLE_COMPATIBILITY: ResolvedModelCompatibilityProfile = {
+  stripReasoningContent: true,
+  stripToolMessageName: false,
+  normalizeToolCallContent: false,
+  stripEmptyToolCalls: false,
+  omitToolChoice: false
+}
+
+const STRICT_OPENAI_COMPATIBILITY: ResolvedModelCompatibilityProfile = {
+  ...OPENAI_COMPATIBLE_COMPATIBILITY,
+  stripToolMessageName: true,
+  normalizeToolCallContent: true,
+  stripEmptyToolCalls: true
+}
+
+export function createProviderRuntimeProfile(
+  overrides: ProviderRuntimeProfileOverrides = {}
+): ProviderRuntimeProfile {
+  const { features, compatibility, ...rest } = overrides
+  return {
+    endpointType: 'openai-compatible',
+    apiFormat: 'chat-completions',
+    transportId: 'openai-chat-completions',
+    supportedTransports: ['openai-chat-completions'],
+    promptProfile: 'default',
+    ...rest,
+    features: { ...OPENAI_COMPATIBLE_FEATURES, ...(features || {}) },
+    compatibility: { ...OPENAI_COMPATIBLE_COMPATIBILITY, ...(compatibility || {}) }
+  }
+}
 
 export interface ProviderRegistrationDefinition {
   type: ProviderType
@@ -16,19 +88,18 @@ export interface ProviderRegistrationAccountDefaults {
   headers?: Readonly<Record<string, string>>
 }
 
-/**
- * Application-level provider registration. Static protocol/model metadata and mutable account
- * defaults are deliberately separate so credentials never become part of a provider definition.
- */
+/** A complete provider registration with definition, connection defaults, and runtime policy. */
 export interface ProviderRegistration {
   definition: ProviderRegistrationDefinition
   accountDefaults: ProviderRegistrationAccountDefaults
+  runtime: ProviderRuntimeProfile
 }
 
 const registration = (
   definition: ProviderRegistrationDefinition,
-  accountDefaults: ProviderRegistrationAccountDefaults
-): ProviderRegistration => ({ definition, accountDefaults })
+  accountDefaults: ProviderRegistrationAccountDefaults,
+  runtime: ProviderRuntimeProfile = createProviderRuntimeProfile()
+): ProviderRegistration => ({ definition, accountDefaults, runtime })
 
 export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
   registration(
@@ -38,7 +109,8 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
       models: ['deepseek-v4-flash-free', 'deepseek-v4-pro', 'qwen3-coder-plus'],
       defaultModel: 'deepseek-v4-flash-free'
     },
-    { apiUrl: 'https://opencode.ai/zen/v1', authType: 'bearer' }
+    { apiUrl: 'https://opencode.ai/zen/v1', authType: 'bearer' },
+    createProviderRuntimeProfile({ compatibility: STRICT_OPENAI_COMPATIBILITY })
   ),
   registration(
     {
@@ -47,7 +119,11 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
       models: ['glm-4.5-air', 'glm-4.5', 'glm-4.6', 'glm-4.7', 'glm-5', 'glm-4-flash'],
       defaultModel: 'glm-4.5-air'
     },
-    { apiUrl: 'https://open.bigmodel.cn/api/paas/v4', authType: 'bearer' }
+    { apiUrl: 'https://open.bigmodel.cn/api/paas/v4', authType: 'bearer' },
+    createProviderRuntimeProfile({
+      features: { streamUsage: false },
+      compatibility: { ...STRICT_OPENAI_COMPATIBILITY, omitToolChoice: true }
+    })
   ),
   registration(
     {
@@ -65,7 +141,8 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
       models: ['mimo-v2.5-pro', 'mimo-v2.5', 'mimo-v2-pro', 'mimo-v2-flash'],
       defaultModel: 'mimo-v2.5-pro'
     },
-    { apiUrl: 'https://api.mimo.xiaomi.com/v1', authType: 'bearer' }
+    { apiUrl: 'https://api.mimo.xiaomi.com/v1', authType: 'bearer' },
+    createProviderRuntimeProfile({ compatibility: STRICT_OPENAI_COMPATIBILITY })
   ),
   registration(
     {
@@ -83,7 +160,12 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
       models: ['deepseek-r1:8b', 'llama3'],
       defaultModel: 'deepseek-r1:8b'
     },
-    { apiUrl: 'http://localhost:11434/v1', authType: 'none' }
+    { apiUrl: 'http://localhost:11434/v1', authType: 'none' },
+    createProviderRuntimeProfile({
+      endpointType: 'ollama-openai',
+      features: { parallelToolCalls: false, streamUsage: false },
+      compatibility: { omitToolChoice: true }
+    })
   ),
   registration(
     {
@@ -100,7 +182,16 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
       ],
       defaultModel: 'step-3.7-flash'
     },
-    { apiUrl: 'https://api.stepfun.com/step_plan/v1', authType: 'bearer' }
+    { apiUrl: 'https://api.stepfun.com/step_plan/v1', authType: 'bearer' },
+    createProviderRuntimeProfile({
+      compatibility: STRICT_OPENAI_COMPATIBILITY,
+      modelCompatibilityRules: [
+        {
+          includes: ['flash', 'r-mini', 'reason', 'router'],
+          compatibility: { reasoningFormat: 'deepseek-style' }
+        }
+      ]
+    })
   ),
   registration(
     {
@@ -109,7 +200,11 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
       models: ['custom-model'],
       defaultModel: 'custom-model'
     },
-    { apiUrl: '', authType: 'bearer' }
+    { apiUrl: '', authType: 'bearer' },
+    createProviderRuntimeProfile({
+      endpointType: 'custom',
+      supportedTransports: ['openai-chat-completions', 'openai-responses']
+    })
   )
 ]
 
@@ -133,28 +228,42 @@ export function getRegisteredProviderAuthType(type: ProviderType): ProviderAuthT
   return getProviderRegistration(type)?.accountDefaults.authType || 'bearer'
 }
 
-export function createProviderFromRegistration(
-  item: ProviderRegistration,
-  options: { id?: string; name?: string } = {}
-): ApiProvider {
-  const { definition, accountDefaults } = item
-  const runtime = getProviderRuntimeProfile(definition.type)
-  return normalizeProviderModelCatalog({
-    id: options.id || `provider-${definition.type}`,
-    name: options.name || definition.name,
-    type: definition.type,
-    apiKey: '',
-    apiUrl: accountDefaults.apiUrl,
-    authType: accountDefaults.authType,
-    authHeader: accountDefaults.authHeader,
-    headers: { ...(accountDefaults.headers || {}) },
-    model: definition.defaultModel,
-    modelsList: [...definition.models],
-    endpointType: runtime.endpointType,
-    transportId: runtime.transportId,
-    apiFormat: runtime.apiFormat,
-    features: { ...runtime.features },
-    compatibility: { ...runtime.compatibility },
-    promptProfile: runtime.promptProfile
-  })
+export function getRegisteredProviderRuntimeProfile(type: ProviderType): ProviderRuntimeProfile {
+  return (
+    getProviderRegistration(type)?.runtime ||
+    getProviderRegistration('custom')?.runtime ||
+    createProviderRuntimeProfile()
+  )
+}
+
+/** Return structural registration errors for startup diagnostics and regression tests. */
+export function validateProviderRegistrations(
+  registrations: readonly ProviderRegistration[] = PROVIDER_REGISTRATIONS
+): string[] {
+  const errors: string[] = []
+  const seenTypes = new Set<ProviderType>()
+
+  for (const item of registrations) {
+    const { definition, runtime } = item
+    if (seenTypes.has(definition.type)) {
+      errors.push(`Duplicate provider type: ${definition.type}`)
+    }
+    seenTypes.add(definition.type)
+    if (!definition.models.includes(definition.defaultModel)) {
+      errors.push(`${definition.type}: default model is not registered`)
+    }
+    if (!runtime.supportedTransports.includes(runtime.transportId)) {
+      errors.push(`${definition.type}: default transport is not supported`)
+    }
+    const expectedFormat =
+      runtime.transportId === 'openai-responses' ? 'responses' : 'chat-completions'
+    if (runtime.apiFormat !== expectedFormat) {
+      errors.push(`${definition.type}: API format does not match default transport`)
+    }
+    if (!runtime.features.toolCalls && runtime.features.parallelToolCalls) {
+      errors.push(`${definition.type}: parallel tools require tool-call support`)
+    }
+  }
+
+  return errors
 }

@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AppSettings } from '../../../shared/types'
-import {
-  createProviderFromRegistration,
-  getProviderRegistration
-} from '../../../shared/providerRegistry'
+import { getProviderRegistration } from '../../../shared/providerRegistry'
+import { createProviderFromRegistration } from '../../../shared/providerFactory'
 import { ensureCoreProviderPresets } from './providerPresets'
 
 describe('providerPresets', () => {

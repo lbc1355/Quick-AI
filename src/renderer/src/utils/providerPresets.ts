@@ -2,11 +2,11 @@ import type { ApiProvider, AppSettings } from '../../../shared/types'
 import { normalizeProviderModelCatalog } from '../../../shared/modelCatalog'
 import {
   CORE_PROVIDER_TYPES,
-  createProviderFromRegistration,
   getProviderRegistration,
   getRegisteredProviderAuthType,
   type ProviderRegistration
 } from '../../../shared/providerRegistry'
+import { createProviderFromRegistration } from '../../../shared/providerFactory'
 
 export const PROVIDER_PRESET_VERSION = 3
 

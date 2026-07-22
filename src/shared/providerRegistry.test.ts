@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createProviderFromRegistration,
   getProviderRegistration,
-  PROVIDER_REGISTRATIONS
+  PROVIDER_REGISTRATIONS,
+  validateProviderRegistrations
 } from './providerRegistry'
+import { createProviderFromRegistration } from './providerFactory'
+import { getProviderRuntimeProfile, PROVIDER_RUNTIME_PROFILES } from './providerProfiles'
 
 describe('providerRegistry', () => {
   it('registers each provider type only once', () => {
@@ -21,6 +23,23 @@ describe('providerRegistry', () => {
         'custom'
       ])
     )
+  })
+
+  it('keeps every registration structurally valid', () => {
+    expect(validateProviderRegistrations()).toEqual([])
+  })
+
+  it('derives the compatibility profile map from registration runtime policies', () => {
+    for (const item of PROVIDER_REGISTRATIONS) {
+      const type = item.definition.type
+      expect(getProviderRuntimeProfile(type)).toBe(item.runtime)
+      expect(PROVIDER_RUNTIME_PROFILES[type]).toBe(item.runtime)
+    }
+    expect(getProviderRuntimeProfile('custom').supportedTransports).toEqual([
+      'openai-chat-completions',
+      'openai-responses'
+    ])
+    expect(getProviderRuntimeProfile('glm').compatibility.omitToolChoice).toBe(true)
   })
 
   it('keeps local provider account defaults separate from its definition', () => {

@@ -1,4 +1,4 @@
-import {
+import type {
   ApiProvider,
   ModelFeatureSupport,
   ModelCompatibilityProfile,
@@ -6,108 +6,24 @@ import {
   ModelPromptProfile,
   ModelTransportId,
   ProviderApiFormat,
-  ProviderEndpointType,
   ResolvedModelCompatibilityProfile,
   ResolvedModelFeatureSupport
 } from './types'
+import {
+  getRegisteredProviderRuntimeProfile,
+  PROVIDER_REGISTRATIONS,
+  type ProviderRuntimeProfile
+} from './providerRegistry'
 
-export interface ProviderRuntimeProfile {
-  endpointType: ProviderEndpointType
-  apiFormat: ProviderApiFormat
-  transportId: ModelTransportId
-  supportedTransports: readonly ModelTransportId[]
-  promptProfile: ModelPromptProfile
-  features: ResolvedModelFeatureSupport
-  compatibility: ResolvedModelCompatibilityProfile
-  modelCompatibilityRules?: readonly ModelCompatibilityRule[]
-}
+export type { ProviderRuntimeProfile } from './providerRegistry'
 
-interface ModelCompatibilityRule {
-  includes: readonly string[]
-  compatibility: ModelCompatibilityProfile
-}
-
-type ProviderRuntimeProfileOverrides = Omit<
-  Partial<ProviderRuntimeProfile>,
-  'features' | 'compatibility'
-> & {
-  features?: Partial<ResolvedModelFeatureSupport>
-  compatibility?: ModelCompatibilityProfile
-}
-
-const OPENAI_COMPATIBLE_FEATURES: ResolvedModelFeatureSupport = {
-  toolCalls: true,
-  parallelToolCalls: true,
-  reasoning: false,
-  vision: false,
-  promptCaching: false,
-  streamUsage: true
-}
-
-const OPENAI_COMPATIBLE_COMPATIBILITY: ResolvedModelCompatibilityProfile = {
-  stripReasoningContent: true,
-  stripToolMessageName: false,
-  normalizeToolCallContent: false,
-  stripEmptyToolCalls: false,
-  omitToolChoice: false
-}
-
-const STRICT_OPENAI_COMPATIBILITY: ResolvedModelCompatibilityProfile = {
-  ...OPENAI_COMPATIBLE_COMPATIBILITY,
-  stripToolMessageName: true,
-  normalizeToolCallContent: true,
-  stripEmptyToolCalls: true
-}
-
-const profile = (overrides: ProviderRuntimeProfileOverrides = {}): ProviderRuntimeProfile => {
-  const { features, compatibility, ...rest } = overrides
-  return {
-    endpointType: 'openai-compatible',
-    apiFormat: 'chat-completions',
-    transportId: 'openai-chat-completions',
-    supportedTransports: ['openai-chat-completions'],
-    promptProfile: 'default',
-    ...rest,
-    features: { ...OPENAI_COMPATIBLE_FEATURES, ...(features || {}) },
-    compatibility: { ...OPENAI_COMPATIBLE_COMPATIBILITY, ...(compatibility || {}) }
-  }
-}
-
-export const PROVIDER_RUNTIME_PROFILES: Record<ApiProvider['type'], ProviderRuntimeProfile> = {
-  opencode: profile({ compatibility: STRICT_OPENAI_COMPATIBILITY }),
-  deepseek: profile(),
-  kimi: profile(),
-  glm: profile({
-    features: { ...OPENAI_COMPATIBLE_FEATURES, streamUsage: false },
-    compatibility: { ...STRICT_OPENAI_COMPATIBILITY, omitToolChoice: true }
-  }),
-  mimo: profile({ compatibility: STRICT_OPENAI_COMPATIBILITY }),
-  step: profile({
-    compatibility: STRICT_OPENAI_COMPATIBILITY,
-    modelCompatibilityRules: [
-      {
-        includes: ['flash', 'r-mini', 'reason', 'router'],
-        compatibility: { reasoningFormat: 'deepseek-style' }
-      }
-    ]
-  }),
-  ollama: profile({
-    endpointType: 'ollama-openai',
-    features: {
-      ...OPENAI_COMPATIBLE_FEATURES,
-      parallelToolCalls: false,
-      streamUsage: false
-    },
-    compatibility: { omitToolChoice: true }
-  }),
-  custom: profile({
-    endpointType: 'custom',
-    supportedTransports: ['openai-chat-completions', 'openai-responses']
-  })
-}
+/** Compatibility view derived from the single registration source. */
+export const PROVIDER_RUNTIME_PROFILES = Object.fromEntries(
+  PROVIDER_REGISTRATIONS.map((item) => [item.definition.type, item.runtime])
+) as Record<ApiProvider['type'], ProviderRuntimeProfile>
 
 export function getProviderRuntimeProfile(type: ApiProvider['type']): ProviderRuntimeProfile {
-  return PROVIDER_RUNTIME_PROFILES[type] || PROVIDER_RUNTIME_PROFILES.custom
+  return getRegisteredProviderRuntimeProfile(type)
 }
 
 export function apiFormatToTransportId(format: ProviderApiFormat): ModelTransportId {
@@ -176,7 +92,6 @@ export function resolveModelCompatibility(
     .reduce<ModelCompatibilityProfile>((result, rule) => ({ ...result, ...rule.compatibility }), {})
 
   return {
-    ...OPENAI_COMPATIBLE_COMPATIBILITY,
     ...profile.compatibility,
     ...(provider.compatibility || {}),
     ...inferred,
