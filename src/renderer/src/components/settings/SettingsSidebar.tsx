@@ -99,7 +99,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
           className={`settings-save-btn control-save-btn ${saveSuccess ? 'saved' : ''}`}
           onClick={onSaveGlobalSettings}
         >
-          {saveSuccess ? '已保存' : '保存设置'}
+          {saveSuccess ? '已保存' : '保存'}
         </button>
       </div>
     </aside>

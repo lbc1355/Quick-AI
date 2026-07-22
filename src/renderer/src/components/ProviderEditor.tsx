@@ -474,7 +474,7 @@ export const ProviderEditor: React.FC = () => {
 
       <footer className="provider-editor-footer">
         <button type="button" className="settings-save-btn" onClick={onSave}>
-          保存并返回
+          保存
         </button>
         <button type="button" className="settings-secondary-btn" onClick={onCancel}>
           取消

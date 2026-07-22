@@ -1686,6 +1686,7 @@
 }
 
 .provider-editor-header {
+  flex: 0 0 auto;
   margin-bottom: var(--spacing-4);
   padding-bottom: 12px;
   border-bottom: 1px solid var(--color-border);
@@ -1695,7 +1696,11 @@
 }
 
 .provider-editor-layout {
+  flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+  padding-bottom: 16px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 18px;
@@ -1895,12 +1900,15 @@
 }
 
 .provider-editor-footer {
-  margin-top: auto;
+  flex: 0 0 auto;
+  margin-top: 12px;
   padding-top: 14px;
   border-top: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
   display: flex;
   align-items: center;
   gap: 10px;
+  z-index: 10;
 }
 
 .skill-manager {

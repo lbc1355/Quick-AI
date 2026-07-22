@@ -473,7 +473,7 @@ export const useProviders = (): UseProvidersReturn => {
       await window.api.storeSet('settings', savedSettings)
       setProviders(savedSettings.providers)
       setModelContextWindows(sanitizedContextWindows)
-      setIsEditingProviderDetail(false)
+      toast.success('服务商配置已保存！')
     }
   }
 
