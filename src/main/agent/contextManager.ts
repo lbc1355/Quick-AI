@@ -38,7 +38,6 @@ export function getToolOutputSpilloverThreshold(contextWindowTokens?: number): n
   )
 }
 
-export const TOOL_OUTPUT_SPILLOVER_THRESHOLD = MIN_TOOL_OUTPUT_SPILLOVER_THRESHOLD
 export const DEFAULT_RESPONSE_RESERVE_RATIO = 0.04
 
 const getMessageText = (message: ChatCompletionMessage): string => {

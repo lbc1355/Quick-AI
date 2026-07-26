@@ -459,15 +459,6 @@ export const renderMessageContent = (text: string): React.ReactNode => {
 }
 
 // Get the visual tag badge colors for the autocomplete triggers
-export const getTriggerColor = (type: string): string => {
-  if (type === 'command') return '#f59e0b' // Amber/Orange for system commands
-  if (type === 'delete-session') return '#ef4444' // Red for session deletion
-  if (type === 'session') return '#3b82f6' // Blue for history session
-  if (type === 'model') return '#a855f7' // Purple for switching model
-  if (type === 'provider') return '#06b6d4' // Cyan for provider switching
-  return '#10b981' // Green for prompt skills
-}
-
 export interface ParsedToolCall {
   callId: string
   toolName: string

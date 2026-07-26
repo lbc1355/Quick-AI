@@ -1,6 +1,5 @@
 import * as crypto from 'crypto'
 import {
-  getDb,
   loadResourceCache,
   upsertResourceCache,
   upsertResourceChunk,
@@ -54,20 +53,8 @@ export function getResourceId(source: string): string {
   return crypto.createHash('md5').update(source).digest('hex')
 }
 
-export function getResourcesDir(): string {
-  // Return the database directory for backward compatibility
-  return getDb().name.replace(/\.db$/, '')
-}
-
-export const RESOURCE_ID_PATTERN = /^[a-f0-9]{32}$/
-
-export function getResourceFilePath(resourceId: string): string {
-  if (!RESOURCE_ID_PATTERN.test(resourceId)) {
-    throw new Error('Invalid resource ID')
-  }
-  // Return a virtual path for backward compatibility — used by search_cached_resource
-  return getDb().name
-}
+/** Resource ids are md5 hexdigests; anything else is rejected before it reaches a query. */
+const RESOURCE_ID_PATTERN = /^[a-f0-9]{32}$/
 
 export async function deleteResourceFile(resourceId: string): Promise<void> {
   if (!RESOURCE_ID_PATTERN.test(resourceId)) {

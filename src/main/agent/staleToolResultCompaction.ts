@@ -125,13 +125,6 @@ export function compactStaleToolResultMessage(
   }
 }
 
-export function compactStaleToolResultMessages(
-  messages: ChatCompletionMessage[],
-  options: CompactStaleToolResultsOptions = {}
-): ChatCompletionMessage[] {
-  return messages.map((message) => compactStaleToolResultMessage(message, options))
-}
-
 export const STALE_TOOL_RESULT_COMPACT_TRIGGER_RATIO = 0.85
 const DEFAULT_PROTECTED_TAIL_MESSAGES = 8
 
