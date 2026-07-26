@@ -14,52 +14,6 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
-:root {
-  --color-primary: #b8b0a3;
-  --color-primary-hover: #d2cabe;
-  --color-bg-darker: #121216;
-  --color-bg-header: #15151b;
-  --color-bg-main: #181820;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-focus: rgba(184, 176, 163, 0.4);
-  --color-text: #e5e7eb;
-  --color-text-title: #ffffff;
-  --color-text-muted: #9ca3af;
-  --color-card-bg: rgba(255, 255, 255, 0.03);
-  --color-input-section-bg: rgba(15, 15, 18, 0.4);
-  --color-input-container-bg: rgba(255, 255, 255, 0.02);
-  --color-assistant-bubble-bg: rgba(255, 255, 255, 0.04);
-  --color-inline-code-bg: rgba(255, 255, 255, 0.08);
-  --color-code-block-bg: rgba(10, 10, 12, 0.45);
-  --color-code-block-text: #e5e7eb;
-  --color-code-block-border: rgba(255, 255, 255, 0.06);
-  --color-code-block-header-bg: rgba(255, 255, 255, 0.03);
-  --color-code-block-header-text: #9ca3af;
-}
-
-.app-container.theme-light {
-  --color-primary: #57534e;
-  --color-primary-hover: #44403c;
-  --color-bg-darker: #f3f4f6;
-  --color-bg-header: #f9fafb;
-  --color-bg-main: #ffffff;
-  --color-border: rgba(0, 0, 0, 0.08);
-  --color-border-focus: rgba(87, 83, 78, 0.36);
-  --color-text: #1f2937;
-  --color-text-title: #111827;
-  --color-text-muted: #4b5563;
-  --color-card-bg: rgba(0, 0, 0, 0.02);
-  --color-input-section-bg: rgba(243, 244, 246, 0.8);
-  --color-input-container-bg: rgba(255, 255, 255, 0.9);
-  --color-assistant-bubble-bg: rgba(0, 0, 0, 0.02);
-  --color-inline-code-bg: rgba(0, 0, 0, 0.05);
-  --color-code-block-bg: #f5f6f8;
-  --color-code-block-text: #1f2937;
-  --color-code-block-border: rgba(0, 0, 0, 0.06);
-  --color-code-block-header-bg: rgba(0, 0, 0, 0.03);
-  --color-code-block-header-text: #4b5563;
-}
-
 html,
 body {
   margin: 0;
@@ -92,71 +46,6 @@ select {
   background: transparent;
   margin: 0;
   padding: 0;
-}
-
-/* QuickAI compact workspace redesign */
-:root {
-  --color-primary: #b8b0a3;
-  --color-primary-hover: #d2cabe;
-  --color-accent: #a8a29e;
-  --color-danger: #e5484d;
-  --color-warning: #d98c28;
-  --color-success: #22a06b;
-  --color-bg-darker: #0f1012;
-  --color-bg-header: #18191c;
-  --color-bg-main: #121315;
-  --color-panel: #17191c;
-  --color-panel-soft: #1d2024;
-  --color-border: rgba(255, 255, 255, 0.09);
-  --color-border-strong: rgba(255, 255, 255, 0.14);
-  --color-border-focus: rgba(184, 176, 163, 0.42);
-  --color-text: #e8eaed;
-  --color-text-title: #f7f8fa;
-  --color-text-muted: #9aa3af;
-  --color-text-faint: #6f7782;
-  --color-card-bg: rgba(255, 255, 255, 0.045);
-  --color-card-bg-hover: rgba(255, 255, 255, 0.075);
-  --color-input-section-bg: #15171a;
-  --color-input-container-bg: #1b1e22;
-  --color-assistant-bubble-bg: transparent;
-  --color-inline-code-bg: rgba(255, 255, 255, 0.08);
-  --color-code-block-bg: #101214;
-  --color-code-block-text: #eceff3;
-  --color-code-block-border: rgba(255, 255, 255, 0.08);
-  --color-code-block-header-bg: rgba(255, 255, 255, 0.045);
-  --color-code-block-header-text: #a4acb8;
-}
-
-.app-container.theme-light {
-  --color-primary: #57534e;
-  --color-primary-hover: #44403c;
-  --color-accent: #78716c;
-  --color-danger: #c5343b;
-  --color-warning: #a76516;
-  --color-success: #147a4f;
-  --color-bg-darker: #e8ebef;
-  --color-bg-header: #f7f8fa;
-  --color-bg-main: #f1f3f6;
-  --color-panel: #ffffff;
-  --color-panel-soft: #f7f8fa;
-  --color-border: rgba(15, 23, 42, 0.11);
-  --color-border-strong: rgba(15, 23, 42, 0.17);
-  --color-border-focus: rgba(87, 83, 78, 0.34);
-  --color-text: #1f2937;
-  --color-text-title: #111827;
-  --color-text-muted: #526071;
-  --color-text-faint: #7a8492;
-  --color-card-bg: rgba(15, 23, 42, 0.035);
-  --color-card-bg-hover: rgba(15, 23, 42, 0.07);
-  --color-input-section-bg: #f6f7f9;
-  --color-input-container-bg: #ffffff;
-  --color-assistant-bubble-bg: transparent;
-  --color-inline-code-bg: rgba(15, 23, 42, 0.07);
-  --color-code-block-bg: #f3f5f8;
-  --color-code-block-text: #1f2937;
-  --color-code-block-border: rgba(15, 23, 42, 0.1);
-  --color-code-block-header-bg: rgba(15, 23, 42, 0.04);
-  --color-code-block-header-text: #526071;
 }
 
 .app-container,
