@@ -227,7 +227,9 @@ describe('prepareChatAgentMessages tool directory injection', () => {
       expect(content).toContain('@reader')
       expect(content).toContain('call load_skill')
     } finally {
-      process.env.QUICKAI_HOME = originalQuickAiHome
+      // Assigning `undefined` to process.env stores the string "undefined"; only delete clears it.
+      if (originalQuickAiHome === undefined) delete process.env.QUICKAI_HOME
+      else process.env.QUICKAI_HOME = originalQuickAiHome
       if (existsSync(testDir)) {
         await fs.rm(testDir, { recursive: true, force: true })
       }
