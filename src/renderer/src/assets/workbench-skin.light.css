@@ -1,14 +1,14 @@
 /* 桌面外观第二轮浅色调整，覆盖 workbench-core.light 的部分规则 */
 /* Minimal desktop skin: restrained neutral UI inspired by native workbench layouts. */
 .app-container.theme-light {
-  background: #fbfbfa;
+  background: var(--color-bg-main);
   border-color: #d6d6d0;
   color: #242421;
 }
 
 .app-container.theme-light .drag-header {
-  background: #f7f7f5;
-  border-bottom-color: #deded9;
+  background: var(--color-bg-header);
+  border-bottom-color: var(--color-border);
 }
 
 .app-container.theme-light .logo-icon {
@@ -21,7 +21,7 @@
   height: 28px;
   border-color: #d8d8d2;
   border-radius: 7px;
-  background: #ffffff;
+  background: var(--color-panel);
   color: #77756e;
   box-shadow: none;
 }
@@ -54,12 +54,12 @@
 .app-container.theme-light .conversation-panel,
 .app-container.theme-light .messages-container,
 .app-container.theme-light .chat-input-section {
-  background: #fbfbfa;
+  background: var(--color-bg-main);
 }
 
 .app-container.theme-light .session-sidebar {
   background: #f5f5f2;
-  border-right-color: #deded9;
+  border-right-color: var(--color-border);
 }
 
 .app-container.theme-light .session-sidebar-header {
@@ -70,7 +70,7 @@
 .app-container.theme-light .session-title,
 .app-container.theme-light .conversation-title-line h1,
 .app-container.theme-light .logo-text {
-  color: #171716;
+  color: var(--color-text-title);
 }
 
 .app-container.theme-light .sidebar-subtitle,
@@ -86,7 +86,7 @@
 .app-container.theme-light .project-row,
 .app-container.theme-light .new-conversation-row,
 .app-container.theme-light .session-main-btn {
-  color: #3f3d39;
+  color: var(--color-primary);
 }
 
 .app-container.theme-light .project-row:hover,
@@ -94,7 +94,7 @@
 .app-container.theme-light .new-conversation-row:hover,
 .app-container.theme-light .session-item:hover {
   background: #ecece7;
-  color: #171716;
+  color: var(--color-text-title);
 }
 
 .app-container.theme-light .session-item.active,
@@ -103,12 +103,12 @@
 }
 
 .app-container.theme-light .sidebar-model-card {
-  border-color: #deded9;
-  background: #fbfbfa;
+  border-color: var(--color-border);
+  background: var(--color-bg-main);
 }
 
 .app-container.theme-light .conversation-titlebar {
-  background: #fbfbfa;
+  background: var(--color-bg-main);
   border-bottom-color: #e3e3de;
 }
 
@@ -117,10 +117,10 @@
   width: auto;
   max-width: min(780px, calc(100% - 96px));
   margin-left: auto;
-  border-color: #deded9;
+  border-color: var(--color-border);
   border-radius: 10px;
   background: #eeeeea;
-  color: #171716;
+  color: var(--color-text-title);
   box-shadow: none;
 }
 
@@ -143,9 +143,9 @@
 .app-container.theme-light .message-text :not(pre) > code,
 .app-container.theme-light .tool-detail-name,
 .app-container.theme-light .tool-detail-result-item-source {
-  border-color: #deded9;
+  border-color: var(--color-border);
   background: #eeeeea;
-  color: #3f3d39;
+  color: var(--color-primary);
 }
 
 .app-container.theme-light .agent-step-reasoning,
@@ -154,24 +154,24 @@
 }
 
 .app-container.theme-light .agent-step-reasoning summary:hover {
-  color: #171716;
+  color: var(--color-text-title);
 }
 
 .app-container.theme-light .agent-step-reasoning-content {
   border-left-color: #d0d0c9;
   background: #f3f3ef;
-  color: #3f3d39;
+  color: var(--color-primary);
 }
 
 .app-container.theme-light .agent-tool-event,
 .app-container.theme-light .agent-tool-group-toggle {
-  color: #686761;
+  color: var(--color-text-muted);
 }
 
 .app-container.theme-light .agent-tool-event:hover,
 .app-container.theme-light .agent-tool-group-toggle:hover {
   background: #eeeeea;
-  color: #171716;
+  color: var(--color-text-title);
 }
 
 .app-container.theme-light .agent-tool-event.focused,
@@ -185,15 +185,15 @@
 
 .app-container.theme-light .agent-tool-name {
   border-color: #d8d8d2;
-  background: #f6f6f3;
-  color: #3f3d39;
+  background: var(--color-panel-soft);
+  color: var(--color-primary);
 }
 
 .app-container.theme-light .agent-tool-verb,
 .app-container.theme-light .agent-tool-group-caret,
 .app-container.theme-light .agent-tool-group-more,
 .app-container.theme-light .agent-tool-line-range {
-  color: #85827a;
+  color: var(--color-status-muted);
 }
 
 .app-container.theme-light .agent-tool-group-count {
@@ -202,7 +202,7 @@
 }
 
 .app-container.theme-light .agent-tool-group-items {
-  border-left-color: #deded9;
+  border-left-color: var(--color-border);
 }
 
 .app-container.theme-light .chat-input-section {
@@ -212,18 +212,18 @@
 .app-container.theme-light .input-container {
   border-color: #cfcfca;
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--color-input-container-bg);
   box-shadow: 0 1px 2px rgba(23, 23, 22, 0.06);
 }
 
 .app-container.theme-light .input-container:focus-within {
-  border-color: #a7a29a;
+  border-color: var(--color-border-focus);
   box-shadow: 0 0 0 2px rgba(63, 61, 57, 0.08);
 }
 
 .app-container.theme-light .session-revert-dock {
-  border-color: color-mix(in srgb, var(--color-primary) 32%, #deded9);
-  background: color-mix(in srgb, var(--color-primary) 6%, #ffffff);
+  border-color: color-mix(in srgb, var(--color-primary) 32%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-panel));
   color: #66645e;
 }
 
@@ -232,7 +232,7 @@
 }
 
 .app-container.theme-light .chat-input::placeholder {
-  color: #96948d;
+  color: var(--color-text-faint);
 }
 
 .app-container.theme-light .run-mode-btn,
@@ -240,13 +240,13 @@
 .app-container.theme-light .run-mode-btn.agent,
 .app-container.theme-light .run-mode-btn .sparkle-icon,
 .app-container.theme-light .run-mode-btn.agent .sparkle-icon {
-  color: #686761;
+  color: var(--color-text-muted);
 }
 
 .app-container.theme-light .run-mode-btn:hover,
 .app-container.theme-light .input-action-btn.send:hover {
   background: #eeeeea;
-  color: #171716;
+  color: var(--color-text-title);
 }
 
 .app-container.theme-light .input-action-btn.send {
@@ -255,7 +255,7 @@
 }
 
 .app-container.theme-light .input-action-btn.send:hover {
-  background: #3f3d39;
+  background: var(--color-primary);
   color: #ffffff;
 }
 
@@ -269,8 +269,8 @@
 .app-container.theme-light .scroll-to-bottom-btn,
 .app-container.theme-light .sticky-user-message,
 .app-container.theme-light .session-switch-card {
-  border-color: #deded9;
-  background: #ffffff;
+  border-color: var(--color-border);
+  background: var(--color-panel);
   box-shadow: 0 8px 22px rgba(23, 23, 22, 0.08);
 }
 
@@ -289,7 +289,7 @@
 }
 
 .app-container.theme-light .message-minimap-item.agent::before {
-  background: #706d66;
+  background: var(--color-accent);
 }
 
 .app-container.theme-light .message-minimap-item.error::before {
@@ -297,8 +297,8 @@
 }
 
 .app-container.theme-light .message-minimap-item::after {
-  border-color: #deded9;
-  background: #ffffff;
+  border-color: var(--color-border);
+  background: var(--color-panel);
   color: #242421;
   box-shadow: 0 8px 20px rgba(23, 23, 22, 0.1);
 }
@@ -306,12 +306,12 @@
 .app-container.theme-light .control-panel,
 .app-container.theme-light .settings-container,
 .app-container.theme-light .control-panel-content {
-  background: #fbfbfa;
+  background: var(--color-bg-main);
 }
 
 .app-container.theme-light .control-panel-sidebar {
   background: #f5f5f2;
-  border-right-color: #deded9;
+  border-right-color: var(--color-border);
 }
 
 .app-container.theme-light .control-panel-nav-item {
@@ -321,16 +321,16 @@
 .app-container.theme-light .control-panel-nav-item:hover,
 .app-container.theme-light .control-panel-nav-item.active {
   background: #e2e2dc;
-  color: #171716;
+  color: var(--color-text-title);
 }
 
 .app-container.theme-light .control-panel-nav-item.active svg {
-  color: #3f3d39;
+  color: var(--color-primary);
 }
 
 .app-container.theme-light .memory-manager-toolbar {
   align-items: flex-end;
-  border-bottom: 1px solid #deded9;
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 12px;
 }
 
@@ -340,38 +340,38 @@
 
 .app-container.theme-light .memory-entry-button {
   min-height: 36px;
-  border-color: #deded9;
+  border-color: var(--color-border);
   border-radius: 7px;
-  background: #f6f6f3;
-  color: #3f3d39;
+  background: var(--color-panel-soft);
+  color: var(--color-primary);
 }
 
 .app-container.theme-light .memory-entry-button:hover {
   background: #eeeeea;
-  color: #171716;
+  color: var(--color-text-title);
 }
 
 .app-container.theme-light .memory-entry-button.active {
-  border-color: #c9c9c2;
+  border-color: var(--color-border-strong);
   background: #e2e2dc;
-  color: #171716;
+  color: var(--color-text-title);
 }
 
 .app-container.theme-light .memory-editor-title {
-  color: #686761;
+  color: var(--color-text-muted);
 }
 
 .app-container.theme-light .settings-input,
 .app-container.theme-light .settings-select,
 .app-container.theme-light .memory-editor-textarea {
-  border-color: #deded9;
-  background: #ffffff;
+  border-color: var(--color-border);
+  background: var(--color-panel);
   color: #242421;
 }
 
 .app-container.theme-light .settings-input:focus,
 .app-container.theme-light .settings-select:focus,
 .app-container.theme-light .memory-editor-textarea:focus {
-  border-color: #a7a29a;
+  border-color: var(--color-border-focus);
   box-shadow: 0 0 0 2px rgba(63, 61, 57, 0.08);
 }

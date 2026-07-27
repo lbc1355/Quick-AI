@@ -1,36 +1,7 @@
-/* 上面 workbench-core 的浅色主题镜像 */
-.app-container.theme-light {
-  color: var(--color-text);
-  background: #ffffff;
-  border-color: #d9dee7;
-}
-
-.app-container.theme-light .drag-header {
-  background: #f5f6f8;
-  border-bottom-color: #d9dee7;
-}
-
-.app-container.theme-light .logo-icon {
-  border-color: #697386;
-  background:
-    linear-gradient(90deg, transparent 46%, #697386 46%, #697386 58%, transparent 58%), transparent;
-}
-
-.app-container.theme-light .header-command-center {
-  border-color: #d5dbe5;
-  background: #ffffff;
-  color: #526071;
-}
-
-.app-container.theme-light .header-command-center svg,
-.app-container.theme-light .header-nav-btn,
-.app-container.theme-light .header-action-btn,
-.app-container.theme-light .sidebar-icon-btn,
-.app-container.theme-light .input-action-btn,
-.app-container.theme-light .msg-action-btn {
-  color: #647184;
-}
-
+/*
+ * workbench-core 的浅色镜像，第一轮设计（冷灰调）。
+ * 与之同选择器、被 workbench-skin.light.css 整块覆盖的规则已删除，剩下的都是仍然生效的。
+ */
 .app-container.theme-light .header-command-separator {
   color: #aeb7c3;
 }
@@ -52,30 +23,8 @@
   color: #5f6c7b;
 }
 
-.app-container.theme-light .header-nav-btn:hover,
-.app-container.theme-light .header-action-btn:hover,
-.app-container.theme-light .sidebar-icon-btn:hover,
-.app-container.theme-light .msg-action-btn:hover,
-.app-container.theme-light .input-action-btn:hover {
-  background: #e9edf3;
-  color: #111827;
-}
-
-.app-container.theme-light .header-action-btn.active,
-.app-container.theme-light .header-action-btn.active:hover {
-  background: #dce8ff;
-  color: var(--color-primary);
-}
-
 .app-container.theme-light .window-control-group {
   border-left-color: #d9dee7;
-}
-
-.app-container.theme-light .chat-area,
-.app-container.theme-light .conversation-panel,
-.app-container.theme-light .messages-container,
-.app-container.theme-light .chat-input-section {
-  background: #ffffff;
 }
 
 .app-container.theme-light .session-switch-overlay {
@@ -96,7 +45,7 @@
 
 .app-container.theme-light .scroll-to-bottom-btn {
   border-color: #d9dee7;
-  background: #ffffff;
+  background: var(--color-panel);
   color: #526071;
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1);
 }
@@ -141,37 +90,9 @@
   background: #9f988d;
 }
 
-.app-container.theme-light .message-minimap-item.agent::before {
-  background: #a76516;
-}
-
-.app-container.theme-light .message-minimap-item.error::before {
-  background: #c5343b;
-}
-
-.app-container.theme-light .message-minimap-item::after {
-  border-color: #d9dee7;
-  background: #ffffff;
-  color: #243042;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
-}
-
-.app-container.theme-light .session-sidebar {
-  background: #f4f5f7;
-  border-right-color: #d9dee7;
-}
-
 .app-container.theme-light .project-row,
 .app-container.theme-light .new-conversation-row {
   color: #344054;
-}
-
-.app-container.theme-light .project-row:hover,
-.app-container.theme-light .project-row.active,
-.app-container.theme-light .new-conversation-row:hover,
-.app-container.theme-light .session-item:hover {
-  background: #e9edf3;
-  color: #111827;
 }
 
 .app-container.theme-light .sidebar-mini-action {
@@ -189,12 +110,7 @@
 
 .app-container.theme-light .project-delete-btn:hover {
   background: #fee2e2;
-  color: #dc2626;
-}
-
-.app-container.theme-light .session-item.active,
-.app-container.theme-light .session-item.active .session-main-btn {
-  background: #e1e7ef;
+  color: var(--color-danger);
 }
 
 .app-container.theme-light .session-initial {
@@ -212,7 +128,7 @@
 .app-container.theme-light .message-branch-link,
 .app-container.theme-light .tool-detail-modal {
   border-color: #d9dee7;
-  background: #ffffff;
+  background: var(--color-panel);
 }
 
 .app-container.theme-light .sidebar-collapsed .project-section {
@@ -260,10 +176,6 @@
   color: #243042;
 }
 
-.app-container.theme-light .agent-step-progress-message.system-generated {
-  color: #5f6c7b;
-}
-
 .app-container.theme-light .system-progress-label {
   border-color: #d9dee7;
   background: #f4f6f9;
@@ -276,21 +188,6 @@
 
 .app-container.theme-light .agent-step-reasoning summary {
   color: #5f6c7b;
-}
-
-.app-container.theme-light .agent-step-reasoning summary:hover {
-  color: #111827;
-}
-
-.app-container.theme-light .agent-step-reasoning-content {
-  border-left-color: #d9dee7;
-  background: #f7f9fc;
-  color: #344054;
-}
-
-.app-container.theme-light .conversation-titlebar {
-  background: #ffffff;
-  border-bottom-color: #d9dee7;
 }
 
 .app-container.theme-light .conversation-title-dot {
@@ -315,13 +212,7 @@
 }
 
 .app-container.theme-light .context-progress-ring::after {
-  background: #ffffff;
-}
-
-.app-container.theme-light .message-bubble.user .message-text {
-  border-color: #d9dee7;
-  background: #f4f6f9;
-  color: #111827;
+  background: var(--color-panel);
 }
 
 .app-container.theme-light .message-text :not(pre) > code,
@@ -336,26 +227,6 @@
 .app-container.theme-light .agent-event-final-text,
 .app-container.theme-light .message-branch-children {
   border-top-color: #d9dee7;
-}
-
-.app-container.theme-light .agent-tool-event,
-.app-container.theme-light .agent-tool-group-toggle {
-  color: #5f6c7b;
-}
-
-.app-container.theme-light .agent-tool-event:hover,
-.app-container.theme-light .agent-tool-group-toggle:hover {
-  background: #f0f3f7;
-  color: #111827;
-}
-
-.app-container.theme-light .agent-tool-event.focused,
-.app-container.theme-light .agent-tool-event.running,
-.app-container.theme-light .agent-tool-event.pending,
-.app-container.theme-light .agent-tool-group-toggle.focused,
-.app-container.theme-light .agent-tool-group-toggle.running {
-  border-color: #c8bfb2;
-  background: #f7f4ee;
 }
 
 .app-container.theme-light .agent-tool-event.failed,
@@ -383,12 +254,6 @@
   color: #9f2d2d;
 }
 
-.app-container.theme-light .agent-tool-name {
-  background: rgba(0, 0, 0, 0.04);
-  color: #0284c7;
-  border-color: rgba(0, 0, 0, 0.08);
-}
-
 .app-container.theme-light .agent-tool-verb {
   color: #5f6c7b;
 }
@@ -402,29 +267,12 @@
 }
 
 .app-container.theme-light .agent-tool-diff-removed {
-  color: #dc2626;
+  color: var(--color-danger);
 }
 
 .app-container.theme-light .agent-tool-group-caret,
 .app-container.theme-light .agent-tool-group-more {
   color: #7a8594;
-}
-
-.app-container.theme-light .agent-tool-group-count {
-  background: #e3e8f0;
-  color: #4b5563;
-}
-
-.app-container.theme-light .agent-tool-group-items {
-  border-left-color: #d9dee7;
-}
-
-.app-container.theme-light .chat-input {
-  color: #243042;
-}
-
-.app-container.theme-light .chat-input::placeholder {
-  color: #8792a1;
 }
 
 .app-container.theme-light .run-mode-btn,
@@ -435,21 +283,6 @@
 .app-container.theme-light .input-action-btn.send {
   background: transparent;
   color: #5f6c7b;
-}
-
-.app-container.theme-light .run-mode-btn:hover,
-.app-container.theme-light .input-action-btn.send:hover {
-  background: #e9edf3;
-  color: #111827;
-}
-
-.app-container.theme-light .skills-item {
-  border-bottom-color: #e2e7ef;
-}
-
-.app-container.theme-light .skills-item:hover,
-.app-container.theme-light .skills-item.selected {
-  background: #e8eef7;
 }
 
 .app-container.theme-light .skills-trigger,
