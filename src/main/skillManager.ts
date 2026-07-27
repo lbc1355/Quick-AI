@@ -11,7 +11,7 @@ import {
 } from 'fs'
 import { dirname, join, normalize, relative } from 'path'
 import { homedir } from 'os'
-import { getQuickAiRoot, getSkillRoot, getWorkspaceRoot } from './paths'
+import { getQuickAiRoot, getSkillRoot, getWorkspaceRoot, readEnvPathOverride } from './paths'
 import { parseSkillMarkdown, serializeSkillToMarkdown } from '../shared/skillParser'
 import { Skill, SkillInterfaceMetadata, SkillPackageFile } from '../shared/types'
 import { logger } from './logger'
@@ -404,7 +404,7 @@ export function getSkillCandidateDirectories(): string[] {
   }
 
   // 2. Global user home directories
-  const home = process.env.QUICKAI_HOME || homedir()
+  const home = readEnvPathOverride('QUICKAI_HOME') || homedir()
   addUniqueDir(dirs, seen, getSkillRoot()) // ~/.quickai/skill
   if (home) {
     addUniqueDir(dirs, seen, join(home, '.quickai', 'skills'))

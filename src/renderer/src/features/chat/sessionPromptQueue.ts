@@ -221,6 +221,42 @@ export function applySteeredPromptToSession(
   return { ...session, messages, lastActiveTime: Date.now() }
 }
 
+/**
+ * Fold an accepted steer into the session list.
+ *
+ * A steered prompt joins the run already in flight, so its "queued" placeholder must go. When the
+ * active assistant bubble is known the user message is moved just above it, keeping the transcript
+ * in the order the model will actually see. Without that anchor there is nothing to insert before,
+ * so only the placeholder is dropped and the user message stays where it landed.
+ */
+export function applySteeredAdmission(
+  sessions: Session[],
+  input: {
+    sessionId: string
+    sourceMessageId: string
+    queuedAssistantMessageId: string
+    activeAssistantMessageId?: string
+  }
+): Session[] {
+  return sessions.map((session) => {
+    if (session.id !== input.sessionId) return session
+    if (!input.activeAssistantMessageId) {
+      return {
+        ...session,
+        messages: session.messages.filter(
+          (message) => message.id !== input.queuedAssistantMessageId
+        )
+      }
+    }
+    return applySteeredPromptToSession(
+      session,
+      input.sourceMessageId,
+      input.queuedAssistantMessageId,
+      input.activeAssistantMessageId
+    )
+  })
+}
+
 export function prepareClaimedPromptRun(
   session: Session,
   sourceMessageId: string,

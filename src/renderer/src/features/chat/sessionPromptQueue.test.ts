@@ -5,6 +5,7 @@ import {
   applyBackgroundShellNotification,
   applyBackgroundSubagentEventNotification,
   applyBackgroundSubagentNotification,
+  applySteeredAdmission,
   applySteeredPromptToSession,
   materializeBackgroundPrompt,
   prepareClaimedPromptRun
@@ -359,5 +360,61 @@ describe('session prompt queue UI mutations', () => {
     expect(next.messages[1].agentEvents).toContainEqual(
       expect.objectContaining({ type: 'subagent_end', subagentId: 'subagent-fast' })
     )
+  })
+})
+
+describe('applySteeredAdmission', () => {
+  const withQueuedPair = (): Session[] => [
+    {
+      id: 'session-1',
+      title: 'Session',
+      messages: [
+        { id: 'user-active', role: 'user', content: 'active prompt' },
+        { id: 'assistant-active', role: 'assistant', content: 'partial' },
+        { id: 'user-queued', role: 'user', content: 'steer' },
+        { id: 'assistant-queued', role: 'assistant', content: '⏳ 已加入队列' }
+      ]
+    },
+    { id: 'session-2', title: 'Other', messages: [] }
+  ]
+
+  it('moves the steered prompt above the active answer and drops its placeholder', () => {
+    const next = applySteeredAdmission(withQueuedPair(), {
+      sessionId: 'session-1',
+      sourceMessageId: 'user-queued',
+      queuedAssistantMessageId: 'assistant-queued',
+      activeAssistantMessageId: 'assistant-active'
+    })
+
+    expect(next[0].messages.map((m) => m.id)).toEqual([
+      'user-active',
+      'user-queued',
+      'assistant-active'
+    ])
+  })
+
+  it('only drops the placeholder when there is no active answer to anchor to', () => {
+    const next = applySteeredAdmission(withQueuedPair(), {
+      sessionId: 'session-1',
+      sourceMessageId: 'user-queued',
+      queuedAssistantMessageId: 'assistant-queued'
+    })
+
+    expect(next[0].messages.map((m) => m.id)).toEqual([
+      'user-active',
+      'assistant-active',
+      'user-queued'
+    ])
+  })
+
+  it('leaves other sessions untouched', () => {
+    const sessions = withQueuedPair()
+    const next = applySteeredAdmission(sessions, {
+      sessionId: 'session-1',
+      sourceMessageId: 'user-queued',
+      queuedAssistantMessageId: 'assistant-queued',
+      activeAssistantMessageId: 'assistant-active'
+    })
+    expect(next[1]).toBe(sessions[1])
   })
 })

@@ -115,12 +115,6 @@ export const getToolRegistryView = (): ToolRegistryView => registry
 /** The underlying registry instance for management code that must register/search/mutate. */
 export const getToolRegistryAdmin = (): ToolRegistryImpl => registry
 
-/** @deprecated Use registerToolDefinition. */
-export const registerTool = registerToolDefinition
-
-/** @deprecated Use unregisterToolDefinition. */
-export const unregisterTool = unregisterToolDefinition
-
 /** @deprecated Use getToolRegistryView or getToolRegistryAdmin. */
 export const getToolRegistry = getToolRegistryAdmin
 

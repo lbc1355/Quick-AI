@@ -1,53 +1,15 @@
-import { ChatCompletionMessage, ToolArgs } from '../../shared/types'
-import { ActionLog } from './actionLog'
+import { ChatCompletionMessage } from '../../shared/types'
 import { MEMORY_CONTEXT_PROMPT_PREFIX } from './memoryPrompts'
-import { AmbiguousAction, RunCheckpoint } from './runCheckpoint'
 
 export const ACTION_HISTORY_RESUME_LIMIT = 12
-export const RESUME_MODE_PROMPT_PREFIX = '[RESUME MODE]'
 
-const truncateForPrompt = (value: string, maxChars: number): string => {
-  if (value.length <= maxChars) return value
-  return `${value.slice(0, Math.max(0, maxChars - 3))}...`
-}
-
-const compactJsonForPrompt = (value: unknown, maxChars = 220): string => {
-  try {
-    return truncateForPrompt(JSON.stringify(value), maxChars)
-  } catch {
-    return '[unserializable]'
-  }
-}
-
-export const buildResumeActionHistoryPrompt = (actionLog: ActionLog): string => {
-  if (actionLog.size === 0) return ''
-
-  const actions = actionLog.list({ limit: ACTION_HISTORY_RESUME_LIMIT })
-  if (actions.length === 0) return ''
-
-  const lines = [
-    '[RESUME CONTEXT]',
-    'Recent tool actions already completed in this conversation are listed below. Use this before deciding whether to call tools again.',
-    'Do not repeat successful reads, searches, fetches, or shell commands unless the user explicitly asked to regenerate, verify again, or the prior result is insufficient for the current request.',
-    'If you need exact details for an earlier action, call get_past_action with its callId instead of repeating the original tool call.',
-    '',
-    `Recent actions (${actions.length} shown, newest first):`
-  ]
-
-  actions.forEach((action, index) => {
-    const record = actionLog.get(action.callId)
-    lines.push(
-      `${index + 1}. [Turn ${action.turnIndex}] ${action.toolName} - ${action.resultStatus} (${action.durationMs}ms, ${action.resultSize} chars)`
-    )
-    lines.push(`   callId: ${action.callId}`)
-    if (record) {
-      lines.push(`   args: ${compactJsonForPrompt(record.args)}`)
-    }
-    lines.push(`   summary: ${truncateForPrompt(action.resultSummary.replace(/\s+/g, ' '), 260)}`)
-  })
-
-  return lines.join('\n')
-}
+/**
+ * Resume no longer injects a `[RESUME MODE]` prompt — the checkpoint messages are replayed
+ * verbatim so the first request after a resume is byte-identical to the interrupted one and hits
+ * the provider's prompt cache. The prefix is still recognised so checkpoints written by older
+ * builds get the stale prompt stripped instead of replayed.
+ */
+const RESUME_MODE_PROMPT_PREFIX = '[RESUME MODE]'
 
 export const injectPromptBeforeLatestUser = (
   messages: ChatCompletionMessage[],
@@ -79,54 +41,6 @@ export const cloneMessagesForCheckpoint = (
   return JSON.parse(
     JSON.stringify(messages.filter((message) => !isTransientContextPrompt(message)))
   ) as ChatCompletionMessage[]
-}
-
-export const buildCheckpointResumePrompt = (
-  checkpoint: RunCheckpoint,
-  actionLog: ActionLog
-): string => {
-  const lines = [
-    RESUME_MODE_PROMPT_PREFIX,
-    'This is an automatic continuation of the same agent task after a previous execution failure.',
-    'No new user request was added. Continue the original task from the completed tool observations already present in the message history.',
-    'The failed or incomplete model step was discarded. Do not restart the task and do not repeat successful actions unless verification is necessary.',
-    'If a prior side-effecting action is marked ambiguous, do not run it again blindly. Inspect the current workspace/process state first, or ask the user before repeating it.',
-    '',
-    `Resuming from run: ${checkpoint.reqId}`,
-    `Checkpoint step: ${checkpoint.step}`,
-    `Last completed call: ${checkpoint.lastCompletedCallId || 'none'}`
-  ]
-
-  const ambiguousActionEntries = [
-    ...(checkpoint.ambiguousActions || []),
-    ...actionLog
-      .list({ limit: ACTION_HISTORY_RESUME_LIMIT })
-      .filter((action) => action.resultStatus === 'ambiguous')
-      .map((action): AmbiguousAction => {
-        const record = actionLog.get(action.callId)
-        return {
-          callId: action.callId,
-          toolName: action.toolName,
-          args: (record?.args || {}) as ToolArgs,
-          reason: action.resultSummary,
-          timestamp: record?.timestamp || Date.now()
-        }
-      })
-  ]
-  const ambiguousActions = Array.from(
-    new Map(ambiguousActionEntries.map((action) => [action.callId, action])).values()
-  )
-
-  if (ambiguousActions.length > 0) {
-    lines.push('', 'Ambiguous side-effecting actions:')
-    ambiguousActions.slice(0, ACTION_HISTORY_RESUME_LIMIT).forEach((action, index) => {
-      lines.push(`${index + 1}. ${action.toolName} (${action.callId})`)
-      lines.push(`   args: ${compactJsonForPrompt(action.args)}`)
-      lines.push(`   reason: ${truncateForPrompt(action.reason.replace(/\s+/g, ' '), 260)}`)
-    })
-  }
-
-  return lines.join('\n')
 }
 
 export const buildBranchForkPrompt = (branchOf: {

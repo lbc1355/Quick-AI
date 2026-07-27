@@ -7,7 +7,6 @@ import {
 import { callModel } from './callModel'
 import { estimateTokens } from './tokenEstimator'
 
-export const CONTEXT_COMPACTION_SUMMARY_MARKER = 'AI context compaction summary.'
 export const DEFAULT_COMPACTION_KEEP_RECENT_MESSAGES = 6
 
 const MAX_MESSAGE_CHARS = 12000

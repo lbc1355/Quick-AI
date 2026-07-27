@@ -935,7 +935,7 @@
 }
 
 .context-role-legend-share {
-  color: var(--color-text-subtle);
+  color: var(--color-text-faint);
   font-family: Consolas, 'SFMono-Regular', monospace;
   font-variant-numeric: tabular-nums;
 }

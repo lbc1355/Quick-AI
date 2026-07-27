@@ -15,6 +15,25 @@ import { existsSync, mkdirSync, realpathSync } from 'fs'
  * overrides only the workspace path.
  */
 
+/**
+ * Read a path override from the environment, treating unusable values as unset.
+ *
+ * `process.env` coerces every assigned value with `String()`, so a restore like
+ * `process.env.QUICKAI_HOME = savedValue` where `savedValue` is `undefined` leaves the literal
+ * string "undefined" behind instead of clearing the key. That string is truthy, so a plain
+ * `process.env.X || fallback` silently resolves the root to `./undefined` relative to cwd — and
+ * `ensureDir` then creates it. Filter those sentinels out here so a single bad restore cannot
+ * redirect every on-disk root.
+ */
+export function readEnvPathOverride(name: string): string | undefined {
+  const raw = process.env[name]
+  if (typeof raw !== 'string') return undefined
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+  if (trimmed === 'undefined' || trimmed === 'null') return undefined
+  return trimmed
+}
+
 function ensureDir(path: string): string {
   if (!existsSync(path)) {
     try {
@@ -31,7 +50,7 @@ function ensureDir(path: string): string {
 }
 
 export function getQuickAiRoot(): string {
-  const root = process.env.QUICKAI_HOME || join(homedir(), '.quickai')
+  const root = readEnvPathOverride('QUICKAI_HOME') || join(homedir(), '.quickai')
   return ensureDir(normalize(resolve(root)))
 }
 
@@ -44,7 +63,7 @@ export function getLogsRoot(): string {
 }
 
 export function getWorkspaceRoot(): string {
-  const configured = process.env.QUICKAI_WORKSPACE_ROOT
+  const configured = readEnvPathOverride('QUICKAI_WORKSPACE_ROOT')
   const root = configured ? normalize(resolve(configured)) : join(getQuickAiRoot(), 'workspace')
   return ensureDir(root)
 }

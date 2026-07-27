@@ -14,16 +14,47 @@ import {
   BackgroundSubagentResultNotification,
   BackgroundSubagentEventNotification
 } from '../../../shared/types'
-import { computeResourcePrune } from './useSessions'
 import { startStreamingRun as startChatStreamingRun } from './chatStreaming'
 import { getSessionContextEpoch } from '../../../shared/contextEpoch'
 
 // Extracted pure helper functions
 import { buildApiMessages } from '../features/chat/apiMessageBuilder'
-import { getCachePriorityRetainedRuns } from '../features/chat/resourceCacheCoordinator'
+import {
+  buildAgentSkillRunOptions,
+  buildChatRunOptions,
+  needsApiKeyBeforeRun,
+  resolveEffectiveRunMode,
+  type ChatRequestConfig
+} from '../features/chat/chatRunRequest'
+import {
+  createAssistantPlaceholder,
+  createHelpMessage,
+  createQueuedAssistantPlaceholder,
+  createUserMessage,
+  markMessageAsRuntimeError
+} from '../features/chat/chatMessageFactory'
+import {
+  applyCompactionResult,
+  canCompactMessages,
+  createCompactionPlaceholder,
+  MANUAL_COMPACTION_KEEP_RECENT_MESSAGES,
+  withoutCompactionPlaceholder
+} from '../features/chat/contextCompaction'
+import { createMessagePairIds, createRunId, deriveSessionTitle } from '../features/chat/runIdentity'
+import {
+  cloneSessionsDeep,
+  planRemovedRunCleanup,
+  planStagedRevertCommit,
+  replaceSessionInSnapshot,
+  touchSessionInSnapshot
+} from '../features/chat/sessionSnapshot'
+import {
+  applyEpochScopedNotification,
+  applyEpochScopedNotifications,
+  shouldDrainAfterNotification
+} from '../features/chat/backgroundNotifications'
 import {
   resolveSessionForSend,
-  getProjectRunContext,
   prepareEditOrForkMutation,
   prepareResumeMutation
 } from '../features/chat/sessionMutationService'
@@ -32,11 +63,10 @@ import {
   applyBackgroundShellNotification,
   applyBackgroundSubagentEventNotification,
   applyBackgroundSubagentNotification,
-  applySteeredPromptToSession,
+  applySteeredAdmission,
   materializeBackgroundPrompt,
   prepareClaimedPromptRun
 } from '../features/chat/sessionPromptQueue'
-import { commitSessionRevert } from '../features/chat/sessionRevertService'
 
 export {
   isRuntimeErrorAssistantMessage,
@@ -48,6 +78,7 @@ export {
   forkResourcesForRuns,
   getRunIdsThroughMessage
 } from './sessionBranching'
+export { touchSessionInSnapshot } from '../features/chat/sessionSnapshot'
 
 interface UseChatCompletionProps {
   setSessions: React.Dispatch<React.SetStateAction<Session[]>>
@@ -105,52 +136,6 @@ interface SendMessageOptions {
   forceBranch?: boolean
 }
 
-const MANUAL_COMPACTION_KEEP_RECENT_MESSAGES = 6
-
-const createRunId = (prefix = ''): string =>
-  `${prefix}${Date.now()}-${Math.random().toString(36).substring(2, 8)}`
-
-const createMessagePairIds = (
-  sessions: Session[]
-): { sourceMessageId: string; assistantMessageId: string } => {
-  const existingIds = new Set(
-    sessions.flatMap((session) => session.messages.map((message) => message.id))
-  )
-  let sourceTimestamp = Date.now()
-  while (existingIds.has(String(sourceTimestamp)) || existingIds.has(String(sourceTimestamp + 1))) {
-    sourceTimestamp += 2
-  }
-  return {
-    sourceMessageId: String(sourceTimestamp),
-    assistantMessageId: String(sourceTimestamp + 1)
-  }
-}
-
-const formatCompactionSummaryMessage = (result: {
-  summary: string
-  compactedCount: number
-  keptCount: number
-  tokenSpeed?: number
-}): string =>
-  [
-    '### 上下文压缩摘要',
-    '',
-    `已使用模型总结前 ${result.compactedCount} 条历史消息，最近 ${result.keptCount} 条消息保留原文。`,
-    result.tokenSpeed !== undefined ? `压缩生成速度：${result.tokenSpeed} token/s。` : '',
-    '',
-    result.summary
-  ]
-    .filter(Boolean)
-    .join('\n')
-export const touchSessionInSnapshot = (
-  sessions: Session[],
-  sessionId: string,
-  timestamp: number
-): Session[] =>
-  sessions.map((session) =>
-    session.id === sessionId ? { ...session, lastActiveTime: timestamp } : session
-  )
-
 export const useChatCompletion = ({
   setSessions,
   setActiveSessionId,
@@ -202,7 +187,7 @@ export const useChatCompletion = ({
     setActiveGenerationSessionIdState(sessionId)
   }
 
-  const latestRequestConfigRef = useRef({
+  const latestRequestConfigRef = useRef<ChatRequestConfig>({
     apiKey,
     apiUrl,
     providerConnection,
@@ -261,6 +246,14 @@ export const useChatCompletion = ({
     runModeRef.current = runMode
   }, [runMode])
 
+  /** Guard shared by every dispatch: warn and open settings when the key is required but unset. */
+  const ensureApiKey = (config: ChatRequestConfig, message: string): boolean => {
+    if (!needsApiKeyBeforeRun(config)) return true
+    toast.warning(message)
+    setShowSettings(true)
+    return false
+  }
+
   // Replace a single message in the active session, keeping sessionsRef in sync.
   const updateMessageById = (
     msgId: string,
@@ -292,34 +285,16 @@ export const useChatCompletion = ({
     })
   }
 
-  const commitStagedSessionRevert = (
-    currentSessions: Session[],
+  /** Commit a staged rollback and fire the disk cleanup the plan asks for. */
+  const commitStagedRevert = (
+    sessions: Session[],
     sourceSession: Session
-  ): Session => {
-    if (!sourceSession.revert) return sourceSession
-    const committed = commitSessionRevert(sourceSession)
-    const sessionIndex = currentSessions.findIndex((session) => session.id === sourceSession.id)
-    if (sessionIndex >= 0) currentSessions[sessionIndex] = committed.session
-
-    const otherSessions = currentSessions.filter((session) => session.id !== sourceSession.id)
-    const { deletableIds } = computeResourcePrune(
-      { ...committed.session, resources: committed.originalResources },
-      otherSessions,
-      committed.committedRunIds
-    )
-    if (committed.committedRunIds.length > 0 || deletableIds.length > 0) {
-      void window.api
-        .clearSessionCaches({
-          sessionIds: [],
-          resourceIds: deletableIds,
-          partialActions:
-            committed.committedRunIds.length > 0
-              ? [{ sessionId: sourceSession.id, runIds: committed.committedRunIds }]
-              : undefined
-        })
-        .catch(console.warn)
+  ): { session: Session; sessions: Session[] } => {
+    const plan = planStagedRevertCommit(sessions, sourceSession)
+    if (plan.cacheCleanup) {
+      void window.api.clearSessionCaches(plan.cacheCleanup).catch(console.warn)
     }
-    return committed.session
+    return { session: plan.session, sessions: plan.sessions }
   }
 
   // Persist the full in-memory snapshot after a run finishes. Branch relationships are spread
@@ -378,39 +353,17 @@ export const useChatCompletion = ({
 
   const showHelpMessage = async (): Promise<void> => {
     if (!activeSessionId) return
-    const helpMsg: Message = {
-      id: `help-${Date.now()}`,
-      role: 'assistant',
-      content: `### QuickAI 快捷操作与命令
-
-* **全局快捷键**：\`Alt + /\`（显示或隐藏）
-* **快速隐藏**：\`Esc\`
-* **换行**：\`Shift + Enter\`
-* **发送消息**：\`Enter\`
-* **窗口拖动**：按住顶部标题栏空白区域可移动窗口
-
-#### 可用的 "/" 快捷指令
-* \`/new\` - 新建空白对话
-* \`/clear\` - 清空当前对话
-* \`/settings\` - 打开设置面板
-* \`/help\` - 显示帮助信息
-* \`/model:模型名\` - 切换模型
-* \`/history:会话名\` - 加载历史对话
-* \`/delete:会话名\` - 删除历史对话`
-    }
-    const updated = sessionsRef.current.map((session) => ({
-      ...session,
-      messages: session.messages.map((message) => ({ ...message }))
-    }))
-    const active = updated.find((session) => session.id === activeSessionId)
+    const cloned = cloneSessionsDeep(sessionsRef.current)
+    const active = cloned.find((session) => session.id === activeSessionId)
     if (!active) return
-    const committed = commitStagedSessionRevert(updated, active)
-    const committedIndex = updated.findIndex((session) => session.id === committed.id)
-    updated[committedIndex] = {
-      ...committed,
-      messages: [...committed.messages, helpMsg],
+
+    const reverted = commitStagedRevert(cloned, active)
+    const updated = replaceSessionInSnapshot(reverted.sessions, {
+      ...reverted.session,
+      messages: [...reverted.session.messages, createHelpMessage(Date.now())],
       lastActiveTime: Date.now()
-    }
+    })
+
     setSessions(updated)
     sessionsRef.current = updated
     await window.api.storeSet('sessions', updated)
@@ -419,51 +372,29 @@ export const useChatCompletion = ({
   const handleCompactCurrentSession = async (): Promise<boolean> => {
     const requestConfig = latestRequestConfigRef.current
     if (isGeneratingRef.current || queueDrainInProgressRef.current) return false
+    if (!ensureApiKey(requestConfig, '请先在设置中填写 DeepSeek API Key。')) return false
 
-    if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
-      toast.warning('请先在设置中填写 DeepSeek API Key。')
-      setShowSettings(true)
-      return false
-    }
+    const currentSessions = cloneSessionsDeep(sessionsRef.current)
+    const found = currentSessions.find((s) => s.id === activeSessionId)
+    if (!found) return false
 
-    const currentSessions: Session[] = sessionsRef.current.map((s) => ({
-      ...s,
-      messages: s.messages.map((m) => ({ ...m }))
-    }))
-    let currentSession = currentSessions.find((s) => s.id === activeSessionId)
-    if (!currentSession) return false
-
-    if (currentSession.messages.length <= MANUAL_COMPACTION_KEEP_RECENT_MESSAGES + 1) {
+    if (!canCompactMessages(found.messages)) {
       toast.info('当前对话可压缩内容不足。')
       setInputVal('')
       return true
     }
-    currentSession = commitStagedSessionRevert(currentSessions, currentSession)
+
+    const reverted = commitStagedRevert(currentSessions, found)
+    const sessions = reverted.sessions
+    const currentSession = reverted.session
 
     setIsGeneratingLive(true)
     setInputVal('')
     setActiveGenerationSessionId(currentSession.id)
 
-    const tempMsg: Message = {
-      id: 'temp-compaction-placeholder',
-      role: 'assistant',
-      content: '正在压缩历史对话上下文，请稍候...',
-      agentEvents: [
-        {
-          type: 'agent_step',
-          stepId: 'step-compaction',
-          step: 1,
-          maxSteps: 1,
-          title: '上下文压缩',
-          message: '正在分析对话历史并生成压缩摘要...',
-          status: 'running'
-        }
-      ]
-    }
-
-    currentSession.messages.push(tempMsg)
-    setSessions([...currentSessions])
-    sessionsRef.current = currentSessions
+    currentSession.messages.push(createCompactionPlaceholder())
+    setSessions([...sessions])
+    sessionsRef.current = sessions
 
     try {
       const result = await window.api.compactContext({
@@ -472,48 +403,36 @@ export const useChatCompletion = ({
         providerConnection: requestConfig.providerConnection,
         model: requestConfig.selectedModel,
         modelRuntime: requestConfig.modelRuntimeConfig,
-        messages: currentSession.messages.filter((m) => m.id !== 'temp-compaction-placeholder'),
+        messages: withoutCompactionPlaceholder(currentSession.messages),
         keepRecentMessages: MANUAL_COMPACTION_KEEP_RECENT_MESSAGES,
         systemPrompt: requestConfig.systemPrompt
       })
 
-      // Remove the temporary placeholder before inserting the summaryMsg
-      currentSession.messages = currentSession.messages.filter(
-        (m) => m.id !== 'temp-compaction-placeholder'
-      )
-
-      const compactedMessages = currentSession.messages.slice(0, result.compactedCount)
-      const keptMessages = currentSession.messages.slice(result.compactedCount)
-      const summaryMsg: Message = {
-        id: `compact-${Date.now()}`,
-        role: 'assistant',
-        content: formatCompactionSummaryMessage(result),
-        isCompactionSummary: true,
-        ...(result.tokenSpeed !== undefined ? { tokenSpeed: result.tokenSpeed } : {})
-      }
-
-      currentSession.messages = [...compactedMessages, summaryMsg, ...keptMessages]
+      currentSession.messages = applyCompactionResult({
+        messages: currentSession.messages,
+        result,
+        now: Date.now()
+      })
       currentSession.contextEpoch = getSessionContextEpoch(currentSession) + 1
       currentSession.lastActiveTime = Date.now()
       window.api.advanceSessionContext(currentSession.id, currentSession.contextEpoch)
-      setSessions([...currentSessions])
-      sessionsRef.current = currentSessions
-      persistSessionsSnapshotSoon(currentSessions)
+      setSessions([...sessions])
+      sessionsRef.current = sessions
+      persistSessionsSnapshotSoon(sessions)
       return true
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err || '上下文压缩失败')
       toast.error(`上下文压缩失败：${message}`)
       return false
     } finally {
-      currentSession.messages = currentSession.messages.filter(
-        (m) => m.id !== 'temp-compaction-placeholder'
-      )
+      currentSession.messages = withoutCompactionPlaceholder(currentSession.messages)
       setIsGeneratingLive(false)
       setActiveGenerationSessionId(null)
-      setSessions([...currentSessions])
-      sessionsRef.current = currentSessions
+      setSessions([...sessions])
+      sessionsRef.current = sessions
     }
   }
+
   const handleSendMessage = async (
     customPrompt?: string,
     customMsgId?: string,
@@ -532,33 +451,27 @@ export const useChatCompletion = ({
     }
     if (!trimmedPrompt && attachedFiles.length === 0 && !customPrompt) return false
     if (isGeneratingRef.current || queueDrainInProgressRef.current) return false
-    const effectiveRunMode: RunMode = /^\s*@\S+/.test(promptToSend) ? 'agent' : runModeRef.current
+    const effectiveRunMode = resolveEffectiveRunMode(promptToSend, runModeRef.current)
 
-    // Verify key
-    if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
-      toast.warning('请先在设置中填写 DeepSeek API Key！')
-      setShowSettings(true)
-      return false
-    }
+    if (!ensureApiKey(requestConfig, '请先在设置中填写 DeepSeek API Key！')) return false
 
     setIsGeneratingLive(true)
     setInputVal('')
 
-    let currentSessions: Session[] = sessionsRef.current.map((s) => ({
-      ...s,
-      messages: s.messages.map((m) => ({ ...m }))
-    }))
+    let currentSessions = cloneSessionsDeep(sessionsRef.current)
     const resolveResult = resolveSessionForSend(
       currentSessions,
       activeSessionId,
       draftSessionRef.current
     )
-    let currentSession = resolveResult.session
     currentSessions = resolveResult.updatedSessions
     if (resolveResult.draftSessionCleared) {
       setDraftSession(null)
     }
-    currentSession = commitStagedSessionRevert(currentSessions, currentSession)
+    const reverted = commitStagedRevert(currentSessions, resolveResult.session)
+    currentSessions = reverted.sessions
+    const currentSession = reverted.session
+
     let targetSession = currentSession
     let sourceMessageId = customMsgId
     let branchOf: { sessionId: string; messageId: string; runId?: string } | undefined
@@ -586,32 +499,25 @@ export const useChatCompletion = ({
       } else {
         targetSession = currentSession
         if (editResult.removedRunIds && editResult.removedRunIds.length > 0) {
-          const others = currentSessions.filter((s) => s.id !== currentSession.id)
-          const { keptResources, deletableIds } = computeResourcePrune(
+          const cleanup = planRemovedRunCleanup(
+            currentSessions,
             currentSession,
-            others,
             editResult.removedRunIds
           )
-          currentSession.resources = keptResources
-          void window.api
-            .clearSessionCaches({
-              sessionIds: [],
-              resourceIds: deletableIds,
-              partialActions: [{ sessionId: currentSession.id, runIds: editResult.removedRunIds }]
-            })
-            .catch(console.warn)
+          currentSession.resources = cleanup.keptResources
+          if (cleanup.cacheCleanup) {
+            void window.api.clearSessionCaches(cleanup.cacheCleanup).catch(console.warn)
+          }
         }
         currentSession.messages = editResult.updatedSourceSessionMessages || currentSession.messages
         currentSession.contextEpoch = getSessionContextEpoch(editResult.targetSession)
       }
     } else {
-      // Normal message send
-      const userMsg: Message = {
+      const userMsg = createUserMessage({
         id: Date.now().toString(),
-        role: 'user',
         content: promptToSend,
-        files: [...attachedFiles]
-      }
+        files: attachedFiles
+      })
       sourceMessageId = userMsg.id
       targetSession.messages.push(userMsg)
       setAttachedFiles([])
@@ -620,29 +526,24 @@ export const useChatCompletion = ({
     // Update session metadata
     targetSession.lastActiveTime = Date.now()
     if (!customMsgId && targetSession.messages.length === 1) {
-      targetSession.title = promptToSend.substring(0, 15) || 'Chat'
+      targetSession.title = deriveSessionTitle(promptToSend, 'Chat')
     }
     if (targetSession.title === '新对话') {
-      targetSession.title = promptToSend.substring(0, 15) || '聊天对话'
+      targetSession.title = deriveSessionTitle(promptToSend, '聊天对话')
     }
 
-    // Construct request ID
     const reqId = createRunId()
     setActiveReqId(reqId)
 
-    // Create placeholder for AI response
     const assistantMsgId = (Date.now() + 1).toString()
-    const assistantMsg: Message = {
-      id: assistantMsgId,
-      role: 'assistant',
-      content: '',
-      reasoning_content: '',
-      ...(effectiveRunMode === 'agent'
-        ? { agentRunId: reqId, agentRunIds: [reqId], agentEvents: [] }
-        : {}),
-      ...(branchOf ? { isBranchFork: true, forkedFrom: branchOf } : {})
-    }
-    targetSession.messages.push(assistantMsg)
+    targetSession.messages.push(
+      createAssistantPlaceholder({
+        id: assistantMsgId,
+        runMode: effectiveRunMode,
+        runId: reqId,
+        branchOf
+      })
+    )
     const contextEpoch = getSessionContextEpoch(targetSession)
     window.api.advanceSessionContext(targetSession.id, contextEpoch)
     setActiveGenerationSessionId(targetSession.id)
@@ -650,11 +551,8 @@ export const useChatCompletion = ({
     sessionsRef.current = currentSessions
     await persistSessionsSnapshot(currentSessions)
 
-    // Load full messages block
-    const apiMessages = buildApiMessages(
-      requestConfig.systemPrompt,
-      targetSession.messages.slice(0, -1)
-    )
+    const historyForRun = targetSession.messages.slice(0, -1)
+    const apiMessages = buildApiMessages(requestConfig.systemPrompt, historyForRun)
 
     if (forkedCachePayload && forkedCachePayload.runIds.length > 0) {
       try {
@@ -673,29 +571,20 @@ export const useChatCompletion = ({
       assistantMsgId,
       contextEpoch,
       () =>
-        window.api.startChatCompletion(reqId, {
-          apiUrl: requestConfig.apiUrl,
-          apiKey: requestConfig.apiKey,
-          providerConnection: requestConfig.providerConnection,
-          model: requestConfig.selectedModel,
-          modelRuntime: requestConfig.modelRuntimeConfig,
-          contextWindowTokens: requestConfig.contextWindowTokens,
-          contextRetentionMode: requestConfig.contextRetentionMode,
-          cachePriorityRetainedRuns: getCachePriorityRetainedRuns(
-            targetSession.messages.slice(0, -1),
-            requestConfig.contextRetentionMode,
-            requestConfig.systemPrompt
-          ),
-          messages: apiMessages,
-          runMode: effectiveRunMode,
-          resources: targetSession.resources,
-          sessionId: targetSession.id,
-          contextEpoch,
-          ...getProjectRunContext(targetSession, requestConfig.projects),
-          sourceMessageId,
-          assistantMessageId: assistantMsgId,
-          branchOf
-        }),
+        window.api.startChatCompletion(
+          reqId,
+          buildChatRunOptions({
+            config: requestConfig,
+            session: targetSession,
+            messages: apiMessages,
+            historyForCachePriority: historyForRun,
+            runMode: effectiveRunMode,
+            contextEpoch,
+            sourceMessageId,
+            assistantMessageId: assistantMsgId,
+            branchOf
+          })
+        ),
       (msg) => `出错了：${msg || '网络连接失败'}`
     )
     return true
@@ -713,40 +602,31 @@ export const useChatCompletion = ({
     if (!isGeneratingRef.current && !queueDrainInProgressRef.current) {
       return handleSendMessage(prompt)
     }
-    if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
-      toast.warning('请先在设置中填写 DeepSeek API Key。')
-      setShowSettings(true)
-      return false
-    }
+    if (!ensureApiKey(requestConfig, '请先在设置中填写 DeepSeek API Key。')) return false
 
-    let currentSessions = sessionsRef.current.map((session) => ({
-      ...session,
-      messages: session.messages.map((message) => ({ ...message }))
-    }))
+    let currentSessions = cloneSessionsDeep(sessionsRef.current)
     const resolveResult = resolveSessionForSend(
       currentSessions,
       activeSessionId,
       draftSessionRef.current
     )
-    let targetSession = resolveResult.session
     currentSessions = resolveResult.updatedSessions
     if (resolveResult.draftSessionCleared) setDraftSession(null)
-    targetSession = commitStagedSessionRevert(currentSessions, targetSession)
+    const reverted = commitStagedRevert(currentSessions, resolveResult.session)
+    currentSessions = reverted.sessions
+    let targetSession = reverted.session
 
-    const { sourceMessageId, assistantMessageId } = createMessagePairIds(currentSessions)
+    const { sourceMessageId, assistantMessageId } = createMessagePairIds(
+      currentSessions,
+      Date.now()
+    )
     const admissionId = createRunId('prompt-admission-')
-    const userMessage: Message = {
+    const userMessage = createUserMessage({
       id: sourceMessageId,
-      role: 'user',
       content: prompt,
-      files: [...attachedFiles]
-    }
-    const assistantPlaceholder: Message = {
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '⏳ 已加入队列',
-      reasoning_content: ''
-    }
+      files: attachedFiles
+    })
+    const assistantPlaceholder = createQueuedAssistantPlaceholder(assistantMessageId)
     const activeAssistantMessageId =
       activeGenerationSessionIdRef.current === targetSession.id
         ? activeAssistantMessageIdRef.current ||
@@ -756,11 +636,9 @@ export const useChatCompletion = ({
     targetSession = appendQueuedPromptToSession(targetSession, userMessage, assistantPlaceholder)
     const contextEpoch = getSessionContextEpoch(targetSession)
     if (targetSession.messages.length === 2) {
-      targetSession.title = prompt.substring(0, 15) || 'Chat'
+      targetSession.title = deriveSessionTitle(prompt, 'Chat')
     }
-    currentSessions = currentSessions.map((session) =>
-      session.id === targetSession.id ? targetSession : session
-    )
+    currentSessions = replaceSessionInSnapshot(currentSessions, targetSession)
     setSessions(currentSessions)
     sessionsRef.current = currentSessions
     await persistSessionsSnapshot(currentSessions)
@@ -775,28 +653,19 @@ export const useChatCompletion = ({
         sessionId: targetSession.id,
         contextEpoch,
         mode,
-        runMode: /^\s*@\S+/.test(prompt) ? 'agent' : runModeRef.current,
+        runMode: resolveEffectiveRunMode(prompt, runModeRef.current),
         sourceMessageId,
         assistantMessageId,
         messages: admissionMessages
       })
 
       if (result.disposition === 'steered') {
-        const nextSessions = sessionsRef.current.map((session) =>
-          session.id === targetSession.id
-            ? activeAssistantMessageId
-              ? applySteeredPromptToSession(
-                  session,
-                  sourceMessageId,
-                  assistantMessageId,
-                  activeAssistantMessageId
-                )
-              : {
-                  ...session,
-                  messages: session.messages.filter((message) => message.id !== assistantMessageId)
-                }
-            : session
-        )
+        const nextSessions = applySteeredAdmission(sessionsRef.current, {
+          sessionId: targetSession.id,
+          sourceMessageId,
+          queuedAssistantMessageId: assistantMessageId,
+          activeAssistantMessageId
+        })
         sessionsRef.current = nextSessions
         setSessions(nextSessions)
         persistSessionsSnapshotSoon(nextSessions)
@@ -815,11 +684,7 @@ export const useChatCompletion = ({
               ...session,
               messages: session.messages.map((item) =>
                 item.id === assistantMessageId
-                  ? {
-                      ...item,
-                      content: `队列提交失败：${message}`,
-                      isRuntimeError: true
-                    }
+                  ? markMessageAsRuntimeError(item, `队列提交失败：${message}`)
                   : item
               )
             }
@@ -836,7 +701,7 @@ export const useChatCompletion = ({
   const drainNextQueuedPrompt = async (sessionId: string): Promise<void> => {
     if (!sessionId || isGeneratingRef.current || queueDrainInProgressRef.current) return
     const requestConfig = latestRequestConfigRef.current
-    if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) return
+    if (needsApiKeyBeforeRun(requestConfig)) return
 
     queueDrainInProgressRef.current = true
     let claimedAdmissionId: string | undefined
@@ -881,9 +746,7 @@ export const useChatCompletion = ({
         return
       }
 
-      const nextSessions = sessionsRef.current.map((session) =>
-        session.id === sessionId ? prepared.session : session
-      )
+      const nextSessions = replaceSessionInSnapshot(sessionsRef.current, prepared.session)
       sessionsRef.current = nextSessions
       setSessions(nextSessions)
       setIsGeneratingLive(true)
@@ -901,29 +764,20 @@ export const useChatCompletion = ({
         prepared.assistantMessageId,
         contextEpoch,
         () =>
-          window.api.startChatCompletion(reqId, {
-            apiUrl: requestConfig.apiUrl,
-            apiKey: requestConfig.apiKey,
-            providerConnection: requestConfig.providerConnection,
-            model: requestConfig.selectedModel,
-            modelRuntime: requestConfig.modelRuntimeConfig,
-            contextWindowTokens: requestConfig.contextWindowTokens,
-            contextRetentionMode: requestConfig.contextRetentionMode,
-            cachePriorityRetainedRuns: getCachePriorityRetainedRuns(
-              prepared.messagesBeforeAssistant,
-              requestConfig.contextRetentionMode,
-              requestConfig.systemPrompt
-            ),
-            messages: apiMessages,
-            runMode: admission.runMode,
-            resources: prepared.session.resources,
-            sessionId,
-            contextEpoch,
-            ...getProjectRunContext(prepared.session, requestConfig.projects),
-            sourceMessageId: admission.sourceMessageId,
-            assistantMessageId: prepared.assistantMessageId,
-            promptAdmissionId: admission.id
-          }),
+          window.api.startChatCompletion(
+            reqId,
+            buildChatRunOptions({
+              config: requestConfig,
+              session: prepared.session,
+              messages: apiMessages,
+              historyForCachePriority: prepared.messagesBeforeAssistant,
+              runMode: admission.runMode,
+              contextEpoch,
+              sourceMessageId: admission.sourceMessageId,
+              assistantMessageId: prepared.assistantMessageId,
+              promptAdmissionId: admission.id
+            })
+          ),
         (message) => `队列消息执行失败：${message || '网络连接失败'}`
       )
       launched = true
@@ -948,20 +802,11 @@ export const useChatCompletion = ({
     if (notifications.length === 0) return
     backgroundSubagentEventQueueRef.current = []
 
-    let nextSessions = sessionsRef.current
-    let changed = false
-    for (const notification of notifications) {
-      const current = nextSessions.find((session) => session.id === notification.sessionId)
-      if (!current || getSessionContextEpoch(current) !== notification.contextEpoch) continue
-
-      nextSessions = nextSessions.map((session) => {
-        if (session.id !== notification.sessionId) return session
-        const next = applyBackgroundSubagentEventNotification(session, notification)
-        changed = changed || next !== session
-        return next
-      })
-    }
-
+    const { sessions: nextSessions, changed } = applyEpochScopedNotifications(
+      sessionsRef.current,
+      notifications,
+      applyBackgroundSubagentEventNotification
+    )
     if (!changed) return
     sessionsRef.current = nextSessions
     setSessions(nextSessions)
@@ -989,44 +834,69 @@ export const useChatCompletion = ({
     }
   }, [sessionsRef, setSessions])
 
+  /**
+   * Merge a background result into its session and persist, honouring the context epoch.
+   *
+   * Held in a ref rather than closed over directly: the subscription effects re-run only when the
+   * active session changes, so a plain closure would let them keep calling a stale copy.
+   */
+  const commitBackgroundNotificationRef = useRef<
+    <T extends { sessionId: string; contextEpoch: number; disposition?: string }>(
+      notification: T,
+      apply: (session: Session, notification: T, activeAssistantMessageId?: string) => Session,
+      persistErrorLabel: string
+    ) => void
+  >(() => undefined)
+
+  commitBackgroundNotificationRef.current = <
+    T extends { sessionId: string; contextEpoch: number; disposition?: string }
+  >(
+    notification: T,
+    apply: (session: Session, notification: T, activeAssistantMessageId?: string) => Session,
+    persistErrorLabel: string
+  ): void => {
+    const nextSessions = applyEpochScopedNotification(
+      sessionsRef.current,
+      notification,
+      (session, item) =>
+        apply(
+          session,
+          item,
+          activeGenerationSessionIdRef.current === item.sessionId
+            ? activeAssistantMessageIdRef.current || undefined
+            : undefined
+        )
+    )
+    if (!nextSessions) return
+
+    sessionsRef.current = nextSessions
+    setSessions(nextSessions)
+    void window.api.storeSet('sessions', nextSessions).catch((error) => {
+      console.warn(persistErrorLabel, error)
+    })
+
+    if (shouldDrainAfterNotification(notification, activeSessionId, isGeneratingRef.current)) {
+      window.setTimeout(() => {
+        void drainQueuedPromptRef.current(notification.sessionId)
+      }, 25)
+    }
+  }
+
   useEffect(() => {
     return window.api.onBackgroundSubagentResult(
       (notification: BackgroundSubagentResultNotification): void => {
+        // Land any buffered step events before the terminal result so the timeline stays ordered.
         if (backgroundSubagentEventFrameRef.current !== null) {
           window.cancelAnimationFrame(backgroundSubagentEventFrameRef.current)
           backgroundSubagentEventFrameRef.current = null
         }
         flushBackgroundSubagentEventsRef.current()
 
-        const current = sessionsRef.current.find((session) => session.id === notification.sessionId)
-        if (!current || getSessionContextEpoch(current) !== notification.contextEpoch) return
-
-        const nextSessions = sessionsRef.current.map((session) =>
-          session.id === notification.sessionId
-            ? applyBackgroundSubagentNotification(
-                session,
-                notification,
-                activeGenerationSessionIdRef.current === notification.sessionId
-                  ? activeAssistantMessageIdRef.current || undefined
-                  : undefined
-              )
-            : session
+        commitBackgroundNotificationRef.current(
+          notification,
+          applyBackgroundSubagentNotification,
+          'Failed to persist background subagent result:'
         )
-        sessionsRef.current = nextSessions
-        setSessions(nextSessions)
-        void window.api.storeSet('sessions', nextSessions).catch((error) => {
-          console.warn('Failed to persist background subagent result:', error)
-        })
-
-        if (
-          notification.disposition === 'queued' &&
-          activeSessionId === notification.sessionId &&
-          !isGeneratingRef.current
-        ) {
-          window.setTimeout(() => {
-            void drainQueuedPromptRef.current(notification.sessionId)
-          }, 25)
-        }
       }
     )
   }, [activeSessionId, sessionsRef, setSessions])
@@ -1034,34 +904,11 @@ export const useChatCompletion = ({
   useEffect(() => {
     return window.api.onBackgroundShellResult(
       (notification: BackgroundShellResultNotification): void => {
-        const current = sessionsRef.current.find((session) => session.id === notification.sessionId)
-        if (!current || getSessionContextEpoch(current) !== notification.contextEpoch) return
-
-        const nextSessions = sessionsRef.current.map((session) => {
-          if (session.id !== notification.sessionId) return session
-          return applyBackgroundShellNotification(
-            session,
-            notification,
-            activeGenerationSessionIdRef.current === notification.sessionId
-              ? activeAssistantMessageIdRef.current || undefined
-              : undefined
-          )
-        })
-        sessionsRef.current = nextSessions
-        setSessions(nextSessions)
-        void window.api.storeSet('sessions', nextSessions).catch((error) => {
-          console.warn('Failed to persist background shell result:', error)
-        })
-
-        if (
-          notification.disposition === 'queued' &&
-          activeSessionId === notification.sessionId &&
-          !isGeneratingRef.current
-        ) {
-          window.setTimeout(() => {
-            void drainQueuedPromptRef.current(notification.sessionId)
-          }, 25)
-        }
+        commitBackgroundNotificationRef.current(
+          notification,
+          applyBackgroundShellNotification,
+          'Failed to persist background shell result:'
+        )
       }
     )
   }, [activeSessionId, sessionsRef, setSessions])
@@ -1077,58 +924,44 @@ export const useChatCompletion = ({
   const handleRunAgentSkill = async (skill: Skill, userInput: string): Promise<void> => {
     const requestConfig = latestRequestConfigRef.current
     if (isGeneratingRef.current) return
-
-    if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
-      toast.warning('Please set the DeepSeek API Key in Settings first.')
-      setShowSettings(true)
-      return
-    }
+    if (!ensureApiKey(requestConfig, 'Please set the DeepSeek API Key in Settings first.')) return
 
     setIsGeneratingLive(true)
     setInputVal('')
 
-    let currentSessions: Session[] = sessionsRef.current.map((s) => ({
-      ...s,
-      messages: s.messages.map((m) => ({ ...m }))
-    }))
+    let currentSessions = cloneSessionsDeep(sessionsRef.current)
     const resolveResult = resolveSessionForSend(
       currentSessions,
       activeSessionId,
       draftSessionRef.current
     )
-    let currentSession = resolveResult.session
     currentSessions = resolveResult.updatedSessions
     if (resolveResult.draftSessionCleared) {
       setDraftSession(null)
     }
-    currentSession = commitStagedSessionRevert(currentSessions, currentSession)
+    const reverted = commitStagedRevert(currentSessions, resolveResult.session)
+    currentSessions = reverted.sessions
+    const currentSession = reverted.session
 
     const displayPrompt = `@${skill.trigger}${userInput.trim() ? ` ${userInput.trim()}` : ''}`
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: displayPrompt,
-      files: []
-    }
+    const userMsg = createUserMessage({ id: Date.now().toString(), content: displayPrompt })
     currentSession.messages.push(userMsg)
     setAttachedFiles([])
 
     currentSession.lastActiveTime = Date.now()
     if (currentSession.messages.length === 1) {
-      currentSession.title = displayPrompt.substring(0, 15) || 'Agent Skill'
+      currentSession.title = deriveSessionTitle(displayPrompt, 'Agent Skill')
     }
 
+    // Agent skill runs reuse the assistant message id as the run id.
     const assistantMsgId = (Date.now() + 1).toString()
-    const assistantMsg: Message = {
-      id: assistantMsgId,
-      role: 'assistant',
-      content: '',
-      reasoning_content: '',
-      agentRunId: assistantMsgId,
-      agentRunIds: [assistantMsgId],
-      agentEvents: []
-    }
-    currentSession.messages.push(assistantMsg)
+    currentSession.messages.push(
+      createAssistantPlaceholder({
+        id: assistantMsgId,
+        runMode: 'agent',
+        runId: assistantMsgId
+      })
+    )
     setActiveGenerationSessionId(currentSession.id)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
@@ -1145,29 +978,19 @@ export const useChatCompletion = ({
       assistantMsgId,
       contextEpoch,
       () =>
-        window.api.startAgentSkill(reqId, {
-          apiUrl: requestConfig.apiUrl,
-          apiKey: requestConfig.apiKey,
-          providerConnection: requestConfig.providerConnection,
-          model: requestConfig.selectedModel,
-          modelRuntime: requestConfig.modelRuntimeConfig,
-          contextWindowTokens: requestConfig.contextWindowTokens,
-          contextRetentionMode: requestConfig.contextRetentionMode,
-          cachePriorityRetainedRuns: getCachePriorityRetainedRuns(
-            currentSession.messages.slice(0, -1),
-            requestConfig.contextRetentionMode,
-            requestConfig.systemPrompt
-          ),
-          systemPrompt: requestConfig.systemPrompt,
-          skill,
-          userInput,
-          resources: currentSession.resources,
-          sessionId: currentSession.id,
-          contextEpoch,
-          ...getProjectRunContext(currentSession, requestConfig.projects),
-          sourceMessageId: userMsg.id,
-          assistantMessageId: assistantMsgId
-        }),
+        window.api.startAgentSkill(
+          reqId,
+          buildAgentSkillRunOptions({
+            config: requestConfig,
+            session: currentSession,
+            historyForCachePriority: currentSession.messages.slice(0, -1),
+            skill,
+            userInput,
+            contextEpoch,
+            sourceMessageId: userMsg.id,
+            assistantMessageId: assistantMsgId
+          })
+        ),
       (msg) => `Agent Skill failed: ${msg}`
     )
   }
@@ -1214,28 +1037,24 @@ export const useChatCompletion = ({
   const handleResumeAgentRun = async (msgIdx: number): Promise<void> => {
     const requestConfig = latestRequestConfigRef.current
     if (isGeneratingRef.current) return
-    if (!requestConfig.apiKey && requestConfig.apiUrl.includes('deepseek.com')) {
-      toast.warning('Please set the DeepSeek API Key in Settings first.')
-      setShowSettings(true)
-      return
-    }
+    if (!ensureApiKey(requestConfig, 'Please set the DeepSeek API Key in Settings first.')) return
 
-    const currentSessions: Session[] = sessionsRef.current.map((s) => ({
-      ...s,
-      messages: s.messages.map((m) => ({ ...m }))
-    }))
-    let currentSession = currentSessions.find((s) => s.id === activeSessionId)
-    if (currentSession) {
-      currentSession = commitStagedSessionRevert(currentSessions, currentSession)
+    let currentSessions = cloneSessionsDeep(sessionsRef.current)
+    const found = currentSessions.find((s) => s.id === activeSessionId)
+    let currentSession = found
+    if (found) {
+      const reverted = commitStagedRevert(currentSessions, found)
+      currentSessions = reverted.sessions
+      currentSession = reverted.session
     }
     const failedMsg = currentSession?.messages[msgIdx]
     const resumeFromRunId = failedMsg?.agentRunId
-    if (!currentSession || !resumeFromRunId) return
+    if (!currentSession || !failedMsg || !resumeFromRunId) return
 
     setIsGeneratingLive(true)
     setInputVal('')
 
-    const reqId = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+    const reqId = createRunId()
     setActiveReqId(reqId)
 
     const resumeResult = prepareResumeMutation({
@@ -1246,10 +1065,9 @@ export const useChatCompletion = ({
     })
 
     const branchOf = resumeResult.branchOf
-    const isHistoricalResume = resumeResult.isHistoricalResume
     let targetSession = currentSession
 
-    if (isHistoricalResume) {
+    if (resumeResult.isHistoricalResume) {
       targetSession = resumeResult.targetSession
       currentSessions.unshift(targetSession)
       setActiveSessionId(targetSession.id)
@@ -1285,31 +1103,22 @@ export const useChatCompletion = ({
       assistantMsgId,
       contextEpoch,
       () =>
-        window.api.startChatCompletion(reqId, {
-          apiUrl: requestConfig.apiUrl,
-          apiKey: requestConfig.apiKey,
-          providerConnection: requestConfig.providerConnection,
-          model: requestConfig.selectedModel,
-          modelRuntime: requestConfig.modelRuntimeConfig,
-          contextWindowTokens: requestConfig.contextWindowTokens,
-          contextRetentionMode: requestConfig.contextRetentionMode,
-          cachePriorityRetainedRuns: getCachePriorityRetainedRuns(
-            targetSession.messages.slice(0, -1),
-            requestConfig.contextRetentionMode,
-            requestConfig.systemPrompt
-          ),
-          messages: [],
-          runMode: 'agent',
-          resources: targetSession.resources,
-          sessionId: targetSession.id,
-          contextEpoch,
-          ...getProjectRunContext(targetSession, requestConfig.projects),
-          resumeFromRunId,
-          resumeSourceSessionId: currentSession.id,
-          sourceMessageId: failedMsg.id,
-          assistantMessageId: assistantMsgId,
-          branchOf
-        }),
+        window.api.startChatCompletion(
+          reqId,
+          buildChatRunOptions({
+            config: requestConfig,
+            session: targetSession,
+            // Resume replays the persisted checkpoint, so no new turn is sent.
+            messages: [],
+            historyForCachePriority: targetSession.messages.slice(0, -1),
+            runMode: 'agent',
+            contextEpoch,
+            sourceMessageId: failedMsg.id,
+            assistantMessageId: assistantMsgId,
+            branchOf,
+            resume: { fromRunId: resumeFromRunId, sourceSessionId: currentSession.id }
+          })
+        ),
       (msg) => `Agent resume failed: ${msg || 'network connection failed'}`
     )
   }

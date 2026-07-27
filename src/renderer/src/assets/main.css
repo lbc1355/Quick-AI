@@ -1,9 +1,33 @@
+/*
+ * Import order is load-bearing: these files share selectors, so on a specificity tie the later
+ * import wins. The order below reproduces the original single-file cascade exactly.
+ *
+ * Token layer first, then components. design-tokens.css is the only place allowed to define
+ * global --color-* / --spacing-* / --rounded-* custom properties.
+ */
 @import './base.css';
 @import './themes.css';
 @import './design-tokens.css';
 @import './header.css';
 @import './chat.css';
-@import './settings.css';
+
+/* Settings, split by panel domain. */
+@import './settings-core.css';
+@import './settings-panel.css';
+@import './settings-providers.css';
+@import './settings-mcp.css';
+@import './settings-apikeys.css';
+
 @import './modals.css';
-@import './flat-workbench.css';
+
+/*
+ * Workbench, split by design pass — which is how the file actually grew. Each dark pass is
+ * followed by its light-theme mirror, and workbench-skin.light.css re-overrides selectors that
+ * workbench-core.light.css already styled, so these four must keep this relative order.
+ */
+@import './workbench-core.css';
+@import './workbench-core.light.css';
+@import './workbench-background-tasks.css';
+@import './workbench-skin.light.css';
+
 @import './toast.css';
