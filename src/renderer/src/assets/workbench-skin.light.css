@@ -89,6 +89,16 @@
   color: var(--color-primary);
 }
 
+.app-container.theme-light .project-menu-btn {
+  color: var(--color-text-muted);
+}
+
+.app-container.theme-light .project-menu-btn:hover,
+.app-container.theme-light .project-menu-btn:focus-visible {
+  background: #eeeeea;
+  color: var(--color-text-title);
+}
+
 .app-container.theme-light .project-row:hover,
 .app-container.theme-light .project-row.active,
 .app-container.theme-light .new-conversation-row:hover,
@@ -100,6 +110,30 @@
 .app-container.theme-light .session-item.active,
 .app-container.theme-light .session-item.active .session-main-btn {
   background: #e2e2dc;
+}
+
+.app-container.theme-light .session-item-menu {
+  border-color: var(--color-border);
+  background: var(--color-panel);
+  box-shadow: 0 8px 22px rgba(23, 23, 22, 0.12);
+}
+
+.app-container.theme-light .session-item-menu-item:hover,
+.app-container.theme-light .session-item-menu-item:focus-visible {
+  background: #eeeeea;
+  color: var(--color-text-title);
+}
+
+.app-container.theme-light .session-item-menu-item.danger:hover,
+.app-container.theme-light .session-item-menu-item.danger:focus-visible {
+  background: #fee2e2;
+  color: var(--color-danger);
+}
+
+.app-container.theme-light .session-rename-input {
+  border-color: var(--color-border-focus);
+  background: var(--color-panel);
+  color: var(--color-text-title);
 }
 
 .app-container.theme-light .sidebar-model-card {

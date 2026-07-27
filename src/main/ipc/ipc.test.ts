@@ -28,7 +28,8 @@ vi.mock('electron', () => {
       })
     },
     dialog: {
-      showOpenDialog: vi.fn()
+      showOpenDialog: vi.fn(),
+      showMessageBox: vi.fn().mockResolvedValue({ response: 0 })
     },
     BrowserWindow: {
       fromWebContents: vi.fn().mockReturnValue({
@@ -241,6 +242,7 @@ describe('IPC Registration Modules', () => {
     registerProjectIpc(mockController)
 
     expect(mockHandlers['select-project-directory']).toBeDefined()
+    expect(mockHandlers['show-message-box']).toBeDefined()
   })
 
   it('registerGenerationIpc binds generation, skill and abort channels', () => {

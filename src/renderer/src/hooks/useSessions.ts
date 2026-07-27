@@ -71,6 +71,11 @@ export interface UseSessionsReturn {
   handleNewSession: (options?: { projectId?: string; onCreated?: () => void }) => Promise<Session>
   handleClearCurrentSession: () => Promise<void>
   handleDeleteSession: (targetSessionId: string) => Promise<void>
+  handleRenameSession: (targetSessionId: string, nextTitle: string) => Promise<void>
+  handleMoveSession: (
+    targetSessionId: string,
+    projectId: string | undefined
+  ) => Promise<void>
   syncSessionsRef: (currentSessions: Session[]) => void
 }
 
@@ -215,6 +220,55 @@ export const useSessions = (): UseSessionsReturn => {
     await window.api.storeSet('sessions', updated)
   }
 
+  const handleRenameSession = async (
+    targetSessionId: string,
+    nextTitle: string
+  ): Promise<void> => {
+    const trimmed = nextTitle.trim()
+    if (!trimmed) return
+
+    const draftMatch = draftSession?.id === targetSessionId
+    const existing = sessions.find((session) => session.id === targetSessionId)
+    const currentTitle = (draftMatch ? draftSession?.title : existing?.title)?.trim()
+    if (currentTitle === trimmed) return
+
+    if (draftMatch && draftSession) {
+      setDraftSession({ ...draftSession, title: trimmed })
+    }
+
+    if (!existing) return
+
+    const updated = sessions.map((session) =>
+      session.id === targetSessionId ? { ...session, title: trimmed } : session
+    )
+    sessionsRef.current = updated
+    setSessions(updated)
+    await window.api.storeSet('sessions', updated)
+  }
+
+  const handleMoveSession = async (
+    targetSessionId: string,
+    projectId: string | undefined
+  ): Promise<void> => {
+    const nextProjectId = projectId || undefined
+
+    if (draftSession?.id === targetSessionId) {
+      if ((draftSession.projectId || undefined) === nextProjectId) return
+      setDraftSession({ ...draftSession, projectId: nextProjectId })
+    }
+
+    const existing = sessions.find((session) => session.id === targetSessionId)
+    if (!existing) return
+    if ((existing.projectId || undefined) === nextProjectId) return
+
+    const updated = sessions.map((session) =>
+      session.id === targetSessionId ? { ...session, projectId: nextProjectId } : session
+    )
+    sessionsRef.current = updated
+    setSessions(updated)
+    await window.api.storeSet('sessions', updated)
+  }
+
   return {
     sessions,
     setSessions,
@@ -227,6 +281,8 @@ export const useSessions = (): UseSessionsReturn => {
     handleNewSession,
     handleClearCurrentSession,
     handleDeleteSession,
+    handleRenameSession,
+    handleMoveSession,
     syncSessionsRef
   }
 }

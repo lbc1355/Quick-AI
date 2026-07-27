@@ -40,7 +40,12 @@ import {
   MANUAL_COMPACTION_KEEP_RECENT_MESSAGES,
   withoutCompactionPlaceholder
 } from '../features/chat/contextCompaction'
-import { createMessagePairIds, createRunId, deriveSessionTitle } from '../features/chat/runIdentity'
+import {
+  createMessagePairIds,
+  createRunId,
+  deriveSessionTitle,
+  isDefaultSessionTitle
+} from '../features/chat/runIdentity'
 import {
   cloneSessionsDeep,
   planRemovedRunCleanup,
@@ -525,10 +530,14 @@ export const useChatCompletion = ({
 
     // Update session metadata
     targetSession.lastActiveTime = Date.now()
-    if (!customMsgId && targetSession.messages.length === 1) {
+    if (
+      !customMsgId &&
+      targetSession.messages.length === 1 &&
+      isDefaultSessionTitle(targetSession.title)
+    ) {
       targetSession.title = deriveSessionTitle(promptToSend, 'Chat')
     }
-    if (targetSession.title === '新对话') {
+    if (isDefaultSessionTitle(targetSession.title)) {
       targetSession.title = deriveSessionTitle(promptToSend, '聊天对话')
     }
 
@@ -635,7 +644,7 @@ export const useChatCompletion = ({
 
     targetSession = appendQueuedPromptToSession(targetSession, userMessage, assistantPlaceholder)
     const contextEpoch = getSessionContextEpoch(targetSession)
-    if (targetSession.messages.length === 2) {
+    if (targetSession.messages.length === 2 && isDefaultSessionTitle(targetSession.title)) {
       targetSession.title = deriveSessionTitle(prompt, 'Chat')
     }
     currentSessions = replaceSessionInSnapshot(currentSessions, targetSession)
@@ -949,7 +958,7 @@ export const useChatCompletion = ({
     setAttachedFiles([])
 
     currentSession.lastActiveTime = Date.now()
-    if (currentSession.messages.length === 1) {
+    if (currentSession.messages.length === 1 && isDefaultSessionTitle(currentSession.title)) {
       currentSession.title = deriveSessionTitle(displayPrompt, 'Agent Skill')
     }
 

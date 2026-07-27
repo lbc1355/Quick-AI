@@ -348,10 +348,15 @@ export interface Session {
   revert?: SessionRevertState
 }
 
+export type ProjectKind = 'filesystem' | 'folder'
+
 export interface Project {
   id: string
   name: string
-  path: string
+  /** Defaults to filesystem for older records that omit the field. */
+  kind?: ProjectKind
+  /** Required for filesystem projects; omitted for conversation folders. */
+  path?: string
   createdAt: number
   updatedAt: number
 }

@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from 'electron'
+import { ipcMain, dialog, type MessageBoxOptions } from 'electron'
 import { realpathSync } from 'fs'
 import { basename } from 'path'
 import type { WindowController } from './windowIpc'
@@ -25,5 +25,15 @@ export function registerProjectIpc(controller: WindowController): void {
         controller.setFilePickerActive(false)
       }, 300)
     }
+  })
+
+  ipcMain.handle('show-message-box', async (_event, options: MessageBoxOptions) => {
+    const mainWindow = controller.getMainWindow()
+    if (!mainWindow) {
+      const result = await dialog.showMessageBox(options)
+      return result.response
+    }
+    const result = await dialog.showMessageBox(mainWindow, options)
+    return result.response
   })
 }

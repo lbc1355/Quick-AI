@@ -104,6 +104,16 @@
   color: #111827;
 }
 
+.app-container.theme-light .project-menu-btn {
+  color: #85827a;
+}
+
+.app-container.theme-light .project-menu-btn:hover,
+.app-container.theme-light .project-menu-btn:focus-visible {
+  background: #eeeeea;
+  color: var(--color-text-title);
+}
+
 .app-container.theme-light .project-delete-btn {
   color: #8792a1;
 }

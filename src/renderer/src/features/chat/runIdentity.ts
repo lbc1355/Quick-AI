@@ -36,6 +36,15 @@ export const createMessagePairIds = (
   }
 }
 
+/** Titles that still mean "untitled" and may be overwritten by auto-derive. */
+const DEFAULT_SESSION_TITLES = new Set(['新对话', 'New chat', 'Chat', '聊天对话'])
+
+/** True when the title is empty or still one of the auto-generated placeholders. */
+export const isDefaultSessionTitle = (title: string | undefined): boolean => {
+  const trimmed = title?.trim()
+  return !trimmed || DEFAULT_SESSION_TITLES.has(trimmed)
+}
+
 /** Derive a session title from the first prompt, falling back when the prompt is blank. */
 export const deriveSessionTitle = (prompt: string, fallback: string): string =>
   prompt.substring(0, DEFAULT_SESSION_TITLE_LENGTH) || fallback

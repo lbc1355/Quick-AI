@@ -212,6 +212,20 @@ describe('sessionMutationService pure functions', () => {
     expect(context).toEqual({ projectName: 'Project 1', projectRoot: '/path/1' })
   })
 
+  it('getProjectRunContext ignores conversation folders', () => {
+    const session: Session = {
+      id: 's1',
+      title: '',
+      messages: [],
+      lastActiveTime: 0,
+      projectId: 'folder-1'
+    }
+    const projects: Project[] = [
+      { id: 'folder-1', name: '阅读笔记', kind: 'folder', createdAt: 0, updatedAt: 0 }
+    ]
+    expect(getProjectRunContext(session, projects)).toEqual({})
+  })
+
   it('prepareEditOrForkMutation handles normal edit and forks correctly', () => {
     const currentSession: Session = {
       id: 's1',

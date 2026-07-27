@@ -325,6 +325,37 @@
   opacity: 0.55;
 }
 
+.project-delete-modal {
+  width: min(420px, calc(100vw - 48px));
+  max-height: none;
+}
+
+.project-delete-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+
+.project-delete-summary {
+  margin: 0;
+  color: var(--color-text-title);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.project-delete-detail {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.project-delete-footer {
+  flex-wrap: wrap;
+}
+
 .tool-detail-result-item-header {
   display: flex;
   align-items: center;
@@ -483,7 +514,7 @@ body {
 .header-nav-btn,
 .header-action-btn,
 .sidebar-icon-btn,
-.session-delete-btn,
+.session-menu-btn,
 .msg-action-btn,
 .input-action-btn {
   height: 24px;
@@ -694,6 +725,8 @@ body {
 }
 
 .sidebar-collapsed .project-delete-btn,
+.sidebar-collapsed .project-menu-btn,
+.sidebar-collapsed .project-item-actions,
 .sidebar-collapsed .sidebar-mini-action {
   display: none;
 }
@@ -740,38 +773,103 @@ body {
   font-size: 10.5px;
 }
 
+.project-section-header {
+  position: relative;
+}
+
+.sidebar-add-actions {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.sidebar-add-menu {
+  top: calc(100% + 4px);
+  right: 0;
+  left: auto;
+  min-width: 148px;
+}
+
+.project-create-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--color-card-bg-hover);
+  color: var(--color-text-muted);
+}
+
+.project-create-input {
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--color-border-focus);
+  border-radius: 5px;
+  background: var(--color-input-container-bg);
+  color: var(--color-text-title);
+  font-size: 12px;
+  outline: none;
+}
+
 .project-entry {
   position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 2px;
   min-width: 0;
 }
 
 .project-entry .project-row {
-  padding-right: 28px;
+  padding-right: 8px;
+  min-width: 0;
 }
 
-.project-delete-btn {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 22px;
-  height: 22px;
-  display: none;
+.project-item-actions {
+  position: relative;
+  display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.project-menu-btn {
+  width: 22px;
+  height: 22px;
   border: 0;
   border-radius: 4px;
   background: transparent;
   color: #7d8590;
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
 }
 
-.project-entry:hover .project-delete-btn {
-  display: flex;
+.project-entry:hover .project-menu-btn,
+.project-entry.menu-open .project-menu-btn,
+.project-menu-btn:focus-visible {
+  opacity: 1;
 }
 
-.project-delete-btn:hover {
-  background: #3a2424;
-  color: #f87171;
+.project-menu-btn:hover,
+.project-menu-btn:focus-visible {
+  background: #3a3a3a;
+  color: #f1f5f9;
+}
+
+.project-item-menu {
+  top: calc(100% + 2px);
+  right: 0;
+}
+
+.project-delete-btn {
+  display: none !important;
 }
 
 .project-empty-row {
@@ -795,6 +893,7 @@ body {
 }
 
 .session-item {
+  position: relative;
   flex: 0 0 auto;
   min-height: 32px;
   border: 0;
@@ -868,11 +967,24 @@ body {
   line-height: 1.3;
 }
 
-.session-delete-btn {
+.session-menu-btn {
   top: 4px;
   right: 4px;
   width: 22px;
   height: 22px;
+}
+
+.session-item-menu {
+  max-height: min(320px, 60vh);
+  overflow-y: auto;
+  border-color: var(--color-border);
+  background: var(--color-panel);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.session-rename-input {
+  grid-column: 1;
+  justify-self: stretch;
 }
 
 .sidebar-model-card {
@@ -963,8 +1075,11 @@ body {
   flex: 0 0 auto;
 }
 
+.sidebar-collapsed .project-menu-btn,
+.sidebar-collapsed .project-item-actions,
 .sidebar-collapsed .project-delete-btn,
-.sidebar-collapsed .project-entry:hover .project-delete-btn {
+.sidebar-collapsed .project-entry:hover .project-delete-btn,
+.sidebar-collapsed .project-entry:hover .project-menu-btn {
   display: none;
   pointer-events: none;
 }

@@ -1,22 +1,33 @@
 import { Project } from '../../shared/types'
+import { fromPersistedProjectRow, getProjectKind, toPersistedProjectPath } from '../../shared/projectHelpers'
 import { getDb } from './connection'
 
 export function loadProjects(): Project[] {
   const database = getDb()
   const rows = database
-    .prepare('SELECT id, name, path, createdAt, updatedAt FROM projects ORDER BY updatedAt DESC')
-    .all() as Project[]
-  return rows
+    .prepare(
+      'SELECT id, name, path, kind, createdAt, updatedAt FROM projects ORDER BY updatedAt DESC'
+    )
+    .all() as Array<{
+    id: string
+    name: string
+    path: string
+    kind?: string | null
+    createdAt: number
+    updatedAt: number
+  }>
+  return rows.map(fromPersistedProjectRow)
 }
 
 export function saveProjects(projects: Project[]): void {
   const database = getDb()
   const insertProject = database.prepare(
-    `INSERT INTO projects (id, name, path, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO projects (id, name, path, kind, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name,
        path = excluded.path,
+       kind = excluded.kind,
        createdAt = excluded.createdAt,
        updatedAt = excluded.updatedAt`
   )
@@ -29,7 +40,8 @@ export function saveProjects(projects: Project[]): void {
       insertProject.run(
         project.id,
         project.name,
-        project.path,
+        toPersistedProjectPath(project),
+        getProjectKind(project),
         project.createdAt,
         project.updatedAt
       )

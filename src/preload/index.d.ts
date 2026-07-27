@@ -45,6 +45,15 @@ declare global {
       getAppInfo: () => Promise<{ storePath: string; version: string }>
       listAgentTools: () => Promise<AgentToolInfo[]>
       selectProjectDirectory: () => Promise<Pick<Project, 'name' | 'path'> | null>
+      showMessageBox: (options: {
+        type?: 'none' | 'info' | 'error' | 'question' | 'warning'
+        title?: string
+        message: string
+        detail?: string
+        buttons: string[]
+        defaultId?: number
+        cancelId?: number
+      }) => Promise<number>
       hideWindow: () => void
       getWindowState: () => Promise<WindowState>
       setWindowMode: (mode: WindowMode) => Promise<WindowState>

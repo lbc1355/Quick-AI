@@ -74,6 +74,7 @@ export function createSchema(database: Database.Database): void {
       id        TEXT PRIMARY KEY,
       name      TEXT NOT NULL,
       path      TEXT NOT NULL UNIQUE,
+      kind      TEXT NOT NULL DEFAULT 'filesystem',
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     );
@@ -209,6 +210,7 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'sessions', 'revertState', 'TEXT')
   // Per-session content hash used by saveSessions() to skip rewriting unchanged sessions.
   ensureColumn(database, 'sessions', 'contentHash', 'TEXT')
+  ensureColumn(database, 'projects', 'kind', "TEXT NOT NULL DEFAULT 'filesystem'")
   ensureColumn(database, 'messages', 'forkedFrom', 'TEXT')
   ensureColumn(database, 'messages', 'isBranchFork', 'INTEGER NOT NULL DEFAULT 0')
   ensureColumn(database, 'messages', 'agentRunIds', "TEXT DEFAULT '[]'")

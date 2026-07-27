@@ -48,6 +48,15 @@ const api = {
   listAgentTools: (): Promise<AgentToolInfo[]> => ipcRenderer.invoke('list-agent-tools'),
   selectProjectDirectory: (): Promise<Pick<Project, 'name' | 'path'> | null> =>
     ipcRenderer.invoke('select-project-directory'),
+  showMessageBox: (options: {
+    type?: 'none' | 'info' | 'error' | 'question' | 'warning'
+    title?: string
+    message: string
+    detail?: string
+    buttons: string[]
+    defaultId?: number
+    cancelId?: number
+  }): Promise<number> => ipcRenderer.invoke('show-message-box', options),
   hideWindow: (): void => ipcRenderer.send('hide-window'),
   getWindowState: (): Promise<WindowState> => ipcRenderer.invoke('get-window-state'),
   setWindowMode: (mode: WindowMode): Promise<WindowState> =>

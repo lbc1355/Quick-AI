@@ -1,4 +1,5 @@
 import type { Message, Session, Project } from '../../../../shared/types'
+import { getFilesystemProjectPath } from '../../../../shared/projectHelpers'
 import { createForkedSession, getRunIdsThroughMessage } from '../../hooks/sessionBranching'
 import { prepareMessageForInlineResume } from '../../hooks/chatMessageEvents'
 import { advanceSessionContextEpoch } from '../../../../shared/contextEpoch'
@@ -44,8 +45,11 @@ export function getProjectRunContext(
   if (!session.projectId) return {}
   const project = projectList.find((item) => item.id === session.projectId)
   if (!project) return {}
+  const projectRoot = getFilesystemProjectPath(project)
+  // Conversation folders are UI-only containers; they must not become a tool workspace root.
+  if (!projectRoot) return {}
   return {
-    projectRoot: project.path,
+    projectRoot,
     projectName: project.name
   }
 }

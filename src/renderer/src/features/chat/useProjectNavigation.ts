@@ -8,6 +8,9 @@ import {
   useState
 } from 'react'
 import { Project, Session } from '../../../../shared/types'
+import { getSessionContextEpoch } from '../../../../shared/contextEpoch'
+import { isConversationFolder, isFilesystemProject } from '../../../../shared/projectHelpers'
+import { computeOrphanResourceIds } from '../../hooks/useSessions'
 
 interface UseProjectNavigationArgs {
   projects: Project[]
@@ -17,9 +20,22 @@ interface UseProjectNavigationArgs {
   activeSessionId: string
   setProjects: Dispatch<SetStateAction<Project[]>>
   setSessions: Dispatch<SetStateAction<Session[]>>
+  setActiveSessionId: Dispatch<SetStateAction<string>>
+  setDraftSession: Dispatch<SetStateAction<Session | null>>
   handleNewSession: (options?: { projectId?: string; onCreated?: () => void }) => Promise<Session>
   setSessionFamilyRootId: Dispatch<SetStateAction<string | null>>
   setDismissedSessionFamilyViewForId: Dispatch<SetStateAction<string | null>>
+}
+
+const clearCachesFor = async (sessionId: string, orphanResourceIds: string[]): Promise<void> => {
+  try {
+    await window.api.clearSessionCaches({
+      sessionIds: [sessionId],
+      resourceIds: orphanResourceIds
+    })
+  } catch (error) {
+    console.warn('Failed to clear session caches:', error)
+  }
 }
 
 export function useProjectNavigation({
@@ -30,6 +46,8 @@ export function useProjectNavigation({
   activeSessionId,
   setProjects,
   setSessions,
+  setActiveSessionId,
+  setDraftSession,
   handleNewSession,
   setSessionFamilyRootId,
   setDismissedSessionFamilyViewForId
@@ -41,7 +59,11 @@ export function useProjectNavigation({
   openProject: (projectId: string) => void
   openFreeConversations: () => void
   handleAddProject: () => Promise<void>
-  handleDeleteProject: (projectId: string) => Promise<void>
+  handleAddConversationFolder: (name: string) => Promise<void>
+  handleDeleteProject: (
+    projectId: string,
+    options?: { deleteSessions?: boolean }
+  ) => Promise<void>
 } {
   const [sidebarProjectId, setSidebarProjectId] = useState<string | null | undefined>(undefined)
 
@@ -107,12 +129,33 @@ export function useProjectNavigation({
     setDismissedSessionFamilyViewForId(activeSessionId || null)
   }, [activeSessionId, setDismissedSessionFamilyViewForId, setSessionFamilyRootId])
 
+  const activateContainer = useCallback(
+    async (project: Project): Promise<void> => {
+      const nextProjects = [project, ...projects.filter((item) => item.id !== project.id)]
+      await persistProjects(nextProjects)
+      await handleNewSession({ projectId: project.id })
+      setSidebarProjectId(project.id)
+      setSessionFamilyRootId(null)
+      setDismissedSessionFamilyViewForId(null)
+    },
+    [
+      handleNewSession,
+      persistProjects,
+      projects,
+      setDismissedSessionFamilyViewForId,
+      setSessionFamilyRootId
+    ]
+  )
+
   const handleAddProject = useCallback(async (): Promise<void> => {
     const selected = await window.api.selectProjectDirectory()
     if (!selected) return
 
     const existing = projects.find(
-      (project) => normalizeProjectPath(project.path) === normalizeProjectPath(selected.path)
+      (project) =>
+        isFilesystemProject(project) &&
+        project.path &&
+        normalizeProjectPath(project.path) === normalizeProjectPath(selected.path)
     )
     if (existing) {
       openProject(existing.id)
@@ -126,45 +169,90 @@ export function useProjectNavigation({
         selected.name ||
         selected.path.replace(/\\/g, '/').split('/').filter(Boolean).pop() ||
         'Project',
+      kind: 'filesystem',
       path: selected.path,
       createdAt: now,
       updatedAt: now
     }
-    const nextProjects = [project, ...projects]
-    await persistProjects(nextProjects)
-    await handleNewSession({ projectId: project.id })
-    setSidebarProjectId(project.id)
-    setSessionFamilyRootId(null)
-    setDismissedSessionFamilyViewForId(null)
-  }, [
-    handleNewSession,
-    normalizeProjectPath,
-    openProject,
-    persistProjects,
-    projects,
-    setDismissedSessionFamilyViewForId,
-    setSessionFamilyRootId
-  ])
+    await activateContainer(project)
+  }, [activateContainer, normalizeProjectPath, openProject, projects])
+
+  const handleAddConversationFolder = useCallback(
+    async (rawName: string): Promise<void> => {
+      const name = rawName.trim()
+      if (!name) return
+
+      const duplicate = projects.find(
+        (project) => isConversationFolder(project) && project.name.trim() === name
+      )
+      if (duplicate) {
+        openProject(duplicate.id)
+        return
+      }
+
+      const now = Date.now()
+      const project: Project = {
+        id: `folder-${now}-${Math.random().toString(36).slice(2, 7)}`,
+        name,
+        kind: 'folder',
+        createdAt: now,
+        updatedAt: now
+      }
+      await activateContainer(project)
+    },
+    [activateContainer, openProject, projects]
+  )
 
   const handleDeleteProject = useCallback(
-    async (projectId: string): Promise<void> => {
+    async (
+      projectId: string,
+      options: { deleteSessions?: boolean } = {}
+    ): Promise<void> => {
       const project = projects.find((item) => item.id === projectId)
       if (!project) return
+
       const currentSessions = sessionsRef.current
-      const relatedCount = currentSessions.filter(
-        (session) => session.projectId === projectId
-      ).length
-      const confirmed = window.confirm(
-        relatedCount > 0
-          ? `移除项目「${project.name}」？磁盘文件不会被删除，${relatedCount} 个对话会保留为自由对话。`
-          : `移除项目「${project.name}」？磁盘文件不会被删除。`
+      const relatedSessions = currentSessions.filter((session) => session.projectId === projectId)
+      const deleteContainedSessions = Boolean(
+        isConversationFolder(project) && options.deleteSessions
       )
-      if (!confirmed) return
 
       const nextProjects = projects.filter((item) => item.id !== projectId)
-      const nextSessions = currentSessions.map((session) =>
-        session.projectId === projectId ? { ...session, projectId: undefined } : session
-      )
+      let nextSessions: Session[]
+
+      if (deleteContainedSessions) {
+        const survivors = currentSessions.filter((session) => session.projectId !== projectId)
+        for (const target of relatedSessions) {
+          window.api.advanceSessionContext(target.id, getSessionContextEpoch(target) + 1)
+          const cacheTarget = target.revert?.originalResources
+            ? { ...target, resources: target.revert.originalResources }
+            : target
+          await clearCachesFor(target.id, computeOrphanResourceIds(cacheTarget, survivors))
+        }
+        nextSessions = survivors
+
+        if (relatedSessions.some((session) => session.id === activeSessionId)) {
+          if (nextSessions.length > 0) {
+            setActiveSessionId(nextSessions[0].id)
+            setDraftSession(null)
+          } else {
+            const placeholder: Session = {
+              id: Date.now().toString(),
+              title: '新对话',
+              messages: [],
+              contextEpoch: 0,
+              lastActiveTime: Date.now()
+            }
+            setDraftSession(placeholder)
+            setActiveSessionId(placeholder.id)
+          }
+        }
+      } else {
+        nextSessions = currentSessions.map((session) =>
+          session.projectId === projectId ? { ...session, projectId: undefined } : session
+        )
+      }
+
       await persistProjects(nextProjects)
       if (sidebarProjectId === projectId) {
         setSidebarProjectId(null)
@@ -173,7 +261,16 @@ export function useProjectNavigation({
       sessionsRef.current = nextSessions
       await window.api.storeSet('sessions', nextSessions)
     },
-    [persistProjects, projects, sessionsRef, setSessions, sidebarProjectId]
+    [
+      activeSessionId,
+      persistProjects,
+      projects,
+      sessionsRef,
+      setActiveSessionId,
+      setDraftSession,
+      setSessions,
+      sidebarProjectId
+    ]
   )
 
   return {
@@ -184,6 +281,7 @@ export function useProjectNavigation({
     openProject,
     openFreeConversations,
     handleAddProject,
+    handleAddConversationFolder,
     handleDeleteProject
   }
 }

@@ -10,7 +10,7 @@ interface AttachedFile {
 interface ContextLengthOptions {
   messages: Message[]
   systemPrompt?: string
-  project?: Pick<Project, 'name' | 'path'> | null
+  project?: Pick<Project, 'name' | 'path' | 'kind'> | null
   resources?: SessionResource[]
   input?: string
   attachedFiles?: AttachedFile[]
@@ -36,8 +36,11 @@ function buildContentWithFiles(content: string, files?: AttachedFile[]): string 
   return parts.join('\n')
 }
 
-function buildProjectContext(project?: Pick<Project, 'name' | 'path'> | null): string {
+function buildProjectContext(project?: Pick<Project, 'name' | 'path' | 'kind'> | null): string {
   if (!project) return ''
+  if (project.kind === 'folder' || !project.path) {
+    return [`Conversation folder:`, `Name: ${project.name}`].join('\n')
+  }
   return [`Project context:`, `Name: ${project.name}`, `Path: ${project.path}`].join('\n')
 }
 

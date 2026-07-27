@@ -11,6 +11,7 @@ import type {
   SessionFileTransitionPreview,
   WindowState
 } from '../../shared/types'
+import { isConversationFolder } from '../../shared/projectHelpers'
 import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
 import { AgentFileRevertModal } from './components/AgentFileRevertModal'
@@ -220,6 +221,8 @@ function App(): React.JSX.Element {
     handleNewSession,
     handleClearCurrentSession,
     handleDeleteSession,
+    handleRenameSession,
+    handleMoveSession,
     syncSessionsRef,
     draftSession,
     setDraftSession
@@ -272,6 +275,7 @@ function App(): React.JSX.Element {
     openProject,
     openFreeConversations,
     handleAddProject,
+    handleAddConversationFolder,
     handleDeleteProject
   } = useProjectNavigation({
     projects,
@@ -281,6 +285,8 @@ function App(): React.JSX.Element {
     activeSessionId,
     setProjects,
     setSessions,
+    setActiveSessionId,
+    setDraftSession,
     handleNewSession,
     setSessionFamilyRootId,
     setDismissedSessionFamilyViewForId
@@ -935,8 +941,8 @@ function App(): React.JSX.Element {
     setActiveSubagentRoute({ messageId, subagentId })
   }, [])
   const handleDeleteProjectFromSidebar = useCallback(
-    (projectId: string): void => {
-      void handleDeleteProject(projectId)
+    (projectId: string, options?: { deleteSessions?: boolean }): void => {
+      void handleDeleteProject(projectId, options)
     },
     [handleDeleteProject]
   )
@@ -945,6 +951,18 @@ function App(): React.JSX.Element {
   )
   const handleDeleteSessionFromSidebar = useStableEvent(
     (sessionId: string): Promise<void> => handleDeleteSession(sessionId)
+  )
+  const handleRenameSessionFromSidebar = useStableEvent(
+    (sessionId: string, nextTitle: string): Promise<void> =>
+      handleRenameSession(sessionId, nextTitle)
+  )
+  const handleMoveSessionFromSidebar = useStableEvent(
+    async (sessionId: string, projectId: string | undefined): Promise<void> => {
+      await handleMoveSession(sessionId, projectId)
+      if (activeSessionId === sessionId) {
+        setSidebarProjectId(projectId ?? null)
+      }
+    }
   )
   const messageNavItems = useMemo(
     () =>
@@ -1033,12 +1051,17 @@ function App(): React.JSX.Element {
             activeProviderName={activeProviderName}
             activeModelName={runningModelName}
             onAddProject={handleAddProject}
+            onAddConversationFolder={(name) => {
+              void handleAddConversationFolder(name)
+            }}
             onOpenProject={handleOpenProjectFromSidebar}
             onOpenFreeConversations={handleOpenFreeConversationsFromSidebar}
             onDeleteProject={handleDeleteProjectFromSidebar}
             exitSessionFamilyView={exitSessionFamilyView}
             handleNewSession={handleNewSessionFromSidebar}
             handleDeleteSession={handleDeleteSessionFromSidebar}
+            handleRenameSession={handleRenameSessionFromSidebar}
+            handleMoveSession={handleMoveSessionFromSidebar}
             openSession={openSession}
             setSessionFamilyRootId={setSessionFamilyRootId}
             setDismissedSessionFamilyViewForId={setDismissedSessionFamilyViewForId}
@@ -1058,8 +1081,17 @@ function App(): React.JSX.Element {
                 <div className="conversation-title-meta">
                   <span>{activeProviderName}</span>
                   {activeProject && (
-                    <span className="conversation-project-context" title={activeProject.path}>
-                      {activeProject.name} · {activeProject.path}
+                    <span
+                      className="conversation-project-context"
+                      title={
+                        isConversationFolder(activeProject)
+                          ? activeProject.name
+                          : activeProject.path || activeProject.name
+                      }
+                    >
+                      {isConversationFolder(activeProject)
+                        ? activeProject.name
+                        : `${activeProject.name} · ${activeProject.path || ''}`}
                     </span>
                   )}
                   {activeBranchInfo && (
