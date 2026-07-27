@@ -149,14 +149,13 @@ export function useProjectNavigation({
 
   const handleAddProject = useCallback(async (): Promise<void> => {
     const selected = await window.api.selectProjectDirectory()
-    if (!selected) return
+    if (!selected?.path) return
 
-    const existing = projects.find(
-      (project) =>
-        isFilesystemProject(project) &&
-        project.path &&
-        normalizeProjectPath(project.path) === normalizeProjectPath(selected.path)
-    )
+    const selectedPath = selected.path
+    const existing = projects.find((project) => {
+      if (!isFilesystemProject(project) || !project.path) return false
+      return normalizeProjectPath(project.path) === normalizeProjectPath(selectedPath)
+    })
     if (existing) {
       openProject(existing.id)
       return
@@ -167,10 +166,10 @@ export function useProjectNavigation({
       id: `project-${now}-${Math.random().toString(36).slice(2, 7)}`,
       name:
         selected.name ||
-        selected.path.replace(/\\/g, '/').split('/').filter(Boolean).pop() ||
+        selectedPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ||
         'Project',
       kind: 'filesystem',
-      path: selected.path,
+      path: selectedPath,
       createdAt: now,
       updatedAt: now
     }

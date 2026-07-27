@@ -44,7 +44,7 @@ declare global {
       storeSet: <K extends StoreKey>(key: K, value: StoreValue<K>) => Promise<boolean>
       getAppInfo: () => Promise<{ storePath: string; version: string }>
       listAgentTools: () => Promise<AgentToolInfo[]>
-      selectProjectDirectory: () => Promise<Pick<Project, 'name' | 'path'> | null>
+      selectProjectDirectory: () => Promise<{ name: string; path: string } | null>
       showMessageBox: (options: {
         type?: 'none' | 'info' | 'error' | 'question' | 'warning'
         title?: string

@@ -13,7 +13,6 @@ import {
   ForkSessionCachesPayload,
   McpServerStatus,
   FetchedModelInfo,
-  Project,
   Skill,
   UserChoiceRequest,
   UserChoiceResponse,
@@ -46,7 +45,7 @@ const api = {
   getAppInfo: (): Promise<{ storePath: string; version: string }> =>
     ipcRenderer.invoke('get-app-info'),
   listAgentTools: (): Promise<AgentToolInfo[]> => ipcRenderer.invoke('list-agent-tools'),
-  selectProjectDirectory: (): Promise<Pick<Project, 'name' | 'path'> | null> =>
+  selectProjectDirectory: (): Promise<{ name: string; path: string } | null> =>
     ipcRenderer.invoke('select-project-directory'),
   showMessageBox: (options: {
     type?: 'none' | 'info' | 'error' | 'question' | 'warning'
