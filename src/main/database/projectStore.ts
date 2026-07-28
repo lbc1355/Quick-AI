@@ -1,5 +1,9 @@
-import { Project } from '../../shared/types'
-import { fromPersistedProjectRow, getProjectKind, toPersistedProjectPath } from '../../shared/projectHelpers'
+import { DeleteProjectResult, Project } from '../../shared/types'
+import {
+  fromPersistedProjectRow,
+  getProjectKind,
+  toPersistedProjectPath
+} from '../../shared/projectHelpers'
 import { getDb } from './connection'
 
 export function loadProjects(): Project[] {
@@ -53,4 +57,40 @@ export function saveProjects(projects: Project[]): void {
     }
   })
   persist(projects)
+}
+
+/**
+ * Delete a project and optionally the persisted conversations inside a conversation folder.
+ *
+ * This is intentionally a targeted database operation rather than two renderer-owned snapshots:
+ * deleting the sessions and project in one transaction prevents a restart from exposing a
+ * half-applied destructive action. Filesystem projects never delete their conversations.
+ */
+export function deleteProject(
+  projectId: string,
+  deleteContainedSessions: boolean
+): DeleteProjectResult {
+  const database = getDb()
+  const remove = database.transaction((id: string, deleteSessions: boolean) => {
+    const project = database.prepare('SELECT kind FROM projects WHERE id = ?').get(id) as
+      | { kind: string }
+      | undefined
+    if (!project) return { deletedSessionIds: [] }
+
+    const shouldDeleteSessions = deleteSessions && project.kind === 'folder'
+    const relatedRows = shouldDeleteSessions
+      ? (database.prepare('SELECT id FROM sessions WHERE projectId = ?').all(id) as Array<{
+          id: string
+        }>)
+      : []
+
+    if (shouldDeleteSessions) {
+      database.prepare('DELETE FROM sessions WHERE projectId = ?').run(id)
+    }
+    database.prepare('DELETE FROM projects WHERE id = ?').run(id)
+
+    return { deletedSessionIds: relatedRows.map((row) => row.id) }
+  })
+
+  return remove(projectId, deleteContainedSessions)
 }

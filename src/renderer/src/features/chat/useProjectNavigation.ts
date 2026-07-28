@@ -8,7 +8,7 @@ import {
   useState
 } from 'react'
 import { Project, Session } from '../../../../shared/types'
-import { getSessionContextEpoch } from '../../../../shared/contextEpoch'
+import { advanceSessionContextEpoch, getSessionContextEpoch } from '../../../../shared/contextEpoch'
 import { isConversationFolder, isFilesystemProject } from '../../../../shared/projectHelpers'
 import { computeOrphanResourceIds } from '../../hooks/useSessions'
 
@@ -38,6 +38,26 @@ const clearCachesFor = async (sessionId: string, orphanResourceIds: string[]): P
   }
 }
 
+export const getUnpersistedActiveSession = (
+  sessions: Session[],
+  activeSession: Session | undefined
+): Session | undefined => {
+  if (!activeSession) return undefined
+  return sessions.some((session) => session.id === activeSession.id) ? undefined : activeSession
+}
+
+export const countSessionsByProject = (
+  sessions: Session[],
+  unpersistedSession?: Session
+): Map<string, number> => {
+  const counts = new Map<string, number>()
+  for (const session of unpersistedSession ? [...sessions, unpersistedSession] : sessions) {
+    if (!session.projectId) continue
+    counts.set(session.projectId, (counts.get(session.projectId) || 0) + 1)
+  }
+  return counts
+}
+
 export function useProjectNavigation({
   projects,
   sessions,
@@ -60,10 +80,7 @@ export function useProjectNavigation({
   openFreeConversations: () => void
   handleAddProject: () => Promise<void>
   handleAddConversationFolder: (name: string) => Promise<void>
-  handleDeleteProject: (
-    projectId: string,
-    options?: { deleteSessions?: boolean }
-  ) => Promise<void>
+  handleDeleteProject: (projectId: string, options?: { deleteSessions?: boolean }) => Promise<void>
 } {
   const [sidebarProjectId, setSidebarProjectId] = useState<string | null | undefined>(undefined)
 
@@ -106,13 +123,8 @@ export function useProjectNavigation({
   }, [projects, resolvedSidebarProjectId])
 
   const projectSessionCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const session of sessions) {
-      if (!session.projectId) continue
-      counts.set(session.projectId, (counts.get(session.projectId) || 0) + 1)
-    }
-    return counts
-  }, [sessions])
+    return countSessionsByProject(sessions, getUnpersistedActiveSession(sessions, activeSession))
+  }, [activeSession, sessions])
 
   const openProject = useCallback(
     (projectId: string): void => {
@@ -203,36 +215,39 @@ export function useProjectNavigation({
   )
 
   const handleDeleteProject = useCallback(
-    async (
-      projectId: string,
-      options: { deleteSessions?: boolean } = {}
-    ): Promise<void> => {
+    async (projectId: string, options: { deleteSessions?: boolean } = {}): Promise<void> => {
       const project = projects.find((item) => item.id === projectId)
       if (!project) return
 
       const currentSessions = sessionsRef.current
+      const activeDraft = getUnpersistedActiveSession(currentSessions, activeSession)
+      const draftInProject = activeDraft?.projectId === projectId ? activeDraft : undefined
       const relatedSessions = currentSessions.filter((session) => session.projectId === projectId)
       const deleteContainedSessions = Boolean(
         isConversationFolder(project) && options.deleteSessions
       )
+      const relatedSessionIds = new Set(relatedSessions.map((session) => session.id))
+      const activeWillBeDeleted =
+        deleteContainedSessions &&
+        (relatedSessionIds.has(activeSessionId) || draftInProject?.id === activeSessionId)
 
       const nextProjects = projects.filter((item) => item.id !== projectId)
+      let rollbackSessions = currentSessions
       let nextSessions: Session[]
 
       if (deleteContainedSessions) {
-        const survivors = currentSessions.filter((session) => session.projectId !== projectId)
+        rollbackSessions = currentSessions.map((session) =>
+          relatedSessionIds.has(session.id) ? advanceSessionContextEpoch(session) : session
+        )
         for (const target of relatedSessions) {
           window.api.advanceSessionContext(target.id, getSessionContextEpoch(target) + 1)
-          const cacheTarget = target.revert?.originalResources
-            ? { ...target, resources: target.revert.originalResources }
-            : target
-          await clearCachesFor(target.id, computeOrphanResourceIds(cacheTarget, survivors))
         }
+        const survivors = currentSessions.filter((session) => !relatedSessionIds.has(session.id))
         nextSessions = survivors
 
-        if (relatedSessions.some((session) => session.id === activeSessionId)) {
-          if (nextSessions.length > 0) {
-            setActiveSessionId(nextSessions[0].id)
+        if (activeWillBeDeleted) {
+          if (survivors.length > 0) {
+            setActiveSessionId(survivors[0].id)
             setDraftSession(null)
           } else {
             const placeholder: Session = {
@@ -250,23 +265,76 @@ export function useProjectNavigation({
         nextSessions = currentSessions.map((session) =>
           session.projectId === projectId ? { ...session, projectId: undefined } : session
         )
+        if (draftInProject) {
+          setDraftSession({ ...draftInProject, projectId: undefined })
+        }
       }
 
-      await persistProjects(nextProjects)
+      // Update refs before crossing the IPC boundary. Streaming/background callbacks read this ref,
+      // so they cannot re-persist a project id that is being removed.
+      setProjects(nextProjects)
+      sessionsRef.current = nextSessions
+      setSessions(nextSessions)
       if (sidebarProjectId === projectId) {
         setSidebarProjectId(null)
       }
-      setSessions(nextSessions)
-      sessionsRef.current = nextSessions
-      await window.api.storeSet('sessions', nextSessions)
+
+      try {
+        await window.api.deleteProject(projectId, { deleteSessions: deleteContainedSessions })
+      } catch (error) {
+        console.error('Failed to delete project:', error)
+
+        // Roll back the organization change while preserving any unrelated updates that landed
+        // during the IPC call. Deleted targets cannot receive stream updates after their context
+        // was advanced, so their pre-operation snapshot is safe to restore.
+        const latestSessions = sessionsRef.current
+        let restoredSessions: Session[]
+        if (deleteContainedSessions) {
+          const latestById = new Map(latestSessions.map((session) => [session.id, session]))
+          const originalIds = new Set(rollbackSessions.map((session) => session.id))
+          restoredSessions = [
+            ...rollbackSessions.map((session) => latestById.get(session.id) || session),
+            ...latestSessions.filter((session) => !originalIds.has(session.id))
+          ]
+        } else {
+          restoredSessions = latestSessions.map((session) =>
+            relatedSessionIds.has(session.id) ? { ...session, projectId } : session
+          )
+        }
+
+        setProjects(projects)
+        sessionsRef.current = restoredSessions
+        setSessions(restoredSessions)
+        if (draftInProject) setDraftSession(draftInProject)
+        if (activeWillBeDeleted) setActiveSessionId(activeSessionId)
+        if (sidebarProjectId === projectId) setSidebarProjectId(projectId)
+        return
+      }
+
+      if (deleteContainedSessions) {
+        const survivors = sessionsRef.current
+        for (const target of relatedSessions) {
+          const cacheTarget = target.revert?.originalResources
+            ? { ...target, resources: target.revert.originalResources }
+            : target
+          await clearCachesFor(target.id, computeOrphanResourceIds(cacheTarget, survivors))
+        }
+        if (draftInProject) {
+          await clearCachesFor(
+            draftInProject.id,
+            computeOrphanResourceIds(draftInProject, survivors)
+          )
+        }
+      }
     },
     [
+      activeSession,
       activeSessionId,
-      persistProjects,
       projects,
       sessionsRef,
       setActiveSessionId,
       setDraftSession,
+      setProjects,
       setSessions,
       sidebarProjectId
     ]

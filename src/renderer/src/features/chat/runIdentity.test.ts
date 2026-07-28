@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { Session } from '../../../../shared/types'
-import { createMessagePairIds, createRunId, deriveSessionTitle, isDefaultSessionTitle } from './runIdentity'
+import {
+  createMessagePairIds,
+  createRunId,
+  deriveSessionTitle,
+  isDefaultSessionTitle,
+  shouldAutoDeriveSessionTitle
+} from './runIdentity'
 
 const sessionWith = (ids: string[]): Session => ({
   id: 'session-1',
@@ -71,5 +77,15 @@ describe('isDefaultSessionTitle', () => {
 
   it('treats a user-chosen title as custom', () => {
     expect(isDefaultSessionTitle('项目复盘')).toBe(false)
+  })
+
+  it('does not auto-derive over an explicitly renamed placeholder title', () => {
+    expect(
+      shouldAutoDeriveSessionTitle({
+        title: 'Chat',
+        titleManuallyEdited: true
+      })
+    ).toBe(false)
+    expect(shouldAutoDeriveSessionTitle({ title: 'Chat' })).toBe(true)
   })
 })

@@ -47,6 +47,31 @@ export const computeResourcePrune = (
   return { keptResources: kept, prunedIds, deletableIds }
 }
 
+export const renameSessionInSnapshot = (
+  sessions: Session[],
+  targetSessionId: string,
+  title: string
+): Session[] | undefined => {
+  const existing = sessions.find((session) => session.id === targetSessionId)
+  if (!existing) return undefined
+  if (existing.title.trim() === title && existing.titleManuallyEdited) return undefined
+  return sessions.map((session) =>
+    session.id === targetSessionId ? { ...session, title, titleManuallyEdited: true } : session
+  )
+}
+
+export const moveSessionInSnapshot = (
+  sessions: Session[],
+  targetSessionId: string,
+  projectId: string | undefined
+): Session[] | undefined => {
+  const existing = sessions.find((session) => session.id === targetSessionId)
+  if (!existing || (existing.projectId || undefined) === projectId) return undefined
+  return sessions.map((session) =>
+    session.id === targetSessionId ? { ...session, projectId } : session
+  )
+}
+
 /** Best-effort: delete a session's action log + orphaned resource caches. Never throws. */
 const clearCachesFor = async (sessionId: string, orphanResourceIds: string[]): Promise<void> => {
   try {
@@ -72,10 +97,7 @@ export interface UseSessionsReturn {
   handleClearCurrentSession: () => Promise<void>
   handleDeleteSession: (targetSessionId: string) => Promise<void>
   handleRenameSession: (targetSessionId: string, nextTitle: string) => Promise<void>
-  handleMoveSession: (
-    targetSessionId: string,
-    projectId: string | undefined
-  ) => Promise<void>
+  handleMoveSession: (targetSessionId: string, projectId: string | undefined) => Promise<void>
   syncSessionsRef: (currentSessions: Session[]) => void
 }
 
@@ -173,6 +195,7 @@ export const useSessions = (): UseSessionsReturn => {
           ...(advancedTarget || s),
           messages: [],
           title: '新对话',
+          titleManuallyEdited: undefined,
           lastActiveTime: Date.now(),
           resources: [],
           revert: undefined
@@ -220,27 +243,23 @@ export const useSessions = (): UseSessionsReturn => {
     await window.api.storeSet('sessions', updated)
   }
 
-  const handleRenameSession = async (
-    targetSessionId: string,
-    nextTitle: string
-  ): Promise<void> => {
+  const handleRenameSession = async (targetSessionId: string, nextTitle: string): Promise<void> => {
     const trimmed = nextTitle.trim()
     if (!trimmed) return
 
+    const latestSessions = sessionsRef.current
     const draftMatch = draftSession?.id === targetSessionId
-    const existing = sessions.find((session) => session.id === targetSessionId)
-    const currentTitle = (draftMatch ? draftSession?.title : existing?.title)?.trim()
-    if (currentTitle === trimmed) return
 
-    if (draftMatch && draftSession) {
-      setDraftSession({ ...draftSession, title: trimmed })
+    if (draftMatch) {
+      setDraftSession((current) =>
+        current?.id === targetSessionId
+          ? { ...current, title: trimmed, titleManuallyEdited: true }
+          : current
+      )
     }
 
-    if (!existing) return
-
-    const updated = sessions.map((session) =>
-      session.id === targetSessionId ? { ...session, title: trimmed } : session
-    )
+    const updated = renameSessionInSnapshot(latestSessions, targetSessionId, trimmed)
+    if (!updated) return
     sessionsRef.current = updated
     setSessions(updated)
     await window.api.storeSet('sessions', updated)
@@ -253,17 +272,16 @@ export const useSessions = (): UseSessionsReturn => {
     const nextProjectId = projectId || undefined
 
     if (draftSession?.id === targetSessionId) {
-      if ((draftSession.projectId || undefined) === nextProjectId) return
-      setDraftSession({ ...draftSession, projectId: nextProjectId })
+      if ((draftSession.projectId || undefined) !== nextProjectId) {
+        setDraftSession((current) =>
+          current?.id === targetSessionId ? { ...current, projectId: nextProjectId } : current
+        )
+      }
     }
 
-    const existing = sessions.find((session) => session.id === targetSessionId)
-    if (!existing) return
-    if ((existing.projectId || undefined) === nextProjectId) return
-
-    const updated = sessions.map((session) =>
-      session.id === targetSessionId ? { ...session, projectId: nextProjectId } : session
-    )
+    const latestSessions = sessionsRef.current
+    const updated = moveSessionInSnapshot(latestSessions, targetSessionId, nextProjectId)
+    if (!updated) return
     sessionsRef.current = updated
     setSessions(updated)
     await window.api.storeSet('sessions', updated)

@@ -337,6 +337,8 @@ export interface SessionRevertState {
 export interface Session {
   id: string
   title: string
+  /** Prevents automatic prompt-derived titles from overwriting an explicit user rename. */
+  titleManuallyEdited?: boolean
   messages: Message[]
   /** Monotonic boundary used to reject results produced from an obsolete context snapshot. */
   contextEpoch?: number
@@ -359,6 +361,11 @@ export interface Project {
   path?: string
   createdAt: number
   updatedAt: number
+}
+
+export interface DeleteProjectResult {
+  /** Persisted sessions removed together with a conversation folder. */
+  deletedSessionIds: string[]
 }
 
 export type ProviderEndpointType = 'openai-compatible' | 'ollama-openai' | 'custom'

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { computeOrphanResourceIds, computeResourcePrune } from './useSessions'
+import {
+  computeOrphanResourceIds,
+  computeResourcePrune,
+  moveSessionInSnapshot,
+  renameSessionInSnapshot
+} from './useSessions'
 import { Session, SessionResource } from '../../../shared/types'
 
 function res(id: string, runIds?: string[]): SessionResource {
@@ -114,5 +119,39 @@ describe('computeResourcePrune', () => {
     expect(out.keptResources).toEqual([])
     expect(out.prunedIds).toEqual([])
     expect(out.deletableIds).toEqual([])
+  })
+})
+
+describe('session organization snapshots', () => {
+  it('renames from the latest snapshot without dropping streamed message data', () => {
+    const latest: Session[] = [
+      {
+        id: 'A',
+        title: 'Chat',
+        messages: [{ id: 'm1', role: 'assistant', content: 'latest streamed text' }]
+      },
+      { id: 'B', title: 'B', messages: [] }
+    ]
+
+    const updated = renameSessionInSnapshot(latest, 'A', 'Renamed')
+
+    expect(updated?.[0]).toMatchObject({
+      title: 'Renamed',
+      titleManuallyEdited: true,
+      messages: [{ content: 'latest streamed text' }]
+    })
+    expect(updated?.[1]).toBe(latest[1])
+  })
+
+  it('moves only the target in the supplied latest snapshot', () => {
+    const latest = [
+      session('A', ['resource-from-stream']),
+      { ...session('B', []), projectId: 'old-folder' }
+    ]
+
+    const updated = moveSessionInSnapshot(latest, 'B', 'new-folder')
+
+    expect(updated?.[0]).toBe(latest[0])
+    expect(updated?.[1].projectId).toBe('new-folder')
   })
 })

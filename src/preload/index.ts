@@ -33,7 +33,8 @@ import {
   BackgroundJobInfo,
   ProviderModelDiscoveryRequest,
   ProviderModelDiscoveryCache,
-  ProviderConnectionTestResult
+  ProviderConnectionTestResult,
+  DeleteProjectResult
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -47,15 +48,10 @@ const api = {
   listAgentTools: (): Promise<AgentToolInfo[]> => ipcRenderer.invoke('list-agent-tools'),
   selectProjectDirectory: (): Promise<{ name: string; path: string } | null> =>
     ipcRenderer.invoke('select-project-directory'),
-  showMessageBox: (options: {
-    type?: 'none' | 'info' | 'error' | 'question' | 'warning'
-    title?: string
-    message: string
-    detail?: string
-    buttons: string[]
-    defaultId?: number
-    cancelId?: number
-  }): Promise<number> => ipcRenderer.invoke('show-message-box', options),
+  deleteProject: (
+    projectId: string,
+    options?: { deleteSessions?: boolean }
+  ): Promise<DeleteProjectResult> => ipcRenderer.invoke('delete-project', projectId, options),
   hideWindow: (): void => ipcRenderer.send('hide-window'),
   getWindowState: (): Promise<WindowState> => ipcRenderer.invoke('get-window-state'),
   setWindowMode: (mode: WindowMode): Promise<WindowState> =>

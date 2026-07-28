@@ -43,6 +43,9 @@ describe('planSessionPersist / computeSessionHash', () => {
     const advanced = makeSession('a', { contextEpoch: 1 })
     expect(computeSessionHash(advanced)).not.toBe(computeSessionHash(a))
 
+    const manuallyRenamed = makeSession('a', { titleManuallyEdited: true })
+    expect(computeSessionHash(manuallyRenamed)).not.toBe(computeSessionHash(a))
+
     const reverted = makeSession('a', {
       revert: {
         boundaryMessageId: 'a-m1',
@@ -105,13 +108,18 @@ describeWithSqlite('saveSessions incremental persistence', () => {
   })
 
   it('round-trips a multi-session snapshot', () => {
-    const sessions = [makeSession('a', { contextEpoch: 3 }), makeSession('b')]
+    const sessions = [
+      makeSession('a', { contextEpoch: 3, titleManuallyEdited: true }),
+      makeSession('b')
+    ]
     saveSessions(sessions)
     closeDb()
     const loaded = loadSessions()
     expect(loaded.map((s) => s.id).sort()).toEqual(['a', 'b'])
     expect(loaded.find((s) => s.id === 'a')?.contextEpoch).toBe(3)
+    expect(loaded.find((s) => s.id === 'a')?.titleManuallyEdited).toBe(true)
     expect(loaded.find((s) => s.id === 'b')?.contextEpoch).toBe(0)
+    expect(loaded.find((s) => s.id === 'b')?.titleManuallyEdited).toBeUndefined()
   })
 
   it('keeps untouched sessions intact when only one session changes', () => {

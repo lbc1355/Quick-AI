@@ -63,6 +63,7 @@ export function createSchema(database: Database.Database): void {
     CREATE TABLE IF NOT EXISTS sessions (
       id             TEXT PRIMARY KEY,
       title          TEXT NOT NULL DEFAULT '',
+      titleManuallyEdited INTEGER NOT NULL DEFAULT 0,
       lastActiveTime INTEGER NOT NULL DEFAULT 0,
       contextEpoch  INTEGER NOT NULL DEFAULT 0,
       projectId      TEXT REFERENCES projects(id) ON DELETE SET NULL,
@@ -208,6 +209,7 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'sessions', 'contextEpoch', 'INTEGER NOT NULL DEFAULT 0')
   ensureColumn(database, 'sessions', 'projectId', 'TEXT REFERENCES projects(id) ON DELETE SET NULL')
   ensureColumn(database, 'sessions', 'revertState', 'TEXT')
+  ensureColumn(database, 'sessions', 'titleManuallyEdited', 'INTEGER NOT NULL DEFAULT 0')
   // Per-session content hash used by saveSessions() to skip rewriting unchanged sessions.
   ensureColumn(database, 'sessions', 'contentHash', 'TEXT')
   ensureColumn(database, 'projects', 'kind', "TEXT NOT NULL DEFAULT 'filesystem'")

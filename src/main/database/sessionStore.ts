@@ -11,11 +11,12 @@ export function loadSessions(): Session[] {
 
   const sessionRows = database
     .prepare(
-      'SELECT id, title, lastActiveTime, contextEpoch, projectId, branchOf, revertState FROM sessions ORDER BY lastActiveTime DESC'
+      'SELECT id, title, titleManuallyEdited, lastActiveTime, contextEpoch, projectId, branchOf, revertState FROM sessions ORDER BY lastActiveTime DESC'
     )
     .all() as Array<{
     id: string
     title: string
+    titleManuallyEdited: number
     lastActiveTime: number
     contextEpoch: number
     projectId: string | null
@@ -119,6 +120,7 @@ export function loadSessions(): Session[] {
   const sessions = sessionRows.map((s) => ({
     id: s.id,
     title: s.title,
+    titleManuallyEdited: s.titleManuallyEdited === 1 || undefined,
     lastActiveTime: s.lastActiveTime || undefined,
     contextEpoch: normalizeContextEpoch(s.contextEpoch),
     projectId: s.projectId || undefined,
@@ -222,6 +224,7 @@ export function computeSessionHash(session: Session): string {
   const normalized = {
     id: session.id,
     title: session.title,
+    titleManuallyEdited: session.titleManuallyEdited ? 1 : 0,
     lastActiveTime: session.lastActiveTime || 0,
     contextEpoch: normalizeContextEpoch(session.contextEpoch),
     projectId: session.projectId || null,
@@ -294,7 +297,7 @@ export function saveSessions(sessions: Session[]): void {
   if (plan.upserts.length === 0 && plan.deleteIds.length === 0) return
 
   const insertSession = database.prepare(
-    'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime, contextEpoch, projectId, branchOf, revertState, contentHash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO sessions (id, title, titleManuallyEdited, lastActiveTime, contextEpoch, projectId, branchOf, revertState, contentHash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
   const deleteSession = database.prepare('DELETE FROM sessions WHERE id = ?')
   const deleteMessages = database.prepare('DELETE FROM messages WHERE sessionId = ?')
@@ -319,6 +322,7 @@ export function saveSessions(sessions: Session[]): void {
       insertSession.run(
         session.id,
         session.title,
+        session.titleManuallyEdited ? 1 : 0,
         session.lastActiveTime || 0,
         normalizeContextEpoch(session.contextEpoch),
         session.projectId || null,

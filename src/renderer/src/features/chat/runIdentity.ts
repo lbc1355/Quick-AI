@@ -45,6 +45,11 @@ export const isDefaultSessionTitle = (title: string | undefined): boolean => {
   return !trimmed || DEFAULT_SESSION_TITLES.has(trimmed)
 }
 
+/** Manual renames win even when the chosen text happens to match a default placeholder. */
+export const shouldAutoDeriveSessionTitle = (
+  session: Pick<Session, 'title' | 'titleManuallyEdited'>
+): boolean => !session.titleManuallyEdited && isDefaultSessionTitle(session.title)
+
 /** Derive a session title from the first prompt, falling back when the prompt is blank. */
 export const deriveSessionTitle = (prompt: string, fallback: string): string =>
   prompt.substring(0, DEFAULT_SESSION_TITLE_LENGTH) || fallback

@@ -16,6 +16,9 @@ const promptStoreMocks = vi.hoisted(() => ({
   markSessionPromptRunning: vi.fn(),
   requeueSessionPrompts: vi.fn()
 }))
+const projectStoreMocks = vi.hoisted(() => ({
+  deleteProject: vi.fn()
+}))
 
 vi.mock('electron', () => {
   return {
@@ -28,8 +31,7 @@ vi.mock('electron', () => {
       })
     },
     dialog: {
-      showOpenDialog: vi.fn(),
-      showMessageBox: vi.fn().mockResolvedValue({ response: 0 })
+      showOpenDialog: vi.fn()
     },
     BrowserWindow: {
       fromWebContents: vi.fn().mockReturnValue({
@@ -73,6 +75,7 @@ vi.mock('../toolRegistry', () => ({
 }))
 
 vi.mock('../database/sessionPromptStore', () => promptStoreMocks)
+vi.mock('../database/projectStore', () => projectStoreMocks)
 
 import { registerStoreIpc } from './storeIpc'
 import { registerMcpIpc } from './mcpIpc'
@@ -224,7 +227,7 @@ describe('IPC Registration Modules', () => {
     expect(mockController.getCurrentWindowState).toHaveBeenCalled()
   })
 
-  it('registerProjectIpc routes directory selection via WindowController', async () => {
+  it('registerProjectIpc routes directory selection and transactional deletion', async () => {
     const mockController = {
       hideWindow: vi.fn(),
       showWindow: vi.fn(),
@@ -242,7 +245,15 @@ describe('IPC Registration Modules', () => {
     registerProjectIpc(mockController)
 
     expect(mockHandlers['select-project-directory']).toBeDefined()
-    expect(mockHandlers['show-message-box']).toBeDefined()
+    expect(mockHandlers['delete-project']).toBeDefined()
+
+    projectStoreMocks.deleteProject.mockReturnValue({ deletedSessionIds: ['session-1'] })
+    expect(
+      mockHandlers['delete-project']({} as IpcMainInvokeEvent, ' folder-1 ', {
+        deleteSessions: true
+      })
+    ).toEqual({ deletedSessionIds: ['session-1'] })
+    expect(projectStoreMocks.deleteProject).toHaveBeenCalledWith('folder-1', true)
   })
 
   it('registerGenerationIpc binds generation, skill and abort channels', () => {
