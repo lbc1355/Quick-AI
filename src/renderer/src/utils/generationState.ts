@@ -3,16 +3,62 @@ export interface SessionGenerationState {
   isOtherSessionGenerating: boolean
 }
 
+export interface ActiveSessionGeneration {
+  requestId: string | null
+  assistantMessageId: string | null
+}
+
+export type SessionGenerationRegistry = ReadonlyMap<string, ActiveSessionGeneration>
+
+export function registerSessionGeneration(
+  registry: SessionGenerationRegistry,
+  sessionId: string,
+  generation: ActiveSessionGeneration
+): SessionGenerationRegistry {
+  const next = new Map(registry)
+  next.set(sessionId, generation)
+  return next
+}
+
+export function unregisterSessionGeneration(
+  registry: SessionGenerationRegistry,
+  sessionId: string,
+  requestId: string | null
+): SessionGenerationRegistry {
+  const active = registry.get(sessionId)
+  if (!active || active.requestId !== requestId) return registry
+  const next = new Map(registry)
+  next.delete(sessionId)
+  return next
+}
+
+export function getGeneratingSessionIds(registry: SessionGenerationRegistry): ReadonlySet<string> {
+  return new Set(registry.keys())
+}
+
+export function getActiveRequestIds(registry: SessionGenerationRegistry): ReadonlySet<string> {
+  return new Set(
+    [...registry.values()]
+      .map((generation) => generation.requestId)
+      .filter((requestId): requestId is string => requestId !== null)
+  )
+}
+
+/**
+ * Derive per-session generation flags from the set of sessions that currently have an active run.
+ *
+ * Multiple sessions may generate in parallel, so the input is a set of session ids rather than a
+ * single global boolean. `isCurrentSessionGenerating` and `isOtherSessionGenerating` can both be
+ * true when the current session and at least one other session are running at the same time.
+ */
 export function getSessionGenerationState(
-  isGenerating: boolean,
-  activeGenerationSessionId: string | null,
+  generatingSessionIds: ReadonlySet<string>,
   currentSessionId: string
 ): SessionGenerationState {
+  const current = generatingSessionIds.has(currentSessionId)
+  const others = generatingSessionIds.size - (current ? 1 : 0)
   return {
-    isCurrentSessionGenerating: isGenerating && activeGenerationSessionId === currentSessionId,
-    isOtherSessionGenerating:
-      isGenerating &&
-      activeGenerationSessionId !== null &&
-      activeGenerationSessionId !== currentSessionId
+    isCurrentSessionGenerating: current,
+    isOtherSessionGenerating: others > 0
   }
 }

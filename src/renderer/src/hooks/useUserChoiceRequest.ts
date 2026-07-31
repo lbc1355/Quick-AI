@@ -2,7 +2,8 @@ import { RefObject, useCallback, useEffect, useState } from 'react'
 import { UserChoiceRequest, UserChoiceResponse } from '../../../shared/types'
 
 interface UseUserChoiceRequestOptions {
-  isGenerating: boolean
+  activeRequestId: string | null
+  activeRequestIds: ReadonlySet<string>
   textareaRef: RefObject<HTMLTextAreaElement | null>
 }
 
@@ -12,35 +13,56 @@ interface UseUserChoiceRequestResult {
 }
 
 export function useUserChoiceRequest({
-  isGenerating,
+  activeRequestId,
+  activeRequestIds,
   textareaRef
 }: UseUserChoiceRequestOptions): UseUserChoiceRequestResult {
-  const [pendingUserChoice, setPendingUserChoice] = useState<UserChoiceRequest | null>(null)
+  const [pendingByRequestId, setPendingByRequestId] = useState<
+    ReadonlyMap<string, UserChoiceRequest>
+  >(() => new Map())
+  const pendingUserChoice = activeRequestId ? pendingByRequestId.get(activeRequestId) || null : null
 
   useEffect(() => {
     return window.api.onUserChoiceRequest((request) => {
-      setPendingUserChoice(request)
-      window.setTimeout(() => {
-        textareaRef.current?.blur()
-      }, 0)
+      setPendingByRequestId((current) => {
+        const next = new Map(current)
+        next.set(request.reqId, request)
+        return next
+      })
     })
-  }, [textareaRef])
+  }, [])
 
   useEffect(() => {
-    if (isGenerating || !pendingUserChoice) return undefined
+    setPendingByRequestId((current) => {
+      const next = new Map(current)
+      let changed = false
+      for (const requestId of next.keys()) {
+        if (activeRequestIds.has(requestId)) continue
+        next.delete(requestId)
+        changed = true
+      }
+      return changed ? next : current
+    })
+  }, [activeRequestIds])
 
+  useEffect(() => {
+    if (!pendingUserChoice) return
     const timeoutId = window.setTimeout(() => {
-      setPendingUserChoice(null)
+      textareaRef.current?.blur()
     }, 0)
     return () => window.clearTimeout(timeoutId)
-  }, [isGenerating, pendingUserChoice])
+  }, [pendingUserChoice, textareaRef])
 
   const handleUserChoiceResponse = useCallback(
     (response: UserChoiceResponse): void => {
       if (!pendingUserChoice) return
 
       window.api.respondUserChoice(pendingUserChoice.reqId, pendingUserChoice.requestId, response)
-      setPendingUserChoice(null)
+      setPendingByRequestId((current) => {
+        const next = new Map(current)
+        next.delete(pendingUserChoice.reqId)
+        return next
+      })
       window.setTimeout(() => {
         textareaRef.current?.focus()
       }, 50)

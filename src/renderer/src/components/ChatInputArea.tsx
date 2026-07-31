@@ -338,11 +338,8 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
 
   const submitDraft = useCallback(
     (admissionMode?: SessionPromptAdmissionMode) => {
-      const shouldAdmit = isCurrentSessionGenerating || isOtherSessionGenerating
-      const mode =
-        admissionMode || (isCurrentSessionGenerating ? ('steer' as const) : ('queue' as const))
-      const promise = shouldAdmit
-        ? handleAdmitPrompt(draftValueRef.current, mode)
+      const promise = isCurrentSessionGenerating
+        ? handleAdmitPrompt(draftValueRef.current, admissionMode || ('steer' as const))
         : handleSendMessage(draftValueRef.current)
       promise
         .then((sent) => {
@@ -351,13 +348,7 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
         })
         .catch(console.error)
     },
-    [
-      handleAdmitPrompt,
-      handleSendMessage,
-      isCurrentSessionGenerating,
-      isOtherSessionGenerating,
-      setDraftDomValue
-    ]
+    [handleAdmitPrompt, handleSendMessage, isCurrentSessionGenerating, setDraftDomValue]
   )
 
   const handleLocalKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {

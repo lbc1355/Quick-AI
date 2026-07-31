@@ -162,21 +162,12 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               <Send size={14} />
             </button>
           </>
-        ) : isOtherSessionGenerating ? (
-          <button
-            className="input-action-btn send"
-            onClick={() => onSubmitDraft('queue')}
-            disabled={!canSend}
-            title="另一会话正在运行，将消息加入当前会话队列"
-          >
-            <ListPlus size={14} />
-          </button>
         ) : (
           <button
             className="input-action-btn send"
             onClick={() => onSubmitDraft()}
             disabled={!canSend}
-            title={isOtherSessionGenerating ? '另一个会话正在生成' : '发送消息'}
+            title={isOtherSessionGenerating ? '其他会话正在生成；发送后将与其并行运行' : '发送消息'}
           >
             <Send size={14} />
           </button>

@@ -293,6 +293,24 @@ select {
   gap: 4px;
 }
 
+.session-meta-running {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.session-running-icon {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+  animation: session-running-spin 0.8s linear infinite;
+}
+
+@keyframes session-running-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .session-meta-with-branch svg {
   flex: 0 0 auto;
   color: var(--color-primary);

@@ -13,7 +13,8 @@ import {
   MoreHorizontal,
   Pencil,
   HardDrive,
-  FolderInput
+  FolderInput,
+  LoaderCircle
 } from 'lucide-react'
 import { Project, Session } from '../../../shared/types'
 import { isConversationFolder } from '../../../shared/projectHelpers'
@@ -23,10 +24,7 @@ import {
   getBranchDisplayInfo
 } from '../utils/branchDisplay'
 import { formatSessionStamp } from '../utils/autocompleteHelpers'
-import {
-  ProjectDeleteModal,
-  type ProjectDeleteChoice
-} from './ProjectDeleteModal'
+import { ProjectDeleteModal, type ProjectDeleteChoice } from './ProjectDeleteModal'
 
 interface SessionSidebarProps {
   sessions: Session[]
@@ -42,6 +40,7 @@ interface SessionSidebarProps {
     familyMember: BranchFamilyMemberInfo<Session> | null
   }>
   isGenerating: boolean
+  generatingSessionIds: ReadonlySet<string>
   activeProviderName: string
   activeModelName: string
   onAddProject: () => void
@@ -71,6 +70,7 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
   visibleSessionFamilyInfo,
   visibleSessionEntries,
   isGenerating,
+  generatingSessionIds,
   activeProviderName,
   activeModelName,
   onAddProject,
@@ -423,6 +423,7 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
           <div className="conversation-list">
             {visibleSessionEntries.map(({ session, familyMember }) => {
               const isActive = session.id === activeSessionId
+              const isSessionGenerating = generatingSessionIds.has(session.id)
               const isMenuOpen = menuSessionId === session.id
               const isRenaming = renamingSessionId === session.id
               const sessionStamp = formatSessionStamp(session.lastActiveTime, session.id)
@@ -478,8 +479,15 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
                         }}
                       />
                       <span
-                        className={`session-meta ${branchInfo || familyMember ? 'session-meta-with-branch' : ''}`}
+                        className={`session-meta ${branchInfo || familyMember ? 'session-meta-with-branch' : ''} ${isSessionGenerating ? 'session-meta-running' : ''}`}
                       >
+                        {isSessionGenerating ? (
+                          <LoaderCircle
+                            size={10}
+                            className="session-running-icon"
+                            aria-label="正在生成"
+                          />
+                        ) : null}
                         {branchInfo || familyMember ? <GitBranch size={10} /> : null}
                         <span title={familyMeta || branchInfo?.sourceTitle || undefined}>
                           {sessionStamp}
@@ -513,8 +521,15 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
                       </span>
                       <span className="session-title">{sessionTitle}</span>
                       <span
-                        className={`session-meta ${branchInfo || familyMember ? 'session-meta-with-branch' : ''}`}
+                        className={`session-meta ${branchInfo || familyMember ? 'session-meta-with-branch' : ''} ${isSessionGenerating ? 'session-meta-running' : ''}`}
                       >
+                        {isSessionGenerating ? (
+                          <LoaderCircle
+                            size={10}
+                            className="session-running-icon"
+                            aria-label="正在生成"
+                          />
+                        ) : null}
                         {branchInfo || familyMember ? <GitBranch size={10} /> : null}
                         <span title={familyMeta || branchInfo?.sourceTitle || undefined}>
                           {sessionStamp}
@@ -533,9 +548,7 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
                       aria-expanded={isMenuOpen}
                       onClick={(event) => {
                         event.stopPropagation()
-                        setMenuSessionId((current) =>
-                          current === session.id ? null : session.id
-                        )
+                        setMenuSessionId((current) => (current === session.id ? null : session.id))
                       }}
                       title="更多操作"
                     >

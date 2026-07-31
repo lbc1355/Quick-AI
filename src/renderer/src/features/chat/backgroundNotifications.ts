@@ -49,14 +49,10 @@ export const applyEpochScopedNotifications = <T extends EpochScopedNotification>
 }
 
 /**
- * A background result that was queued rather than steered needs a run to carry it, so the inbox
- * is drained once the current run finishes — but only for the conversation on screen.
+ * A background result that was queued rather than steered needs a run to carry it. Sessions run
+ * independently, so drain the originating session as soon as that session is idle.
  */
 export const shouldDrainAfterNotification = (
   notification: EpochScopedNotification & { disposition?: string },
-  activeSessionId: string,
-  isGenerating: boolean
-): boolean =>
-  notification.disposition === 'queued' &&
-  activeSessionId === notification.sessionId &&
-  !isGenerating
+  isSessionGenerating: boolean
+): boolean => notification.disposition === 'queued' && !isSessionGenerating

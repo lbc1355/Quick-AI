@@ -28,8 +28,6 @@ interface StartStreamingRunOptions {
   setSessions: React.Dispatch<React.SetStateAction<Session[]>>
   sessionsRef: React.MutableRefObject<Session[]>
   updateMessageById: UpdateMessageById
-  setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>
-  setActiveReqId: (reqId: string | null) => void
   persistActiveSession: (sessionId?: string) => void
   onCleanup?: () => void
 }
@@ -59,8 +57,6 @@ export const startStreamingRun = ({
   setSessions,
   sessionsRef,
   updateMessageById,
-  setIsGenerating,
-  setActiveReqId,
   persistActiveSession,
   onCleanup
 }: StartStreamingRunOptions): void => {
@@ -197,8 +193,6 @@ export const startStreamingRun = ({
     settled = true
     flushPendingNow()
     unsubscribe()
-    setIsGenerating(false)
-    setActiveReqId(null)
     onCleanup?.()
     persistActiveSession(sessionId)
   }
@@ -213,8 +207,6 @@ export const startStreamingRun = ({
     discardPending()
     unsubscribe()
     window.api.abortGeneration(reqId)
-    setIsGenerating(false)
-    setActiveReqId(null)
     onCleanup?.()
   }
 

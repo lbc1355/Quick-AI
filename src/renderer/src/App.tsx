@@ -314,7 +314,9 @@ function App(): React.JSX.Element {
     inputVal,
     setInputVal,
     isGenerating,
-    activeGenerationSessionId,
+    generatingSessionIds,
+    activeRequestId,
+    activeRequestIds,
     editingMessageId,
     setEditingMessageId,
     editingText,
@@ -352,13 +354,13 @@ function App(): React.JSX.Element {
   })
 
   const { pendingUserChoice, handleUserChoiceResponse } = useUserChoiceRequest({
-    isGenerating,
+    activeRequestId,
+    activeRequestIds,
     textareaRef
   })
 
   const { isCurrentSessionGenerating, isOtherSessionGenerating } = getSessionGenerationState(
-    isGenerating,
-    activeGenerationSessionId,
+    generatingSessionIds,
     activeSessionId
   )
   const activeMessages = activeSession?.messages ?? EMPTY_MESSAGES
@@ -371,7 +373,7 @@ function App(): React.JSX.Element {
     [activeMessages]
   )
   const handleOpenAgentFileRevert = useStableEvent(async (message: Message): Promise<void> => {
-    if (isGenerating || !message.agentRunId) return
+    if (isCurrentSessionGenerating || !message.agentRunId) return
     try {
       const preview = await window.api.previewAgentFileRevert(activeSessionId, message.agentRunId)
       if (!preview.available) {
@@ -447,7 +449,7 @@ function App(): React.JSX.Element {
     }
   })
   const handleOpenSessionRevert = useStableEvent(async (message: Message): Promise<void> => {
-    if (isGenerating || message.role !== 'user') return
+    if (isCurrentSessionGenerating || message.role !== 'user') return
     const session = sessionsRef.current.find((candidate) => candidate.id === activeSessionId)
     if (!session || session.revert) return
     const boundaryIndex = session.messages.findIndex((candidate) => candidate.id === message.id)
@@ -475,7 +477,7 @@ function App(): React.JSX.Element {
     }
   })
   const handleOpenSessionRestore = useStableEvent(async (): Promise<void> => {
-    if (isGenerating) return
+    if (isCurrentSessionGenerating) return
     const session = sessionsRef.current.find((candidate) => candidate.id === activeSessionId)
     if (!session?.revert) return
     try {
@@ -500,7 +502,7 @@ function App(): React.JSX.Element {
     }
   })
   const handleConfirmSessionRevert = useStableEvent(async (): Promise<void> => {
-    if (!sessionRevertDialog || isApplyingSessionRevert || isGenerating) return
+    if (!sessionRevertDialog || isApplyingSessionRevert || isCurrentSessionGenerating) return
     setIsApplyingSessionRevert(true)
     try {
       const dialog = sessionRevertDialog
@@ -1048,6 +1050,7 @@ function App(): React.JSX.Element {
             visibleSessionFamilyInfo={visibleSessionFamilyInfo}
             visibleSessionEntries={visibleSessionEntries}
             isGenerating={isGenerating}
+            generatingSessionIds={generatingSessionIds}
             activeProviderName={activeProviderName}
             activeModelName={runningModelName}
             onAddProject={handleAddProject}

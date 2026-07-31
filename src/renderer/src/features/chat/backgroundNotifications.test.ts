@@ -101,21 +101,15 @@ describe('applyEpochScopedNotifications', () => {
 describe('shouldDrainAfterNotification', () => {
   const queued = { sessionId: 's1', contextEpoch: 0, disposition: 'queued' }
 
-  it('drains a queued result for the visible idle session', () => {
-    expect(shouldDrainAfterNotification(queued, 's1', false)).toBe(true)
+  it('drains a queued result when its session is idle', () => {
+    expect(shouldDrainAfterNotification(queued, false)).toBe(true)
   })
 
-  it('waits while a run is still in flight', () => {
-    expect(shouldDrainAfterNotification(queued, 's1', true)).toBe(false)
-  })
-
-  it('ignores a session the user is not looking at', () => {
-    expect(shouldDrainAfterNotification(queued, 's2', false)).toBe(false)
+  it('waits while the originating session still has a run in flight', () => {
+    expect(shouldDrainAfterNotification(queued, true)).toBe(false)
   })
 
   it('ignores a steered result, which needs no run of its own', () => {
-    expect(shouldDrainAfterNotification({ ...queued, disposition: 'steered' }, 's1', false)).toBe(
-      false
-    )
+    expect(shouldDrainAfterNotification({ ...queued, disposition: 'steered' }, false)).toBe(false)
   })
 })

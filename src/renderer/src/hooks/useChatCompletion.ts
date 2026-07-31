@@ -72,6 +72,13 @@ import {
   materializeBackgroundPrompt,
   prepareClaimedPromptRun
 } from '../features/chat/sessionPromptQueue'
+import {
+  getActiveRequestIds,
+  getGeneratingSessionIds,
+  registerSessionGeneration,
+  SessionGenerationRegistry,
+  unregisterSessionGeneration
+} from '../utils/generationState'
 
 export {
   isRuntimeErrorAssistantMessage,
@@ -112,8 +119,9 @@ export interface UseChatCompletionReturn {
   inputVal: string
   setInputVal: React.Dispatch<React.SetStateAction<string>>
   isGenerating: boolean
-  setIsGenerating: React.Dispatch<React.SetStateAction<boolean>>
-  activeGenerationSessionId: string | null
+  generatingSessionIds: ReadonlySet<string>
+  activeRequestId: string | null
+  activeRequestIds: ReadonlySet<string>
   editingMessageId: string | null
   setEditingMessageId: React.Dispatch<React.SetStateAction<string | null>>
   editingText: string
@@ -167,30 +175,56 @@ export const useChatCompletion = ({
   useEffect(() => {
     draftSessionRef.current = draftSession
   }, [draftSession])
-  const [isGenerating, setIsGenerating] = useState(false)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
-  const activeReqIdRef = useRef<string | null>(null)
-  const [activeGenerationSessionId, setActiveGenerationSessionIdState] = useState<string | null>(
-    null
+  const activeGenerationsRef = useRef<SessionGenerationRegistry>(new Map())
+  const [generatingSessionIds, setGeneratingSessionIds] = useState<ReadonlySet<string>>(
+    () => new Set()
   )
-  const activeGenerationSessionIdRef = useRef<string | null>(null)
-  const activeAssistantMessageIdRef = useRef<string | null>(null)
-  const queueDrainInProgressRef = useRef(false)
+  const [activeRequestIds, setActiveRequestIds] = useState<ReadonlySet<string>>(() => new Set())
+  const queueDrainInProgressRef = useRef<Set<string>>(new Set())
   const drainQueuedPromptRef = useRef<(sessionId: string) => Promise<void>>(async () => undefined)
   const backgroundSubagentEventQueueRef = useRef<BackgroundSubagentEventNotification[]>([])
   const backgroundSubagentEventFrameRef = useRef<number | null>(null)
   const flushBackgroundSubagentEventsRef = useRef<() => void>(() => undefined)
   const [runMode, setRunMode] = useState<RunMode>('chat')
 
-  const setActiveReqId = (reqId: string | null): void => {
-    activeReqIdRef.current = reqId
+  const publishGeneratingSessions = (): void => {
+    setGeneratingSessionIds(getGeneratingSessionIds(activeGenerationsRef.current))
+    setActiveRequestIds(getActiveRequestIds(activeGenerationsRef.current))
   }
 
-  const setActiveGenerationSessionId = (sessionId: string | null): void => {
-    activeGenerationSessionIdRef.current = sessionId
-    setActiveGenerationSessionIdState(sessionId)
+  const beginSessionGeneration = (
+    sessionId: string,
+    requestId: string | null,
+    assistantMessageId: string | null
+  ): void => {
+    activeGenerationsRef.current = registerSessionGeneration(
+      activeGenerationsRef.current,
+      sessionId,
+      {
+        requestId,
+        assistantMessageId
+      }
+    )
+    publishGeneratingSessions()
   }
+
+  const finishSessionGeneration = (sessionId: string, requestId: string | null): void => {
+    const next = unregisterSessionGeneration(activeGenerationsRef.current, sessionId, requestId)
+    if (next === activeGenerationsRef.current) return
+    activeGenerationsRef.current = next
+    publishGeneratingSessions()
+  }
+
+  const isSessionGenerating = (sessionId: string): boolean =>
+    activeGenerationsRef.current.has(sessionId)
+
+  const isSessionBusy = (sessionId: string): boolean =>
+    isSessionGenerating(sessionId) || queueDrainInProgressRef.current.has(sessionId)
+
+  const isGenerating = generatingSessionIds.size > 0
+  const activeRequestId = activeGenerationsRef.current.get(activeSessionId)?.requestId ?? null
 
   const latestRequestConfigRef = useRef<ChatRequestConfig>({
     apiKey,
@@ -226,20 +260,6 @@ export const useChatCompletion = ({
     systemPrompt,
     projects
   ])
-
-  const isGeneratingRef = useRef(isGenerating)
-  useEffect(() => {
-    isGeneratingRef.current = isGenerating
-  }, [isGenerating])
-
-  const setIsGeneratingLive: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
-    setIsGenerating((prev) => {
-      const next =
-        typeof value === 'function' ? (value as (current: boolean) => boolean)(prev) : value
-      isGeneratingRef.current = next
-      return next
-    })
-  }
 
   // Mirror runMode in a ref so dispatch always reads the live value. handleSendMessage can be
   // captured in a stale closure — MessageBubble is memoized and its comparator ignores callback
@@ -280,14 +300,35 @@ export const useChatCompletion = ({
     })
   }
 
+  const sessionPersistenceQueueRef = useRef<Promise<void>>(Promise.resolve())
   const persistSessionsSnapshot = async (snapshot: Session[]): Promise<void> => {
-    await window.api.storeSet('sessions', snapshot)
+    const stableSnapshot = cloneSessionsDeep(snapshot)
+    const write = sessionPersistenceQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        await window.api.storeSet('sessions', stableSnapshot)
+      })
+    sessionPersistenceQueueRef.current = write.catch(() => undefined)
+    await write
   }
 
   const persistSessionsSnapshotSoon = (snapshot: Session[]): void => {
     void persistSessionsSnapshot(snapshot).catch((err) => {
       console.warn('Failed to persist sessions snapshot:', err)
     })
+  }
+
+  const persistBeforeStreaming = async (
+    snapshot: Session[],
+    sessionId: string,
+    requestId: string
+  ): Promise<void> => {
+    try {
+      await persistSessionsSnapshot(snapshot)
+    } catch (error) {
+      finishSessionGeneration(sessionId, requestId)
+      throw error
+    }
   }
 
   /** Commit a staged rollback and fire the disk cleanup the plan asks for. */
@@ -321,8 +362,6 @@ export const useChatCompletion = ({
     start: () => void,
     formatError: (msg: string) => string
   ): void => {
-    setActiveGenerationSessionId(sessionId)
-    activeAssistantMessageIdRef.current = assistantMsgId
     startChatStreamingRun({
       reqId,
       sessionId,
@@ -333,11 +372,8 @@ export const useChatCompletion = ({
       setSessions,
       sessionsRef,
       updateMessageById,
-      setIsGenerating: setIsGeneratingLive,
-      setActiveReqId,
       onCleanup: () => {
-        setActiveGenerationSessionId(null)
-        activeAssistantMessageIdRef.current = null
+        finishSessionGeneration(sessionId, reqId)
         window.setTimeout(() => {
           void drainQueuedPromptRef.current(sessionId)
         }, 25)
@@ -347,7 +383,7 @@ export const useChatCompletion = ({
   }
 
   const handleAbortGeneration = (): void => {
-    const requestId = activeReqIdRef.current
+    const requestId = activeGenerationsRef.current.get(activeSessionId)?.requestId
     if (requestId) {
       // Just signal the main process. It always replies with a { cancelled, done }
       // chunk, which drives cleanup() from a single source of truth
@@ -376,7 +412,7 @@ export const useChatCompletion = ({
 
   const handleCompactCurrentSession = async (): Promise<boolean> => {
     const requestConfig = latestRequestConfigRef.current
-    if (isGeneratingRef.current || queueDrainInProgressRef.current) return false
+    if (isSessionBusy(activeSessionId)) return false
     if (!ensureApiKey(requestConfig, '请先在设置中填写 DeepSeek API Key。')) return false
 
     const currentSessions = cloneSessionsDeep(sessionsRef.current)
@@ -393,9 +429,8 @@ export const useChatCompletion = ({
     const sessions = reverted.sessions
     const currentSession = reverted.session
 
-    setIsGeneratingLive(true)
+    beginSessionGeneration(currentSession.id, null, null)
     setInputVal('')
-    setActiveGenerationSessionId(currentSession.id)
 
     currentSession.messages.push(createCompactionPlaceholder())
     setSessions([...sessions])
@@ -421,9 +456,10 @@ export const useChatCompletion = ({
       currentSession.contextEpoch = getSessionContextEpoch(currentSession) + 1
       currentSession.lastActiveTime = Date.now()
       window.api.advanceSessionContext(currentSession.id, currentSession.contextEpoch)
-      setSessions([...sessions])
-      sessionsRef.current = sessions
-      persistSessionsSnapshotSoon(sessions)
+      const updatedSessions = replaceSessionInSnapshot(sessionsRef.current, currentSession)
+      setSessions(updatedSessions)
+      sessionsRef.current = updatedSessions
+      persistSessionsSnapshotSoon(updatedSessions)
       return true
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err || '上下文压缩失败')
@@ -431,10 +467,10 @@ export const useChatCompletion = ({
       return false
     } finally {
       currentSession.messages = withoutCompactionPlaceholder(currentSession.messages)
-      setIsGeneratingLive(false)
-      setActiveGenerationSessionId(null)
-      setSessions([...sessions])
-      sessionsRef.current = sessions
+      finishSessionGeneration(currentSession.id, null)
+      const updatedSessions = replaceSessionInSnapshot(sessionsRef.current, currentSession)
+      setSessions(updatedSessions)
+      sessionsRef.current = updatedSessions
     }
   }
 
@@ -455,12 +491,11 @@ export const useChatCompletion = ({
       return handleCompactCurrentSession()
     }
     if (!trimmedPrompt && attachedFiles.length === 0 && !customPrompt) return false
-    if (isGeneratingRef.current || queueDrainInProgressRef.current) return false
+    if (isSessionBusy(activeSessionId)) return false
     const effectiveRunMode = resolveEffectiveRunMode(promptToSend, runModeRef.current)
 
     if (!ensureApiKey(requestConfig, '请先在设置中填写 DeepSeek API Key！')) return false
 
-    setIsGeneratingLive(true)
     setInputVal('')
 
     let currentSessions = cloneSessionsDeep(sessionsRef.current)
@@ -542,7 +577,6 @@ export const useChatCompletion = ({
     }
 
     const reqId = createRunId()
-    setActiveReqId(reqId)
 
     const assistantMsgId = (Date.now() + 1).toString()
     targetSession.messages.push(
@@ -555,10 +589,10 @@ export const useChatCompletion = ({
     )
     const contextEpoch = getSessionContextEpoch(targetSession)
     window.api.advanceSessionContext(targetSession.id, contextEpoch)
-    setActiveGenerationSessionId(targetSession.id)
+    beginSessionGeneration(targetSession.id, reqId, assistantMsgId)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
-    await persistSessionsSnapshot(currentSessions)
+    await persistBeforeStreaming(currentSessions, targetSession.id, reqId)
 
     const historyForRun = targetSession.messages.slice(0, -1)
     const apiMessages = buildApiMessages(requestConfig.systemPrompt, historyForRun)
@@ -608,7 +642,7 @@ export const useChatCompletion = ({
     if (!trimmedPrompt && attachedFiles.length === 0) return false
 
     // When the UI has become idle between keydown and dispatch, fall back to a normal run.
-    if (!isGeneratingRef.current && !queueDrainInProgressRef.current) {
+    if (!isSessionBusy(activeSessionId)) {
       return handleSendMessage(prompt)
     }
     if (!ensureApiKey(requestConfig, '请先在设置中填写 DeepSeek API Key。')) return false
@@ -636,11 +670,11 @@ export const useChatCompletion = ({
       files: attachedFiles
     })
     const assistantPlaceholder = createQueuedAssistantPlaceholder(assistantMessageId)
-    const activeAssistantMessageId =
-      activeGenerationSessionIdRef.current === targetSession.id
-        ? activeAssistantMessageIdRef.current ||
-          [...targetSession.messages].reverse().find((message) => message.role === 'assistant')?.id
-        : undefined
+    const activeGeneration = activeGenerationsRef.current.get(targetSession.id)
+    const activeAssistantMessageId = activeGeneration
+      ? activeGeneration.assistantMessageId ||
+        [...targetSession.messages].reverse().find((message) => message.role === 'assistant')?.id
+      : undefined
 
     targetSession = appendQueuedPromptToSession(targetSession, userMessage, assistantPlaceholder)
     const contextEpoch = getSessionContextEpoch(targetSession)
@@ -708,12 +742,13 @@ export const useChatCompletion = ({
   }
 
   const drainNextQueuedPrompt = async (sessionId: string): Promise<void> => {
-    if (!sessionId || isGeneratingRef.current || queueDrainInProgressRef.current) return
+    if (!sessionId || isSessionBusy(sessionId)) return
     const requestConfig = latestRequestConfigRef.current
     if (needsApiKeyBeforeRun(requestConfig)) return
 
-    queueDrainInProgressRef.current = true
+    queueDrainInProgressRef.current.add(sessionId)
     let claimedAdmissionId: string | undefined
+    let registeredReqId: string | undefined
     let launched = false
     try {
       const sessionAtClaim = sessionsRef.current.find((session) => session.id === sessionId)
@@ -722,7 +757,7 @@ export const useChatCompletion = ({
       const admission = await window.api.claimNextSessionPrompt(sessionId, contextEpoch)
       if (!admission) return
       claimedAdmissionId = admission.id
-      if (isGeneratingRef.current) {
+      if (isSessionGenerating(sessionId)) {
         await window.api.requeueSessionPrompt(admission.id)
         claimedAdmissionId = undefined
         return
@@ -758,9 +793,8 @@ export const useChatCompletion = ({
       const nextSessions = replaceSessionInSnapshot(sessionsRef.current, prepared.session)
       sessionsRef.current = nextSessions
       setSessions(nextSessions)
-      setIsGeneratingLive(true)
-      setActiveReqId(reqId)
-      setActiveGenerationSessionId(sessionId)
+      registeredReqId = reqId
+      beginSessionGeneration(sessionId, reqId, prepared.assistantMessageId)
       await persistSessionsSnapshot(nextSessions)
 
       const apiMessages = buildApiMessages(
@@ -795,13 +829,11 @@ export const useChatCompletion = ({
       if (claimedAdmissionId && !launched) {
         await window.api.requeueSessionPrompt(claimedAdmissionId).catch(console.warn)
       }
-      if (!launched) {
-        setIsGeneratingLive(false)
-        setActiveReqId(null)
-        setActiveGenerationSessionId(null)
+      if (!launched && registeredReqId) {
+        finishSessionGeneration(sessionId, registeredReqId)
       }
     } finally {
-      queueDrainInProgressRef.current = false
+      queueDrainInProgressRef.current.delete(sessionId)
     }
   }
   drainQueuedPromptRef.current = drainNextQueuedPrompt
@@ -871,20 +903,18 @@ export const useChatCompletion = ({
         apply(
           session,
           item,
-          activeGenerationSessionIdRef.current === item.sessionId
-            ? activeAssistantMessageIdRef.current || undefined
-            : undefined
+          activeGenerationsRef.current.get(item.sessionId)?.assistantMessageId || undefined
         )
     )
     if (!nextSessions) return
 
     sessionsRef.current = nextSessions
     setSessions(nextSessions)
-    void window.api.storeSet('sessions', nextSessions).catch((error) => {
+    void persistSessionsSnapshot(nextSessions).catch((error) => {
       console.warn(persistErrorLabel, error)
     })
 
-    if (shouldDrainAfterNotification(notification, activeSessionId, isGeneratingRef.current)) {
+    if (shouldDrainAfterNotification(notification, isSessionGenerating(notification.sessionId))) {
       window.setTimeout(() => {
         void drainQueuedPromptRef.current(notification.sessionId)
       }, 25)
@@ -923,19 +953,18 @@ export const useChatCompletion = ({
   }, [activeSessionId, sessionsRef, setSessions])
 
   useEffect(() => {
-    if (!activeSessionId || isGenerating) return
+    if (!activeSessionId || generatingSessionIds.has(activeSessionId)) return
     const timer = window.setTimeout(() => {
       void drainQueuedPromptRef.current(activeSessionId)
     }, 50)
     return () => window.clearTimeout(timer)
-  }, [activeSessionId, apiKey, apiUrl, isGenerating, selectedModel])
+  }, [activeSessionId, apiKey, apiUrl, generatingSessionIds, selectedModel])
 
   const handleRunAgentSkill = async (skill: Skill, userInput: string): Promise<void> => {
     const requestConfig = latestRequestConfigRef.current
-    if (isGeneratingRef.current) return
+    if (isSessionBusy(activeSessionId)) return
     if (!ensureApiKey(requestConfig, 'Please set the DeepSeek API Key in Settings first.')) return
 
-    setIsGeneratingLive(true)
     setInputVal('')
 
     let currentSessions = cloneSessionsDeep(sessionsRef.current)
@@ -971,15 +1000,14 @@ export const useChatCompletion = ({
         runId: assistantMsgId
       })
     )
-    setActiveGenerationSessionId(currentSession.id)
+    const reqId = assistantMsgId
+    beginSessionGeneration(currentSession.id, reqId, assistantMsgId)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
-    await persistSessionsSnapshot(currentSessions)
+    await persistBeforeStreaming(currentSessions, currentSession.id, reqId)
 
-    const reqId = assistantMsgId
     const contextEpoch = getSessionContextEpoch(currentSession)
     window.api.advanceSessionContext(currentSession.id, contextEpoch)
-    setActiveReqId(reqId)
 
     startStreamingRun(
       reqId,
@@ -1045,7 +1073,7 @@ export const useChatCompletion = ({
 
   const handleResumeAgentRun = async (msgIdx: number): Promise<void> => {
     const requestConfig = latestRequestConfigRef.current
-    if (isGeneratingRef.current) return
+    if (isSessionBusy(activeSessionId)) return
     if (!ensureApiKey(requestConfig, 'Please set the DeepSeek API Key in Settings first.')) return
 
     let currentSessions = cloneSessionsDeep(sessionsRef.current)
@@ -1060,11 +1088,9 @@ export const useChatCompletion = ({
     const resumeFromRunId = failedMsg?.agentRunId
     if (!currentSession || !failedMsg || !resumeFromRunId) return
 
-    setIsGeneratingLive(true)
     setInputVal('')
 
     const reqId = createRunId()
-    setActiveReqId(reqId)
 
     const resumeResult = prepareResumeMutation({
       currentSession,
@@ -1083,8 +1109,6 @@ export const useChatCompletion = ({
     } else {
       const targetMsgIdx = currentSession.messages.findIndex((msg) => msg.id === failedMsg.id)
       if (targetMsgIdx === -1) {
-        setIsGeneratingLive(false)
-        setActiveReqId(null)
         return
       }
       currentSession.messages = resumeResult.updatedSourceSessionMessages || currentSession.messages
@@ -1096,7 +1120,7 @@ export const useChatCompletion = ({
     window.api.advanceSessionContext(targetSession.id, contextEpoch)
 
     targetSession.lastActiveTime = Date.now()
-    setActiveGenerationSessionId(targetSession.id)
+    beginSessionGeneration(targetSession.id, reqId, assistantMsgId)
 
     if (resumeResult.forkedCachePayload && resumeResult.forkedCachePayload.runIds.length > 0) {
       void window.api.forkSessionCaches(resumeResult.forkedCachePayload).catch(console.warn)
@@ -1104,7 +1128,7 @@ export const useChatCompletion = ({
 
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
-    await persistSessionsSnapshot(currentSessions)
+    await persistBeforeStreaming(currentSessions, targetSession.id, reqId)
 
     startStreamingRun(
       reqId,
@@ -1136,8 +1160,9 @@ export const useChatCompletion = ({
     inputVal,
     setInputVal,
     isGenerating,
-    setIsGenerating: setIsGeneratingLive,
-    activeGenerationSessionId,
+    generatingSessionIds,
+    activeRequestId,
+    activeRequestIds,
     editingMessageId,
     setEditingMessageId,
     editingText,
