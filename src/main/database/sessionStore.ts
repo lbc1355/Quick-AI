@@ -1,10 +1,21 @@
 import { createHash } from 'node:crypto'
+import type Database from 'better-sqlite3'
 import { Message, Session, SessionRevertState } from '../../shared/types'
 import { compactAgentEvents } from '../../shared/agentEventCompactor'
 import { loadSessionAgentEventJournals } from '../agent/agentEventJournal'
 import { mergeAgentEventJournalsIntoSessions } from '../agent/agentEventRecovery'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
 import { getDb } from './connection'
+
+/**
+ * Delete rows that reference a session from tables that have no foreign-key cascade. Without this,
+ * deleting a session (or a folder project containing it) leaves orphaned prompt-inbox and
+ * background-job rows behind.
+ */
+export function deleteSessionScopedRows(database: Database.Database, sessionId: string): void {
+  database.prepare('DELETE FROM session_prompt_inbox WHERE sessionId = ?').run(sessionId)
+  database.prepare('DELETE FROM background_jobs WHERE sessionId = ?').run(sessionId)
+}
 
 export function loadSessions(): Session[] {
   const database = getDb()
@@ -313,9 +324,11 @@ export function saveSessions(sessions: Session[]): void {
   // save (e.g. switching sessions with no edits) is a no-op and an active run rewrites just the
   // one session that grew — instead of the previous delete-all + full reinsert of every session.
   const persist = database.transaction((currentPlan: SessionPersistPlan) => {
-    // Sessions removed from the snapshot (cascade deletes their messages and files).
+    // Sessions removed from the snapshot (cascade deletes their messages and files; the
+    // prompt-inbox and background-job rows are cleaned up explicitly — no FK cascade exists).
     for (const id of currentPlan.deleteIds) {
       deleteSession.run(id)
+      deleteSessionScopedRows(database, id)
     }
 
     for (const { session, hash } of currentPlan.upserts) {

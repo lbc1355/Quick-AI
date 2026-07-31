@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { it, expect, beforeEach, afterEach, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
@@ -74,10 +74,13 @@ describeWithSqlite('migrateFromJson', () => {
     writeStore(validStore())
     migrateFromJson(db, dataDir)
 
-    const settings = db
-      .prepare('SELECT key, value FROM settings ORDER BY key')
-      .all() as Array<{ key: string; value: string }>
-    expect(settings.some((s) => s.key === 'systemPrompt' && s.value === 'migration-test')).toBe(true)
+    const settings = db.prepare('SELECT key, value FROM settings ORDER BY key').all() as Array<{
+      key: string
+      value: string
+    }>
+    expect(settings.some((s) => s.key === 'systemPrompt' && s.value === 'migration-test')).toBe(
+      true
+    )
 
     const sessions = db
       .prepare('SELECT id, title FROM sessions ORDER BY lastActiveTime')
@@ -97,9 +100,7 @@ describeWithSqlite('migrateFromJson', () => {
       content: 'hello'
     })
 
-    const files = db
-      .prepare('SELECT messageId, name, content, type FROM message_files')
-      .all()
+    const files = db.prepare('SELECT messageId, name, content, type FROM message_files').all()
     expect(files).toEqual([
       {
         messageId: 'msg-00000000-0000-0000-0000-000000000003',
@@ -144,7 +145,9 @@ describeWithSqlite('migrateFromJson', () => {
   it('keeps a legacy numeric message id as its own timestamp', () => {
     const store = {
       ...validStore(),
-      sessions: [{ id: 's1', title: 't', messages: [{ id: '123456', role: 'user', content: 'legacy' }] }]
+      sessions: [
+        { id: 's1', title: 't', messages: [{ id: '123456', role: 'user', content: 'legacy' }] }
+      ]
     } as StorageSchema
     writeStore(store)
     migrateFromJson(db, dataDir)
@@ -195,9 +198,10 @@ describeWithSqlite('migrateFromJson', () => {
 
     migrateFromJson(db, dataDir)
 
-    const cache = db
-      .prepare('SELECT id, source FROM resource_cache')
-      .all() as Array<{ id: string; source: string }>
+    const cache = db.prepare('SELECT id, source FROM resource_cache').all() as Array<{
+      id: string
+      source: string
+    }>
     expect(cache).toEqual([{ id: 'res-1', source: 'https://example.com' }])
     expect(existsSync(join(resourcesDir, 'res-good.json.bak'))).toBe(true)
     expect(existsSync(join(resourcesDir, 'res-corrupt.json'))).toBe(true)

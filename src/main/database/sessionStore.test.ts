@@ -9,6 +9,7 @@ import {
   planSessionPersist
 } from './sessionStore'
 import { closeDb, loadSessions, saveSessions } from '../database'
+import { getDb } from './connection'
 
 const testDir = join(__dirname, '../../../temp-session-store-test')
 
@@ -151,6 +152,37 @@ describeWithSqlite('saveSessions incremental persistence', () => {
 
     const loaded = loadSessions()
     expect(loaded.map((s) => s.id)).toEqual(['a'])
+  })
+
+  it('removes prompt-inbox and background-job rows when a session is deleted', () => {
+    const database = getDb()
+    saveSessions([makeSession('b')])
+
+    // Seed rows that have no FK cascade and would otherwise be orphaned by the delete.
+    database
+      .prepare(
+        `INSERT INTO session_prompt_inbox (id, sessionId, contextEpoch, mode, status, runMode, sourceMessageId, messages, createdAt, updatedAt)
+         VALUES (?, ?, 0, 'steer', 'pending', 'chat', 'src-1', '[]', 1, 1)`
+      )
+      .run('inbox-1', 'b')
+    database
+      .prepare(
+        `INSERT INTO background_jobs (id, type, title, sessionId, status, createdAt, updatedAt)
+         VALUES (?, 'shell', 'title', ?, 'running', 1, 1)`
+      )
+      .run('job-1', 'b')
+
+    // Drop session 'b' from the snapshot — its scoped rows must go with it.
+    saveSessions([])
+
+    const inboxCount = database
+      .prepare('SELECT COUNT(*) as c FROM session_prompt_inbox WHERE sessionId = ?')
+      .get('b') as { c: number }
+    const jobCount = database
+      .prepare('SELECT COUNT(*) as c FROM background_jobs WHERE sessionId = ?')
+      .get('b') as { c: number }
+    expect(inboxCount.c).toBe(0)
+    expect(jobCount.c).toBe(0)
   })
 
   it('is idempotent: re-saving the same snapshot preserves data', () => {

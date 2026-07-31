@@ -5,6 +5,7 @@ import {
   toPersistedProjectPath
 } from '../../shared/projectHelpers'
 import { getDb } from './connection'
+import { deleteSessionScopedRows } from './sessionStore'
 
 export function loadProjects(): Project[] {
   const database = getDb()
@@ -86,6 +87,10 @@ export function deleteProject(
 
     if (shouldDeleteSessions) {
       database.prepare('DELETE FROM sessions WHERE projectId = ?').run(id)
+      // session_prompt_inbox / background_jobs have no FK cascade — clean them up explicitly.
+      for (const row of relatedRows) {
+        deleteSessionScopedRows(database, row.id)
+      }
     }
     database.prepare('DELETE FROM projects WHERE id = ?').run(id)
 
