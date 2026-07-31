@@ -1,5 +1,5 @@
 import { ChatCompletionMessage, ChatToolDeclaration } from '../../shared/types'
-import { DEFAULT_RETRY_POLICY, isRetryableError } from './retryPolicy'
+import { DEFAULT_RETRY_POLICY, withRetry } from './retryPolicy'
 import { ModelEventAccumulator, ModelEvent } from './modelEvents'
 import { buildOpenAICompatibleRequestTarget } from './modelRequestTarget'
 import type { CallModelCallbacks, CallModelOptions } from './modelCallTypes'
@@ -160,42 +160,7 @@ export async function callChatCompletionsModel(
     return assistantMessage
   }
 
-  let lastError: Error | undefined
-  for (let attemptNo = 0; attemptNo <= DEFAULT_RETRY_POLICY.maxRetries; attemptNo++) {
-    try {
-      if (signal?.aborted) throw new Error('Agent execution aborted by user.')
-      return await attempt()
-    } catch (error) {
-      lastError = error as Error
-      const canRetry =
-        !streamingStarted &&
-        attemptNo < DEFAULT_RETRY_POLICY.maxRetries &&
-        isRetryableError(lastError, DEFAULT_RETRY_POLICY) &&
-        !signal?.aborted
-
-      if (!canRetry) throw lastError
-
-      const delay = Math.min(
-        DEFAULT_RETRY_POLICY.baseDelayMs * Math.pow(2, attemptNo),
-        DEFAULT_RETRY_POLICY.maxDelayMs
-      )
-      await new Promise<void>((resolve, reject) => {
-        const onAbort = (): void => {
-          clearTimeout(timeoutId)
-          signal?.removeEventListener('abort', onAbort)
-          reject(new Error('Agent execution aborted by user.'))
-        }
-        if (signal?.aborted) {
-          return reject(new Error('Agent execution aborted by user.'))
-        }
-        const timeoutId = setTimeout(() => {
-          signal?.removeEventListener('abort', onAbort)
-          resolve()
-        }, delay)
-        signal?.addEventListener('abort', onAbort)
-      })
-    }
-  }
-
-  throw lastError || new Error('callChatCompletionsModel failed')
+  // Retry transient failures only while nothing has streamed yet — once the first chunk reaches
+  // the user, retrying would re-deliver already-visible output.
+  return withRetry(attempt, DEFAULT_RETRY_POLICY, signal, () => !streamingStarted)
 }
