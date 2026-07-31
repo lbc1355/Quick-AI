@@ -34,7 +34,8 @@ import {
   ProviderModelDiscoveryRequest,
   ProviderModelDiscoveryCache,
   ProviderConnectionTestResult,
-  DeleteProjectResult
+  DeleteProjectResult,
+  PreloadApi
 } from '../shared/types'
 
 // Custom APIs for renderer
@@ -221,7 +222,7 @@ const api = {
     ipcRenderer.invoke('background-job-list', sessionId),
   backgroundJobCancel: (id: string): Promise<BackgroundJobInfo> =>
     ipcRenderer.invoke('background-job-cancel', id)
-}
+} satisfies PreloadApi
 
 // Use `contextBridge` APIs to expose Electron APIs to
 // renderer only if context isolation is enabled, otherwise
