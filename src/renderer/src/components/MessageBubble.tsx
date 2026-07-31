@@ -656,9 +656,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                             />
                             {parsedRun.finalAnswer ? (
                               <MessageMarkdown
-                                text={
-                                  isStreamingAssistant ? smoothFinalAnswer : parsedRun.finalAnswer
-                                }
+                                text={smoothFinalAnswer}
                                 streaming={isStreamingAssistant}
                               />
                             ) : null}
@@ -730,7 +728,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       ) : (
                         <>
                           <MessageMarkdown
-                            text={isStreamingAssistant ? smoothCleanContent : cleanContent}
+                            text={smoothCleanContent}
                             streaming={isStreamingAssistant}
                           />
                           {(generationDurationText ||
