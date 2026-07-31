@@ -90,9 +90,28 @@ describe('File Safety & Search Tools', () => {
       expect(isSensitiveFile(join(testDir, 'client.pfx'))).toBe(true)
     })
 
+    it('blocks credential stores and package registry auth files', () => {
+      expect(isSensitiveFile(join(testDir, '.npmrc'))).toBe(true)
+      expect(isSensitiveFile(join(testDir, '.pypirc'))).toBe(true)
+      expect(isSensitiveFile(join(testDir, '.netrc'))).toBe(true)
+      expect(isSensitiveFile(join(testDir, '.git-credentials'))).toBe(true)
+      expect(isSensitiveFile(join(testDir, '.dockercfg'))).toBe(true)
+      expect(isSensitiveFile(join(testDir, 'credentials.json'))).toBe(true)
+      expect(isSensitiveFile(join(testDir, 'secrets.json'))).toBe(true)
+    })
+
+    it('blocks files under well-known secret directories', () => {
+      expect(isSensitiveFile(join(testDir, '.ssh', 'config'))).toBe(true)
+      expect(isSensitiveFile(join(testDir, '.aws', 'credentials'))).toBe(true)
+      expect(isSensitiveFile(join(testDir, '.kube', 'config'))).toBe(true)
+      expect(isSensitiveFile(join(testDir, '.docker', 'config.json'))).toBe(true)
+      expect(isSensitiveFile(join(testDir, '.config', 'git', 'credentials'))).toBe(true)
+    })
+
     it('allows normal files', () => {
       expect(isSensitiveFile(join(testDir, 'a.txt'))).toBe(false)
       expect(isSensitiveFile(join(testDir, 'sub', 'c.ts'))).toBe(false)
+      expect(isSensitiveFile(join(testDir, 'package.json'))).toBe(false)
     })
   })
 

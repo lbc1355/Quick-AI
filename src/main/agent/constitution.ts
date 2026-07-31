@@ -8,7 +8,7 @@
 
 import { isAbsolute, resolve } from 'path'
 import { analyzeCommand } from './commandSafety'
-import { isPathInsideRoot, pathEscapesWorkspace } from './pathPolicy'
+import { isPathInsideRoot, isSensitiveFileName, pathEscapesWorkspace } from './pathPolicy'
 import { getWorkspaceRoot } from '../paths'
 
 export type GuardAction = 'allow' | 'ask' | 'deny'
@@ -56,16 +56,6 @@ export const DEFAULT_CONSTITUTION: Constitution = {
   ],
   commandArgKeys: ['command', 'cmd'],
   escalateHighRiskToAsk: true
-}
-
-/** Lexical sensitivity check on the final path component (keys, certs, dotenv files). */
-function isSensitiveFileName(value: string): boolean {
-  const base = value.replace(/\\/g, '/').split('/').filter(Boolean).pop()
-  if (!base) return false
-  const name = base.toLowerCase()
-  if (name === '.env' || name.startsWith('.env.')) return true
-  if (['id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519'].includes(name)) return true
-  return ['.pem', '.key', '.pfx', '.p12', '.cert', '.crt', '.der'].some((ext) => name.endsWith(ext))
 }
 
 const FILE_MUTATION_TOOLS = new Set([
@@ -204,7 +194,14 @@ export function evaluateToolGuard(
 
   // High-risk tools always require at least confirmation — unless the user has explicitly
   // approved the tool for this run (e.g. "allow all shell commands in this task").
-  if (constitution.escalateHighRiskToAsk && risk === 'high' && !isRunApproved) {
+  // workspace_add_root expands the trusted-root set, so it is exempt from that blanket approval
+  // and always demands a per-call confirmation.
+  const alwaysConfirmsHighRisk = toolName === 'workspace_add_root'
+  if (
+    constitution.escalateHighRiskToAsk &&
+    risk === 'high' &&
+    (!isRunApproved || alwaysConfirmsHighRisk)
+  ) {
     tighten('ask', `Guardrail: "${toolName}" is a high-risk tool; confirmation required.`)
   }
 

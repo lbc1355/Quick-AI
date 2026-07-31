@@ -3,7 +3,11 @@ import { createToolResult } from './result'
 import { ToolExecutionResult } from './types'
 
 export function toFileUrl(realPath: string): string {
-  return `file:///${realPath.replace(/\\/g, '/')}`
+  const normalized = realPath.replace(/\\/g, '/')
+  // Percent-encode characters that would break the URL (spaces, "#", "?", unicode) while keeping
+  // "/" and the Windows drive-colon literal, so file:///C:/foo%20bar.png stays valid.
+  const encoded = normalized.replace(/[^a-zA-Z0-9\-._~:/]/g, (char) => encodeURIComponent(char))
+  return `file:///${encoded}`
 }
 
 export function createFileWriteResult(

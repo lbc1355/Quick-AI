@@ -57,9 +57,9 @@ describe('evaluateToolGuard', () => {
     expect(
       evaluateToolGuard('shell', { command: 'ls\ncat package.json' }, 'allow', 'high').action
     ).toBe('ask')
-    expect(
-      evaluateToolGuard('shell', { command: 'ls\nrm -rf /' }, 'allow', 'high').action
-    ).toBe('deny')
+    expect(evaluateToolGuard('shell', { command: 'ls\nrm -rf /' }, 'allow', 'high').action).toBe(
+      'deny'
+    )
   })
 
   it('escalates any high-risk tool to at least ask', () => {
@@ -72,6 +72,19 @@ describe('evaluateToolGuard', () => {
     const v = evaluateToolGuard('shell', {}, 'allow', 'high', DEFAULT_CONSTITUTION, true)
     expect(v.action).toBe('allow')
     expect(v.reason).toBeUndefined()
+  })
+
+  it('always confirms workspace_add_root even when run-approved', () => {
+    const v = evaluateToolGuard(
+      'workspace_add_root',
+      { path: 'D:/anywhere' },
+      'allow',
+      'high',
+      DEFAULT_CONSTITUTION,
+      true
+    )
+    expect(v.action).toBe('ask')
+    expect(v.reason).toContain('high-risk')
   })
 
   it('exposes a default constitution with the expected arg keys', () => {

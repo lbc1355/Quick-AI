@@ -47,7 +47,8 @@ const defaultToolRegistry = {
       web_search: tool('web_search', { category: 'web' }),
       fetch_url: tool('fetch_url', { category: 'web' }),
       file_write: tool('file_write', { category: 'file', risk: 'high' }),
-      shell: tool('shell', { category: 'shell', risk: 'high' })
+      shell: tool('shell', { category: 'shell', risk: 'high' }),
+      workspace_add_root: tool('workspace_add_root', { category: 'file', risk: 'high' })
     })[name],
   list: () => []
 }
@@ -218,6 +219,20 @@ describe('prepareToolCalls', () => {
       toolName: 'shell',
       permission: 'allow',
       classification: 'direct'
+    })
+  })
+
+  it('never auto-allows workspace_add_root via a run approval', () => {
+    const result = plan({
+      toolCalls: [toolCall('workspace_add_root', { path: 'D:/shared/libs' })],
+      permissions: { workspace_add_root: 'allow' },
+      isToolApproved: () => true
+    })
+
+    expect(result.askCalls[0]).toMatchObject({
+      toolName: 'workspace_add_root',
+      permission: 'ask',
+      classification: 'ask'
     })
   })
 

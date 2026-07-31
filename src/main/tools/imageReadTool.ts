@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import { extname } from 'path'
 import { ToolArgs } from '../../shared/types'
 import { ROOT_PARAMETER, getRootArg, resolveExistingSafePath } from './filePathSafety'
+import { toFileUrl } from './fileOperationResult'
 import { formatBytes } from './helpers'
 import { ToolDefinition } from './types'
 
@@ -60,7 +61,7 @@ export const imageReadTool: ToolDefinition = {
 
     const buffer = await fs.readFile(target.realPath)
     const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`
-    const fileUrl = `file:///${target.realPath.replace(/\\/g, '/')}`
+    const fileUrl = toFileUrl(target.realPath)
 
     return {
       resultForModel: [

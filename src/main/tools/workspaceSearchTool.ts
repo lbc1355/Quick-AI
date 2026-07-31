@@ -73,7 +73,6 @@ export const workspaceSearchTool: ToolDefinition = {
       rootInfo = { root: target.realPath, rootKind: target.rootKind }
       root = target.realPath
     }
-    console.log(`[workspace_search] Search root is: ${root}`)
 
     const result = await scanWorkspaceForText({
       root,

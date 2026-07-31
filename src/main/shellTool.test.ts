@@ -44,6 +44,20 @@ describe('Shell Tool Execution', () => {
     expect(res.resultForUi.details).toContain('Stderr:\nerr msg')
   })
 
+  it('refuses destructive commands at the executor boundary', async () => {
+    const context = { reqId: 'test-req', signal: new AbortController().signal }
+    await expect(ToolRegistry.shell.execute({ command: 'rm -rf /' }, context)).rejects.toThrow(
+      /guardrail/
+    )
+  })
+
+  it('refuses destructive background commands at the executor boundary', async () => {
+    const context = { reqId: 'test-req', signal: new AbortController().signal }
+    await expect(
+      ToolRegistry.shell.execute({ command: 'rm -rf /', background: true }, context)
+    ).rejects.toThrow(/guardrail/)
+  })
+
   it('streams shell output while the command is still running', async () => {
     const outputEvents: string[] = []
     const context = {

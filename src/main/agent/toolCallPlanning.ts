@@ -110,7 +110,9 @@ export function prepareToolCalls(input: {
 
     if (effectivePermission === 'ask') {
       const shellApprovalCommand = getShellApprovalCommand(toolName, args)
-      if (input.isToolApproved(toolName)) {
+      // workspace_add_root expands the trusted-root set, so a blanket run/session tool approval
+      // must never auto-allow it — every call surfaces a fresh confirmation.
+      if (input.isToolApproved(toolName) && toolName !== 'workspace_add_root') {
         effectivePermission = 'allow'
       } else if (shellApprovalCommand && input.isCommandPrefixApproved(shellApprovalCommand)) {
         effectivePermission = 'allow'

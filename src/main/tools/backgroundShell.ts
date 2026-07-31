@@ -10,6 +10,7 @@ import type {
   ToolArgs
 } from '../../shared/types'
 import { getRun } from '../agent/AgentRunContext'
+import { assertCommandNotDangerous } from '../agent/commandSafety'
 import {
   cancelBackgroundJob,
   clearBackgroundJobsForTests,
@@ -515,6 +516,8 @@ export async function executeBackgroundShellStart(
   const command = typeof args.command === 'string' ? args.command.trim() : ''
   if (!command) throw new Error('Missing or invalid command parameter')
   if (ctx.signal?.aborted) throw new Error('Agent execution aborted by user.')
+  // Same defense-in-depth as the foreground executor: destructive commands never spawn.
+  assertCommandNotDangerous(command)
 
   const cwd = getBackgroundShellRoot(ctx)
   const runCtx = ctx.reqId ? getRun(ctx.reqId) : undefined

@@ -280,9 +280,6 @@ export const cachedResourceTools: Record<string, ToolDefinition> = {
         throw new Error('Invalid offset parameter')
       }
 
-      console.log(
-        `[read_cached_resource] Reading cached resource ${resourceId} at offset ${offset}`
-      )
       const chunk = await readResourceChunkWindow(resourceId, offset)
       const window = projectCachedResourceReadWindow(chunk, maxChars)
       const warning = window.warning ? `\nWarning: ${window.warning}` : ''

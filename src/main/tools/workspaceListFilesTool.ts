@@ -84,7 +84,6 @@ export const workspaceListFilesTool: ToolDefinition = {
       rootInfo = { root: target.realPath, rootKind: target.rootKind }
       root = target.realPath
     }
-    console.log(`[workspace_list_files] List root is: ${root}`)
 
     const scanResult = await scanWorkspaceFiles({
       root,

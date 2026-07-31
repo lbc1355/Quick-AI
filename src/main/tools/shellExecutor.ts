@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
 import { getRun } from '../agent/AgentRunContext'
+import { assertCommandNotDangerous } from '../agent/commandSafety'
 import { getWorkspaceRoot } from './helpers'
 import { decodeShellOutputForDisplay, getShellFallbackEncoding } from './shellEncoding'
 import { buildShellDetails, trimLivePreview } from './shellResult'
@@ -13,6 +14,9 @@ export async function executeShellCommand(
   command: string,
   ctx: ToolExecutionContext
 ): Promise<ToolExecutionResult> {
+  // Defense-in-depth: never let a destructive command reach spawn, even if a caller bypasses the
+  // agent-loop guardrail. `requires_approval` commands still execute here; the pipeline gates them.
+  assertCommandNotDangerous(command)
   const runCtx = ctx.reqId ? getRun(ctx.reqId) : undefined
   const root = runCtx?.projectRoot || getWorkspaceRoot()
 

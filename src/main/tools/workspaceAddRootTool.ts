@@ -2,6 +2,7 @@ import { promises as fs } from 'fs'
 import { basename, isAbsolute, parse, resolve } from 'path'
 import { ToolArgs } from '../../shared/types'
 import { getRun } from '../agent/AgentRunContext'
+import { isSensitiveDirectoryForRoot } from '../agent/pathPolicy'
 import { createToolResult } from './result'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
@@ -60,6 +61,11 @@ export const workspaceAddRootTool: ToolDefinition = {
     if (basename(realPath).toLowerCase() === '.git') {
       throw new Error(
         'Refusing to add a .git directory as an agent root. Add the project root instead.'
+      )
+    }
+    if (isSensitiveDirectoryForRoot(realPath)) {
+      throw new Error(
+        'Refusing to add a sensitive directory (home/credential directory or OS system zone) as an agent root.'
       )
     }
 

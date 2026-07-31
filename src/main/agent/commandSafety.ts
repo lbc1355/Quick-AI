@@ -273,3 +273,17 @@ export function analyzeCommand(command: string): CommandSafetyVerdict {
   }
   return verdict
 }
+
+/**
+ * Hard-deny guard used at the shell executor boundary (single choke point), independent of the
+ * agent-loop guardrail. The pipeline already blocks dangerous commands via `constitution.ts`; this
+ * re-asserts the classification at execution time so a future caller that reaches the shell
+ * executor directly (new tool, MCP bridge, subagent path) can never run a destructive command.
+ * `requires_approval` is left alone here — that decision belongs to the pipeline's approval flow.
+ */
+export function assertCommandNotDangerous(command: string): void {
+  const verdict = analyzeCommand(command)
+  if (verdict.level === 'dangerous') {
+    throw new Error(`Blocked by guardrail: ${verdict.reason || 'dangerous command.'}`)
+  }
+}

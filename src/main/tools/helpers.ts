@@ -1,6 +1,7 @@
 import { resolve, normalize, relative, isAbsolute, basename, join, dirname } from 'path'
 import { Notification } from 'electron'
 import { realpathSync } from 'fs'
+import { isSensitiveFileName } from '../agent/pathPolicy'
 import { getWorkspaceRoot as resolveWorkspaceRoot } from '../paths'
 
 function getComparablePath(filePath: string): string {
@@ -31,18 +32,9 @@ export function isPathInWorkspace(filePath: string): boolean {
 }
 
 export function isSensitiveFile(filePath: string): boolean {
-  const name = basename(filePath).toLowerCase()
-  if (name === '.env' || name.startsWith('.env.')) {
-    return true
-  }
-  if (['id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519'].includes(name)) {
-    return true
-  }
-  const sensitiveExtensions = ['.pem', '.key', '.pfx', '.p12', '.cert', '.crt', '.der']
-  if (sensitiveExtensions.some((ext) => name.endsWith(ext))) {
-    return true
-  }
-  return false
+  // Single canonical list lives in the pure path-policy module; this keeps the tool layer and the
+  // guard layer (constitution.ts) from drifting apart.
+  return isSensitiveFileName(filePath)
 }
 
 export function escapeRegExp(str: string): string {

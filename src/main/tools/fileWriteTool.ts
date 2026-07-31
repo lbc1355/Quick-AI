@@ -57,7 +57,6 @@ export const fileWriteTool: ToolDefinition = {
     }
 
     const target = await resolveTargetSafePath(filePath, ctx, 'Path', getRootArg(args))
-    console.log(`[file_write] ${target.rootKind} root is: ${target.root}`)
 
     const MAX_WRITE_BYTES = 2 * 1024 * 1024
     const contentBuffer = Buffer.from(content, 'utf-8')
