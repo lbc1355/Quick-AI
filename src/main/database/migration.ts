@@ -29,7 +29,11 @@ export function migrateFromJson(database: Database.Database, dataDir: string): v
 
 function migrateStore(database: Database.Database, storePath: string): void {
   console.log('[database] Migrating quickai_store.json → SQLite...')
-  try {
+  const bakPath = storePath + '.bak'
+  // The whole import runs as one transaction: any failure rolls back every row (including the
+  // settings), so a crash mid-migration leaves the DB empty and the next launch retries instead
+  // of skipping forever on a half-written settings row.
+  const runMigration = database.transaction(() => {
     const raw = readFileSync(storePath, 'utf-8')
     const data: StorageSchema = JSON.parse(raw)
 
@@ -78,7 +82,19 @@ function migrateStore(database: Database.Database, storePath: string): void {
         insertSession.run(session.id, session.title, session.lastActiveTime || 0)
 
         if (session.messages && session.messages.length > 0) {
-          for (const msg of session.messages) {
+          // Old JSON stores no per-message timestamp; the messages array is in conversation order,
+          // so derive monotonic timestamps from the array position. (UUID ids made the old
+          // `parseInt(msg.id) || Date.now()` collapse every message onto one timestamp, destroying
+          // the intra-session order that `ORDER BY createdAt` later relies on.)
+          const baseCreatedAt = Date.now()
+          session.messages.forEach((msg, index) => {
+            const numericId = Number(msg.id)
+            const createdAt =
+              Number.isInteger(numericId) &&
+              numericId > 0 &&
+              String(msg.id).trim() === String(numericId)
+                ? numericId
+                : baseCreatedAt + index
             insertMessage.run(
               msg.id,
               session.id,
@@ -90,14 +106,14 @@ function migrateStore(database: Database.Database, storePath: string): void {
               msg.agentEvents ? JSON.stringify(msg.agentEvents) : null,
               msg.tokenSpeed || null,
               msg.cacheStats ? JSON.stringify(msg.cacheStats) : null,
-              parseInt(msg.id) || Date.now()
+              createdAt
             )
             if (msg.files && msg.files.length > 0) {
               for (const f of msg.files) {
                 insertFile.run(msg.id, f.name, f.content, f.type)
               }
             }
-          }
+          })
         }
       }
     }
@@ -132,9 +148,10 @@ function migrateStore(database: Database.Database, storePath: string): void {
         )
       }
     }
-
-    // Rename old store to .bak
-    const bakPath = storePath + '.bak'
+  })
+  try {
+    runMigration()
+    // Only rename once the transaction committed, so a failed import leaves the source for retry.
     if (existsSync(bakPath)) unlinkSync(bakPath)
     renameSync(storePath, bakPath)
     console.log('[database] Migration from quickai_store.json complete. Backup saved as .bak')
@@ -160,7 +177,10 @@ function migrateResources(database: Database.Database, resourcesDir: string): vo
 
     for (const file of files) {
       const filePath = join(resourcesDir, file)
-      try {
+      const bakPath = filePath + '.bak'
+      // Each file imports atomically: a corrupt file is rolled back and left in place (so it can be
+      // retried or audited) without blocking the remaining files.
+      const runFileMigration = database.transaction(() => {
         const raw = readFileSync(filePath, 'utf-8')
         const data = JSON.parse(raw)
 
@@ -195,9 +215,10 @@ function migrateResources(database: Database.Database, resourcesDir: string): vo
             )
           }
         }
-
-        // Rename to .bak
-        const bakPath = filePath + '.bak'
+      })
+      try {
+        runFileMigration()
+        // Only rename after the file's rows committed, so a failed import keeps the source.
         if (existsSync(bakPath)) unlinkSync(bakPath)
         renameSync(filePath, bakPath)
       } catch (err) {
