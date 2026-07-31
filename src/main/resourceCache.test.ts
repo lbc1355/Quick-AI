@@ -337,7 +337,7 @@ describeWithSqlite('resourceCache', () => {
   })
 
   describe('search_cached_resource tool execution', () => {
-    it('searches successfully and returns matched offsets and snippets', async () => {
+    it('searches cached lines and returns line-numbered snippets', async () => {
       const source = 'https://example.com/search-test'
       const resourceId = getResourceId(source)
 
@@ -373,21 +373,31 @@ describeWithSqlite('resourceCache', () => {
       // Execute tool Registry search_cached_resource
       const { ToolRegistry } = await import('./toolRegistry')
 
-      // Exact query match
+      // Contiguous substring match returns the matching line and a pointer to reopen it.
       const res1 = await ToolRegistry.search_cached_resource.execute(
         { resourceId, query: 'learning rate' },
         { reqId: 'test-req', signal: new AbortController().signal }
       )
-      expect(res1.resultForModel).toContain('Chunk Offset: 100-200')
       expect(res1.resultForModel).toContain('learning rate')
+      expect(res1.resultForModel).toContain('Line 1:')
+      // The pointer reopens the hit region with the line-based read tool.
+      expect(res1.resultForModel).toContain('read_cached_resource')
+      expect(res1.resultForModel).toContain('lineStart')
 
-      // Keyword fallback match (when exact query doesn't match, e.g. "experimental learning")
+      // A second contiguous substring match hits the same single-line snippet.
       const res2 = await ToolRegistry.search_cached_resource.execute(
-        { resourceId, query: 'experimental learning' },
+        { resourceId, query: 'experimental settings' },
         { reqId: 'test-req', signal: new AbortController().signal }
       )
-      expect(res2.resultForModel).toContain('Chunk Offset: 0-100')
-      expect(res2.resultForModel).toContain('Chunk Offset: 100-200')
+      expect(res2.resultForModel).toContain('experimental settings')
+      expect(res2.resultForModel).toContain('Line 1:')
+
+      // A query absent from the cache reports "no matches".
+      const res3 = await ToolRegistry.search_cached_resource.execute(
+        { resourceId, query: 'nonexistent phrase' },
+        { reqId: 'test-req', signal: new AbortController().signal }
+      )
+      expect(res3.resultForModel).toContain('No matches found')
     })
 
     it('read_cached_resource reports offset adjustment instead of failing', async () => {
@@ -410,10 +420,10 @@ describeWithSqlite('resourceCache', () => {
       )
 
       expect(result.resultForModel).toContain('Requested Offset: 999')
-      expect(result.resultForModel).toContain('Returned Offset: 0-20')
+      expect(result.resultForModel).toContain('Returned Offset: 0-19')
       expect(result.resultForModel).toContain('Warning:')
       expect(result.resultForModel).toContain('cached tool content')
-      expect(result.resultForUi.summary).toContain('Adjusted offset 999 to 0-20')
+      expect(result.resultForUi.summary).toContain('Adjusted offset 999 to 0-19')
     })
   })
 })

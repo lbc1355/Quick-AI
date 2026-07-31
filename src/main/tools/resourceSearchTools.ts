@@ -17,10 +17,10 @@ export const resourceSearchTools: Record<string, ToolDefinition> = {
       'find',
       'local',
       'history',
-      '缂撳瓨',
-      '璧勬簮',
-      '鎼滅储',
-      '鏌ユ壘'
+      '缓存',
+      '资源',
+      '搜索',
+      '查找'
     ],
     category: 'system',
     risk: 'low',

@@ -17,11 +17,11 @@ export const webPageTools: Record<'click_link' | 'find_in_page', ToolDefinition>
       'follow',
       'navigate',
       'browse',
-      '閾炬帴',
-      '鐐瑰嚮',
-      '璺宠浆',
-      '瀵艰埅',
-      '娴忚'
+      '链接',
+      '点击',
+      '跳转',
+      '导航',
+      '浏览'
     ],
     dependencies: ['fetch_url'],
     category: 'web',
@@ -69,18 +69,7 @@ export const webPageTools: Record<'click_link' | 'find_in_page', ToolDefinition>
     title: 'Find In Page',
     description:
       'Search the full cached text of a previously fetched page for a query string, returning matching line numbers and lines. Like Ctrl+F. Use the resourceId from a fetch_url result.',
-    tags: [
-      'web',
-      'find',
-      'search',
-      'grep',
-      'page',
-      'locate',
-      '鏌ユ壘',
-      '鎼滅储',
-      '椤靛唴',
-      '瀹氫綅'
-    ],
+    tags: ['web', 'find', 'search', 'grep', 'page', 'locate', '查找', '搜索', '页内', '定位'],
     dependencies: ['fetch_url'],
     category: 'web',
     risk: 'low',

@@ -36,9 +36,9 @@ export const webSearchTool: ToolDefinition = {
     'duckduckgo',
     'tavily',
     'brave',
-    '鎼滅储',
-    '缃戦〉',
-    '鏌ユ壘'
+    '搜索',
+    '网页',
+    '查找'
   ],
   dependencies: ['fetch_url'],
   category: 'web',

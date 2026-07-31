@@ -16,10 +16,10 @@ export const toolOutputTools: Record<string, ToolDefinition> = {
       'retrieve',
       'read',
       'history',
-      '宸ュ叿',
-      '杈撳嚭',
-      '鎴柇',
-      '璇诲彇'
+      '工具',
+      '输出',
+      '截断',
+      '读取'
     ],
     category: 'system',
     risk: 'low',

@@ -7,7 +7,7 @@ export const webFetchTool: ToolDefinition = {
   title: 'Fetch URL Content',
   description:
     'Fetches a public HTTP or HTTPS HTML/text web page and returns its title, text content, and extracted links. Use pdf_read for PDF URLs or arXiv abstract URLs when PDF full text is needed.',
-  tags: ['web', 'scraper', 'fetch', 'parse', '缃戦〉', '鎶撳彇', '璇诲彇', '鐖櫕', '鑾峰彇'],
+  tags: ['web', 'scraper', 'fetch', 'parse', '网页', '抓取', '读取', '爬虫', '获取'],
   category: 'web',
   risk: 'low',
   implemented: true,
