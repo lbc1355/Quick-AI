@@ -141,6 +141,7 @@ describe('modelCatalog', () => {
       },
       compatibility: {
         stripReasoningContent: true,
+        preserveToolCallReasoningContent: false,
         stripToolMessageName: true,
         normalizeToolCallContent: true,
         stripEmptyToolCalls: true,

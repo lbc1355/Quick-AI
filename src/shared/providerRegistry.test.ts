@@ -5,6 +5,7 @@ import {
   validateProviderRegistrations
 } from './providerRegistry'
 import { createProviderFromRegistration } from './providerFactory'
+import { getProviderModelRuntimeConfig } from './modelCatalog'
 import { getProviderRuntimeProfile, PROVIDER_RUNTIME_PROFILES } from './providerProfiles'
 
 describe('providerRegistry', () => {
@@ -71,5 +72,13 @@ describe('providerRegistry', () => {
       model: 'deepseek-v4-flash-free'
     })
     expect(provider.models?.['deepseek-v4-flash-free']?.providerId).toBe('account-provider')
+    expect(
+      getProviderModelRuntimeConfig(provider, 'deepseek-v4-flash-free')?.compatibility
+        ?.preserveToolCallReasoningContent
+    ).toBe(true)
+    expect(
+      getProviderModelRuntimeConfig(provider, 'qwen3-coder-plus')?.compatibility
+        ?.preserveToolCallReasoningContent
+    ).toBe(false)
   })
 })

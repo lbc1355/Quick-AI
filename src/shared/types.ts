@@ -441,6 +441,8 @@ export interface ResolvedModelFeatureSupport {
  */
 export interface ModelCompatibilityProfile {
   stripReasoningContent?: boolean
+  /** Keep reasoning on assistant tool-call turns when an upstream thinking model requires replay. */
+  preserveToolCallReasoningContent?: boolean
   stripToolMessageName?: boolean
   normalizeToolCallContent?: boolean
   stripEmptyToolCalls?: boolean
@@ -450,6 +452,7 @@ export interface ModelCompatibilityProfile {
 
 export interface ResolvedModelCompatibilityProfile {
   stripReasoningContent: boolean
+  preserveToolCallReasoningContent: boolean
   stripToolMessageName: boolean
   normalizeToolCallContent: boolean
   stripEmptyToolCalls: boolean

@@ -49,7 +49,15 @@ function applyMessageCompatibility(
       return copy
     }
 
-    if (compatibility.stripReasoningContent && 'reasoning_content' in message) {
+    const preserveToolCallReasoning =
+      compatibility.preserveToolCallReasoningContent &&
+      message.role === 'assistant' &&
+      !!message.tool_calls?.length
+    if (
+      compatibility.stripReasoningContent &&
+      !preserveToolCallReasoning &&
+      'reasoning_content' in message
+    ) {
       delete mutable().reasoning_content
     }
 

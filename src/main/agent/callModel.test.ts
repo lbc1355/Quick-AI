@@ -238,6 +238,48 @@ describe('callModel retry behavior', () => {
     expect(onFinalChunk).not.toHaveBeenCalled()
   })
 
+  it('passes checkpoint tool-call reasoning back to DeepSeek through OpenCode', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(sseStream([sseLine({ content: 'resumed' }), 'data: [DONE]\n']))
+    )
+    const checkpointMessages: ChatCompletionMessage[] = [
+      { role: 'user', content: 'inspect the project' },
+      {
+        role: 'assistant',
+        content: '',
+        reasoning_content: 'I should read the project file.',
+        tool_calls: [
+          {
+            id: 'call-read',
+            type: 'function',
+            function: { name: 'file_read', arguments: '{"path":"README.md"}' }
+          }
+        ]
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call-read',
+        content: 'file contents'
+      }
+    ]
+
+    await callModel(
+      {
+        apiUrl: 'https://opencode.ai/zen/v1',
+        apiKey: 'k',
+        model: 'deepseek-v4-pro',
+        providerType: 'opencode'
+      },
+      checkpointMessages
+    )
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.messages[1]).toMatchObject({
+      role: 'assistant',
+      reasoning_content: 'I should read the project file.'
+    })
+  })
+
   it('gives up after retries are exhausted on persistent transient failure', async () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'))
 

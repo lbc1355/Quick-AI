@@ -46,6 +46,7 @@ const OPENAI_COMPATIBLE_FEATURES: ResolvedModelFeatureSupport = {
 
 const OPENAI_COMPATIBLE_COMPATIBILITY: ResolvedModelCompatibilityProfile = {
   stripReasoningContent: true,
+  preserveToolCallReasoningContent: false,
   stripToolMessageName: false,
   normalizeToolCallContent: false,
   stripEmptyToolCalls: false,
@@ -140,7 +141,15 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
       defaultModel: 'deepseek-v4-flash-free'
     },
     { apiUrl: 'https://opencode.ai/zen/v1', authType: 'bearer' },
-    createProviderRuntimeProfile({ compatibility: STRICT_OPENAI_COMPATIBILITY })
+    createProviderRuntimeProfile({
+      compatibility: STRICT_OPENAI_COMPATIBILITY,
+      modelCompatibilityRules: [
+        {
+          includes: ['deepseek'],
+          compatibility: { preserveToolCallReasoningContent: true }
+        }
+      ]
+    })
   ),
   registration(
     {
@@ -181,7 +190,10 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
       models: ['deepseek-chat', 'deepseek-reasoner'],
       defaultModel: 'deepseek-chat'
     },
-    { apiUrl: 'https://api.deepseek.com/v1', authType: 'bearer' }
+    { apiUrl: 'https://api.deepseek.com/v1', authType: 'bearer' },
+    createProviderRuntimeProfile({
+      compatibility: { preserveToolCallReasoningContent: true }
+    })
   ),
   registration(
     {
