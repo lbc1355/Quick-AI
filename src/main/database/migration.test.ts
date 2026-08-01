@@ -207,4 +207,33 @@ describeWithSqlite('migrateFromJson', () => {
     expect(existsSync(join(resourcesDir, 'res-corrupt.json'))).toBe(true)
     expect(existsSync(join(resourcesDir, 'res-corrupt.json.bak'))).toBe(false)
   })
+
+  it('retries leftover resource files on a later launch after the store has migrated', () => {
+    const resourcesDir = join(dataDir, 'resources')
+    mkdirSync(resourcesDir, { recursive: true })
+    writeFileSync(
+      join(resourcesDir, 'res-good.json'),
+      JSON.stringify({ id: 'res-1', kind: 'web', source: 'https://a.example', chunks: [] })
+    )
+    writeFileSync(join(resourcesDir, 'res-corrupt.json'), '{not-json')
+
+    // First launch: the store migrates (settings written) and the good resource is consumed; the
+    // corrupt file stays behind for a later retry.
+    writeStore(validStore())
+    migrateFromJson(db, dataDir)
+
+    // Second launch: even though the store is already migrated, the leftover resource is retried
+    // once it becomes parseable.
+    writeFileSync(
+      join(resourcesDir, 'res-corrupt.json'),
+      JSON.stringify({ id: 'res-2', kind: 'web', source: 'https://b.example', chunks: [] })
+    )
+    migrateFromJson(db, dataDir)
+
+    const ids = (db.prepare('SELECT id FROM resource_cache').all() as Array<{ id: string }>).map(
+      (row) => row.id
+    )
+    expect(ids).toEqual(expect.arrayContaining(['res-1', 'res-2']))
+    expect(existsSync(join(resourcesDir, 'res-corrupt.json.bak'))).toBe(true)
+  })
 })

@@ -14,16 +14,22 @@ export function migrateFromJson(database: Database.Database, dataDir: string): v
 
   if (!hasOldStore && !hasOldResources) return
 
-  // Check if migration already happened
-  const count = database.prepare('SELECT COUNT(*) as c FROM settings').get() as { c: number }
-  if (count.c > 0) return // Already migrated
+  // Store migration is done once settings rows exist. Resource migration is done once every
+  // resource JSON has been consumed (renamed to .bak). The two are independent: a resource file
+  // that failed to migrate stays behind and is retried on a later launch even after the store has
+  // already migrated.
+  const storeMigrated =
+    (database.prepare('SELECT COUNT(*) as c FROM settings').get() as { c: number }).c > 0
 
-  if (hasOldStore) {
+  if (hasOldStore && !storeMigrated) {
     migrateStore(database, storePath)
   }
 
   if (hasOldResources) {
-    migrateResources(database, resourcesDir)
+    const remainingResources = readdirSync(resourcesDir).filter((f) => f.endsWith('.json'))
+    if (remainingResources.length > 0) {
+      migrateResources(database, resourcesDir)
+    }
   }
 }
 
