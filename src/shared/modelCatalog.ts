@@ -12,6 +12,7 @@ import {
   resolveModelPromptProfile,
   transportIdToApiFormat
 } from './providerProfiles'
+import { resolveModelReasoningControl } from './reasoningControl'
 
 export function getProviderEndpointType(
   provider: Pick<ApiProvider, 'type' | 'endpointType'>
@@ -41,6 +42,7 @@ export function createModelInfo(
     features: previous?.features,
     compatibility: previous?.compatibility,
     promptProfile: previous?.promptProfile,
+    reasoningControl: previous?.reasoningControl,
     limit: {
       context: normalizedContext,
       ...(previous?.limit?.output ? { output: previous.limit.output } : {})
@@ -142,6 +144,13 @@ export function getProviderModelRuntimeConfig(
     normalized.transportId ??
     (normalized.apiFormat ? apiFormatToTransportId(normalized.apiFormat) : undefined) ??
     profile.transportId
+  const features = resolveModelFeatureSupport(normalized, modelInfo)
+  const reasoningControl = resolveModelReasoningControl(
+    normalized,
+    modelInfo,
+    profile,
+    features
+  )
 
   return {
     providerId: normalized.id,
@@ -154,10 +163,12 @@ export function getProviderModelRuntimeConfig(
     apiModel: modelInfo.apiId || modelInfo.id,
     displayName: modelInfo.displayName,
     capabilities: modelInfo.capabilities,
-    features: resolveModelFeatureSupport(normalized, modelInfo),
+    features,
     compatibility: resolveModelCompatibility(normalized, modelInfo),
     promptProfile: resolveModelPromptProfile(normalized, modelInfo),
-    contextWindowTokens: contextWindow
+    ...(reasoningControl ? { reasoningControl } : {}),
+    contextWindowTokens: contextWindow,
+    ...(modelInfo.limit.output ? { outputTokenLimit: modelInfo.limit.output } : {})
   }
 }
 

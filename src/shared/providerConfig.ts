@@ -47,7 +47,12 @@ export function getProviderDefinition(provider: ApiProvider): ProviderDefinition
     apiFormat: normalized.apiFormat || transportIdToApiFormat(transportId),
     features: { ...runtime.features, ...(normalized.features || {}) },
     compatibility: { ...runtime.compatibility, ...(normalized.compatibility || {}) },
-    promptProfile: normalized.promptProfile || runtime.promptProfile
+    promptProfile: normalized.promptProfile || runtime.promptProfile,
+    ...(normalized.defaultReasoningControl
+      ? { defaultReasoningControl: normalized.defaultReasoningControl }
+      : runtime.defaultReasoningControl
+        ? { defaultReasoningControl: runtime.defaultReasoningControl }
+        : {})
   }
 }
 
@@ -110,7 +115,10 @@ export function composeProviderConfiguration(
       apiFormat: definition.apiFormat,
       features: definition.features,
       compatibility: definition.compatibility,
-      promptProfile: definition.promptProfile
+      promptProfile: definition.promptProfile,
+      ...(definition.defaultReasoningControl
+        ? { defaultReasoningControl: definition.defaultReasoningControl }
+        : {})
     })
   )
 }

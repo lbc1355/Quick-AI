@@ -1,6 +1,7 @@
 import type {
   ModelCompatibilityProfile,
   ModelPromptProfile,
+  ModelReasoningControl,
   ModelTransportId,
   ProviderApiFormat,
   ProviderAuthType,
@@ -10,6 +11,7 @@ import type {
   ResolvedModelCompatibilityProfile,
   ResolvedModelFeatureSupport
 } from './types'
+import type { ModelReasoningRule } from './reasoningControl'
 
 export interface ProviderRuntimeProfile {
   endpointType: ProviderEndpointType
@@ -20,12 +22,16 @@ export interface ProviderRuntimeProfile {
   features: ResolvedModelFeatureSupport
   compatibility: ResolvedModelCompatibilityProfile
   modelCompatibilityRules?: readonly ModelCompatibilityRule[]
+  defaultReasoningControl?: ModelReasoningControl
+  modelReasoningRules?: readonly ModelReasoningRule[]
 }
 
 export interface ModelCompatibilityRule {
   includes: readonly string[]
   compatibility: ModelCompatibilityProfile
 }
+
+export type { ModelReasoningRule }
 
 type ProviderRuntimeProfileOverrides = Omit<
   Partial<ProviderRuntimeProfile>,
@@ -148,6 +154,16 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
           includes: ['deepseek'],
           compatibility: { preserveToolCallReasoningContent: true }
         }
+      ],
+      modelReasoningRules: [
+        {
+          includes: ['deepseek'],
+          reasoningControl: {
+            mode: 'toggle',
+            encoding: 'deepseek-thinking-toggle',
+            supportsOff: true
+          }
+        }
       ]
     })
   ),
@@ -192,7 +208,17 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
     },
     { apiUrl: 'https://api.deepseek.com/v1', authType: 'bearer' },
     createProviderRuntimeProfile({
-      compatibility: { preserveToolCallReasoningContent: true }
+      compatibility: { preserveToolCallReasoningContent: true },
+      modelReasoningRules: [
+        {
+          includes: ['reasoner', 'r1'],
+          reasoningControl: {
+            mode: 'toggle',
+            encoding: 'deepseek-thinking-toggle',
+            supportsOff: true
+          }
+        }
+      ]
     })
   ),
   registration(

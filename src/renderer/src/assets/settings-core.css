@@ -393,3 +393,19 @@
   color: #8b5cf6;
   filter: none;
 }
+
+.reasoning-level-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 6px;
+}
+
+.reasoning-level-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}

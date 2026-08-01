@@ -1,6 +1,7 @@
 import { normalizeContextWindowTokens } from './modelContext'
 import { normalizeProviderModelCatalog } from './modelCatalog'
 import { createProviderModelDiscoveryPolicy, getProviderRegistration } from './providerRegistry'
+import { parseDiscoveredReasoningControl } from './reasoningControl'
 import type {
   FetchedModelInfo,
   ApiProvider,
@@ -20,12 +21,27 @@ export function mergeDiscoveredModelMetadata(
     models: Object.fromEntries(
       Object.entries(normalized.models || {}).map(([id, model]) => {
         const discovered = discoveredById.get(id)
+        const capabilities = discovered?.capabilities || model.capabilities
+        const reasoningControl = discovered?.reasoningControl || model.reasoningControl
+        const withReasoningCapability =
+          reasoningControl && (!capabilities || !capabilities.includes('reasoning'))
+            ? [...(capabilities || []), 'reasoning' as const]
+            : capabilities
         return [
           id,
           {
             ...model,
             displayName: discovered?.displayName || model.displayName,
-            capabilities: discovered?.capabilities || model.capabilities
+            capabilities: withReasoningCapability,
+            ...(reasoningControl ? { reasoningControl } : {}),
+            ...(reasoningControl || withReasoningCapability?.includes('reasoning')
+              ? {
+                  features: {
+                    ...(model.features || {}),
+                    reasoning: true
+                  }
+                }
+              : {})
           }
         ]
       })
@@ -84,12 +100,18 @@ function normalizeModel(
   const capabilities = policy.capabilityPaths
     .map((path) => normalizeCapabilities(readPath(item, path)))
     .find((value) => value.length > 0)
+  const reasoningControl =
+    parseDiscoveredReasoningControl(readPath(item, 'reasoning_options')) ||
+    parseDiscoveredReasoningControl(readPath(item, 'reasoning'))
+  const mergedCapabilities = new Set(capabilities || [])
+  if (reasoningControl) mergedCapabilities.add('reasoning')
 
   return {
     id,
     ...(displayName ? { displayName } : {}),
     ...(contextWindowTokens ? { contextWindowTokens } : {}),
-    ...(capabilities?.length ? { capabilities } : {})
+    ...(mergedCapabilities.size > 0 ? { capabilities: [...mergedCapabilities] } : {}),
+    ...(reasoningControl ? { reasoningControl } : {})
   }
 }
 

@@ -1,13 +1,51 @@
 import React, { useState } from 'react'
-import { ArrowLeft, Plus, RefreshCw, X, Eye, EyeOff, Trash2, ShieldCheck, Sliders, Server, Cpu } from 'lucide-react'
+import {
+  ArrowLeft,
+  Plus,
+  RefreshCw,
+  X,
+  Eye,
+  EyeOff,
+  Trash2,
+  ShieldCheck,
+  Sliders,
+  Server,
+  Cpu
+} from 'lucide-react'
 import {
   ModelPromptProfile,
   ProviderApiFormat,
   ProviderAuthType,
-  ProviderConnectionTestResult
+  ProviderConnectionTestResult,
+  ReasoningLevel
 } from '../../../shared/types'
 import { getContextWindowInfo } from '../../../shared/modelContext'
+import {
+  buildReasoningControlFromPreset,
+  DEFAULT_EFFORT_LEVELS,
+  getReasoningControlPresetId,
+  getReasoningControlPresetLevels,
+  ReasoningControlPresetId
+} from '../../../shared/reasoningControlPresets'
 import { useSettings } from '../contexts/SettingsContext'
+
+const REASONING_LEVEL_OPTIONS: ReasoningLevel[] = [
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max'
+]
+
+const REASONING_LEVEL_LABELS: Record<ReasoningLevel, string> = {
+  minimal: '极低',
+  low: '低',
+  medium: '中',
+  high: '高',
+  xhigh: '极高',
+  max: '最大'
+}
 
 const formatContextTokens = (tokens: number): string => `${tokens.toLocaleString()} tokens`
 
@@ -83,7 +121,8 @@ export const ProviderEditor: React.FC = () => {
     handleChangeProviderHeader: onChangeProviderHeader,
     handleDeleteProviderHeader: onDeleteProviderHeader,
     handleChangeEditingProviderApiFormat: onChangeApiFormat,
-    handleChangeEditingProviderPromptProfile: onChangePromptProfile
+    handleChangeEditingProviderPromptProfile: onChangePromptProfile,
+    handleChangeEditingProviderDefaultReasoningControl: onChangeDefaultReasoningControl
   } = useSettings()
   const [visibleKeyIds, setVisibleKeyIds] = useState<Record<string, boolean>>({})
 
@@ -272,6 +311,74 @@ export const ProviderEditor: React.FC = () => {
               </label>
             )}
 
+            {provider.type === 'custom' && (
+              <>
+                <label className="settings-field">
+                  <span className="settings-label">推理控制协议</span>
+                  <select
+                    className="settings-select"
+                    value={getReasoningControlPresetId(provider.defaultReasoningControl)}
+                    onChange={(e) => {
+                      const preset = e.target.value as ReasoningControlPresetId
+                      const levels = getReasoningControlPresetLevels(
+                        provider.defaultReasoningControl
+                      )
+                      onChangeDefaultReasoningControl(
+                        buildReasoningControlFromPreset(preset, levels)
+                      )
+                    }}
+                  >
+                    <option value="none">无</option>
+                    <option value="fixed">固定推理</option>
+                    <option value="openai-effort">OpenAI effort</option>
+                    <option value="openrouter-reasoning">OpenRouter reasoning effort</option>
+                    <option value="openrouter-budget">OpenRouter budget</option>
+                    <option value="qwen-enable-thinking">Qwen enable_thinking</option>
+                    <option value="deepseek-thinking-toggle">DeepSeek thinking toggle</option>
+                  </select>
+                  <small>许多 /models 接口不会完整返回推理控制能力，可在此手动声明协议。</small>
+                </label>
+                {(provider.defaultReasoningControl?.mode === 'effort' ||
+                  provider.defaultReasoningControl?.mode === 'budget') && (
+                  <div className="settings-field">
+                    <span className="settings-label">支持的思考强度等级</span>
+                    <div className="reasoning-level-checklist">
+                      {REASONING_LEVEL_OPTIONS.map((level) => {
+                        const selected = new Set(
+                          getReasoningControlPresetLevels(provider.defaultReasoningControl)
+                        )
+                        const checked = selected.has(level)
+                        return (
+                          <label key={level} className="reasoning-level-check">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                const next = new Set(selected)
+                                if (checked) next.delete(level)
+                                else next.add(level)
+                                const levels =
+                                  next.size > 0
+                                    ? REASONING_LEVEL_OPTIONS.filter((item) => next.has(item))
+                                    : DEFAULT_EFFORT_LEVELS
+                                const preset = getReasoningControlPresetId(
+                                  provider.defaultReasoningControl
+                                )
+                                onChangeDefaultReasoningControl(
+                                  buildReasoningControlFromPreset(preset, levels)
+                                )
+                              }}
+                            />
+                            <span>{REASONING_LEVEL_LABELS[level]}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             <label className="settings-field">
               <span className="settings-label">Prompt 适配</span>
               <select
@@ -418,9 +525,7 @@ export const ProviderEditor: React.FC = () => {
 
             {/* 模型列表项 */}
             <div className="settings-field">
-              <span className="settings-label">
-                已知模型列表 (点击模型记录设为默认模型)
-              </span>
+              <span className="settings-label">已知模型列表 (点击模型记录设为默认模型)</span>
               <div className="model-context-list">
                 {modelsList.map((model) => {
                   const isDefault = selectedModel === model
@@ -428,14 +533,19 @@ export const ProviderEditor: React.FC = () => {
                   const configuredContext = modelContextWindows[model]
 
                   return (
-                    <div key={model} className={`model-context-row ${isDefault ? 'is-default' : ''}`}>
+                    <div
+                      key={model}
+                      className={`model-context-row ${isDefault ? 'is-default' : ''}`}
+                    >
                       <div
                         className="model-context-main"
                         onClick={() => onChangeSelectedModel(model)}
                         title={isDefault ? '当前默认模型' : '点击设为默认模型'}
                       >
                         <div className="model-context-name-row">
-                          <span className="model-context-name" title={model}>{model}</span>
+                          <span className="model-context-name" title={model}>
+                            {model}
+                          </span>
                           {isDefault && <span className="default-model-badge">默认</span>}
                           <button
                             type="button"
@@ -484,7 +594,12 @@ export const ProviderEditor: React.FC = () => {
                         </div>
                       </div>
 
-                      <button type="button" className="remove-model-btn" onClick={() => onRemoveModel(model)} title="移出列表">
+                      <button
+                        type="button"
+                        className="remove-model-btn"
+                        onClick={() => onRemoveModel(model)}
+                        title="移出列表"
+                      >
                         <X size={13} />
                       </button>
                     </div>
@@ -537,4 +652,3 @@ export const ProviderEditor: React.FC = () => {
     </div>
   )
 }
-

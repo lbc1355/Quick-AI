@@ -6,6 +6,7 @@ import type {
   ModelFeatureSupport,
   ModelInfo,
   ModelPromptProfile,
+  ModelReasoningControl,
   ModelTransportId,
   ProviderAccount,
   ProviderApiFormat,
@@ -61,6 +62,7 @@ interface ProviderDefinitionRow {
   promptProfile: string | null
   features: string | null
   compatibility: string | null
+  defaultReasoningControl: string | null
 }
 
 interface ProviderAccountRow {
@@ -127,7 +129,11 @@ function loadCanonicalProviders(database: Database.Database): ApiProvider[] {
     apiFormat: (row.apiFormat || undefined) as ProviderApiFormat | undefined,
     promptProfile: (row.promptProfile || undefined) as ModelPromptProfile | undefined,
     features: parseJson<ModelFeatureSupport | undefined>(row.features, undefined),
-    compatibility: parseJson<ModelCompatibilityProfile | undefined>(row.compatibility, undefined)
+    compatibility: parseJson<ModelCompatibilityProfile | undefined>(row.compatibility, undefined),
+    defaultReasoningControl: parseJson<ModelReasoningControl | undefined>(
+      row.defaultReasoningControl,
+      undefined
+    )
   }))
   const definitionTypes = new Map(definitions.map((definition) => [definition.id, definition.type]))
   const accounts: ProviderAccount[] = accountRows
@@ -201,8 +207,8 @@ export function saveProviderConfigurations(
   const deleteLegacyProviders = database.prepare('DELETE FROM providers')
   const insertDefinition = database.prepare(
     `INSERT OR REPLACE INTO provider_definitions
-      (id, name, type, endpointType, defaultModelId, models, modelContextWindows, transportId, apiFormat, promptProfile, features, compatibility)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, name, type, endpointType, defaultModelId, models, modelContextWindows, transportId, apiFormat, promptProfile, features, compatibility, defaultReasoningControl)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const insertAccount = database.prepare(
     `INSERT OR REPLACE INTO provider_accounts
@@ -226,7 +232,8 @@ export function saveProviderConfigurations(
       definition.apiFormat || null,
       definition.promptProfile || null,
       JSON.stringify(definition.features || {}),
-      JSON.stringify(definition.compatibility || {})
+      JSON.stringify(definition.compatibility || {}),
+      definition.defaultReasoningControl ? JSON.stringify(definition.defaultReasoningControl) : null
     )
   }
   for (const account of accounts) {
