@@ -216,10 +216,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
             <StepReasoningBlock reasoning={parsedRun.finalReasoning} autoOpen={true} />
             {parsedRun.finalAnswer ? (
               <div className="message-text subagent-final-answer">
-                <MessageMarkdown
-                  text={isStreaming ? smoothFinalAnswer : parsedRun.finalAnswer}
-                  streaming={isStreaming}
-                />
+                <MessageMarkdown text={smoothFinalAnswer} streaming={isStreaming} />
               </div>
             ) : null}
 
