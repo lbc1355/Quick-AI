@@ -178,6 +178,18 @@ export function cancelBackgroundJob(id: string): BackgroundJobInfo | undefined {
   return snapshot(info)
 }
 
+/** Cancel every running background job that belongs to a session. Returns the number aborted. */
+export function cancelBackgroundJobsForSession(sessionId: string): number {
+  let cancelled = 0
+  for (const [id, job] of jobs) {
+    if (job.info.sessionId === sessionId && job.info.status === 'running') {
+      cancelBackgroundJob(id)
+      cancelled++
+    }
+  }
+  return cancelled
+}
+
 export function clearBackgroundJobsForTests(): void {
   for (const job of jobs.values()) job.controller.abort()
   jobs.clear()

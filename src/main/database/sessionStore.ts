@@ -4,16 +4,19 @@ import { Message, Session, SessionRevertState } from '../../shared/types'
 import { compactAgentEvents } from '../../shared/agentEventCompactor'
 import { loadSessionAgentEventJournals } from '../agent/agentEventJournal'
 import { mergeAgentEventJournalsIntoSessions } from '../agent/agentEventRecovery'
+import { cancelBackgroundJobsForSession } from '../agent/backgroundJobManager'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
 import { getDb } from './connection'
 
 /**
  * Delete rows that reference a session from tables that have no foreign-key cascade. Without this,
  * deleting a session (or a folder project containing it) leaves orphaned prompt-inbox and
- * background-job rows behind.
+ * background-job rows behind. Running background jobs are cancelled first so they do not keep
+ * executing and re-insert their row (via the persistence save) after this delete.
  */
 export function deleteSessionScopedRows(database: Database.Database, sessionId: string): void {
   database.prepare('DELETE FROM session_prompt_inbox WHERE sessionId = ?').run(sessionId)
+  cancelBackgroundJobsForSession(sessionId)
   database.prepare('DELETE FROM background_jobs WHERE sessionId = ?').run(sessionId)
 }
 

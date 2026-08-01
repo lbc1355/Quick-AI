@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   cancelBackgroundJob,
+  cancelBackgroundJobsForSession,
   clearBackgroundJobsForTests,
   configureBackgroundJobPersistence,
   getBackgroundJob,
@@ -50,6 +51,28 @@ describe('background job manager', () => {
 
     expect(cancelBackgroundJob('job-cancel')?.status).toBe('cancelled')
     expect(observedSignal?.aborted).toBe(true)
+  })
+
+  it('cancels every running job belonging to a session', () => {
+    startBackgroundJob({
+      id: 'job-a',
+      type: 'shell',
+      title: 'A',
+      sessionId: 'session-1',
+      run: () => new Promise<void>(() => undefined)
+    })
+    startBackgroundJob({
+      id: 'job-b',
+      type: 'shell',
+      title: 'B',
+      sessionId: 'session-2',
+      run: () => new Promise<void>(() => undefined)
+    })
+
+    const cancelled = cancelBackgroundJobsForSession('session-1')
+    expect(cancelled).toBe(1)
+    expect(getBackgroundJob('job-a')?.status).toBe('cancelled')
+    expect(getBackgroundJob('job-b')?.status).toBe('running')
   })
 
   it('records a max-steps outcome returned by the job', async () => {
