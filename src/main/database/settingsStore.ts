@@ -29,7 +29,8 @@ export function loadSettingsFromDatabase(database: Database.Database): AppSettin
     theme: (kv['theme'] as 'dark' | 'light') || 'dark',
     permissions: parseJson(kv['permissions'], {}),
     webSearch: parseJson(kv['webSearch'], undefined),
-    providerPresetVersion: Number(kv['providerPresetVersion'] || 0)
+    providerPresetVersion: Number(kv['providerPresetVersion'] || 0),
+    reasoningDefaults: parseJson(kv['reasoningDefaults'], undefined)
   }
 }
 
@@ -48,6 +49,7 @@ export function saveSettingsToDatabase(database: Database.Database, settings: Ap
     upsert.run('permissions', JSON.stringify(value.permissions || {}))
     upsert.run('webSearch', JSON.stringify(value.webSearch || {}))
     upsert.run('providerPresetVersion', String(value.providerPresetVersion || 0))
+    upsert.run('reasoningDefaults', JSON.stringify(value.reasoningDefaults || {}))
     saveProviderConfigurations(database, value.providers || [])
   })
   persist(settings)

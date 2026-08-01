@@ -10,6 +10,8 @@ import {
   ProviderAuthType,
   ProviderApiFormat,
   ModelPromptProfile,
+  ModelReasoningControl,
+  ReasoningPreference,
   ResolvedProviderConnection,
   ProviderModelDiscoveryCache,
   ProviderModelDiscoveryRequest,
@@ -78,6 +80,8 @@ export interface UseProvidersReturn {
   setAutoHideOnBlur: React.Dispatch<React.SetStateAction<boolean>>
   contextRetentionMode: ContextRetentionMode
   setContextRetentionMode: React.Dispatch<React.SetStateAction<ContextRetentionMode>>
+  reasoningDefaults: Record<string, ReasoningPreference>
+  setReasoningDefault: (key: string, value: ReasoningPreference) => Promise<void>
   appStorePath: string
   saveSuccess: boolean
   theme: 'dark' | 'light'
@@ -135,6 +139,9 @@ export interface UseProvidersReturn {
   handleChangeEditingProviderName: (name: string) => void
   handleChangeEditingProviderApiFormat: (format: ProviderApiFormat) => void
   handleChangeEditingProviderPromptProfile: (profile?: ModelPromptProfile) => void
+  handleChangeEditingProviderDefaultReasoningControl: (
+    control: ModelReasoningControl | undefined
+  ) => void
   handleAddManualModel: () => void
   handleFetchModels: () => Promise<void>
   handleTestProviderConnection: () => Promise<void>
@@ -166,6 +173,9 @@ export const useProviders = (): UseProvidersReturn => {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [autoHideOnBlur, setAutoHideOnBlur] = useState(true)
   const [contextRetentionMode, setContextRetentionMode] = useState<ContextRetentionMode>('default')
+  const [reasoningDefaults, setReasoningDefaults] = useState<Record<string, ReasoningPreference>>(
+    {}
+  )
   const [appStorePath, setAppStorePath] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
@@ -334,6 +344,7 @@ export const useProviders = (): UseProvidersReturn => {
         setContextRetentionMode(
           upgradedSettings.contextRetentionMode === 'cache-priority' ? 'cache-priority' : 'default'
         )
+        setReasoningDefaults(upgradedSettings.reasoningDefaults || {})
         setTheme(upgradedSettings.theme || 'dark')
         setWebSearchProvider(upgradedSettings.webSearch?.provider || 'auto')
         setWebSearchApiKey(upgradedSettings.webSearch?.apiKey || '')
@@ -394,6 +405,7 @@ export const useProviders = (): UseProvidersReturn => {
       savedSettings.systemPrompt = systemPrompt
       savedSettings.autoHideOnBlur = autoHideOnBlur
       savedSettings.contextRetentionMode = contextRetentionMode
+      savedSettings.reasoningDefaults = reasoningDefaults
       savedSettings.theme = theme
       savedSettings.permissions = permissions
       savedSettings.webSearch = {
@@ -404,6 +416,14 @@ export const useProviders = (): UseProvidersReturn => {
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
     }
+  }
+
+  const setReasoningDefault = async (key: string, value: ReasoningPreference): Promise<void> => {
+    const next = { ...reasoningDefaults, [key]: value }
+    setReasoningDefaults(next)
+    const savedSettings = ((await window.api.storeGet('settings')) as AppSettings) || {}
+    savedSettings.reasoningDefaults = next
+    await window.api.storeSet('settings', savedSettings)
   }
 
   const onChangeToolPermission = (toolName: string, policy: 'allow' | 'ask' | 'deny'): void => {
@@ -935,6 +955,21 @@ export const useProviders = (): UseProvidersReturn => {
     )
   }
 
+  const handleChangeEditingProviderDefaultReasoningControl = (
+    control: ModelReasoningControl | undefined
+  ): void => {
+    setProviders((prev) =>
+      prev.map((p) => {
+        if (p.id !== editingProviderId) return p
+        if (!control) {
+          const { defaultReasoningControl: _removed, ...rest } = p
+          return rest
+        }
+        return { ...p, defaultReasoningControl: control }
+      })
+    )
+  }
+
   return {
     apiKey,
     setApiKey,
@@ -952,6 +987,8 @@ export const useProviders = (): UseProvidersReturn => {
     setAutoHideOnBlur,
     contextRetentionMode,
     setContextRetentionMode,
+    reasoningDefaults,
+    setReasoningDefault,
     appStorePath,
     saveSuccess,
     theme,
@@ -1009,6 +1046,7 @@ export const useProviders = (): UseProvidersReturn => {
     handleChangeEditingProviderName,
     handleChangeEditingProviderApiFormat,
     handleChangeEditingProviderPromptProfile,
+    handleChangeEditingProviderDefaultReasoningControl,
     handleAddManualModel,
     handleFetchModels,
     handleTestProviderConnection,

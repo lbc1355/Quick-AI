@@ -8,6 +8,7 @@ import {
 } from '../../shared/types'
 import { getDb } from './connection'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
+import { normalizeReasoningPreference } from '../../shared/reasoningControl'
 
 interface SessionPromptRow {
   id: string
@@ -19,6 +20,8 @@ interface SessionPromptRow {
   sourceMessageId: string
   assistantMessageId: string | null
   messages: string
+  requestedReasoningPreference: string | null
+  effectiveReasoningPreference: string | null
   createdAt: number
   updatedAt: number
 }
@@ -54,6 +57,16 @@ const rowToPrompt = (row: SessionPromptRow): SessionPromptAdmission => ({
   sourceMessageId: row.sourceMessageId,
   ...(row.assistantMessageId ? { assistantMessageId: row.assistantMessageId } : {}),
   messages: parseMessages(row.messages),
+  ...(row.requestedReasoningPreference
+    ? {
+        requestedReasoningPreference: normalizeReasoningPreference(row.requestedReasoningPreference)
+      }
+    : {}),
+  ...(row.effectiveReasoningPreference
+    ? {
+        effectiveReasoningPreference: normalizeReasoningPreference(row.effectiveReasoningPreference)
+      }
+    : {}),
   createdAt: row.createdAt,
   updatedAt: row.updatedAt
 })
@@ -81,12 +94,18 @@ export function admitSessionPrompt(input: AdmitSessionPromptInput): StoredSessio
     throw new Error('Prompt messages are required')
   }
 
+  const requestedReasoningPreference = input.requestedReasoningPreference
+    ? normalizeReasoningPreference(input.requestedReasoningPreference)
+    : null
+  const effectiveReasoningPreference = input.effectiveReasoningPreference
+    ? normalizeReasoningPreference(input.effectiveReasoningPreference)
+    : null
   const now = Date.now()
   const result = getDb()
     .prepare(
       `INSERT OR IGNORE INTO session_prompt_inbox
-       (id, sessionId, contextEpoch, mode, status, runMode, sourceMessageId, assistantMessageId, messages, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`
+       (id, sessionId, contextEpoch, mode, status, runMode, sourceMessageId, assistantMessageId, messages, requestedReasoningPreference, effectiveReasoningPreference, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
@@ -97,6 +116,8 @@ export function admitSessionPrompt(input: AdmitSessionPromptInput): StoredSessio
       sourceMessageId,
       assistantMessageId,
       JSON.stringify(input.messages),
+      requestedReasoningPreference,
+      effectiveReasoningPreference,
       now,
       now
     )

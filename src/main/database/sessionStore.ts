@@ -6,6 +6,7 @@ import { loadSessionAgentEventJournals } from '../agent/agentEventJournal'
 import { mergeAgentEventJournalsIntoSessions } from '../agent/agentEventRecovery'
 import { discardBackgroundJobsForSession } from '../agent/backgroundJobManager'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
+import { normalizeReasoningPreference } from '../../shared/reasoningControl'
 import { getDb } from './connection'
 
 /**
@@ -25,7 +26,7 @@ export function loadSessions(): Session[] {
 
   const sessionRows = database
     .prepare(
-      'SELECT id, title, titleManuallyEdited, lastActiveTime, contextEpoch, projectId, branchOf, revertState FROM sessions ORDER BY lastActiveTime DESC'
+      'SELECT id, title, titleManuallyEdited, lastActiveTime, contextEpoch, projectId, branchOf, revertState, reasoningPreference FROM sessions ORDER BY lastActiveTime DESC'
     )
     .all() as Array<{
     id: string
@@ -36,6 +37,7 @@ export function loadSessions(): Session[] {
     projectId: string | null
     branchOf: string | null
     revertState: string | null
+    reasoningPreference: string | null
   }>
 
   // Bulk-load every message and file in two queries, then group in memory. The previous
@@ -140,6 +142,9 @@ export function loadSessions(): Session[] {
     projectId: s.projectId || undefined,
     branchOf: parseBranchRef(s.branchOf),
     revert: parseSessionRevertState(s.revertState),
+    ...(s.reasoningPreference
+      ? { reasoningPreference: normalizeReasoningPreference(s.reasoningPreference) }
+      : {}),
     messages: messagesBySession.get(s.id) || []
   }))
   const eventJournals = sessions.flatMap((session) => loadSessionAgentEventJournals(session.id))
@@ -244,6 +249,9 @@ export function computeSessionHash(session: Session): string {
     projectId: session.projectId || null,
     branchOf: session.branchOf ?? null,
     revert: session.revert ?? null,
+    reasoningPreference: session.reasoningPreference
+      ? normalizeReasoningPreference(session.reasoningPreference)
+      : null,
     messages: (session.messages ?? []).map((m) => ({
       id: m.id,
       role: m.role,
@@ -311,7 +319,7 @@ export function saveSessions(sessions: Session[]): void {
   if (plan.upserts.length === 0 && plan.deleteIds.length === 0) return
 
   const insertSession = database.prepare(
-    'INSERT OR REPLACE INTO sessions (id, title, titleManuallyEdited, lastActiveTime, contextEpoch, projectId, branchOf, revertState, contentHash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT OR REPLACE INTO sessions (id, title, titleManuallyEdited, lastActiveTime, contextEpoch, projectId, branchOf, revertState, reasoningPreference, contentHash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
   const deleteSession = database.prepare('DELETE FROM sessions WHERE id = ?')
   const deleteMessages = database.prepare('DELETE FROM messages WHERE sessionId = ?')
@@ -344,6 +352,9 @@ export function saveSessions(sessions: Session[]): void {
         session.projectId || null,
         session.branchOf ? JSON.stringify(session.branchOf) : null,
         session.revert ? JSON.stringify(session.revert) : null,
+        session.reasoningPreference
+          ? normalizeReasoningPreference(session.reasoningPreference)
+          : null,
         hash
       )
 

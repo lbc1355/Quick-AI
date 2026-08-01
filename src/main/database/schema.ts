@@ -42,7 +42,8 @@ export function createSchema(database: Database.Database): void {
       apiFormat      TEXT,
       promptProfile  TEXT,
       features       TEXT NOT NULL DEFAULT '{}',
-      compatibility  TEXT NOT NULL DEFAULT '{}'
+      compatibility  TEXT NOT NULL DEFAULT '{}',
+      defaultReasoningControl TEXT
     );
 
     CREATE TABLE IF NOT EXISTS provider_accounts (
@@ -68,7 +69,8 @@ export function createSchema(database: Database.Database): void {
       contextEpoch  INTEGER NOT NULL DEFAULT 0,
       projectId      TEXT REFERENCES projects(id) ON DELETE SET NULL,
       branchOf       TEXT,
-      revertState    TEXT
+      revertState    TEXT,
+      reasoningPreference TEXT
     );
 
     CREATE TABLE IF NOT EXISTS projects (
@@ -175,6 +177,8 @@ export function createSchema(database: Database.Database): void {
       sourceMessageId    TEXT NOT NULL,
       assistantMessageId TEXT,
       messages           TEXT NOT NULL,
+      requestedReasoningPreference TEXT,
+      effectiveReasoningPreference TEXT,
       createdAt          INTEGER NOT NULL,
       updatedAt          INTEGER NOT NULL
     );
@@ -210,8 +214,10 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'sessions', 'projectId', 'TEXT REFERENCES projects(id) ON DELETE SET NULL')
   ensureColumn(database, 'sessions', 'revertState', 'TEXT')
   ensureColumn(database, 'sessions', 'titleManuallyEdited', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn(database, 'sessions', 'reasoningPreference', 'TEXT')
   // Per-session content hash used by saveSessions() to skip rewriting unchanged sessions.
   ensureColumn(database, 'sessions', 'contentHash', 'TEXT')
+  ensureColumn(database, 'provider_definitions', 'defaultReasoningControl', 'TEXT')
   ensureColumn(database, 'projects', 'kind', "TEXT NOT NULL DEFAULT 'filesystem'")
   ensureColumn(database, 'messages', 'forkedFrom', 'TEXT')
   ensureColumn(database, 'messages', 'isBranchFork', 'INTEGER NOT NULL DEFAULT 0')
@@ -244,6 +250,8 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")
   ensureColumn(database, 'session_prompt_inbox', 'contextEpoch', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn(database, 'session_prompt_inbox', 'requestedReasoningPreference', 'TEXT')
+  ensureColumn(database, 'session_prompt_inbox', 'effectiveReasoningPreference', 'TEXT')
   ensureColumn(database, 'background_jobs', 'metadata', 'TEXT')
   ensureColumn(database, 'background_jobs', 'output', 'TEXT')
 }
