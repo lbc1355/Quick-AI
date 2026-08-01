@@ -106,4 +106,27 @@ describe('isSensitiveDirectoryForRoot', () => {
   it('does not block scratch/temp-style directories', () => {
     expect(isSensitiveDirectoryForRoot(join(tmpdir(), 'my-scratch'))).toBe(false)
   })
+
+  it('protects Windows system dirs from their env vars even off the C: drive', () => {
+    if (process.platform !== 'win32') return
+    const original = {
+      SystemRoot: process.env.SystemRoot,
+      ProgramFiles: process.env.ProgramFiles,
+      ProgramData: process.env.ProgramData
+    }
+    try {
+      process.env.SystemRoot = 'D:\\Windows'
+      process.env.ProgramFiles = 'D:\\Program Files'
+      process.env.ProgramData = 'D:\\ProgramData'
+      expect(isSensitiveDirectoryForRoot('D:\\Windows\\System32')).toBe(true)
+      expect(isSensitiveDirectoryForRoot('D:\\Program Files\\SomeApp')).toBe(true)
+      expect(isSensitiveDirectoryForRoot('D:\\ProgramData\\x')).toBe(true)
+      expect(isSensitiveDirectoryForRoot('D:\\projects\\my-app')).toBe(false)
+    } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value !== undefined) process.env[key] = value
+        else delete process.env[key]
+      }
+    }
+  })
 })

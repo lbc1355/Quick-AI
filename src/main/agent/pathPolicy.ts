@@ -128,7 +128,12 @@ function getProtectedRootZones(): string[] {
     for (const sub of SECRET_HOME_SUBDIRS) zones.push(join(homeDir, sub))
   }
   if (process.platform === 'win32') {
-    zones.push('C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)', 'C:\\ProgramData')
+    // Resolve from env vars so systems installed on a non-C: drive are protected too.
+    const systemRoot = process.env.SystemRoot || process.env.windir
+    if (systemRoot) zones.push(systemRoot)
+    if (process.env.ProgramFiles) zones.push(process.env.ProgramFiles)
+    if (process.env['ProgramFiles(x86)']) zones.push(process.env['ProgramFiles(x86)'])
+    if (process.env.ProgramData) zones.push(process.env.ProgramData)
   } else {
     zones.push('/etc', '/usr', '/bin', '/sbin', '/var', '/boot', '/dev', '/proc', '/sys', '/root')
   }
