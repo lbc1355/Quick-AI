@@ -5,6 +5,7 @@ import {
   Message,
   ModelRuntimeConfig,
   Project,
+  ReasoningPreference,
   ResolvedProviderConnection,
   Session,
   Skill,
@@ -113,6 +114,8 @@ interface UseChatCompletionProps {
   >
   draftSession: Session | null
   setDraftSession: React.Dispatch<React.SetStateAction<Session | null>>
+  /** Resolve the snapshotted thinking preference for a session at dispatch time. */
+  resolveReasoningPreference: (session: Session) => ReasoningPreference
 }
 
 export interface UseChatCompletionReturn {
@@ -167,14 +170,19 @@ export const useChatCompletion = ({
   attachedFiles,
   setAttachedFiles,
   draftSession,
-  setDraftSession
+  setDraftSession,
+  resolveReasoningPreference
 }: UseChatCompletionProps): UseChatCompletionReturn => {
   const toast = useToast()
   const [inputVal, setInputVal] = useState('')
   const draftSessionRef = useRef<Session | null>(null)
+  const resolveReasoningPreferenceRef = useRef(resolveReasoningPreference)
   useEffect(() => {
     draftSessionRef.current = draftSession
   }, [draftSession])
+  useEffect(() => {
+    resolveReasoningPreferenceRef.current = resolveReasoningPreference
+  }, [resolveReasoningPreference])
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingText, setEditingText] = useState('')
   const activeGenerationsRef = useRef<SessionGenerationRegistry>(new Map())
@@ -625,7 +633,8 @@ export const useChatCompletion = ({
             contextEpoch,
             sourceMessageId,
             assistantMessageId: assistantMsgId,
-            branchOf
+            branchOf,
+            reasoningPreference: resolveReasoningPreferenceRef.current(targetSession)
           })
         ),
       (msg) => `出错了：${msg || '网络连接失败'}`
@@ -691,6 +700,7 @@ export const useChatCompletion = ({
         '',
         targetSession.messages.filter((message) => message.id !== assistantMessageId)
       ).slice(-1)
+      const reasoningPreference = resolveReasoningPreferenceRef.current(targetSession)
       const result = await window.api.admitSessionPrompt({
         id: admissionId,
         sessionId: targetSession.id,
@@ -699,7 +709,9 @@ export const useChatCompletion = ({
         runMode: resolveEffectiveRunMode(prompt, runModeRef.current),
         sourceMessageId,
         assistantMessageId,
-        messages: admissionMessages
+        messages: admissionMessages,
+        requestedReasoningPreference: reasoningPreference,
+        effectiveReasoningPreference: reasoningPreference
       })
 
       if (result.disposition === 'steered') {
@@ -818,7 +830,11 @@ export const useChatCompletion = ({
               contextEpoch,
               sourceMessageId: admission.sourceMessageId,
               assistantMessageId: prepared.assistantMessageId,
-              promptAdmissionId: admission.id
+              promptAdmissionId: admission.id,
+              reasoningPreference:
+                admission.effectiveReasoningPreference ||
+                admission.requestedReasoningPreference ||
+                resolveReasoningPreferenceRef.current(prepared.session)
             })
           ),
         (message) => `队列消息执行失败：${message || '网络连接失败'}`
@@ -1025,7 +1041,8 @@ export const useChatCompletion = ({
             userInput,
             contextEpoch,
             sourceMessageId: userMsg.id,
-            assistantMessageId: assistantMsgId
+            assistantMessageId: assistantMsgId,
+            reasoningPreference: resolveReasoningPreferenceRef.current(currentSession)
           })
         ),
       (msg) => `Agent Skill failed: ${msg}`
@@ -1149,7 +1166,9 @@ export const useChatCompletion = ({
             sourceMessageId: failedMsg.id,
             assistantMessageId: assistantMsgId,
             branchOf,
-            resume: { fromRunId: resumeFromRunId, sourceSessionId: currentSession.id }
+            resume: { fromRunId: resumeFromRunId, sourceSessionId: currentSession.id },
+            // Agent loop prefers the original run-manifest snapshot when resuming.
+            reasoningPreference: resolveReasoningPreferenceRef.current(targetSession)
           })
         ),
       (msg) => `Agent resume failed: ${msg || 'network connection failed'}`

@@ -7,10 +7,17 @@ import type {
   AppSettings,
   Message,
   Project,
+  ReasoningPreference,
   Session,
   SessionFileTransitionPreview,
   WindowState
 } from '../../shared/types'
+import {
+  fitReasoningPreference,
+  getReasoningPreferenceKey,
+  normalizeReasoningPreference
+} from '../../shared/reasoningControl'
+import { resolveSessionReasoningPreference } from '../../shared/reasoningPreferenceResolution'
 import { isConversationFolder } from '../../shared/projectHelpers'
 import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
@@ -183,7 +190,9 @@ function App(): React.JSX.Element {
     handleToggleModelSelection,
     resetLocalSettings,
     permissions,
-    skills
+    skills,
+    reasoningDefaults,
+    setReasoningDefault
   } = useSettings()
 
   // Close settings panel and restore local editor states
@@ -206,6 +215,7 @@ function App(): React.JSX.Element {
     : ''
   const runningApiUrl = activeProviderSelection?.connection.baseUrl || ''
   const activeModelRuntimeConfig = activeProviderSelection?.model
+  const activeReasoningControl = activeModelRuntimeConfig?.reasoningControl
   const activeModelContextWindowTokens =
     activeModelRuntimeConfig?.contextWindowTokens ??
     getProviderModelContextWindowInfo(activeProviderConfig, runningModelName).tokens
@@ -227,6 +237,89 @@ function App(): React.JSX.Element {
     draftSession,
     setDraftSession
   } = useSessions()
+
+  const resolveReasoningPreference = useCallback(
+    (session: Session): ReasoningPreference =>
+      resolveSessionReasoningPreference({
+        session,
+        providerId: activeProviderId,
+        modelId: runningModelName,
+        reasoningDefaults,
+        control: activeReasoningControl
+      }),
+    [activeProviderId, runningModelName, reasoningDefaults, activeReasoningControl]
+  )
+
+  const reasoningPreference = useMemo(
+    () =>
+      resolveSessionReasoningPreference({
+        session: activeSession,
+        providerId: activeProviderId,
+        modelId: runningModelName,
+        reasoningDefaults,
+        control: activeReasoningControl
+      }),
+    [activeSession, activeProviderId, runningModelName, reasoningDefaults, activeReasoningControl]
+  )
+
+  const persistSessionReasoningPreference = useCallback(
+    async (preference: ReasoningPreference): Promise<void> => {
+      const sessionId = activeSessionId
+      if (!sessionId) return
+
+      if (draftSession && draftSession.id === sessionId) {
+        setDraftSession({ ...draftSession, reasoningPreference: preference })
+        return
+      }
+
+      const nextSessions = sessionsRef.current.map((session) =>
+        session.id === sessionId ? { ...session, reasoningPreference: preference } : session
+      )
+      sessionsRef.current = nextSessions
+      setSessions(nextSessions)
+      await window.api.storeSet('sessions', nextSessions)
+    },
+    [activeSessionId, draftSession, setDraftSession, setSessions, sessionsRef]
+  )
+
+  const handleReasoningPreferenceChange = useCallback(
+    async (value: ReasoningPreference): Promise<void> => {
+      const fitted = fitReasoningPreference(
+        activeReasoningControl,
+        normalizeReasoningPreference(value)
+      )
+      await persistSessionReasoningPreference(fitted)
+      if (activeProviderId && runningModelName) {
+        await setReasoningDefault(
+          getReasoningPreferenceKey(activeProviderId, runningModelName),
+          fitted
+        )
+      }
+    },
+    [
+      activeReasoningControl,
+      persistSessionReasoningPreference,
+      activeProviderId,
+      runningModelName,
+      setReasoningDefault
+    ]
+  )
+
+  // When the active model changes, drop unsupported session overrides onto the nearest level.
+  useEffect(() => {
+    if (!activeSession?.reasoningPreference) return
+    const fitted = fitReasoningPreference(
+      activeReasoningControl,
+      normalizeReasoningPreference(activeSession.reasoningPreference)
+    )
+    if (fitted === activeSession.reasoningPreference) return
+    void persistSessionReasoningPreference(fitted)
+  }, [
+    activeReasoningControl,
+    activeSession?.id,
+    activeSession?.reasoningPreference,
+    persistSessionReasoningPreference
+  ])
   useEffect(() => {
     setFileRevertDialog(null)
     setSessionRevertDialog(null)
@@ -350,7 +443,8 @@ function App(): React.JSX.Element {
     attachedFiles,
     setAttachedFiles,
     draftSession,
-    setDraftSession
+    setDraftSession,
+    resolveReasoningPreference
   })
 
   const { pendingUserChoice, handleUserChoiceResponse } = useUserChoiceRequest({
@@ -1340,6 +1434,11 @@ function App(): React.JSX.Element {
               handlePaste={handlePaste}
               runMode={runMode}
               setRunMode={setRunMode}
+              reasoningControl={activeReasoningControl}
+              reasoningPreference={reasoningPreference}
+              onReasoningPreferenceChange={(value) => {
+                void handleReasoningPreferenceChange(value)
+              }}
               isCurrentSessionGenerating={isCurrentSessionGenerating}
               isOtherSessionGenerating={isOtherSessionGenerating}
               handleAbortGeneration={handleAbortGeneration}

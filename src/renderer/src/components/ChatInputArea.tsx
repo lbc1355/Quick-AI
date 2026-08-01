@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { AutocompleteItem, RunMode, SessionPromptAdmissionMode } from '../../../shared/types'
+import {
+  AutocompleteItem,
+  ModelReasoningControl,
+  ReasoningPreference,
+  RunMode,
+  SessionPromptAdmissionMode
+} from '../../../shared/types'
 import { FilePreviewList } from './FilePreviewList'
 import { PermissionPopup } from './PermissionPopup'
 import { ContextPanel } from './ContextPanel'
@@ -43,6 +49,9 @@ interface ChatInputAreaProps {
   // Actions
   runMode: RunMode
   setRunMode: (mode: RunMode) => void
+  reasoningControl?: ModelReasoningControl
+  reasoningPreference: ReasoningPreference
+  onReasoningPreferenceChange: (value: ReasoningPreference) => void
   isCurrentSessionGenerating: boolean
   isOtherSessionGenerating: boolean
   handleAbortGeneration: () => void
@@ -152,6 +161,9 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   handlePaste,
   runMode,
   setRunMode,
+  reasoningControl,
+  reasoningPreference,
+  onReasoningPreferenceChange,
   isCurrentSessionGenerating,
   isOtherSessionGenerating,
   handleAbortGeneration,
@@ -420,6 +432,9 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           onPaste={handlePaste}
           runMode={runMode}
           setRunMode={setRunMode}
+          reasoningControl={reasoningControl}
+          reasoningPreference={reasoningPreference}
+          onReasoningPreferenceChange={onReasoningPreferenceChange}
           isCurrentSessionGenerating={isCurrentSessionGenerating}
           isOtherSessionGenerating={isOtherSessionGenerating}
           canSend={canSend}

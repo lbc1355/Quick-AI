@@ -5,6 +5,7 @@ import type {
   Message,
   ModelRuntimeConfig,
   Project,
+  ReasoningPreference,
   ResolvedProviderConnection,
   RunMode,
   Session,
@@ -100,6 +101,8 @@ export interface ChatRunRequestInput {
   promptAdmissionId?: string
   /** Set when continuing a persisted checkpoint instead of sending a new user turn. */
   resume?: { fromRunId: string; sourceSessionId: string }
+  /** Snapshotted thinking preference for this dispatch. */
+  reasoningPreference?: ReasoningPreference
 }
 
 export const buildChatRunOptions = (input: ChatRunRequestInput): ChatRunOptions => ({
@@ -117,7 +120,8 @@ export const buildChatRunOptions = (input: ChatRunRequestInput): ChatRunOptions 
         resumeFromRunId: input.resume.fromRunId,
         resumeSourceSessionId: input.resume.sourceSessionId
       }
-    : {})
+    : {}),
+  ...(input.reasoningPreference ? { reasoningPreference: input.reasoningPreference } : {})
 })
 
 export interface AgentSkillRunRequestInput {
@@ -129,6 +133,7 @@ export interface AgentSkillRunRequestInput {
   contextEpoch: number
   sourceMessageId: string
   assistantMessageId: string
+  reasoningPreference?: ReasoningPreference
 }
 
 export const buildAgentSkillRunOptions = (
@@ -141,5 +146,6 @@ export const buildAgentSkillRunOptions = (
   sessionId: input.session.id,
   contextEpoch: input.contextEpoch,
   sourceMessageId: input.sourceMessageId,
-  assistantMessageId: input.assistantMessageId
+  assistantMessageId: input.assistantMessageId,
+  ...(input.reasoningPreference ? { reasoningPreference: input.reasoningPreference } : {})
 })

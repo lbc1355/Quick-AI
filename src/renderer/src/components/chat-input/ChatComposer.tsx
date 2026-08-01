@@ -1,7 +1,13 @@
 import React from 'react'
 import { ListPlus, Paperclip, Send, Sparkles, Square, Terminal } from 'lucide-react'
-import type { RunMode, SessionPromptAdmissionMode } from '../../../../shared/types'
+import type {
+  ModelReasoningControl,
+  ReasoningPreference,
+  RunMode,
+  SessionPromptAdmissionMode
+} from '../../../../shared/types'
 import type { PendingPermission } from '../../features/chat/permissionTypes'
+import { ReasoningLevelSelector } from './ReasoningLevelSelector'
 
 interface ChatComposerProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>
@@ -18,6 +24,9 @@ interface ChatComposerProps {
   onPaste: (event: React.ClipboardEvent<HTMLTextAreaElement>) => void
   runMode: RunMode
   setRunMode: (mode: RunMode) => void
+  reasoningControl?: ModelReasoningControl
+  reasoningPreference: ReasoningPreference
+  onReasoningPreferenceChange: (value: ReasoningPreference) => void
   isCurrentSessionGenerating: boolean
   isOtherSessionGenerating: boolean
   canSend: boolean
@@ -41,6 +50,9 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   onPaste,
   runMode,
   setRunMode,
+  reasoningControl,
+  reasoningPreference,
+  onReasoningPreferenceChange,
   isCurrentSessionGenerating,
   isOtherSessionGenerating,
   canSend,
@@ -135,6 +147,12 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           <Sparkles size={13} className="sparkle-icon" />
           <span>{runMode === 'agent' ? 'Agent' : 'Chat'}</span>
         </button>
+        <ReasoningLevelSelector
+          control={reasoningControl}
+          value={reasoningPreference}
+          onChange={onReasoningPreferenceChange}
+          showNextRequestHint={isCurrentSessionGenerating}
+        />
         {isCurrentSessionGenerating ? (
           <>
             <button
