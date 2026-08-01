@@ -5,6 +5,7 @@ import type {
   ModelTransportId,
   ProviderApiFormat,
   ProviderEndpointType,
+  ReasoningPreference,
   ResolvedProviderConnection
 } from '../../shared/types'
 import type { ModelEvent } from './modelEvents'
@@ -21,6 +22,8 @@ export interface CallModelOptions {
   /** Canonical runtime driver. apiFormat remains supported for persisted legacy settings. */
   transportId?: ModelTransportId
   apiFormat?: ProviderApiFormat
+  /** Snapshotted thinking preference for this model call. Defaults to auto. */
+  reasoningPreference?: ReasoningPreference
 }
 
 export interface ToolCallStreamProgress {

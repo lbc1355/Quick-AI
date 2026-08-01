@@ -348,6 +348,8 @@ export interface Session {
   branchOf?: { sessionId: string; messageId: string; runId?: string }
   /** Staged session rollback. Messages remain recoverable until a new prompt commits it. */
   revert?: SessionRevertState
+  /** Per-session thinking intensity override. Absent means resolve from model defaults / auto. */
+  reasoningPreference?: ReasoningPreference
 }
 
 export type ProjectKind = 'filesystem' | 'folder'
@@ -460,6 +462,59 @@ export interface ResolvedModelCompatibilityProfile {
   reasoningFormat?: 'deepseek-style'
 }
 
+/** Adjustable reasoning intensity levels. Not every model exposes every level. */
+export type ReasoningLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+/**
+ * User-facing thinking preference.
+ * - `auto`: send no control fields (provider default)
+ * - `off`: explicitly disable reasoning when the model supports it
+ * - `on`: explicitly enable reasoning on toggle-style models
+ * - levels: effort/budget intensity
+ */
+export type ReasoningPreference = 'auto' | 'off' | 'on' | ReasoningLevel
+
+/** Wire encoding used when a non-auto preference is applied to a request body. */
+export type ReasoningRequestEncoding =
+  | 'openai-effort'
+  | 'openrouter-reasoning'
+  | 'openrouter-budget'
+  | 'qwen-enable-thinking'
+  | 'deepseek-thinking-toggle'
+
+/**
+ * Declares how a model exposes reasoning control. Discovery and provider rules resolve into
+ * this shape; request encoding never invents levels that are absent here.
+ */
+export type ModelReasoningControl =
+  | {
+      mode: 'fixed'
+    }
+  | {
+      mode: 'toggle'
+      encoding: Extract<
+        ReasoningRequestEncoding,
+        'qwen-enable-thinking' | 'deepseek-thinking-toggle'
+      >
+      supportsOff: boolean
+    }
+  | {
+      mode: 'effort'
+      encoding: Extract<ReasoningRequestEncoding, 'openai-effort' | 'openrouter-reasoning'>
+      levels: ReasoningLevel[]
+      levelMap?: Partial<Record<ReasoningLevel, string>>
+      offValue?: string
+    }
+  | {
+      mode: 'budget'
+      encoding: 'openrouter-budget'
+      levels: ReasoningLevel[]
+      budgets: Partial<Record<ReasoningLevel, number>>
+      minBudget?: number
+      maxBudget?: number
+      supportsOff?: boolean
+    }
+
 export interface ModelInfo {
   id: string
   apiId: string
@@ -470,6 +525,8 @@ export interface ModelInfo {
   features?: ModelFeatureSupport
   compatibility?: ModelCompatibilityProfile
   promptProfile?: ModelPromptProfile
+  /** How this model exposes thinking intensity control, when known. */
+  reasoningControl?: ModelReasoningControl
   limit: {
     context: number
     output?: number
@@ -499,6 +556,8 @@ export interface ProviderDefinition {
   features?: ModelFeatureSupport
   compatibility?: ModelCompatibilityProfile
   promptProfile?: ModelPromptProfile
+  /** Custom/provider-level fallback when models omit reasoningControl. */
+  defaultReasoningControl?: ModelReasoningControl
 }
 
 /** Mutable connection/account data for one provider definition. */
@@ -547,6 +606,8 @@ export interface ApiProvider {
   features?: ModelFeatureSupport
   compatibility?: ModelCompatibilityProfile
   promptProfile?: ModelPromptProfile
+  /** Custom provider advanced setting: how reasoning is encoded when models omit metadata. */
+  defaultReasoningControl?: ModelReasoningControl
   authType?: ProviderAuthType
   authHeader?: string
   headers?: Record<string, string>
@@ -564,7 +625,9 @@ export interface ModelRuntimeConfig {
   features?: ResolvedModelFeatureSupport
   compatibility?: ResolvedModelCompatibilityProfile
   promptProfile?: ModelPromptProfile
+  reasoningControl?: ModelReasoningControl
   contextWindowTokens?: number
+  outputTokenLimit?: number
   transportId?: ModelTransportId
   apiFormat?: ProviderApiFormat
 }
@@ -574,6 +637,7 @@ export interface FetchedModelInfo {
   displayName?: string
   contextWindowTokens?: number
   capabilities?: ModelCapability[]
+  reasoningControl?: ModelReasoningControl
 }
 
 export interface ProviderModelDiscoveryRequest {
@@ -625,6 +689,8 @@ export interface AppSettings {
   }
   webSearch?: WebSearchConfig
   providerPresetVersion?: number
+  /** Per provider+model default thinking intensity. Keys from getReasoningPreferenceKey(). */
+  reasoningDefaults?: Record<string, ReasoningPreference>
 }
 
 /** Which web search backend to use. 'auto' picks an API provider when an apiKey is configured,
@@ -744,6 +810,8 @@ export interface AgentSkillRunOptions {
   /** Durable prompt admission that owns this run, when started from the session inbox. */
   promptAdmissionId?: string
   branchOf?: { sessionId: string; messageId: string; runId?: string }
+  /** Snapshotted thinking preference for this run (must not change mid-flight). */
+  reasoningPreference?: ReasoningPreference
 }
 
 export interface ChatChunkData {
@@ -808,6 +876,9 @@ export interface SessionPromptAdmission {
   sourceMessageId: string
   assistantMessageId?: string
   messages: ChatCompletionMessage[]
+  /** Thinking preference captured when the prompt was admitted. */
+  requestedReasoningPreference?: ReasoningPreference
+  effectiveReasoningPreference?: ReasoningPreference
   createdAt: number
   updatedAt: number
 }
@@ -821,6 +892,8 @@ export interface AdmitSessionPromptInput {
   sourceMessageId: string
   assistantMessageId?: string
   messages: ChatCompletionMessage[]
+  requestedReasoningPreference?: ReasoningPreference
+  effectiveReasoningPreference?: ReasoningPreference
 }
 
 export interface AdmitSessionPromptResult {
@@ -962,6 +1035,8 @@ export interface ChatRunOptions {
   /** Durable prompt admission that owns this run, when started from the session inbox. */
   promptAdmissionId?: string
   branchOf?: { sessionId: string; messageId: string; runId?: string }
+  /** Snapshotted thinking preference for this run (must not change mid-flight). */
+  reasoningPreference?: ReasoningPreference
 }
 
 export interface ContextCompactionRequest {
