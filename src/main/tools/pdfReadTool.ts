@@ -6,6 +6,7 @@ import { getRun } from '../agent/AgentRunContext'
 import { getResourceId, saveResourceChunk } from '../resourceCache'
 import { fetchWithCheckedRedirects } from '../webTools'
 import { ROOT_PARAMETER, getRootArg, resolveExistingSafePath, SafePath } from './filePathSafety'
+import { toFileUrl } from './fileOperationResult'
 import { formatBytes } from './helpers'
 import { createToolResult } from './result'
 import { ToolDefinition, ToolExecutionContext } from './types'
@@ -43,8 +44,7 @@ const normalizePdfText = (text: string): string =>
     .replace(/[ \t]+\n/g, '\n')
     .trim()
 
-const createPdfSourceUrl = (target: SafePath): string =>
-  `file:///${target.realPath.replace(/\\/g, '/')}`
+const createPdfSourceUrl = (target: SafePath): string => toFileUrl(target.realPath)
 
 const normalizeArxivPdfUrl = (rawUrl: string): string => {
   const parsed = new URL(rawUrl)

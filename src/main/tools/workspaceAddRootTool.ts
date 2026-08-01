@@ -3,6 +3,7 @@ import { basename, isAbsolute, parse, resolve } from 'path'
 import { ToolArgs } from '../../shared/types'
 import { getRun } from '../agent/AgentRunContext'
 import { isSensitiveDirectoryForRoot } from '../agent/pathPolicy'
+import { toFileUrl } from './fileOperationResult'
 import { createToolResult } from './result'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
@@ -95,7 +96,7 @@ export const workspaceAddRootTool: ToolDefinition = {
       details: resultForModel,
       items: roots.map((root) => ({
         title: root.label || root.path,
-        url: 'file:///' + root.path.replace(/\\/g, '/'),
+        url: toFileUrl(root.path),
         snippet: root.path,
         source: 'workspace_add_root'
       }))

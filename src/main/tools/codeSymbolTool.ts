@@ -3,6 +3,7 @@ import { ToolArgs } from '../../shared/types'
 import { ToolDefinition, ToolExecutionContext } from './types'
 import { getRun } from '../agent/AgentRunContext'
 import { ROOT_PARAMETER, getRootArg, resolveExistingSafePath } from './filePathSafety'
+import { toFileUrl } from './fileOperationResult'
 import { createToolResult } from './result'
 import { formatSelectionReason, rankSymbolCandidates } from './codeSymbolSelection'
 import { findSymbolMatchesInContent } from './codeSymbolPatterns'
@@ -127,7 +128,7 @@ export const codeSymbolTool: ToolDefinition = {
       const match = candidate.match
       return {
         title: `${match.relPath}:${match.lineNumber} (${match.kind})`,
-        url: `file:///${match.realPath.replace(/\\/g, '/')}`,
+        url: toFileUrl(match.realPath),
         snippet: `${match.lineText}\nScore: ${candidate.score}. ${candidate.reasons.join(', ')}`,
         source: 'code_symbol_read'
       }
@@ -158,7 +159,7 @@ export const codeSymbolTool: ToolDefinition = {
     return createToolResult({
       resultForModel,
       title: `Code Symbol: ${symbol}`,
-      url: `file:///${best.realPath.replace(/\\/g, '/')}`,
+      url: toFileUrl(best.realPath),
       summary:
         `${best.relPath}:${best.lineNumber} (${best.kind}), lines ${range.startIndex + 1}-${range.endIndex + 1}` +
         (matches.length > 1 ? `, ${matches.length} candidates` : ''),

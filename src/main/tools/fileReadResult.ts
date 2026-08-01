@@ -1,4 +1,5 @@
 import { SafePath } from './filePathSafety'
+import { toFileUrl } from './fileOperationResult'
 import { createToolResult } from './result'
 import { ToolExecutionResult } from './types'
 import { FileReadWindow } from './fileReadWindow'
@@ -27,7 +28,7 @@ export function createFileReadResult(options: CreateFileReadResultOptions): Tool
     .filter(Boolean)
     .join('\n\n')
 
-  const fileUrl = `file:///${target.realPath.replace(/\\/g, '/')}`
+  const fileUrl = toFileUrl(target.realPath)
 
   return createToolResult({
     resultForModel,

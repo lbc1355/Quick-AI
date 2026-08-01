@@ -17,7 +17,7 @@ describe('skill result helpers', () => {
     expect(result.resultForUi.url).toBe('file:///C:/tmp/skill-example/SKILL.md')
   })
 
-  it('normalizes Windows paths to file URLs', () => {
-    expect(pathToFileUrl('D:\\Git\\Quick Ai\\skill')).toBe('file:///D:/Git/Quick Ai/skill')
+  it('normalizes Windows paths to percent-encoded file URLs', () => {
+    expect(pathToFileUrl('D:\\Git\\Quick Ai\\skill')).toBe('file:///D:/Git/Quick%20Ai/skill')
   })
 })

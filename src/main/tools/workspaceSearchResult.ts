@@ -1,5 +1,6 @@
 import { createToolResult } from './result'
 import { ToolExecutionResult } from './types'
+import { toFileUrl } from './fileOperationResult'
 import { WorkspaceSearchMatch } from './workspaceSearchScanner'
 
 export interface CreateWorkspaceSearchResultOptions {
@@ -27,7 +28,7 @@ function formatUiItem(match: WorkspaceSearchMatch): {
   snippet: string
   source: string
 } {
-  const fileUrl = `file:///${match.absolutePath.replace(/\\/g, '/')}`
+  const fileUrl = toFileUrl(match.absolutePath)
   const contextStr = [
     ...match.contextBefore.map((line) => `[${match.lineNumber - 1}] ${line}`),
     `[${match.lineNumber}] ${match.lineContent}`,

@@ -6,6 +6,7 @@ import {
   getRootArg,
   resolveTargetSafePath
 } from './filePathSafety'
+import { toFileUrl } from './fileOperationResult'
 import { ToolDefinition, ToolExecutionContext } from './types'
 
 export const directoryCreateTool: ToolDefinition = {
@@ -53,7 +54,7 @@ export const directoryCreateTool: ToolDefinition = {
       resultForModel: `Created directory: ${target.relPath}\nPath: ${target.realPath}`,
       resultForUi: {
         title: `Create Directory: ${target.relPath}`,
-        url: `file:///${target.realPath.replace(/\\/g, '/')}`,
+        url: toFileUrl(target.realPath),
         summary: `Created directory ${target.relPath}`
       }
     }

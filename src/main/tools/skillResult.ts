@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'url'
 import { ToolResultUi } from '../../shared/types'
 import { createToolResult } from './result'
 import { ToolExecutionResult } from './types'
@@ -11,7 +12,7 @@ export interface CreateSkillResultOptions {
 }
 
 export function pathToFileUrl(path: string): string {
-  return `file:///${path.replace(/\\/g, '/')}`
+  return pathToFileURL(path).href
 }
 
 export function createSkillResult(options: CreateSkillResultOptions): ToolExecutionResult {

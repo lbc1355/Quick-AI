@@ -1,13 +1,15 @@
+import { pathToFileURL } from 'url'
 import { SafePath } from './filePathSafety'
 import { createToolResult } from './result'
 import { ToolExecutionResult } from './types'
 
+/**
+ * Build a file:// URL that is always valid. Using `pathToFileURL` (instead of string-building)
+ * correctly percent-encodes spaces, "#", unicode, and — crucially — surrogate pairs, so emoji
+ * filenames never throw `URIError: URI malformed`.
+ */
 export function toFileUrl(realPath: string): string {
-  const normalized = realPath.replace(/\\/g, '/')
-  // Percent-encode characters that would break the URL (spaces, "#", "?", unicode) while keeping
-  // "/" and the Windows drive-colon literal, so file:///C:/foo%20bar.png stays valid.
-  const encoded = normalized.replace(/[^a-zA-Z0-9\-._~:/]/g, (char) => encodeURIComponent(char))
-  return `file:///${encoded}`
+  return pathToFileURL(realPath).href
 }
 
 export function createFileWriteResult(

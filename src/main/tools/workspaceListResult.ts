@@ -1,5 +1,6 @@
 import { createToolResult } from './result'
 import { ToolExecutionResult } from './types'
+import { toFileUrl } from './fileOperationResult'
 import { WorkspaceFileMatch } from './workspaceListScanner'
 
 export interface CreateWorkspaceListResultOptions {
@@ -22,7 +23,7 @@ function formatUiItem(match: WorkspaceFileMatch): {
   snippet: string
   source: string
 } {
-  const fileUrl = `file:///${match.absolutePath.replace(/\\/g, '/')}`
+  const fileUrl = toFileUrl(match.absolutePath)
   return {
     title: match.relativePath,
     url: fileUrl,
