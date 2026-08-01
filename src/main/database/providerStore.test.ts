@@ -69,7 +69,8 @@ describe('provider persistence', () => {
       activeProviderId: 'provider-work',
       systemPrompt: 'system',
       autoHideOnBlur: true,
-      providerPresetVersion: 3
+      providerPresetVersion: 3,
+      reasoningDefaults: { [JSON.stringify(['provider-work', 'glm-4.7'])]: 'high' }
     }
 
     saveSettingsToDatabase(database, settings)
@@ -91,6 +92,9 @@ describe('provider persistence', () => {
 
     const loaded = loadSettingsFromDatabase(database)
     expect(loaded.activeProviderId).toBe('provider-work')
+    expect(loaded.reasoningDefaults).toEqual({
+      [JSON.stringify(['provider-work', 'glm-4.7'])]: 'high'
+    })
     expect(loaded.providers[0]).toMatchObject({
       id: 'provider-work',
       model: 'glm-4.7',

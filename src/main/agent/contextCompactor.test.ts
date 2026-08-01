@@ -36,7 +36,7 @@ describe('contextCompactor', () => {
       keptCount: 4
     })
     expect(callModel).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'model-a' }),
+      expect.objectContaining({ model: 'model-a', reasoningPreference: 'auto' }),
       expect.arrayContaining([
         expect.objectContaining({ role: 'system', content: 'my-custom-system-prompt' }),
         expect.objectContaining({

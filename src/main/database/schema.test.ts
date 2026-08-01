@@ -15,6 +15,10 @@ describe('database schema', () => {
     expect(statements).toContain('CREATE TABLE IF NOT EXISTS provider_definitions')
     expect(statements).toContain('CREATE TABLE IF NOT EXISTS provider_accounts')
     expect(statements).toContain('providerId     TEXT NOT NULL REFERENCES provider_definitions')
+    expect(statements).toContain('reasoningPreference TEXT')
+    expect(statements).toContain('defaultReasoningControl')
+    expect(statements).toContain('requestedReasoningPreference TEXT')
+    expect(statements).toContain('effectiveReasoningPreference TEXT')
     for (const column of [
       'transportId',
       'compatibility',

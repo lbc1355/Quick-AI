@@ -47,6 +47,9 @@ describe('planSessionPersist / computeSessionHash', () => {
     const manuallyRenamed = makeSession('a', { titleManuallyEdited: true })
     expect(computeSessionHash(manuallyRenamed)).not.toBe(computeSessionHash(a))
 
+    const reasoningChanged = makeSession('a', { reasoningPreference: 'high' })
+    expect(computeSessionHash(reasoningChanged)).not.toBe(computeSessionHash(a))
+
     const reverted = makeSession('a', {
       revert: {
         boundaryMessageId: 'a-m1',
@@ -121,6 +124,17 @@ describeWithSqlite('saveSessions incremental persistence', () => {
     expect(loaded.find((s) => s.id === 'a')?.titleManuallyEdited).toBe(true)
     expect(loaded.find((s) => s.id === 'b')?.contextEpoch).toBe(0)
     expect(loaded.find((s) => s.id === 'b')?.titleManuallyEdited).toBeUndefined()
+  })
+
+  it('round-trips per-session reasoning preferences independently', () => {
+    saveSessions([
+      makeSession('a', { reasoningPreference: 'high' }),
+      makeSession('b', { reasoningPreference: 'off' })
+    ])
+    closeDb()
+    const loaded = loadSessions()
+    expect(loaded.find((s) => s.id === 'a')?.reasoningPreference).toBe('high')
+    expect(loaded.find((s) => s.id === 'b')?.reasoningPreference).toBe('off')
   })
 
   it('keeps untouched sessions intact when only one session changes', () => {
