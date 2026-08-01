@@ -154,7 +154,9 @@ export async function compactContextWithModel(
       apiKey: request.apiKey,
       providerConnection: request.providerConnection,
       model: request.model,
-      modelRuntime: request.modelRuntime
+      modelRuntime: request.modelRuntime,
+      // Compaction should stay cheap; never inherit session max/high effort.
+      reasoningPreference: 'auto'
     },
     messages,
     undefined,

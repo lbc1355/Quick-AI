@@ -1,4 +1,4 @@
-import { AgentEvent } from '../../shared/types'
+import { AgentEvent, ReasoningPreference } from '../../shared/types'
 import {
   AgentRunContext,
   createRun as defaultCreateRun,
@@ -39,6 +39,8 @@ export interface StartAgentRunLifecycleOptions {
   assistantMessageId?: string
   parentRunId?: string
   branchOf?: { sessionId: string; messageId: string; runId?: string }
+  requestedReasoningPreference?: ReasoningPreference
+  effectiveReasoningPreference?: ReasoningPreference
   emitEvent: (event: AgentEvent) => void
   dependencies?: StartAgentRunLifecycleDependencies
 }
@@ -80,7 +82,13 @@ export function startAgentRunLifecycle(options: StartAgentRunLifecycleOptions): 
     sourceMessageId: options.sourceMessageId,
     assistantMessageId: options.assistantMessageId,
     parentRunId: options.parentRunId,
-    branchOf: options.branchOf
+    branchOf: options.branchOf,
+    ...(options.requestedReasoningPreference
+      ? { requestedReasoningPreference: options.requestedReasoningPreference }
+      : {}),
+    ...(options.effectiveReasoningPreference
+      ? { effectiveReasoningPreference: options.effectiveReasoningPreference }
+      : {})
   })
 
   return {

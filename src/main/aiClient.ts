@@ -6,6 +6,7 @@ import {
   ProviderConnectionDiagnosticCode,
   ProviderConnectionTestResult,
   ProviderModelDiscoveryRequest,
+  ReasoningPreference,
   ResolvedProviderConnection
 } from '../shared/types'
 import { normalizeRuntimeError } from '../shared/runtimeErrors'
@@ -55,6 +56,7 @@ export async function handleChatCompletion(
     messages: ChatCompletionMessage[]
     sessionId?: string
     contextEpoch?: number
+    reasoningPreference?: ReasoningPreference
   }
 ): Promise<void> {
   const { apiUrl, apiKey, providerConnection, model, modelRuntime, messages } = options
@@ -71,7 +73,14 @@ export async function handleChatCompletion(
     // into reasoning, which the previous inline parser ignored.
     const startTime = Date.now()
     const assistantMessage = await callModel(
-      { apiUrl, apiKey, providerConnection, model, modelRuntime },
+      {
+        apiUrl,
+        apiKey,
+        providerConnection,
+        model,
+        modelRuntime,
+        reasoningPreference: options.reasoningPreference || 'auto'
+      },
       messagesWithMemory,
       undefined,
       controller.signal,

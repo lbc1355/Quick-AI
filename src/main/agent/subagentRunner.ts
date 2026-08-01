@@ -288,7 +288,8 @@ export async function runSubagentTask(
           apiKey: ctx.agentModel.apiKey,
           providerConnection: ctx.agentModel.providerConnection,
           model: ctx.agentModel.model,
-          modelRuntime: ctx.agentModel.modelRuntime
+          modelRuntime: ctx.agentModel.modelRuntime,
+          reasoningPreference: ctx.agentModel.reasoningPreference || 'auto'
         },
         messages,
         toolDeclarations.length > 0 ? toolDeclarations : undefined,
@@ -402,7 +403,8 @@ export async function runSubagentTask(
           apiKey: ctx.agentModel.apiKey,
           providerConnection: ctx.agentModel.providerConnection,
           model: ctx.agentModel.model,
-          modelRuntime: ctx.agentModel.modelRuntime
+          modelRuntime: ctx.agentModel.modelRuntime,
+          reasoningPreference: ctx.agentModel.reasoningPreference || 'auto'
         },
         messages,
         undefined,

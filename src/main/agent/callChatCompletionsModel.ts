@@ -10,8 +10,14 @@ import {
   promptCacheStatsByMessage,
   resolveModelAdapter,
   resolveModelConnection,
-  resolveModelFeatures
+  resolveModelFeatures,
+  resolveTransportId
 } from './modelCallRuntime'
+import {
+  applyReasoningRequest,
+  isUnsupportedReasoningParameterError,
+  REASONING_UNSUPPORTED_USER_MESSAGE
+} from './reasoningRequestPolicy'
 
 export async function callChatCompletionsModel(
   options: CallModelOptions,
@@ -22,6 +28,7 @@ export async function callChatCompletionsModel(
 ): Promise<ChatCompletionMessage> {
   const adapter = resolveModelAdapter(options)
   const features = resolveModelFeatures(options, adapter)
+  const transportId = resolveTransportId(options)
   const target = buildOpenAICompatibleRequestTarget(
     resolveModelConnection(options),
     'chat/completions'
@@ -44,6 +51,14 @@ export async function callChatCompletionsModel(
     body.tool_choice = 'auto'
   }
 
+  body = applyReasoningRequest({
+    body,
+    transportId,
+    control: options.modelRuntime?.reasoningControl,
+    requested: options.reasoningPreference || 'auto',
+    outputTokenLimit: options.modelRuntime?.outputTokenLimit
+  }).body
+
   body = adapter.sanitizeBody(body)
 
   const shouldStreamFinal = true
@@ -59,7 +74,11 @@ export async function callChatCompletionsModel(
 
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(`API Error: ${response.status} - ${errorText || response.statusText}`)
+      const detail = errorText || response.statusText
+      if (isUnsupportedReasoningParameterError(detail)) {
+        throw new Error(`${REASONING_UNSUPPORTED_USER_MESSAGE} (${response.status}: ${detail})`)
+      }
+      throw new Error(`API Error: ${response.status} - ${detail}`)
     }
 
     const reader = response.body?.getReader()

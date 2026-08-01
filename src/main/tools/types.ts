@@ -5,6 +5,7 @@ import {
   SessionResource,
   AgentEvent,
   ModelRuntimeConfig,
+  ReasoningPreference,
   ResolvedProviderConnection,
   UserChoiceRequest,
   BackgroundShellCompletion,
@@ -43,6 +44,7 @@ export interface ToolExecutionContext {
     model: string
     modelRuntime?: ModelRuntimeConfig
     contextWindowTokens?: number
+    reasoningPreference?: ReasoningPreference
   }
   emitOutput?: (chunk: { stream: 'stdout' | 'stderr'; content: string; replace?: boolean }) => void
   emitEvent?: (event: AgentEvent) => void

@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, promises as fsp } from 'fs'
 import { dirname, join } from 'path'
-import { AgentFileChange, ToolArgs } from '../../shared/types'
+import { AgentFileChange, ReasoningPreference, ToolArgs } from '../../shared/types'
 
 const MANIFEST_VERSION = 1
 
@@ -62,6 +62,9 @@ export interface AgentRunManifest {
   updatedAt: number
   completedAt?: number
   error?: string
+  /** Thinking preference captured when the run started. */
+  requestedReasoningPreference?: ReasoningPreference
+  effectiveReasoningPreference?: ReasoningPreference
 }
 
 function safeId(id: string): string {

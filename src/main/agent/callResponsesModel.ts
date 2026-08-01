@@ -9,8 +9,14 @@ import {
   getRequestModelId,
   promptCacheStatsByMessage,
   resolveModelAdapter,
-  resolveModelConnection
+  resolveModelConnection,
+  resolveTransportId
 } from './modelCallRuntime'
+import {
+  applyReasoningRequest,
+  isUnsupportedReasoningParameterError,
+  REASONING_UNSUPPORTED_USER_MESSAGE
+} from './reasoningRequestPolicy'
 import { chatMessagesToResponsesInput, chatToolsToResponsesTools } from './responsesAdapter'
 
 interface FatalMarkedError extends Error {
@@ -46,6 +52,14 @@ export async function callResponsesModel(
     body.tool_choice = 'auto'
   }
 
+  body = applyReasoningRequest({
+    body,
+    transportId: resolveTransportId(options),
+    control: options.modelRuntime?.reasoningControl,
+    requested: options.reasoningPreference || 'auto',
+    outputTokenLimit: options.modelRuntime?.outputTokenLimit
+  }).body
+
   body = adapter.sanitizeBody(body)
 
   let streamingStarted = false
@@ -60,7 +74,11 @@ export async function callResponsesModel(
 
     if (!response.ok) {
       const errorText = await response.text()
-      throw new Error(`API Error: ${response.status} - ${errorText || response.statusText}`)
+      const detail = errorText || response.statusText
+      if (isUnsupportedReasoningParameterError(detail)) {
+        throw new Error(`${REASONING_UNSUPPORTED_USER_MESSAGE} (${response.status}: ${detail})`)
+      }
+      throw new Error(`API Error: ${response.status} - ${detail}`)
     }
 
     const reader = response.body?.getReader()

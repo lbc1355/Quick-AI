@@ -26,6 +26,7 @@ import { runForcedFinalTurn } from './forcedFinalTurnRunner'
 import { getMessageText as getAssistantText } from './messageText'
 import { startAgentRunLifecycle } from './agentRunLifecycle'
 import { persistAgentRunCheckpoint } from './agentRunCheckpoint'
+import { resolveRunReasoningPreference } from './reasoningRunResolution'
 import { createAgentEventStream } from './agentEventStream'
 import { createAgentEventJournalWriter } from './agentEventJournal'
 import { compactStaleToolResultsForContextPressure } from './staleToolResultCompaction'
@@ -162,6 +163,7 @@ const getEffectiveContextWindowSize = (options: {
   normalizeContextWindowTokens(options.modelRuntime?.contextWindowTokens) ??
   getContextWindowSize(options.model)
 
+
 export const runAgentLoop = async (
   mainWindow: BrowserWindow,
   reqId: string,
@@ -182,6 +184,13 @@ export const runAgentLoop = async (
   } = preparedRun
   let messages = preparedRun.messages
   const contextEpoch = normalizeContextEpoch(options.contextEpoch)
+  const reasoningPreference = resolveRunReasoningPreference({
+    resumeFromRunId: options.resumeFromRunId,
+    resumeSourceSessionId: options.resumeSourceSessionId,
+    conversationId,
+    reasoningPreference: options.reasoningPreference,
+    reasoningControl: options.modelRuntime?.reasoningControl
+  })
 
   const eventJournal = createAgentEventJournalWriter({
     runId: reqId,
@@ -215,6 +224,8 @@ export const runAgentLoop = async (
     assistantMessageId: options.assistantMessageId,
     parentRunId: options.resumeFromRunId,
     branchOf: options.branchOf,
+    requestedReasoningPreference: reasoningPreference.requested,
+    effectiveReasoningPreference: reasoningPreference.effective,
     emitEvent: eventStream.emit
   })
   const runCtx = lifecycle.runCtx
@@ -434,7 +445,8 @@ export const runAgentLoop = async (
           apiKey: options.apiKey,
           providerConnection: options.providerConnection,
           model: options.model,
-          modelRuntime: options.modelRuntime
+          modelRuntime: options.modelRuntime,
+          reasoningPreference: reasoningPreference.effective
         },
         messages,
         toolsToDeclare,
@@ -496,7 +508,8 @@ export const runAgentLoop = async (
             providerConnection: options.providerConnection,
             model: options.model,
             modelRuntime: options.modelRuntime,
-            contextWindowTokens: options.contextWindowTokens
+            contextWindowTokens: options.contextWindowTokens,
+            reasoningPreference: reasoningPreference.effective
           },
           retryPolicy: DEFAULT_RETRY_POLICY,
           isSideEffecting: (toolName) => SIDE_EFFECTING_TOOLS.has(toolName),
@@ -551,7 +564,9 @@ export const runAgentLoop = async (
         apiKey: options.apiKey,
         providerConnection: options.providerConnection,
         model: options.model,
-        modelRuntime: options.modelRuntime
+        modelRuntime: options.modelRuntime,
+        // Compaction / forced-final answers stay on auto to avoid expensive max effort.
+        reasoningPreference: 'auto'
       },
       contextSize: getEffectiveContextWindowSize(options),
       usageTracker,

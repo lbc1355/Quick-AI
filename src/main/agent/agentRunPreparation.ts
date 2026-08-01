@@ -1,4 +1,9 @@
-import { AgentSkillRunOptions, ChatCompletionMessage, SessionResource } from '../../shared/types'
+import {
+  AgentSkillRunOptions,
+  ChatCompletionMessage,
+  ReasoningPreference,
+  SessionResource
+} from '../../shared/types'
 import { searchToolDefinitions as defaultSearchToolDefinitions } from '../toolRegistry'
 import { ActionLog, getActionLogPath } from './actionLog'
 import { insertCachePriorityToolContext } from './cachePriorityContext'
@@ -54,6 +59,8 @@ export interface AgentRunOptions extends AgentSteeringControls {
   assistantMessageId?: string
   promptAdmissionId?: string
   branchOf?: { sessionId: string; messageId: string; runId?: string }
+  /** Snapshotted thinking preference for the whole run (including subagents). */
+  reasoningPreference?: ReasoningPreference
 }
 
 export type AgentToolDiscovery = 'static' | 'dynamic'
