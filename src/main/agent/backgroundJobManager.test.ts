@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   cancelBackgroundJob,
-  cancelBackgroundJobsForSession,
   clearBackgroundJobsForTests,
   configureBackgroundJobPersistence,
+  discardBackgroundJobsForSession,
   getBackgroundJob,
   listBackgroundJobs,
   startBackgroundJob,
@@ -53,7 +53,7 @@ describe('background job manager', () => {
     expect(observedSignal?.aborted).toBe(true)
   })
 
-  it('cancels every running job belonging to a session', () => {
+  it('cancels and forgets every live job belonging to a deleted session', () => {
     startBackgroundJob({
       id: 'job-a',
       type: 'shell',
@@ -69,10 +69,46 @@ describe('background job manager', () => {
       run: () => new Promise<void>(() => undefined)
     })
 
-    const cancelled = cancelBackgroundJobsForSession('session-1')
-    expect(cancelled).toBe(1)
-    expect(getBackgroundJob('job-a')?.status).toBe('cancelled')
+    const discarded = discardBackgroundJobsForSession('session-1')
+    expect(discarded).toBe(1)
+    expect(getBackgroundJob('job-a')).toBeUndefined()
     expect(getBackgroundJob('job-b')?.status).toBe('running')
+  })
+
+  it('rejects late output updates after a deleted session job is discarded', () => {
+    const records = new Map<string, BackgroundJobInfo>()
+    configureBackgroundJobPersistence({
+      get: (id) => records.get(id),
+      list: () => Array.from(records.values()),
+      save: (job) => {
+        records.set(job.id, { ...job })
+        return job
+      },
+      prune: () => 0
+    })
+
+    let observedSignal: AbortSignal | undefined
+    startBackgroundJob({
+      id: 'job-deleted-session',
+      type: 'shell',
+      title: 'Build',
+      sessionId: 'session-deleted',
+      run: (signal) => {
+        observedSignal = signal
+        return new Promise<void>(() => undefined)
+      }
+    })
+
+    expect(discardBackgroundJobsForSession('session-deleted')).toBe(1)
+    expect(observedSignal?.aborted).toBe(true)
+
+    // Mirrors deleteSessionScopedRows: cancellation is persisted first, then the database row is
+    // deleted. A background shell may still try to flush buffered output after this point.
+    records.delete('job-deleted-session')
+    expect(
+      updateBackgroundJob('job-deleted-session', { output: 'late buffered output' })
+    ).toBeUndefined()
+    expect(records.has('job-deleted-session')).toBe(false)
   })
 
   it('records a max-steps outcome returned by the job', async () => {

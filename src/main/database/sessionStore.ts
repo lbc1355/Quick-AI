@@ -4,7 +4,7 @@ import { Message, Session, SessionRevertState } from '../../shared/types'
 import { compactAgentEvents } from '../../shared/agentEventCompactor'
 import { loadSessionAgentEventJournals } from '../agent/agentEventJournal'
 import { mergeAgentEventJournalsIntoSessions } from '../agent/agentEventRecovery'
-import { cancelBackgroundJobsForSession } from '../agent/backgroundJobManager'
+import { discardBackgroundJobsForSession } from '../agent/backgroundJobManager'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
 import { getDb } from './connection'
 
@@ -16,7 +16,7 @@ import { getDb } from './connection'
  */
 export function deleteSessionScopedRows(database: Database.Database, sessionId: string): void {
   database.prepare('DELETE FROM session_prompt_inbox WHERE sessionId = ?').run(sessionId)
-  cancelBackgroundJobsForSession(sessionId)
+  discardBackgroundJobsForSession(sessionId)
   database.prepare('DELETE FROM background_jobs WHERE sessionId = ?').run(sessionId)
 }
 

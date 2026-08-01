@@ -26,10 +26,10 @@ export function migrateFromJson(database: Database.Database, dataDir: string): v
   }
 
   if (hasOldResources) {
-    const remainingResources = readdirSync(resourcesDir).filter((f) => f.endsWith('.json'))
-    if (remainingResources.length > 0) {
-      migrateResources(database, resourcesDir)
-    }
+    // migrateResources owns the directory read and its error boundary. Calling it even when the
+    // directory contains no JSON files is cheap and prevents an unreadable/replaced legacy path
+    // from aborting database initialization.
+    migrateResources(database, resourcesDir)
   }
 }
 

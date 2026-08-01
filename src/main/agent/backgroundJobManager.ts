@@ -178,16 +178,23 @@ export function cancelBackgroundJob(id: string): BackgroundJobInfo | undefined {
   return snapshot(info)
 }
 
-/** Cancel every running background job that belongs to a session. Returns the number aborted. */
-export function cancelBackgroundJobsForSession(sessionId: string): number {
-  let cancelled = 0
-  for (const [id, job] of jobs) {
-    if (job.info.sessionId === sessionId && job.info.status === 'running') {
-      cancelBackgroundJob(id)
-      cancelled++
-    }
+/**
+ * Cancel and forget every live background job that belongs to a deleted session.
+ *
+ * Removing the in-memory entry is important: a background shell flushes its final output after the
+ * process closes. If the cancelled job remained in `jobs`, that late update would persist it again
+ * after the session's database rows had already been deleted.
+ */
+export function discardBackgroundJobsForSession(sessionId: string): number {
+  const ids = Array.from(jobs.entries())
+    .filter(([, job]) => job.info.sessionId === sessionId)
+    .map(([id]) => id)
+
+  for (const id of ids) {
+    cancelBackgroundJob(id)
+    jobs.delete(id)
   }
-  return cancelled
+  return ids.length
 }
 
 export function clearBackgroundJobsForTests(): void {

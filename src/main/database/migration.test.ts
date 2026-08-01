@@ -237,3 +237,23 @@ describeWithSqlite('migrateFromJson', () => {
     expect(existsSync(join(resourcesDir, 'res-corrupt.json.bak'))).toBe(true)
   })
 })
+
+it('does not abort database initialization when the legacy resources path is unreadable', () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'quickai-migration-unreadable-'))
+  writeFileSync(join(dataDir, 'resources'), 'not a directory')
+  const database = {
+    prepare: () => ({ get: () => ({ c: 0 }) })
+  } as unknown as Database.Database
+  const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+  try {
+    expect(() => migrateFromJson(database, dataDir)).not.toThrow()
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[database] Failed to migrate resources/:',
+      expect.anything()
+    )
+  } finally {
+    errorSpy.mockRestore()
+    rmSync(dataDir, { recursive: true, force: true })
+  }
+})
