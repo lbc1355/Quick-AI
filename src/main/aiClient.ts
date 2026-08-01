@@ -18,6 +18,7 @@ import { normalizeContextEpoch } from '../shared/contextEpoch'
 import { buildProviderRequestHeaders } from './agent/modelRequestTarget'
 import {
   getProviderModelDiscoveryPolicy,
+  buildReasoningDiscoveryContext,
   normalizeProviderModelDiscoveryResponse
 } from '../shared/providerModelDiscovery'
 
@@ -187,7 +188,8 @@ async function performModelDiscovery(
     }
     return normalizeProviderModelDiscoveryResponse(
       data,
-      getProviderModelDiscoveryPolicy(providerType)
+      getProviderModelDiscoveryPolicy(providerType),
+      buildReasoningDiscoveryContext(providerType, request.defaultReasoningControl)
     )
   } catch (error) {
     const err = error as Error

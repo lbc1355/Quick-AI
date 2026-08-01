@@ -115,7 +115,11 @@ export function applyReasoningRequest(
   if (input.control.maxBudget !== undefined) {
     budget = Math.min(budget, input.control.maxBudget)
   }
-  if (input.outputTokenLimit && input.outputTokenLimit > FINAL_ANSWER_RESERVE_TOKENS) {
+  if (input.outputTokenLimit !== undefined && input.outputTokenLimit > 0) {
+    if (input.outputTokenLimit <= FINAL_ANSWER_RESERVE_TOKENS) {
+      // No room left for a final answer after reserving reply capacity.
+      return { body, requested, effective: 'auto', applied: false }
+    }
     budget = Math.min(budget, input.outputTokenLimit - FINAL_ANSWER_RESERVE_TOKENS)
   }
   if (budget <= 0) {

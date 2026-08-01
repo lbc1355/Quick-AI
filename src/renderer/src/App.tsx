@@ -305,21 +305,8 @@ function App(): React.JSX.Element {
     ]
   )
 
-  // When the active model changes, drop unsupported session overrides onto the nearest level.
-  useEffect(() => {
-    if (!activeSession?.reasoningPreference) return
-    const fitted = fitReasoningPreference(
-      activeReasoningControl,
-      normalizeReasoningPreference(activeSession.reasoningPreference)
-    )
-    if (fitted === activeSession.reasoningPreference) return
-    void persistSessionReasoningPreference(fitted)
-  }, [
-    activeReasoningControl,
-    activeSession?.id,
-    activeSession?.reasoningPreference,
-    persistSessionReasoningPreference
-  ])
+  // Fit unsupported levels only for display/request resolution — never rewrite the stored
+  // session preference when the active model changes, or switching away and back loses it.
   useEffect(() => {
     setFileRevertDialog(null)
     setSessionRevertDialog(null)

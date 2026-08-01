@@ -1,11 +1,15 @@
 import { normalizeContextWindowTokens } from './modelContext'
 import { normalizeProviderModelCatalog } from './modelCatalog'
 import { createProviderModelDiscoveryPolicy, getProviderRegistration } from './providerRegistry'
-import { parseDiscoveredReasoningControl } from './reasoningControl'
+import {
+  parseDiscoveredReasoningControl,
+  type ParseDiscoveredReasoningControlContext
+} from './reasoningControl'
 import type {
   FetchedModelInfo,
   ApiProvider,
   ModelCapability,
+  ModelReasoningControl,
   ProviderModelDiscoveryPolicy,
   ProviderType
 } from './types'
@@ -22,9 +26,12 @@ export function mergeDiscoveredModelMetadata(
       Object.entries(normalized.models || {}).map(([id, model]) => {
         const discovered = discoveredById.get(id)
         const capabilities = discovered?.capabilities || model.capabilities
-        const reasoningControl = discovered?.reasoningControl || model.reasoningControl
+        const discoveredReasoningControl =
+          discovered?.discoveredReasoningControl ||
+          discovered?.reasoningControl ||
+          model.discoveredReasoningControl
         const withReasoningCapability =
-          reasoningControl && (!capabilities || !capabilities.includes('reasoning'))
+          discoveredReasoningControl && (!capabilities || !capabilities.includes('reasoning'))
             ? [...(capabilities || []), 'reasoning' as const]
             : capabilities
         return [
@@ -33,8 +40,8 @@ export function mergeDiscoveredModelMetadata(
             ...model,
             displayName: discovered?.displayName || model.displayName,
             capabilities: withReasoningCapability,
-            ...(reasoningControl ? { reasoningControl } : {}),
-            ...(reasoningControl || withReasoningCapability?.includes('reasoning')
+            ...(discoveredReasoningControl ? { discoveredReasoningControl } : {}),
+            ...(discoveredReasoningControl || withReasoningCapability?.includes('reasoning')
               ? {
                   features: {
                     ...(model.features || {}),
@@ -63,7 +70,8 @@ export function resolveProviderModelDiscoveryUrl(type: ProviderType, baseUrl: st
 
 export function normalizeProviderModelDiscoveryResponse(
   data: unknown,
-  policy: ProviderModelDiscoveryPolicy
+  policy: ProviderModelDiscoveryPolicy,
+  context?: ParseDiscoveredReasoningControlContext
 ): FetchedModelInfo[] {
   const collection = policy.collectionPaths
     .map((path) => readPath(data, path))
@@ -73,7 +81,7 @@ export function normalizeProviderModelDiscoveryResponse(
   const seen = new Set<string>()
   const result: FetchedModelInfo[] = []
   for (const item of collection) {
-    const model = normalizeModel(item, policy)
+    const model = normalizeModel(item, policy, context)
     if (!model || seen.has(model.id)) continue
     seen.add(model.id)
     result.push(model)
@@ -81,9 +89,25 @@ export function normalizeProviderModelDiscoveryResponse(
   return result
 }
 
+/** Build discovery parse context from the provider account/type and optional manual protocol. */
+export function buildReasoningDiscoveryContext(
+  providerType: ProviderType,
+  defaultReasoningControl?: ModelReasoningControl
+): ParseDiscoveredReasoningControlContext {
+  const context: ParseDiscoveredReasoningControlContext = { providerType }
+  if (defaultReasoningControl?.mode === 'effort') {
+    context.preferredEffortEncoding = defaultReasoningControl.encoding
+  }
+  if (defaultReasoningControl?.mode === 'toggle') {
+    context.preferredToggleEncoding = defaultReasoningControl.encoding
+  }
+  return context
+}
+
 function normalizeModel(
   item: unknown,
-  policy: ProviderModelDiscoveryPolicy
+  policy: ProviderModelDiscoveryPolicy,
+  context?: ParseDiscoveredReasoningControlContext
 ): FetchedModelInfo | undefined {
   if (typeof item === 'string') {
     const id = item.trim()
@@ -100,18 +124,27 @@ function normalizeModel(
   const capabilities = policy.capabilityPaths
     .map((path) => normalizeCapabilities(readPath(item, path)))
     .find((value) => value.length > 0)
-  const reasoningControl =
-    parseDiscoveredReasoningControl(readPath(item, 'reasoning_options')) ||
-    parseDiscoveredReasoningControl(readPath(item, 'reasoning'))
+  const parseContext: ParseDiscoveredReasoningControlContext = {
+    ...context,
+    modelId: id
+  }
+  const reasoningField = readPath(item, 'reasoning')
+  const reasoningFlag = reasoningField === true
+  // Only parse structured `reasoning` objects; boolean true is a capability flag, not a control.
+  const discoveredReasoningControl =
+    parseDiscoveredReasoningControl(readPath(item, 'reasoning_options'), parseContext) ||
+    (!reasoningFlag && typeof reasoningField === 'object'
+      ? parseDiscoveredReasoningControl(reasoningField, parseContext)
+      : undefined)
   const mergedCapabilities = new Set(capabilities || [])
-  if (reasoningControl) mergedCapabilities.add('reasoning')
+  if (discoveredReasoningControl || reasoningFlag) mergedCapabilities.add('reasoning')
 
   return {
     id,
     ...(displayName ? { displayName } : {}),
     ...(contextWindowTokens ? { contextWindowTokens } : {}),
     ...(mergedCapabilities.size > 0 ? { capabilities: [...mergedCapabilities] } : {}),
-    ...(reasoningControl ? { reasoningControl } : {})
+    ...(discoveredReasoningControl ? { discoveredReasoningControl } : {})
   }
 }
 

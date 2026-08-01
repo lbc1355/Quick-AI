@@ -115,4 +115,45 @@ describe('provider model discovery', () => {
       capabilities: ['text', 'vision', 'tools']
     })
   })
+
+  it('parses OpenCode DeepSeek reasoning_options arrays into effort controls', () => {
+    const models = normalizeProviderModelDiscoveryResponse(
+      {
+        data: [
+          {
+            id: 'deepseek-v4-pro',
+            reasoning: true,
+            reasoning_options: [{ type: 'toggle' }, { type: 'effort', values: ['high', 'max'] }]
+          }
+        ]
+      },
+      createProviderModelDiscoveryPolicy(),
+      { providerType: 'opencode' }
+    )
+
+    expect(models[0]).toMatchObject({
+      id: 'deepseek-v4-pro',
+      capabilities: ['reasoning'],
+      discoveredReasoningControl: {
+        mode: 'effort',
+        encoding: 'openai-effort',
+        levels: ['high', 'max']
+      }
+    })
+  })
+
+  it('treats reasoning=true with empty options as a reasoning capability (fixed at resolve)', () => {
+    const models = normalizeProviderModelDiscoveryResponse(
+      {
+        data: [{ id: 'fixed-reasoner', reasoning: true, reasoning_options: [] }]
+      },
+      createProviderModelDiscoveryPolicy()
+    )
+
+    expect(models[0]).toEqual({
+      id: 'fixed-reasoner',
+      capabilities: ['reasoning']
+    })
+    expect(models[0].discoveredReasoningControl).toBeUndefined()
+  })
 })

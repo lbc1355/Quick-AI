@@ -525,8 +525,15 @@ export interface ModelInfo {
   features?: ModelFeatureSupport
   compatibility?: ModelCompatibilityProfile
   promptProfile?: ModelPromptProfile
-  /** How this model exposes thinking intensity control, when known. */
+  /**
+   * Legacy/combined control field. Prefer discoveredReasoningControl +
+   * reasoningControlOverride; kept for older persisted catalogs.
+   */
   reasoningControl?: ModelReasoningControl
+  /** Control parsed from provider `/models` metadata (may be overridden). */
+  discoveredReasoningControl?: ModelReasoningControl
+  /** Explicit per-model override; wins over discovery and provider defaults. */
+  reasoningControlOverride?: ModelReasoningControl
   limit: {
     context: number
     output?: number
@@ -637,6 +644,9 @@ export interface FetchedModelInfo {
   displayName?: string
   contextWindowTokens?: number
   capabilities?: ModelCapability[]
+  /** Parsed from reasoning_options / reasoning metadata during discovery. */
+  discoveredReasoningControl?: ModelReasoningControl
+  /** @deprecated Prefer discoveredReasoningControl. */
   reasoningControl?: ModelReasoningControl
 }
 
@@ -644,6 +654,8 @@ export interface ProviderModelDiscoveryRequest {
   fetchUrl: string
   providerType: ProviderType
   providerConnection: ResolvedProviderConnection
+  /** Optional manual protocol hint used to pick discovery encodings (esp. custom providers). */
+  defaultReasoningControl?: ModelReasoningControl
 }
 
 export type ProviderConnectionDiagnosticCode =

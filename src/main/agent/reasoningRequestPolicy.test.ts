@@ -97,6 +97,21 @@ describe('applyReasoningRequest', () => {
       outputTokenLimit: 4096
     })
     expect(budget.body).toEqual({ model: 'x', reasoning: { max_tokens: 3072 } })
+
+    const tightLimit = applyReasoningRequest({
+      body: { model: 'x' },
+      transportId: 'openai-chat-completions',
+      control: {
+        mode: 'budget',
+        encoding: 'openrouter-budget',
+        levels: ['high'],
+        budgets: { high: 2048 }
+      },
+      requested: 'high',
+      outputTokenLimit: 1024
+    })
+    expect(tightLimit).toMatchObject({ applied: false, effective: 'auto' })
+    expect(tightLimit.body).toEqual({ model: 'x' })
   })
 
   it('encodes Qwen and DeepSeek toggles', () => {

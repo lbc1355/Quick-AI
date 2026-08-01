@@ -118,15 +118,39 @@ describe('reasoningControl', () => {
     expect(parseDiscoveredReasoningControl(null)).toBeUndefined()
   })
 
+  it('parses OpenCode-style reasoning_options arrays with effort over toggle', () => {
+    expect(
+      parseDiscoveredReasoningControl(
+        [{ type: 'toggle' }, { type: 'effort', values: ['high', 'max'] }],
+        { providerType: 'opencode', modelId: 'deepseek-v4-pro' }
+      )
+    ).toEqual({
+      mode: 'effort',
+      encoding: 'openai-effort',
+      levels: ['high', 'max']
+    })
+    expect(
+      parseDiscoveredReasoningControl([
+        { type: 'toggle' },
+        { type: 'budget_tokens', min: 1, max: 8 }
+      ])
+    ).toMatchObject({ mode: 'budget', encoding: 'openrouter-budget' })
+    expect(parseDiscoveredReasoningControl([{ type: 'toggle' }], { modelId: 'qwen3' })).toEqual({
+      mode: 'toggle',
+      encoding: 'qwen-enable-thinking',
+      supportsOff: true
+    })
+  })
+
   it('resolves control precedence and fixed fallback', () => {
     expect(
       resolveModelReasoningControl(
-        { features: { reasoning: true } },
+        { type: 'opencode', features: { reasoning: true } },
         {
           id: 'm',
           apiId: 'm',
           capabilities: ['reasoning'],
-          reasoningControl: {
+          discoveredReasoningControl: {
             mode: 'effort',
             encoding: 'openai-effort',
             levels: ['low']
@@ -141,7 +165,65 @@ describe('reasoningControl', () => {
 
     expect(
       resolveModelReasoningControl(
-        { features: {} },
+        {
+          type: 'custom',
+          features: {},
+          defaultReasoningControl: {
+            mode: 'effort',
+            encoding: 'openrouter-reasoning',
+            levels: ['high']
+          }
+        },
+        {
+          id: 'm',
+          apiId: 'm',
+          discoveredReasoningControl: {
+            mode: 'toggle',
+            encoding: 'deepseek-thinking-toggle',
+            supportsOff: true
+          }
+        }
+      )
+    ).toEqual({
+      mode: 'effort',
+      encoding: 'openrouter-reasoning',
+      levels: ['high']
+    })
+
+    expect(
+      resolveModelReasoningControl(
+        { type: 'deepseek', features: {} },
+        {
+          id: 'deepseek-reasoner',
+          apiId: 'deepseek-reasoner',
+          reasoningControlOverride: {
+            mode: 'effort',
+            encoding: 'openai-effort',
+            levels: ['max']
+          }
+        },
+        {
+          modelReasoningRules: [
+            {
+              includes: ['reasoner'],
+              reasoningControl: {
+                mode: 'toggle',
+                encoding: 'deepseek-thinking-toggle',
+                supportsOff: true
+              }
+            }
+          ]
+        }
+      )
+    ).toEqual({
+      mode: 'effort',
+      encoding: 'openai-effort',
+      levels: ['max']
+    })
+
+    expect(
+      resolveModelReasoningControl(
+        { type: 'deepseek', features: {} },
         { id: 'deepseek-reasoner', apiId: 'deepseek-reasoner' },
         {
           modelReasoningRules: [
@@ -164,13 +246,16 @@ describe('reasoningControl', () => {
 
     expect(
       resolveModelReasoningControl(
-        { features: { reasoning: true } },
+        { type: 'opencode', features: { reasoning: true } },
         { id: 'opaque', apiId: 'opaque', capabilities: ['reasoning'] }
       )
     ).toEqual({ mode: 'fixed' })
 
     expect(
-      resolveModelReasoningControl({ features: {} }, { id: 'plain', apiId: 'plain' })
+      resolveModelReasoningControl(
+        { type: 'custom', features: {} },
+        { id: 'plain', apiId: 'plain' }
+      )
     ).toBeUndefined()
   })
 })

@@ -43,6 +43,8 @@ export function createModelInfo(
     compatibility: previous?.compatibility,
     promptProfile: previous?.promptProfile,
     reasoningControl: previous?.reasoningControl,
+    discoveredReasoningControl: previous?.discoveredReasoningControl,
+    reasoningControlOverride: previous?.reasoningControlOverride,
     limit: {
       context: normalizedContext,
       ...(previous?.limit?.output ? { output: previous.limit.output } : {})
@@ -145,12 +147,7 @@ export function getProviderModelRuntimeConfig(
     (normalized.apiFormat ? apiFormatToTransportId(normalized.apiFormat) : undefined) ??
     profile.transportId
   const features = resolveModelFeatureSupport(normalized, modelInfo)
-  const reasoningControl = resolveModelReasoningControl(
-    normalized,
-    modelInfo,
-    profile,
-    features
-  )
+  const reasoningControl = resolveModelReasoningControl(normalized, modelInfo, profile, features)
 
   return {
     providerId: normalized.id,

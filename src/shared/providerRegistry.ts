@@ -157,11 +157,12 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
       ],
       modelReasoningRules: [
         {
+          // OpenCode DeepSeek V4 metadata exposes effort high/max (plus a toggle). Prefer effort.
           includes: ['deepseek'],
           reasoningControl: {
-            mode: 'toggle',
-            encoding: 'deepseek-thinking-toggle',
-            supportsOff: true
+            mode: 'effort',
+            encoding: 'openai-effort',
+            levels: ['high', 'max']
           }
         }
       ]

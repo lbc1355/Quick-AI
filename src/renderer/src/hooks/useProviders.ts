@@ -60,7 +60,10 @@ const createStoredProviderDiscoveryRequest = (
 ): ProviderModelDiscoveryRequest => ({
   fetchUrl: getPreferredModelDiscoveryUrl(provider),
   providerType: provider.type,
-  providerConnection: resolveProviderConnection(getProviderAccount(provider))
+  providerConnection: resolveProviderConnection(getProviderAccount(provider)),
+  ...(provider.defaultReasoningControl
+    ? { defaultReasoningControl: provider.defaultReasoningControl }
+    : {})
 })
 
 export interface UseProvidersReturn {
@@ -721,7 +724,10 @@ export const useProviders = (): UseProvidersReturn => {
       const fetched = await window.api.fetchModels({
         fetchUrl: url,
         providerType: getEditingProviderType(),
-        providerConnection: getEditingProviderConnection()
+        providerConnection: getEditingProviderConnection(),
+        ...(editingProvider?.defaultReasoningControl
+          ? { defaultReasoningControl: editingProvider.defaultReasoningControl }
+          : {})
       })
       if (fetched && fetched.length > 0) {
         if (editingProvider) {
@@ -824,7 +830,10 @@ export const useProviders = (): UseProvidersReturn => {
       const fetched = await window.api.fetchModels({
         fetchUrl: url,
         providerType: getEditingProviderType(),
-        providerConnection: getEditingProviderConnection()
+        providerConnection: getEditingProviderConnection(),
+        ...(editingProvider?.defaultReasoningControl
+          ? { defaultReasoningControl: editingProvider.defaultReasoningControl }
+          : {})
       })
       if (fetched.length === 0) {
         throw new Error('Provider returned an empty model catalog')

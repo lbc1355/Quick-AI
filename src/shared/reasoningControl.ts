@@ -2,8 +2,10 @@ import type {
   ApiProvider,
   ModelInfo,
   ModelReasoningControl,
+  ProviderType,
   ReasoningLevel,
   ReasoningPreference,
+  ReasoningRequestEncoding,
   ResolvedModelFeatureSupport
 } from './types'
 
@@ -16,6 +18,19 @@ export interface ReasoningRuntimeProfileSlice {
   defaultReasoningControl?: ModelReasoningControl
   modelReasoningRules?: readonly ModelReasoningRule[]
   features?: Pick<ResolvedModelFeatureSupport, 'reasoning'>
+}
+
+export interface ParseDiscoveredReasoningControlContext {
+  providerType?: ProviderType
+  modelId?: string
+  preferredEffortEncoding?: Extract<
+    ReasoningRequestEncoding,
+    'openai-effort' | 'openrouter-reasoning'
+  >
+  preferredToggleEncoding?: Extract<
+    ReasoningRequestEncoding,
+    'qwen-enable-thinking' | 'deepseek-thinking-toggle'
+  >
 }
 
 export const REASONING_LEVEL_ORDER = [
@@ -98,12 +113,31 @@ export function resolveEffectiveReasoningPreference(input: {
 }
 
 export function resolveModelReasoningControl(
-  provider: Pick<ApiProvider, 'features' | 'defaultReasoningControl'>,
-  model: Pick<ModelInfo, 'apiId' | 'id' | 'capabilities' | 'features' | 'reasoningControl'>,
+  provider: Pick<ApiProvider, 'type' | 'features' | 'defaultReasoningControl'>,
+  model: Pick<
+    ModelInfo,
+    | 'apiId'
+    | 'id'
+    | 'capabilities'
+    | 'features'
+    | 'reasoningControl'
+    | 'discoveredReasoningControl'
+    | 'reasoningControlOverride'
+  >,
   runtimeProfile?: ReasoningRuntimeProfileSlice,
   resolvedFeatures?: ResolvedModelFeatureSupport
 ): ModelReasoningControl | undefined {
-  if (model.reasoningControl) return sanitizeControl(model.reasoningControl)
+  if (model.reasoningControlOverride) {
+    return sanitizeControl(model.reasoningControlOverride)
+  }
+
+  // Custom providers: explicit advanced protocol beats auto-discovered metadata.
+  if (provider.type === 'custom' && provider.defaultReasoningControl) {
+    return sanitizeControl(provider.defaultReasoningControl)
+  }
+
+  const discovered = model.discoveredReasoningControl || model.reasoningControl
+  if (discovered) return sanitizeControl(discovered)
 
   const modelId = (model.apiId || model.id || '').toLowerCase()
   const matchedRule = runtimeProfile?.modelReasoningRules?.find((rule) =>
@@ -127,36 +161,42 @@ export function resolveModelReasoningControl(
   return undefined
 }
 
-/** Parse provider `/models` reasoning_options payloads into a typed control. */
-export function parseDiscoveredReasoningControl(value: unknown): ModelReasoningControl | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
-  const raw = value as Record<string, unknown>
-  const type = typeof raw.type === 'string' ? raw.type.trim().toLowerCase() : ''
-
-  if (type === 'toggle') {
-    return {
-      mode: 'toggle',
-      encoding: 'deepseek-thinking-toggle',
-      supportsOff: true
+/**
+ * Parse provider `/models` reasoning_options payloads into a typed control.
+ * Supports a single object or OpenCode-style arrays. Priority: effort > budget > toggle.
+ */
+export function parseDiscoveredReasoningControl(
+  value: unknown,
+  context?: ParseDiscoveredReasoningControlContext
+): ModelReasoningControl | undefined {
+  const options = normalizeReasoningOptionList(value)
+  if (options.length === 0) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return { mode: 'fixed' }
     }
+    return undefined
   }
 
-  if (type === 'effort') {
-    const levels = normalizeLevelList(raw.values)
+  const effort = options.find((option) => option.type === 'effort')
+  if (effort) {
+    const levels = normalizeLevelList(effort.values)
     if (levels.length === 0) return { mode: 'fixed' }
     return {
       mode: 'effort',
-      encoding: 'openai-effort',
+      encoding: resolveEffortEncoding(context),
       levels
     }
   }
 
-  if (type === 'budget_tokens' || type === 'budget') {
-    const minBudget = asPositiveInt(raw.min)
-    const maxBudget = asPositiveInt(raw.max)
+  const budget = options.find(
+    (option) => option.type === 'budget_tokens' || option.type === 'budget'
+  )
+  if (budget) {
+    const minBudget = asPositiveInt(budget.min)
+    const maxBudget = asPositiveInt(budget.max)
     const levels = uniqueOrderedLevels(
-      normalizeLevelList(raw.values).length > 0
-        ? normalizeLevelList(raw.values)
+      normalizeLevelList(budget.values).length > 0
+        ? normalizeLevelList(budget.values)
         : (['low', 'medium', 'high'] as ReasoningLevel[])
     )
     const budgets = buildBudgetsFromRange(levels, minBudget, maxBudget)
@@ -172,9 +212,17 @@ export function parseDiscoveredReasoningControl(value: unknown): ModelReasoningC
     }
   }
 
+  const toggle = options.find((option) => option.type === 'toggle')
+  if (toggle) {
+    return {
+      mode: 'toggle',
+      encoding: resolveToggleEncoding(context),
+      supportsOff: true
+    }
+  }
+
   // Unknown structured payload: keep reasoning feature, treat as fixed.
-  if (type || Object.keys(raw).length > 0) return { mode: 'fixed' }
-  return undefined
+  return { mode: 'fixed' }
 }
 
 export function buildBudgetsFromRange(
@@ -204,6 +252,50 @@ export function uniqueOrderedLevels(levels: readonly string[] | undefined): Reas
       .filter((level): level is ReasoningLevel => LEVEL_SET.has(level))
   )
   return REASONING_LEVEL_ORDER.filter((level) => present.has(level))
+}
+
+interface RawReasoningOption {
+  type: string
+  values?: unknown
+  min?: unknown
+  max?: unknown
+}
+
+function normalizeReasoningOptionList(value: unknown): RawReasoningOption[] {
+  if (!value) return []
+  const items = Array.isArray(value) ? value : [value]
+  const options: RawReasoningOption[] = []
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const raw = item as Record<string, unknown>
+    const type = typeof raw.type === 'string' ? raw.type.trim().toLowerCase() : ''
+    if (!type) continue
+    options.push({
+      type,
+      values: raw.values,
+      min: raw.min,
+      max: raw.max
+    })
+  }
+  return options
+}
+
+function resolveEffortEncoding(
+  context?: ParseDiscoveredReasoningControlContext
+): Extract<ReasoningRequestEncoding, 'openai-effort' | 'openrouter-reasoning'> {
+  if (context?.preferredEffortEncoding) return context.preferredEffortEncoding
+  // OpenAI-compatible (incl. OpenCode Zen / DeepSeek) use reasoning_effort unless a caller
+  // opts into OpenRouter nesting via preferredEffortEncoding.
+  return 'openai-effort'
+}
+
+function resolveToggleEncoding(
+  context?: ParseDiscoveredReasoningControlContext
+): Extract<ReasoningRequestEncoding, 'qwen-enable-thinking' | 'deepseek-thinking-toggle'> {
+  if (context?.preferredToggleEncoding) return context.preferredToggleEncoding
+  const modelId = (context?.modelId || '').toLowerCase()
+  if (modelId.includes('qwen')) return 'qwen-enable-thinking'
+  return 'deepseek-thinking-toggle'
 }
 
 function normalizeLevelList(value: unknown): ReasoningLevel[] {
