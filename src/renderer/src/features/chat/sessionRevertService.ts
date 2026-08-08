@@ -88,3 +88,17 @@ export const commitSessionRevert = (
     originalResources: session.revert.originalResources
   }
 }
+
+/**
+ * Discard a staged /clear undo. The cleared conversation's resources become collectable once the
+ * clear is committed, so the caller can prune them against the surviving sessions.
+ */
+export const commitSessionClearDraft = (
+  session: Session
+): { session: Session; originalResources?: SessionResource[] } => {
+  if (!session.clearedDraft) return { session }
+  return {
+    session: { ...session, clearedDraft: undefined },
+    originalResources: session.clearedDraft.resources
+  }
+}

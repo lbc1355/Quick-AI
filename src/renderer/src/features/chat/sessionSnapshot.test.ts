@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Session, SessionResource } from '../../../../shared/types'
 import {
+  cloneSessionInSnapshot,
   cloneSessionsDeep,
   planRemovedRunCleanup,
   planStagedRevertCommit,
@@ -34,6 +35,23 @@ const revertedSession = (over: Partial<Session> = {}): Session => ({
   ...over
 })
 
+const clearedSession = (over: Partial<Session> = {}): Session => ({
+  id: 'session-1',
+  title: '新对话',
+  messages: [],
+  resources: [],
+  clearedDraft: {
+    messages: [
+      { id: 'm1', role: 'user', content: 'hello' },
+      { id: 'a1', role: 'assistant', content: 'hi', agentRunId: 'run-1' }
+    ],
+    resources: [resource('r-cleared', ['run-1'])],
+    title: '原标题',
+    clearedAt: 5
+  },
+  ...over
+})
+
 describe('cloneSessionsDeep', () => {
   it('detaches messages so a working copy can be mutated safely', () => {
     const source: Session[] = [
@@ -45,6 +63,27 @@ describe('cloneSessionsDeep', () => {
 
     expect(source[0].messages).toHaveLength(1)
     expect(source[0].messages[0].content).toBe('hi')
+  })
+})
+
+describe('cloneSessionInSnapshot', () => {
+  it('clones only the session being mutated', () => {
+    const target: Session = {
+      id: 'target',
+      title: 'Target',
+      messages: [{ id: 'm1', role: 'user', content: 'hello' }]
+    }
+    const untouched: Session = {
+      id: 'other',
+      title: 'Other',
+      messages: [{ id: 'm2', role: 'user', content: 'world' }]
+    }
+
+    const result = cloneSessionInSnapshot([target, untouched], 'target')
+
+    expect(result[0]).not.toBe(target)
+    expect(result[0].messages[0]).not.toBe(target.messages[0])
+    expect(result[1]).toBe(untouched)
   })
 })
 
@@ -189,5 +228,45 @@ describe('planStagedRevertCommit', () => {
     const sessions = [session]
     planStagedRevertCommit(sessions, session)
     expect(sessions[0].revert).toBeDefined()
+  })
+
+  it('commits a staged /clear undo and schedules its orphaned resources for deletion', () => {
+    const session = clearedSession()
+    const plan = planStagedRevertCommit([session], session)
+
+    expect(plan.session.clearedDraft).toBeUndefined()
+    expect(plan.cacheCleanup).toEqual({
+      sessionIds: [],
+      resourceIds: ['r-cleared']
+    })
+  })
+
+  it('keeps a cleared resource another session still references', () => {
+    const session = clearedSession()
+    const sibling: Session = {
+      id: 'session-2',
+      title: 'Other',
+      messages: [],
+      resources: [resource('r-cleared', ['run-elsewhere'])]
+    }
+    const plan = planStagedRevertCommit([session, sibling], session)
+
+    expect(plan.cacheCleanup).toBeUndefined()
+  })
+
+  it('omits the cleanup when the cleared draft referenced nothing', () => {
+    const session = clearedSession({
+      clearedDraft: { messages: [], resources: [], title: '新对话', clearedAt: 5 }
+    })
+    const plan = planStagedRevertCommit([session], session)
+
+    expect(plan.cacheCleanup).toBeUndefined()
+  })
+
+  it('does not mutate the input snapshot when committing a clear', () => {
+    const session = clearedSession()
+    const sessions = [session]
+    planStagedRevertCommit(sessions, session)
+    expect(sessions[0].clearedDraft).toBeDefined()
   })
 })

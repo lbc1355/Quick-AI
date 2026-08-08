@@ -2135,7 +2135,8 @@ body {
   border-top: 0;
 }
 
-.session-revert-dock {
+.session-revert-dock,
+.session-clear-dock {
   max-width: 960px;
   min-height: 34px;
   display: flex;
@@ -2169,7 +2170,8 @@ body {
   white-space: nowrap;
 }
 
-.session-revert-dock button {
+.session-revert-dock button,
+.session-clear-dock button {
   min-height: 24px;
   flex: 0 0 auto;
   padding: 3px 9px;
@@ -2181,11 +2183,13 @@ body {
   cursor: pointer;
 }
 
-.session-revert-dock button:hover {
+.session-revert-dock button:hover,
+.session-clear-dock button:hover {
   background: color-mix(in srgb, var(--color-primary) 13%, transparent);
 }
 
-.session-revert-dock button:disabled {
+.session-revert-dock button:disabled,
+.session-clear-dock button:disabled {
   cursor: default;
   opacity: 0.55;
 }
@@ -2333,6 +2337,34 @@ body {
 .run-mode-btn.agent .sparkle-icon {
   color: #9aa3ad;
   filter: none;
+}
+
+.reasoning-level-selector {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+
+.reasoning-level-selector:hover {
+  background: transparent;
+  color: inherit;
+  border-color: transparent;
+}
+
+.reasoning-level-trigger {
+  height: 24px;
+  padding: 0 5px 0 6px;
+  color: var(--color-text-muted);
+}
+
+.reasoning-level-trigger:hover,
+.reasoning-level-trigger.open,
+.reasoning-level-trigger:focus-visible {
+  background: var(--color-card-bg-hover);
+  color: var(--color-text-title);
 }
 
 .input-action-btn.send {

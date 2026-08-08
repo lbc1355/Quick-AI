@@ -255,7 +255,8 @@
   box-shadow: 0 0 0 2px rgba(63, 61, 57, 0.08);
 }
 
-.app-container.theme-light .session-revert-dock {
+.app-container.theme-light .session-revert-dock,
+.app-container.theme-light .session-clear-dock {
   border-color: color-mix(in srgb, var(--color-primary) 32%, var(--color-border));
   background: color-mix(in srgb, var(--color-primary) 6%, var(--color-panel));
   color: #66645e;
@@ -273,14 +274,29 @@
 .app-container.theme-light .run-mode-btn.chat,
 .app-container.theme-light .run-mode-btn.agent,
 .app-container.theme-light .run-mode-btn .sparkle-icon,
-.app-container.theme-light .run-mode-btn.agent .sparkle-icon {
+.app-container.theme-light .run-mode-btn.agent .sparkle-icon,
+.app-container.theme-light .reasoning-level-trigger {
   color: var(--color-text-muted);
 }
 
 .app-container.theme-light .run-mode-btn:hover,
+.app-container.theme-light .reasoning-level-trigger:hover,
+.app-container.theme-light .reasoning-level-trigger.open,
+.app-container.theme-light .reasoning-level-trigger:focus-visible,
 .app-container.theme-light .input-action-btn.send:hover {
   background: #eeeeea;
   color: var(--color-text-title);
+}
+
+.app-container.theme-light .reasoning-level-menu {
+  background: var(--color-panel);
+  border-color: var(--color-border);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.app-container.theme-light .reasoning-level-option:hover,
+.app-container.theme-light .reasoning-level-option:focus-visible {
+  background: var(--color-card-bg-hover);
 }
 
 .app-container.theme-light .input-action-btn.send {

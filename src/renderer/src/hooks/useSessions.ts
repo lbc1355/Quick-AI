@@ -95,6 +95,7 @@ export interface UseSessionsReturn {
   setDraftSession: React.Dispatch<React.SetStateAction<Session | null>>
   handleNewSession: (options?: { projectId?: string; onCreated?: () => void }) => Promise<Session>
   handleClearCurrentSession: () => Promise<void>
+  handleUndoClear: () => Promise<void>
   handleDeleteSession: (targetSessionId: string) => Promise<void>
   handleRenameSession: (targetSessionId: string, nextTitle: string) => Promise<void>
   handleMoveSession: (targetSessionId: string, projectId: string | undefined) => Promise<void>
@@ -176,19 +177,25 @@ export const useSessions = (): UseSessionsReturn => {
   const handleClearCurrentSession = async (): Promise<void> => {
     if (!activeSessionId) return
 
-    // Clearing resets the conversation (and its resources), so wipe its caches first. Survivors
-    // are all OTHER sessions — the cleared one keeps its object but no longer references anything.
     const target = sessions.find((s) => s.id === activeSessionId)
     const advancedTarget = target ? advanceSessionContextEpoch(target) : undefined
     if (target) {
       window.api.advanceSessionContext(target.id, getSessionContextEpoch(target) + 1)
-      const survivors = sessions.filter((s) => s.id !== activeSessionId)
-      const cacheTarget = target.revert?.originalResources
-        ? { ...target, resources: target.revert.originalResources }
-        : target
-      await clearCachesFor(activeSessionId, computeOrphanResourceIds(cacheTarget, survivors))
+      // A previously staged rollback/clear is superseded by this clear, so its deferred cache
+      // cleanup can finally run. The CURRENT conversation's resources stay put so /clear remains
+      // undoable — they are pruned when the new draft is committed by the next prompt.
+      const supersededResources =
+        target.revert?.originalResources ?? target.clearedDraft?.resources
+      if (supersededResources) {
+        const survivors = sessions.filter((s) => s.id !== activeSessionId)
+        await clearCachesFor(
+          activeSessionId,
+          computeOrphanResourceIds({ ...target, resources: supersededResources }, survivors)
+        )
+      }
     }
 
+    const clearedAt = Date.now()
     const updated = sessions.map((s) => {
       if (s.id === activeSessionId) {
         return {
@@ -196,12 +203,45 @@ export const useSessions = (): UseSessionsReturn => {
           messages: [],
           title: '新对话',
           titleManuallyEdited: undefined,
-          lastActiveTime: Date.now(),
+          lastActiveTime: clearedAt,
           resources: [],
-          revert: undefined
+          revert: undefined,
+          // Stage the pre-clear conversation so /clear can be undone until the next prompt.
+          clearedDraft: target
+            ? {
+                messages: target.messages,
+                resources: target.resources,
+                title: target.title,
+                titleManuallyEdited: target.titleManuallyEdited,
+                clearedAt
+              }
+            : undefined
         }
       }
       return s
+    })
+    sessionsRef.current = updated
+    setSessions(updated)
+    await window.api.storeSet('sessions', updated)
+  }
+
+  /** Restore a /clear from its staged draft. Caches were deferred, so resources come back intact. */
+  const handleUndoClear = async (): Promise<void> => {
+    if (!activeSessionId) return
+    const target = sessions.find((s) => s.id === activeSessionId)
+    if (!target?.clearedDraft) return
+    const draft = target.clearedDraft
+    const updated = sessions.map((s) => {
+      if (s.id !== activeSessionId) return s
+      return {
+        ...s,
+        messages: draft.messages,
+        title: draft.title,
+        titleManuallyEdited: draft.titleManuallyEdited,
+        resources: draft.resources,
+        clearedDraft: undefined,
+        lastActiveTime: Date.now()
+      }
     })
     sessionsRef.current = updated
     setSessions(updated)
@@ -298,6 +338,7 @@ export const useSessions = (): UseSessionsReturn => {
     setDraftSession,
     handleNewSession,
     handleClearCurrentSession,
+    handleUndoClear,
     handleDeleteSession,
     handleRenameSession,
     handleMoveSession,

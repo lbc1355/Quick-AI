@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Message, Session } from '../../../../shared/types'
 import {
   collectMessageRunIds,
+  commitSessionClearDraft,
   commitSessionRevert,
   prepareSessionRevert,
   restoreSessionRevert
@@ -98,5 +99,30 @@ describe('sessionRevertService', () => {
         now: 100
       })
     ).toThrow('Only user messages can be reverted')
+  })
+
+  it('commits a staged /clear undo while returning the cleared resources', () => {
+    const session: Session = {
+      id: 'session-1',
+      title: '新对话',
+      messages: [],
+      clearedDraft: {
+        messages: messages.map((message) => ({ ...message })),
+        resources: makeSession().resources,
+        title: 'Original title',
+        titleManuallyEdited: true,
+        clearedAt: 50
+      }
+    }
+    const committed = commitSessionClearDraft(session)
+    expect(committed.session.clearedDraft).toBeUndefined()
+    expect(committed.originalResources).toEqual(makeSession().resources)
+  })
+
+  it('is a no-op without a staged clear draft', () => {
+    const session: Session = { id: 'session-1', title: 't', messages: [] }
+    const committed = commitSessionClearDraft(session)
+    expect(committed.session).toBe(session)
+    expect(committed.originalResources).toBeUndefined()
   })
 })

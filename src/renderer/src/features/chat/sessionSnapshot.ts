@@ -1,6 +1,6 @@
 import type { ClearSessionCachesPayload, Session, SessionResource } from '../../../../shared/types'
-import { computeResourcePrune } from '../../hooks/useSessions'
-import { commitSessionRevert } from './sessionRevertService'
+import { computeOrphanResourceIds, computeResourcePrune } from '../../hooks/useSessions'
+import { commitSessionClearDraft, commitSessionRevert } from './sessionRevertService'
 
 /**
  * Copy a session list one level into the messages so a dispatch can mutate its working copy
@@ -11,6 +11,17 @@ export const cloneSessionsDeep = (sessions: Session[]): Session[] =>
     ...session,
     messages: session.messages.map((message) => ({ ...message }))
   }))
+
+/** Clone only the session that a foreground action is about to mutate. */
+export const cloneSessionInSnapshot = (sessions: Session[], sessionId: string): Session[] =>
+  sessions.map((session) =>
+    session.id === sessionId
+      ? {
+          ...session,
+          messages: session.messages.map((message) => ({ ...message }))
+        }
+      : session
+  )
 
 export const touchSessionInSnapshot = (
   sessions: Session[],
@@ -70,31 +81,56 @@ export interface StagedRevertCommitPlan {
 }
 
 /**
- * Commit a staged rollback: sending a new message discards the "restore" affordance, so the
- * reverted runs and any resources only they referenced become collectable.
+ * Commit a staged rollback (agent-run revert and/or /clear undo): sending a new message discards
+ * the "restore"/"撤销" affordance, so the reverted runs / cleared resources — and any resources
+ * only they referenced — become collectable.
  *
  * Pure — the caller owns both the state write and the `clearSessionCaches` IPC call. Resources are
- * pruned against the *original* (pre-revert) resource list, because that is what the reverted runs
- * actually referenced.
+ * pruned against the *original* (pre-revert / pre-clear) resource lists, because that is what the
+ * discarded runs actually referenced.
  */
 export const planStagedRevertCommit = (
   sessions: Session[],
   sourceSession: Session
 ): StagedRevertCommitPlan => {
-  if (!sourceSession.revert) return { session: sourceSession, sessions }
+  if (!sourceSession.revert && !sourceSession.clearedDraft) {
+    return { session: sourceSession, sessions }
+  }
 
-  const committed = commitSessionRevert(sourceSession)
-  const nextSessions = replaceSessionInSnapshot(sessions, committed.session)
+  const committed = sourceSession.revert
+    ? commitSessionRevert(sourceSession)
+    : {
+        session: sourceSession,
+        committedRunIds: [] as string[],
+        originalResources: undefined as SessionResource[] | undefined
+      }
+  const clearCommitted = committed.session.clearedDraft
+    ? commitSessionClearDraft(committed.session)
+    : { session: committed.session, originalResources: undefined as SessionResource[] | undefined }
+
+  const nextSessions = replaceSessionInSnapshot(sessions, clearCommitted.session)
   const otherSessions = nextSessions.filter((session) => session.id !== sourceSession.id)
-  const { deletableIds } = computeResourcePrune(
-    { ...committed.session, resources: committed.originalResources },
-    otherSessions,
-    committed.committedRunIds
-  )
 
+  // Revert-prune is run-aware over the reverted runs' resources; a clear discards every draft
+  // resource no surviving session still references.
+  const revertDeletable = sourceSession.revert
+    ? computeResourcePrune(
+        { ...clearCommitted.session, resources: committed.originalResources },
+        otherSessions,
+        committed.committedRunIds
+      ).deletableIds
+    : []
+  const clearDeletable = clearCommitted.originalResources
+    ? computeOrphanResourceIds(
+        { ...clearCommitted.session, resources: clearCommitted.originalResources },
+        otherSessions
+      )
+    : []
+
+  const deletableIds = Array.from(new Set([...revertDeletable, ...clearDeletable]))
   const hasCleanup = committed.committedRunIds.length > 0 || deletableIds.length > 0
   return {
-    session: committed.session,
+    session: clearCommitted.session,
     sessions: nextSessions,
     ...(hasCleanup
       ? {
