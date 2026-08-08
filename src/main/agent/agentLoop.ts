@@ -163,7 +163,6 @@ const getEffectiveContextWindowSize = (options: {
   normalizeContextWindowTokens(options.modelRuntime?.contextWindowTokens) ??
   getContextWindowSize(options.model)
 
-
 export const runAgentLoop = async (
   mainWindow: BrowserWindow,
   reqId: string,
@@ -242,10 +241,17 @@ export const runAgentLoop = async (
     projectRoot: options.projectRoot
   })
   let fileSnapshotFinalized = false
+  let fileSnapshotNeedsCheckpoint = false
+  const checkpointFileSnapshot = async (): Promise<void> => {
+    if (!fileSnapshotNeedsCheckpoint || !fileSnapshotHandle) return
+    if (await fileSnapshotHandle.checkpoint()) fileSnapshotNeedsCheckpoint = false
+  }
   const finalizeFileSnapshot = async (): Promise<void> => {
     if (fileSnapshotFinalized) return
     fileSnapshotFinalized = true
-    const snapshot = await fileSnapshotHandle?.finish()
+    const snapshot = await fileSnapshotHandle?.finish({
+      captureLatest: fileSnapshotNeedsCheckpoint
+    })
     if (snapshot && snapshot.files.length > 0) {
       eventStream.emit({ type: 'file_changes', files: snapshot.files })
     }
@@ -279,6 +285,13 @@ export const runAgentLoop = async (
       tokenSpeed: usageTracker.getTokenSpeed(),
       ...(cacheStats ? { cacheStats } : {})
     }
+  }
+
+  let responseSettled = false
+  const markResponseSettled = (): void => {
+    if (responseSettled) return
+    responseSettled = true
+    options.onResponseSettled?.()
   }
 
   // Behavioural guardrails (repeated-call blocking + consecutive-failure halt) that
@@ -487,6 +500,10 @@ export const runAgentLoop = async (
       SessionLogger.logModelResponse(conversationId, assistantMessage, cacheStats)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        const toolBatchMayModifyFiles = assistantMessage.tool_calls.some((call) =>
+          SIDE_EFFECTING_TOOLS.has(call.function.name)
+        )
+        if (toolBatchMayModifyFiles) fileSnapshotNeedsCheckpoint = true
         const toolTurn = await runToolTurn({
           assistantMessage,
           assistantTextBuffer,
@@ -521,6 +538,10 @@ export const runAgentLoop = async (
           requestPermission: (callId) => globalPermissionManager.requestPermission(reqId, callId)
         })
 
+        // Snapshot once per settled side-effect batch, before another model turn can mutate the
+        // workspace. A final text-only turn can then reuse this tree without rescanning files.
+        if (toolBatchMayModifyFiles) await checkpointFileSnapshot()
+
         messages.push(...toolTurn.messagesToAppend)
         ambiguousActions.push(...toolTurn.ambiguousActions)
         persistCheckpoint(step, toolTurn.lastRecordedCallId)
@@ -545,6 +566,7 @@ export const runAgentLoop = async (
         if (finalText) {
           eventStream.emit({ type: 'final', content: finalText, step, stepId })
         }
+        markResponseSettled()
         await finalizeFileSnapshot()
         setRunEnd('completed')
         mainWindow.webContents.send('chat-chunk', buildDoneChunk())
@@ -579,6 +601,7 @@ export const runAgentLoop = async (
     })
     messages = forcedFinalTurn.messages
 
+    markResponseSettled()
     await finalizeFileSnapshot()
     setRunEnd('max_steps')
     mainWindow.webContents.send('chat-chunk', buildDoneChunk())
@@ -587,6 +610,7 @@ export const runAgentLoop = async (
     console.error('Agent Loop error:', err)
     const isAborted =
       signal.aborted || err.message?.includes('aborted') || err.name === 'AbortError'
+    markResponseSettled()
     await finalizeFileSnapshot()
     if (isAborted) {
       setRunEnd('cancelled')

@@ -1,7 +1,19 @@
 import { execFile } from 'child_process'
 import { createHash } from 'crypto'
 import { app } from 'electron'
-import { lstat, mkdir, readdir, realpath, rm, rmdir, stat, unlink } from 'fs/promises'
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  rmdir,
+  stat,
+  unlink,
+  writeFile
+} from 'fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'path'
 import type {
   AgentFileChange,
@@ -36,6 +48,12 @@ interface SnapshotLocation {
   repositoryDir: string
 }
 
+interface SourceGitRepository {
+  indexPath: string
+  objectsDir: string
+  excludePath: string
+}
+
 interface TreeEntry {
   mode: string
   object: string
@@ -50,10 +68,18 @@ export interface CompletedAgentFileSnapshot {
 }
 
 export interface AgentFileSnapshotHandle {
-  finish: () => Promise<CompletedAgentFileSnapshot | undefined>
+  /** Capture the current workspace after a batch of file-mutating tools settles. */
+  checkpoint: () => Promise<boolean>
+  /**
+   * Persist the run snapshot. Callers that already checkpointed every possible mutation can skip
+   * the final worktree scan so terminal response delivery is not held behind snapshot I/O.
+   */
+  finish: (options?: { captureLatest?: boolean }) => Promise<CompletedAgentFileSnapshot | undefined>
 }
 
 let snapshotQueue: Promise<void> = Promise.resolve()
+const sourceGitRepositories = new Map<string, SourceGitRepository>()
+const preparedSnapshotRepositories = new Set<string>()
 
 const serializeSnapshotOperation = async <T>(operation: () => Promise<T>): Promise<T> => {
   const result = snapshotQueue.then(operation, operation)
@@ -140,10 +166,154 @@ const gitContextArgs = (location: SnapshotLocation): string[] => [
   '-c',
   'core.autocrlf=false',
   '-c',
-  'core.safecrlf=false'
+  'core.safecrlf=false',
+  '-c',
+  'core.longpaths=true',
+  '-c',
+  'core.symlinks=true',
+  '-c',
+  'core.fsmonitor=false',
+  '-c',
+  'feature.manyFiles=true',
+  '-c',
+  'index.version=4',
+  '-c',
+  'index.threads=true',
+  '-c',
+  'core.untrackedCache=true'
 ]
 
-const ensureSnapshotRepository = async (location: SnapshotLocation): Promise<void> => {
+const sameFilesystemPath = (left: string, right: string): boolean => {
+  const normalize = (value: string): string => {
+    const normalized = resolve(value)
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+  }
+  return normalize(left) === normalize(right)
+}
+
+const discoverSourceGitRepository = async (
+  projectRoot: string
+): Promise<SourceGitRepository | undefined> => {
+  const cached = sourceGitRepositories.get(projectRoot)
+  if (cached) {
+    try {
+      if ((await stat(cached.objectsDir)).isDirectory()) return cached
+    } catch {
+      sourceGitRepositories.delete(projectRoot)
+    }
+  }
+  try {
+    const [topLevel, commonDir, indexPath, excludePath] = await Promise.all([
+      runGit(['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--show-toplevel']),
+      runGit(['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir']),
+      runGit(['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-path', 'index']),
+      runGit([
+        '-C',
+        projectRoot,
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-path',
+        'info/exclude'
+      ])
+    ])
+    if (!sameFilesystemPath(topLevel.trim(), projectRoot)) return undefined
+    const normalizedCommonDir = commonDir.trim()
+    const objectsDir = join(normalizedCommonDir, 'objects')
+    if (!(await stat(objectsDir)).isDirectory()) return undefined
+    const source = {
+      indexPath: indexPath.trim(),
+      objectsDir,
+      excludePath: excludePath.trim()
+    }
+    sourceGitRepositories.set(projectRoot, source)
+    return source
+  } catch {
+    return undefined
+  }
+}
+
+const normalizeGitFilePath = (value: string): string => value.replaceAll('\\', '/')
+
+const seedSnapshotRepository = async (
+  location: SnapshotLocation,
+  source: SourceGitRepository,
+  copySourceIndex: boolean
+): Promise<void> => {
+  const alternates = new Set<string>([source.objectsDir])
+  try {
+    const chained = (await readFile(join(source.objectsDir, 'info', 'alternates'), 'utf8'))
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+    for (const entry of chained) {
+      const candidate = isAbsolute(entry) ? entry : resolve(source.objectsDir, entry)
+      try {
+        if ((await stat(candidate)).isDirectory()) alternates.add(candidate)
+      } catch {
+        // Ignore stale source alternates.
+      }
+    }
+  } catch {
+    // The source repository has no chained alternates.
+  }
+
+  await mkdir(join(location.repositoryDir, 'objects', 'info'), { recursive: true })
+  await writeFile(
+    join(location.repositoryDir, 'objects', 'info', 'alternates'),
+    `${Array.from(alternates, normalizeGitFilePath).join('\n')}\n`,
+    'utf8'
+  )
+
+  try {
+    await mkdir(join(location.repositoryDir, 'info'), { recursive: true })
+    await copyFile(source.excludePath, join(location.repositoryDir, 'info', 'exclude'))
+  } catch {
+    // Source-local excludes are optional.
+  }
+
+  if (!copySourceIndex) return
+  try {
+    await copyFile(source.indexPath, join(location.repositoryDir, 'index'))
+    // A split or otherwise incompatible source index should not disable snapshots.
+    await runGit([...gitContextArgs(location), 'ls-files', '-z'])
+  } catch {
+    await rm(join(location.repositoryDir, 'index'), { force: true })
+  }
+}
+
+const configureSnapshotRepository = async (repositoryDir: string): Promise<void> => {
+  const settings: Array<[string, string]> = [
+    ['core.autocrlf', 'false'],
+    ['core.filemode', 'false'],
+    ['core.longpaths', 'true'],
+    ['core.symlinks', 'true'],
+    ['core.fsmonitor', 'false'],
+    ['feature.manyFiles', 'true'],
+    ['index.version', '4'],
+    ['index.threads', 'true'],
+    ['core.untrackedCache', 'true']
+  ]
+  for (const [key, value] of settings) {
+    await runGit([`--git-dir=${repositoryDir}`, 'config', key, value])
+  }
+}
+
+const ensureSnapshotRepository = async (
+  location: SnapshotLocation,
+  source: SourceGitRepository | undefined
+): Promise<void> => {
+  if (preparedSnapshotRepositories.has(location.repositoryDir)) {
+    try {
+      const [head, objects] = await Promise.all([
+        stat(join(location.repositoryDir, 'HEAD')),
+        stat(join(location.repositoryDir, 'objects'))
+      ])
+      if (head.isFile() && objects.isDirectory()) return
+    } catch {
+      preparedSnapshotRepositories.delete(location.repositoryDir)
+    }
+  }
+
   let repositoryValid = false
   try {
     const head = await stat(join(location.repositoryDir, 'HEAD'))
@@ -156,13 +326,18 @@ const ensureSnapshotRepository = async (location: SnapshotLocation): Promise<voi
   } catch {
     // Initialize below.
   }
-  if (repositoryValid) return
+  if (repositoryValid) {
+    if (source) await seedSnapshotRepository(location, source, false)
+    preparedSnapshotRepositories.add(location.repositoryDir)
+    return
+  }
 
   await rm(location.repositoryDir, { recursive: true, force: true })
   await mkdir(dirname(location.repositoryDir), { recursive: true })
   await runGit(['init', '--bare', location.repositoryDir])
-  await runGit([`--git-dir=${location.repositoryDir}`, 'config', 'core.autocrlf', 'false'])
-  await runGit([`--git-dir=${location.repositoryDir}`, 'config', 'core.filemode', 'false'])
+  await configureSnapshotRepository(location.repositoryDir)
+  if (source) await seedSnapshotRepository(location, source, true)
+  preparedSnapshotRepositories.add(location.repositoryDir)
 }
 
 const snapshotScopePathspecs = [
@@ -173,24 +348,27 @@ const snapshotScopePathspecs = [
 ]
 
 const listSnapshotCandidates = async (location: SnapshotLocation): Promise<string[]> => {
-  const output = await runGit([
-    ...gitContextArgs(location),
-    'status',
-    '--porcelain=v1',
-    '--untracked-files=all',
-    '--no-renames',
-    '-z',
-    '--',
-    ...snapshotScopePathspecs
+  const [trackedOutput, untrackedOutput] = await Promise.all([
+    runGit([
+      ...gitContextArgs(location),
+      'diff-files',
+      '--name-only',
+      '-z',
+      '--',
+      ...snapshotScopePathspecs
+    ]),
+    runGit([
+      ...gitContextArgs(location),
+      'ls-files',
+      '--full-name',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+      ...snapshotScopePathspecs
+    ])
   ])
-  return Array.from(
-    new Set(
-      output
-        .split('\0')
-        .filter((record) => record.length > 3)
-        .map((record) => record.slice(3))
-    )
-  )
+  return Array.from(new Set(`${trackedOutput}${untrackedOutput}`.split('\0').filter(Boolean)))
 }
 
 const filterSnapshotCandidates = async (
@@ -225,7 +403,14 @@ const stageSnapshotCandidates = async (
   if (candidates.length === 0) return
   const input = `${candidates.map((path) => `:(top,literal)${path}`).join('\0')}\0`
   await runGit(
-    [...gitContextArgs(location), 'add', '-A', '--pathspec-from-file=-', '--pathspec-file-nul'],
+    [
+      ...gitContextArgs(location),
+      'add',
+      '-A',
+      '--sparse',
+      '--pathspec-from-file=-',
+      '--pathspec-file-nul'
+    ],
     undefined,
     input
   )
@@ -242,7 +427,8 @@ const captureTreeUnlocked = async (
     projectRoot: normalizedRoot,
     repositoryDir: getRepositoryDir(normalizedRoot)
   }
-  await ensureSnapshotRepository(location)
+  const source = await discoverSourceGitRepository(normalizedRoot)
+  await ensureSnapshotRepository(location, source)
   const candidates = await listSnapshotCandidates(location)
   await stageSnapshotCandidates(location, await filterSnapshotCandidates(location, candidates))
   const tree = (await runGit([...gitContextArgs(location), 'write-tree'])).trim()
@@ -1119,23 +1305,55 @@ export const beginAgentFileSnapshot = async (input: {
       input.runId,
       start.tree
     )
+    let latestTree = start.tree
+    let latestFiles: AgentFileChange[] = []
+    let handleQueue: Promise<void> = Promise.resolve()
     let finishPromise: Promise<CompletedAgentFileSnapshot | undefined> | undefined
+
+    const serializeHandleOperation = async <T>(operation: () => Promise<T>): Promise<T> => {
+      const result = handleQueue.then(operation, operation)
+      handleQueue = result.then(
+        () => undefined,
+        () => undefined
+      )
+      return result
+    }
+
     return {
-      finish: () => {
+      checkpoint: () => {
+        if (finishPromise) return finishPromise.then(() => false)
+        return serializeHandleOperation(() =>
+          serializeSnapshotOperation(async () => {
+            try {
+              const captured = await captureTreeUnlocked(start.location.projectRoot)
+              latestTree = captured.tree
+              latestFiles = await listChanges(start.location, start.tree, latestTree)
+              return true
+            } catch (error) {
+              console.warn('Failed to checkpoint Agent file snapshot:', (error as Error).message)
+              return false
+            }
+          })
+        )
+      },
+      finish: (options) => {
         if (finishPromise) return finishPromise
-        finishPromise = serializeSnapshotOperation(async () => {
+        const finalize = async (): Promise<CompletedAgentFileSnapshot | undefined> => {
           try {
-            const end = await captureTreeUnlocked(start.location.projectRoot)
-            const files = await listChanges(start.location, start.tree, end.tree)
+            if (options?.captureLatest !== false) {
+              const captured = await captureTreeUnlocked(start.location.projectRoot)
+              latestTree = captured.tree
+              latestFiles = await listChanges(start.location, start.tree, latestTree)
+            }
             const completedAt = Date.now()
             const snapshot = {
               projectRoot: start.location.projectRoot,
               startTree: start.tree,
-              endTree: end.tree,
-              files,
+              endTree: latestTree,
+              files: latestFiles,
               completedAt
             }
-            if (files.length > 0) {
+            if (latestFiles.length > 0) {
               await protectRunSnapshot(start.location, input.sessionId, input.runId, snapshot)
             }
             updateRunManifest(input.sessionId, input.runId, (manifest) => ({
@@ -1149,7 +1367,15 @@ export const beginAgentFileSnapshot = async (input: {
           } finally {
             await deleteSnapshotRef(start.location, pendingRef)
           }
-        })
+        }
+
+        finishPromise = serializeHandleOperation(() =>
+          options?.captureLatest === false
+            ? finalize()
+            : serializeSnapshotOperation(async () => {
+                return finalize()
+              })
+        )
         return finishPromise
       }
     }

@@ -34,6 +34,8 @@ export interface AgentSteeringControls {
 }
 
 export interface AgentRunOptions extends AgentSteeringControls {
+  /** Signals that model/tool output is settled and only durable run finalization remains. */
+  onResponseSettled?: () => void
   apiUrl: string
   apiKey: string
   providerConnection?: AgentSkillRunOptions['providerConnection']

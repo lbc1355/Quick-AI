@@ -58,12 +58,19 @@ export async function handleChatCompletion(
     sessionId?: string
     contextEpoch?: number
     reasoningPreference?: ReasoningPreference
+    onResponseSettled?: () => void
   }
 ): Promise<void> {
   const { apiUrl, apiKey, providerConnection, model, modelRuntime, messages } = options
   const contextEpoch = normalizeContextEpoch(options.contextEpoch)
   const controller = new AbortController()
   activeChatSessions.set(reqId, controller)
+  let responseSettled = false
+  const markResponseSettled = (): void => {
+    if (responseSettled) return
+    responseSettled = true
+    options.onResponseSettled?.()
+  }
 
   try {
     const memoryPrompt = loadMemoryContextPrompt()
@@ -94,6 +101,7 @@ export async function handleChatCompletion(
         }
       }
     )
+    markResponseSettled()
     const durationSec = (Date.now() - startTime) / 1000
     const reasoningText = assistantMessage.reasoning_content || ''
     const contentText = typeof assistantMessage.content === 'string' ? assistantMessage.content : ''
@@ -109,6 +117,7 @@ export async function handleChatCompletion(
       ...(cacheStats ? { cacheStats } : {})
     })
   } catch (error) {
+    markResponseSettled()
     const err = error as Error
     const isAborted = controller.signal.aborted || err.name === 'AbortError'
     if (isAborted) {

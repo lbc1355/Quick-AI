@@ -1290,6 +1290,11 @@ describe('runAgentLoop', () => {
   })
 
   it('streams unclassified model text before committing it as final', async () => {
+    const onResponseSettled = vi.fn(() => {
+      const chunks = sendMock.mock.calls.map(([, payload]) => payload)
+      expect(chunks.some((chunk) => chunk.event?.type === 'final')).toBe(true)
+      expect(chunks.some((chunk) => chunk.done === true)).toBe(false)
+    })
     vi.mocked(callModel).mockImplementation(
       async (_options, _messages, _tools, _signal, callbacks) => {
         callbacks?.onFinalChunk('line 1\n')
@@ -1305,7 +1310,8 @@ describe('runAgentLoop', () => {
       apiUrl: 'https://api.example.com',
       apiKey: 'test-key',
       model: 'deepseek-chat',
-      messages: [{ role: 'user', content: 'Hello' }]
+      messages: [{ role: 'user', content: 'Hello' }],
+      onResponseSettled
     })
 
     const events = sendMock.mock.calls.map(([, payload]) => payload.event).filter(Boolean)
@@ -1337,6 +1343,7 @@ describe('runAgentLoop', () => {
         stepId: 'test-req-stream-final:step:1'
       })
     )
+    expect(onResponseSettled).toHaveBeenCalledOnce()
   })
 
   it('emits agent_end max_steps on maxSteps exhaustion', async () => {

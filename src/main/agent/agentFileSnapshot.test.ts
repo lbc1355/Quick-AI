@@ -97,6 +97,63 @@ describe('agentFileSnapshot', () => {
     })
   }, 20_000)
 
+  it('can finalize from the latest tool checkpoint without rescanning the worktree', async () => {
+    createManifest('checkpoint-run')
+    const handle = await beginAgentFileSnapshot({
+      sessionId: 'session-1',
+      runId: 'checkpoint-run',
+      projectRoot
+    })
+    expect(handle).toBeDefined()
+
+    await writeFile(join(projectRoot, 'tool-change.txt'), 'captured after tool execution\n', 'utf8')
+    await expect(handle?.checkpoint()).resolves.toBe(true)
+
+    // Simulate unrelated work arriving after the last Agent side-effect boundary. A terminal
+    // text-only turn must reuse the checkpoint instead of attributing this later edit to the run.
+    await writeFile(join(projectRoot, 'later-change.txt'), 'must not be captured\n', 'utf8')
+    const snapshot = await handle?.finish({ captureLatest: false })
+
+    expect(snapshot?.files).toEqual([{ path: 'tool-change.txt', kind: 'added' }])
+    expect(loadRunManifest('session-1', 'checkpoint-run')?.fileSnapshot?.files).toEqual(
+      snapshot?.files
+    )
+  }, 20_000)
+
+  it('reuses a source Git index while keeping snapshot changes isolated', async () => {
+    const sourceProjectRoot = join(testRoot, 'source-git-project')
+    await mkdir(sourceProjectRoot, { recursive: true })
+    execFileSync('git', ['init', '--quiet'], { cwd: sourceProjectRoot, windowsHide: true })
+    await writeFile(join(sourceProjectRoot, 'tracked.txt'), 'source state\n', 'utf8')
+    execFileSync('git', ['add', 'tracked.txt'], { cwd: sourceProjectRoot, windowsHide: true })
+    createManifest('source-index-run')
+
+    const handle = await beginAgentFileSnapshot({
+      sessionId: 'session-1',
+      runId: 'source-index-run',
+      projectRoot: sourceProjectRoot
+    })
+    expect(handle).toBeDefined()
+
+    await writeFile(join(sourceProjectRoot, 'tracked.txt'), 'Agent state\n', 'utf8')
+    await writeFile(join(sourceProjectRoot, 'created.txt'), 'created\n', 'utf8')
+    await expect(handle?.checkpoint()).resolves.toBe(true)
+    await expect(handle?.finish({ captureLatest: false })).resolves.toMatchObject({
+      files: [
+        { path: 'created.txt', kind: 'added' },
+        { path: 'tracked.txt', kind: 'modified' }
+      ]
+    })
+
+    const repositoryDir = await getSnapshotRepository()
+    expect(
+      execFileSync('git', [`--git-dir=${repositoryDir}`, 'config', '--get', 'index.version'], {
+        encoding: 'utf8',
+        windowsHide: true
+      }).trim()
+    ).toBe('4')
+  }, 20_000)
+
   it('captures and reverts files in the global workspace without a project root', async () => {
     const workspaceRoot = join(testRoot, 'workspace')
     const originalWorkspaceRoot = process.env.QUICKAI_WORKSPACE_ROOT
