@@ -290,6 +290,7 @@
 .app-container.theme-light .run-mode-btn.agent,
 .app-container.theme-light .run-mode-btn .sparkle-icon,
 .app-container.theme-light .run-mode-btn.agent .sparkle-icon,
+.app-container.theme-light .reasoning-level-trigger,
 .app-container.theme-light .input-action-btn.send {
   background: transparent;
   color: #5f6c7b;
