@@ -7,5 +7,6 @@ out
 .test_action_logs/
 *.tsbuildinfo
 .codebase-memory
+.feature-doc-graph/
 .playwright-mcp/
 .agents/mcp_config.json
