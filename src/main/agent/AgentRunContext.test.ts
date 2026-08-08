@@ -154,3 +154,41 @@ describe('AgentRunContext session-scoped approval inheritance', () => {
     expect(b.isCommandPrefixApproved('rm -rf')).toBe(false)
   })
 })
+
+describe('AgentRunContext session-scoped seen-file inheritance', () => {
+  it('carries seen files to a later run of the same session', () => {
+    clearSessionApprovals('sess-seen')
+    const run1 = makeSessionRun('req-seen-1', 'sess-seen')
+    run1.markFileSeen('C:/project/src/a.ts')
+
+    // A new user message starts a fresh run with a new reqId, same session.
+    const run2 = makeSessionRun('req-seen-2', 'sess-seen')
+    expect(run2.hasSeenFile('C:\\project\\src\\a.ts')).toBe(true)
+  })
+
+  it('does not leak seen files across different sessions', () => {
+    clearSessionApprovals('sess-seen-x')
+    clearSessionApprovals('sess-seen-y')
+    const runX = makeSessionRun('req-seen-x', 'sess-seen-x')
+    runX.markFileSeen('C:/project/src/x.ts')
+
+    const runY = makeSessionRun('req-seen-y', 'sess-seen-y')
+    expect(runY.hasSeenFile('C:/project/src/x.ts')).toBe(false)
+  })
+
+  it('clearSessionApprovals resets seen files so new runs start clean', () => {
+    clearSessionApprovals('sess-seen-reset')
+    makeSessionRun('req-seen-a', 'sess-seen-reset').markFileSeen('C:/project/src/r.ts')
+    clearSessionApprovals('sess-seen-reset')
+
+    const after = makeSessionRun('req-seen-b', 'sess-seen-reset')
+    expect(after.hasSeenFile('C:/project/src/r.ts')).toBe(false)
+  })
+
+  it('runs without a sessionId do not share seen files', () => {
+    const a = makeRun()
+    a.markFileSeen('C:/project/src/solo.ts')
+    const b = makeRun()
+    expect(b.hasSeenFile('C:/project/src/solo.ts')).toBe(false)
+  })
+})

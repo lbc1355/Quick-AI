@@ -19,6 +19,21 @@ export interface AdditionalRoot {
 
 const sessionAdditionalRoots = new Map<string, AdditionalRoot[]>()
 
+// Files whose content the model has observed, keyed by session. A conversation's context spans
+// many runs (one per user message), so a file read in an earlier run is still in context — the
+// surgical edit guards must not re-demand a read just because the run boundary reset. Mirrors
+// sessionApprovals: in-memory only, cleared on app restart or via clearSessionApprovals.
+const sessionSeenFiles = new Map<string, Set<string>>()
+
+function getSessionSeenFiles(sessionId: string): Set<string> {
+  let entry = sessionSeenFiles.get(sessionId)
+  if (!entry) {
+    entry = new Set()
+    sessionSeenFiles.set(sessionId, entry)
+  }
+  return entry
+}
+
 const cloneAdditionalRoots = (roots: AdditionalRoot[] | undefined): AdditionalRoot[] =>
   roots ? roots.map((root) => ({ ...root })) : []
 
@@ -50,6 +65,7 @@ function getSessionApprovals(sessionId: string): { tools: Set<string>; prefixes:
 export function clearSessionApprovals(sessionId: string): void {
   sessionApprovals.delete(sessionId)
   sessionAdditionalRoots.delete(sessionId)
+  sessionSeenFiles.delete(sessionId)
 }
 
 export function getSessionAdditionalRoots(sessionId: string): AdditionalRoot[] {
@@ -90,8 +106,10 @@ export class AgentRunContext {
   // Files the model has observed during this run (normalized real paths). Surgical edit tools
   // (file_edit, multi_edit) require a file to have been read first so the model never mutates a
   // file blindly from stale assumptions. Reading a file or writing/editing it (which establishes
-  // known content) both mark it as seen. In-memory only; scoped to the run.
-  private readonly seenFiles = new Set<string>()
+  // known content) both mark it as seen. Seeded from the session's seen set at run start so reads
+  // from earlier runs of the same conversation (whose content is still in context) satisfy the
+  // guard. In-memory only; scoped to the run.
+  private readonly seenFiles: Set<string>
 
   /** Per-conversation action log (persisted to disk). Shared across runs of the same session. */
   readonly actionLog: ActionLog
@@ -118,6 +136,10 @@ export class AgentRunContext {
     this.projectName = projectName
     this.permissions = permissionManager
     this.actionLog = actionLog
+
+    // Seed with files the model already observed in earlier runs of this conversation — their
+    // content is still in the context, so a fresh run must not re-demand a read.
+    this.seenFiles = new Set(sessionId ? getSessionSeenFiles(sessionId) : [])
 
     // Inherit approvals granted in earlier runs of the same conversation so "allow for this
     // task" persists across messages instead of re-prompting on every new run.
@@ -286,7 +308,11 @@ export class AgentRunContext {
 
   /** Record that the model has observed a file's content (via read or a successful write/edit). */
   markFileSeen(realPath: string): void {
-    this.seenFiles.add(AgentRunContext.normalizeSeenPath(realPath))
+    const normalized = AgentRunContext.normalizeSeenPath(realPath)
+    this.seenFiles.add(normalized)
+    if (this.sessionId) {
+      getSessionSeenFiles(this.sessionId).add(normalized)
+    }
   }
 
   /** Whether the model has observed this file's content earlier in the run. */
