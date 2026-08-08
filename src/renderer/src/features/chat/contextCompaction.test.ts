@@ -3,12 +3,9 @@ import type { Message } from '../../../../shared/types'
 import {
   applyCompactionResult,
   canCompactMessages,
-  COMPACTION_PLACEHOLDER_ID,
-  createCompactionPlaceholder,
   createCompactionSummaryMessage,
   formatCompactionSummaryMessage,
-  MANUAL_COMPACTION_KEEP_RECENT_MESSAGES,
-  withoutCompactionPlaceholder
+  MANUAL_COMPACTION_KEEP_RECENT_MESSAGES
 } from './contextCompaction'
 
 const messages = (count: number): Message[] =>
@@ -26,19 +23,6 @@ describe('canCompactMessages', () => {
 
   it('allows compaction once there is at least one message to summarise', () => {
     expect(canCompactMessages(messages(MANUAL_COMPACTION_KEEP_RECENT_MESSAGES + 2))).toBe(true)
-  })
-})
-
-describe('compaction placeholder', () => {
-  it('renders a running step so the bubble shows progress while the model works', () => {
-    const placeholder = createCompactionPlaceholder()
-    expect(placeholder.id).toBe(COMPACTION_PLACEHOLDER_ID)
-    expect(placeholder.agentEvents?.[0]).toMatchObject({ type: 'agent_step', status: 'running' })
-  })
-
-  it('is stripped without touching real messages', () => {
-    const withPlaceholder = [...messages(2), createCompactionPlaceholder()]
-    expect(withoutCompactionPlaceholder(withPlaceholder).map((m) => m.id)).toEqual(['m0', 'm1'])
   })
 })
 
@@ -69,24 +53,12 @@ describe('formatCompactionSummaryMessage', () => {
 describe('applyCompactionResult', () => {
   it('splices the summary between the compacted history and the kept tail', () => {
     const result = applyCompactionResult({
-      messages: [...messages(5), createCompactionPlaceholder()],
+      messages: messages(5),
       result: { summary: 's', compactedCount: 3, keptCount: 2 },
       now: 1000
     })
 
     expect(result.map((m) => m.id)).toEqual(['m0', 'm1', 'm2', 'compact-1000', 'm3', 'm4'])
-  })
-
-  it('removes the placeholder before slicing so the split lands on real messages', () => {
-    const result = applyCompactionResult({
-      // A placeholder ahead of the boundary would shift every index if it survived.
-      messages: [createCompactionPlaceholder(), ...messages(4)],
-      result: { summary: 's', compactedCount: 2, keptCount: 2 },
-      now: 1
-    })
-
-    expect(result.map((m) => m.id)).toEqual(['m0', 'm1', 'compact-1', 'm2', 'm3'])
-    expect(result.some((m) => m.id === COMPACTION_PLACEHOLDER_ID)).toBe(false)
   })
 
   it('keeps the compacted messages so the user can still scroll back through them', () => {

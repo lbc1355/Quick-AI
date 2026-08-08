@@ -23,6 +23,7 @@ import { ModelsModal } from './components/ModelsModal'
 import { MessageBubble } from './components/MessageBubble'
 import { AgentFileRevertModal } from './components/AgentFileRevertModal'
 import { SessionRevertModal } from './components/SessionRevertModal'
+import { CompactionDock } from './components/CompactionDock'
 import { SubagentRunPanel } from './components/SubagentRunPanel'
 import { SettingsView } from './components/SettingsView'
 
@@ -414,6 +415,8 @@ function App(): React.JSX.Element {
     handleResumeAgentRun,
     showHelpMessage,
     handleCompactCurrentSession,
+    compaction,
+    cancelCompaction,
     handleAbortGeneration
   } = useChatCompletion({
     setSessions,
@@ -1413,9 +1416,7 @@ function App(): React.JSX.Element {
               <div className="session-clear-dock" role="status">
                 <div className="session-revert-dock-copy">
                   <History size={14} />
-                  <span>
-                    已清空 {activeSession.clearedDraft.messages.length} 条消息，可撤销。
-                  </span>
+                  <span>已清空 {activeSession.clearedDraft.messages.length} 条消息，可撤销。</span>
                 </div>
                 <button
                   type="button"
@@ -1426,6 +1427,12 @@ function App(): React.JSX.Element {
                 </button>
               </div>
             )}
+
+            {compaction &&
+              compaction.sessionId === activeSessionId &&
+              !activeSubagentRoutePanel && (
+                <CompactionDock startedAt={compaction.startedAt} onCancel={cancelCompaction} />
+              )}
 
             <ChatInputArea
               autocompleteItems={autocompleteItems}

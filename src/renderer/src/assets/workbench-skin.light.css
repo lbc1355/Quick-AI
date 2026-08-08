@@ -256,7 +256,8 @@
 }
 
 .app-container.theme-light .session-revert-dock,
-.app-container.theme-light .session-clear-dock {
+.app-container.theme-light .session-clear-dock,
+.app-container.theme-light .compaction-dock {
   border-color: color-mix(in srgb, var(--color-primary) 32%, var(--color-border));
   background: color-mix(in srgb, var(--color-primary) 6%, var(--color-panel));
   color: #66645e;

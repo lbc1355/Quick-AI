@@ -130,6 +130,8 @@
   padding: 9px 10px;
   max-height: 260px;
   overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
   border: 1px solid var(--color-border);
   border-radius: var(--rounded-md);
   background: var(--color-code-block-bg);
@@ -2136,7 +2138,8 @@ body {
 }
 
 .session-revert-dock,
-.session-clear-dock {
+.session-clear-dock,
+.compaction-dock {
   max-width: 960px;
   min-height: 34px;
   display: flex;
@@ -2152,26 +2155,30 @@ body {
   font-size: 11.5px;
 }
 
-.session-revert-dock-copy {
+.session-revert-dock-copy,
+.compaction-dock-copy {
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 7px;
 }
 
-.session-revert-dock-copy svg {
+.session-revert-dock-copy svg,
+.compaction-dock-copy svg {
   flex: 0 0 auto;
   color: var(--color-primary);
 }
 
-.session-revert-dock-copy span {
+.session-revert-dock-copy span,
+.compaction-dock-copy span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .session-revert-dock button,
-.session-clear-dock button {
+.session-clear-dock button,
+.compaction-dock button {
   min-height: 24px;
   flex: 0 0 auto;
   padding: 3px 9px;
@@ -2181,15 +2188,20 @@ body {
   color: var(--color-primary);
   font-size: 11px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .session-revert-dock button:hover,
-.session-clear-dock button:hover {
+.session-clear-dock button:hover,
+.compaction-dock button:hover {
   background: color-mix(in srgb, var(--color-primary) 13%, transparent);
 }
 
 .session-revert-dock button:disabled,
-.session-clear-dock button:disabled {
+.session-clear-dock button:disabled,
+.compaction-dock button:disabled {
   cursor: default;
   opacity: 0.55;
 }

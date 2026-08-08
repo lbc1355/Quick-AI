@@ -1230,6 +1230,7 @@ export interface PreloadApi {
   cancelSessionPrompt: (admissionId: string) => Promise<boolean>
   requeueSessionPrompt: (admissionId: string) => Promise<boolean>
   compactContext: (payload: ContextCompactionRequest) => Promise<ContextCompactionResult>
+  abortCompaction: () => void
   previewAgentFileRevert: (sessionId: string, runId: string) => Promise<AgentFileRevertPreview>
   revertAgentFileChanges: (
     input: RevertAgentFileChangesInput

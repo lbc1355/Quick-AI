@@ -104,6 +104,7 @@ const api = {
     ipcRenderer.invoke('requeue-session-prompt', admissionId),
   compactContext: (payload: ContextCompactionRequest): Promise<ContextCompactionResult> =>
     ipcRenderer.invoke('compact-context', payload),
+  abortCompaction: (): void => ipcRenderer.send('abort-compaction'),
   previewAgentFileRevert: (sessionId: string, runId: string): Promise<AgentFileRevertPreview> =>
     ipcRenderer.invoke('preview-agent-file-revert', sessionId, runId),
   revertAgentFileChanges: (

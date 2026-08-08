@@ -93,7 +93,11 @@ export function buildCompactionTranscript(messages: Message[]): string {
 
 export async function compactContextWithModel(
   request: ContextCompactionRequest,
-  dependencies: { callModel?: typeof callModel; now?: () => number } = {}
+  dependencies: {
+    callModel?: typeof callModel
+    now?: () => number
+    signal?: AbortSignal
+  } = {}
 ): Promise<ContextCompactionResult> {
   const keepRecentMessages = request.keepRecentMessages ?? DEFAULT_COMPACTION_KEEP_RECENT_MESSAGES
   const compactedCount = Math.max(0, request.messages.length - keepRecentMessages)
@@ -160,7 +164,7 @@ export async function compactContextWithModel(
     },
     messages,
     undefined,
-    undefined,
+    dependencies.signal,
     {
       onReasoning: () => {},
       onFinalChunk: (chunk) => {

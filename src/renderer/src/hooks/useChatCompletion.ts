@@ -38,9 +38,7 @@ import {
 import {
   applyCompactionResult,
   canCompactMessages,
-  createCompactionPlaceholder,
-  MANUAL_COMPACTION_KEEP_RECENT_MESSAGES,
-  withoutCompactionPlaceholder
+  MANUAL_COMPACTION_KEEP_RECENT_MESSAGES
 } from '../features/chat/contextCompaction'
 import {
   createMessagePairIds,
@@ -152,6 +150,9 @@ export interface UseChatCompletionReturn {
   handleResumeAgentRun: (msgIdx: number) => Promise<void>
   showHelpMessage: () => Promise<void>
   handleCompactCurrentSession: () => Promise<boolean>
+  /** Active /compact progress (session id + start time) so the UI can show a live dock. */
+  compaction: { sessionId: string; startedAt: number } | null
+  cancelCompaction: () => void
   handleAbortGeneration: () => void
 }
 
@@ -212,6 +213,10 @@ export const useChatCompletion = ({
     () => new Set()
   )
   const [activeRequestIds, setActiveRequestIds] = useState<ReadonlySet<string>>(() => new Set())
+  /** Live /compact progress — non-null while the compaction model call is in flight. */
+  const [compaction, setCompaction] = useState<{ sessionId: string; startedAt: number } | null>(
+    null
+  )
   const cancellingQueuedPromptIdsRef = useRef<Set<string>>(new Set())
   const [cancellingQueuedPromptIds, setCancellingQueuedPromptIds] = useState<ReadonlySet<string>>(
     () => new Set()
@@ -485,15 +490,13 @@ export const useChatCompletion = ({
     }
 
     const reverted = commitStagedRevert(currentSessions, found)
-    const sessions = reverted.sessions
     const currentSession = reverted.session
 
     beginSessionGeneration(currentSession.id, null, null)
     setInputVal('')
-
-    currentSession.messages.push(createCompactionPlaceholder())
-    setSessions([...sessions])
-    sessionsRef.current = sessions
+    // The transcript stays untouched while compaction runs — a dock shows the progress instead
+    // of a phantom message that would shift the scroll position and pollute the history.
+    setCompaction({ sessionId: currentSession.id, startedAt: Date.now() })
 
     try {
       const result = await window.api.compactContext({
@@ -502,7 +505,7 @@ export const useChatCompletion = ({
         providerConnection: requestConfig.providerConnection,
         model: requestConfig.selectedModel,
         modelRuntime: requestConfig.modelRuntimeConfig,
-        messages: withoutCompactionPlaceholder(currentSession.messages),
+        messages: currentSession.messages,
         keepRecentMessages: MANUAL_COMPACTION_KEEP_RECENT_MESSAGES,
         systemPrompt: requestConfig.systemPrompt
       })
@@ -519,18 +522,27 @@ export const useChatCompletion = ({
       setSessions(updatedSessions)
       sessionsRef.current = updatedSessions
       persistSessionsSnapshotSoon(updatedSessions)
+      toast.success(`压缩完成：前 ${result.compactedCount} 条历史消息已总结为摘要。`)
       return true
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err || '上下文压缩失败')
-      toast.error(`上下文压缩失败：${message}`)
+      const aborted =
+        err instanceof Error && (err.name === 'AbortError' || /abort/i.test(err.message || ''))
+      if (!aborted) {
+        toast.error(
+          `上下文压缩失败：${err instanceof Error ? err.message : String(err || '上下文压缩失败')}`
+        )
+      }
       return false
     } finally {
-      currentSession.messages = withoutCompactionPlaceholder(currentSession.messages)
+      setCompaction(null)
       finishSessionGeneration(currentSession.id, null)
-      const updatedSessions = replaceSessionInSnapshot(sessionsRef.current, currentSession)
-      setSessions(updatedSessions)
-      sessionsRef.current = updatedSessions
     }
+  }
+
+  /** Ask the main process to cancel the in-flight compaction; the pending promise rejects with an
+   *  AbortError and the catch above restores the pre-compaction state. */
+  const cancelCompaction = (): void => {
+    window.api.abortCompaction()
   }
 
   const handleSendMessage = async (
@@ -1309,6 +1321,8 @@ export const useChatCompletion = ({
     handleResumeAgentRun,
     showHelpMessage,
     handleCompactCurrentSession,
+    compaction,
+    cancelCompaction,
     handleAbortGeneration
   }
 }
