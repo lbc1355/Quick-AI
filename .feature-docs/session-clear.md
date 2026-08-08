@@ -33,11 +33,11 @@
 
 1. D-Git-Quick-Ai.src.renderer.src.hooks.useChatCompletion.commitStagedRevert [✓] — 新提示词提交暂存：丢弃 undo 快照并触发缓存清理
 2. D-Git-Quick-Ai.src.renderer.src.features.chat.sessionSnapshot.planStagedRevertCommit [✓] — 规划暂存提交：计算可删除的孤儿资源
-3. D-Git-Quick-Ai.src.renderer.src.features.chat.sessionRevertService.commitSessionClearDraft [✗] — 丢弃 clearedDraft 并暴露其资源（新符号，静态图待刷新）
+3. D-Git-Quick-Ai.src.renderer.src.features.chat.sessionRevertService.commitSessionClearDraft [✓] — 丢弃 clearedDraft 并暴露其资源供缓存清理
 
 
 ### Flow: undo-clear
 
 撤销清除：从暂存快照还原会话
 
-1. D-Git-Quick-Ai.src.renderer.src.hooks.useSessions.handleUndoClear [✗] — 撤销清除：从 clearedDraft 还原消息/标题/资源（新符号，静态图待刷新）
+1. D-Git-Quick-Ai.src.renderer.src.hooks.useSessions.handleUndoClear [✓] — 撤销清除：从 clearedDraft 还原消息/标题/资源

@@ -1,6 +1,6 @@
 # Feature: mcp-integration
 
-> 状态: `过时`
+> 状态: `待审`
 
 MCP 集成：stdio 服务器连接、工具列表同步与注册，失败清理与超时保护。
 

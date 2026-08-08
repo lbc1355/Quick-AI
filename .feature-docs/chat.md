@@ -1,6 +1,6 @@
 # Feature: chat
 
-> 状态: `过时`
+> 状态: `待审`
 
 聊天对话：消息发送、流式生成、协调运行调度与会话忙互斥。
 
@@ -17,6 +17,13 @@
 
 
 ## 执行链路
+
+
+### Flow: copy-message
+
+复制消息文本到剪贴板（user 消息复制按钮）
+
+1. D-Git-Quick-Ai.src.renderer.src.features.chat.useAgentMessageViewModel.handleCopy [✓] — 复制消息文本(finalReplyText)到剪贴板；经 MessageBubble→MessageActions(canCopy+onCopy) 触发，user 与 assistant 消息共用
 
 
 ### Flow: send-message

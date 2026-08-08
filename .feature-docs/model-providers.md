@@ -1,6 +1,6 @@
 # Feature: model-providers
 
-> 状态: `过时`
+> 状态: `待审`
 
 模型服务商配置：provider 初始化、模型列表发现与结果缓存降级。
 
