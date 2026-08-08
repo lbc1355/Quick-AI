@@ -18,11 +18,13 @@ const mcpMockState = vi.hoisted(
     listToolsResults: Array<Record<string, unknown>>
     toolListChangedHandler?: () => Promise<void> | void
     lastCallToolOptions?: Record<string, unknown>
+    instructions?: string
   } => ({
     callToolResult: {
       content: [{ type: 'text', text: 'mocked tool response' }]
     },
-    listToolsResults: []
+    listToolsResults: [],
+    instructions: undefined
   })
 )
 
@@ -62,6 +64,9 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
       setNotificationHandler(_schema: unknown, handler: () => Promise<void> | void): void {
         mcpMockState.toolListChangedHandler = handler
       }
+      getInstructions(): any {
+        return mcpMockState.instructions
+      }
       async callTool(
         _params?: unknown,
         _schema?: unknown,
@@ -93,6 +98,7 @@ describe('McpManager', () => {
     mcpMockState.listToolsResults = []
     mcpMockState.toolListChangedHandler = undefined
     mcpMockState.lastCallToolOptions = undefined
+    mcpMockState.instructions = undefined
     mkdirSync(getQuickAiRoot(), { recursive: true })
     // Delete config file if it exists to ensure a clean state
     if (existsSync(configPath)) {
@@ -211,6 +217,38 @@ describe('McpManager', () => {
     expect(registry.has(refreshedName)).toBe(true)
     expect(McpManager.getStatuses()[0].tools).toEqual([
       { name: 'fresh.tool', description: 'Refreshed tool' }
+    ])
+  })
+
+  it('registers tools in stable sorted order so prompt bytes do not change across refreshes', async () => {
+    mcpMockState.listToolsResults = [
+      {
+        tools: [
+          { name: 'zeta_tool', description: 'z tool', inputSchema: { type: 'object', properties: {} } },
+          { name: 'alpha_tool', description: 'a tool', inputSchema: { type: 'object', properties: {} } },
+          { name: 'mid_tool', description: 'm tool', inputSchema: { type: 'object', properties: {} } }
+        ]
+      }
+    ]
+    writeFileSync(
+      configPath,
+      JSON.stringify({ servers: { git: { command: 'node' } } }, null, 2),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    // Statuses expose tools sorted by name.
+    const status = McpManager.getStatuses().find((s) => s.name === 'git')
+    expect(status?.tools.map((t) => t.name)).toEqual(['alpha_tool', 'mid_tool', 'zeta_tool'])
+
+    // Registry insertion order follows the same sort.
+    const registry = getToolRegistry()
+    expect(registry.toolNames().filter((n) => n.startsWith('mcp_git_'))).toEqual([
+      'mcp_git_alpha_tool',
+      'mcp_git_mid_tool',
+      'mcp_git_zeta_tool'
     ])
   })
 
@@ -461,7 +499,7 @@ describe('McpManager', () => {
     closeSpy.mockRestore()
   })
 
-  it('handles callTool timeout, sets status to failed, closes client, and unregisters tools', async () => {
+  it('reports a tool timeout as a failed call without tearing down the server', async () => {
     const mockConfig = {
       timeouts: {
         execute_timeout: 50
@@ -496,17 +534,47 @@ describe('McpManager', () => {
         { reqId: 'test-req', signal: new AbortController().signal }
       )
     ).rejects.toThrow('timed out')
-    expect(closeSpy).toHaveBeenCalled()
 
+    // A single slow call must not kill the connection, its tools, or the cache prefix.
+    expect(closeSpy).not.toHaveBeenCalled()
     statuses = McpManager.getStatuses()
     gitStatus = statuses.find((s) => s.name === 'git')
-    expect(gitStatus?.status).toBe('failed')
-    expect(gitStatus?.error).toContain('timed out')
-
-    expect(registry.has('mcp_git_test_tool')).toBe(false)
+    expect(gitStatus?.status).toBe('connected')
+    expect(registry.has('mcp_git_test_tool')).toBe(true)
 
     callToolSpy.mockRestore()
     closeSpy.mockRestore()
+  })
+
+  it('lets a server override the global execute timeout', async () => {
+    const mockConfig = {
+      timeouts: {
+        execute_timeout: 50
+      },
+      servers: {
+        git: {
+          command: 'node',
+          args: ['git-server.js'],
+          timeouts: {
+            execute_timeout: 100
+          }
+        }
+      }
+    }
+    writeFileSync(configPath, JSON.stringify(mockConfig, null, 2), 'utf-8')
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const registry = getToolRegistry()
+    const toolDef = registry.get('mcp_git_test_tool')
+    await toolDef?.execute(
+      { inputVal: 'test' },
+      { reqId: 'test-req', signal: new AbortController().signal }
+    )
+
+    // Server-level timeout wins over the global 50ms.
+    expect(mcpMockState.lastCallToolOptions?.timeout).toBe(100)
   })
 
   it('precisely cleans up only the tools belonging to the target server to avoid prefix collision (e.g. git vs git_extra)', async () => {
@@ -537,5 +605,52 @@ describe('McpManager', () => {
     // Assert "git" tools are unregistered, but "git_extra" tools are still registered
     expect(registry.has('mcp_git_test_tool')).toBe(false)
     expect(registry.has('mcp_git_extra_test_tool')).toBe(true)
+  })
+
+  it('captures server instructions for system-prompt injection', async () => {
+    mcpMockState.instructions =
+      'This server exposes git helpers. Call mcp_git_* tools for git operations.'
+    writeFileSync(
+      configPath,
+      JSON.stringify({ servers: { git: { command: 'node' } } }, null, 2),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    expect(McpManager.getServerInstructions()).toEqual([
+      {
+        name: 'git',
+        instructions: 'This server exposes git helpers. Call mcp_git_* tools for git operations.'
+      }
+    ])
+  })
+
+  it('marks a server failed and unregisters its tools when the connection closes unexpectedly', async () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({ servers: { git: { command: 'node' } } }, null, 2),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const registry = getToolRegistry()
+    expect(registry.has('mcp_git_test_tool')).toBe(true)
+
+    const client = (McpManager as any).clients.get('git')
+    expect(client).toBeDefined()
+    expect(typeof client.onclose).toBe('function')
+
+    client.onclose()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    const status = McpManager.getStatuses().find((s) => s.name === 'git')
+    expect(status?.status).toBe('failed')
+    expect(status?.error).toContain('closed')
+    expect(registry.has('mcp_git_test_tool')).toBe(false)
+    expect(McpManager.getServerInstructions()).toEqual([])
   })
 })

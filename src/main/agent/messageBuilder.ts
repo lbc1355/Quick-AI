@@ -7,11 +7,13 @@ import {
 import { searchToolDefinitions } from '../toolRegistry'
 import { buildMemoryInjection } from './memoryContext'
 import { loadSkillsFromFolders } from '../skillManager'
+import { McpManager } from '../mcpManager'
 import { buildDateContext } from '../../shared/promptDate'
 import { buildModelPromptProfile } from './modelPromptProfile'
 
 export const TOOL_DIRECTORY_BUDGET = 2000 // max chars injected into system prompt
 export const SKILL_DIRECTORY_BUDGET = 6000 // max chars injected into system prompt
+export const MCP_INSTRUCTIONS_BUDGET = 4000 // max chars injected into system prompt
 
 export { buildDateLine } from '../../shared/promptDate'
 
@@ -23,7 +25,11 @@ export function buildToolDirectorySummary(
   scope: Set<string> | 'all',
   permissionPolicy?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): string {
-  const summaries = searchToolDefinitions('', scope, permissionPolicy)
+  // Sort by name so the injected directory is byte-stable for a given tool set regardless of
+  // registry insertion order (keeps the prompt-cache prefix stable across MCP refreshes).
+  const summaries = searchToolDefinitions('', scope, permissionPolicy).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  )
   if (summaries.length === 0) return ''
 
   const lines = ['Available tools:']
@@ -60,6 +66,36 @@ function buildWorkspaceContextPrompt(projectRoot?: string, projectName?: string)
         'If the task needs files from another local directory, call workspace_add_root once with that directory, then use absolute paths under that added root.'
       ]
   return workspaceMode.join('\n')
+}
+
+/**
+ * Usage notes published by connected MCP servers (the `instructions` capability of the
+ * 2025-06-18 MCP spec). Injected alongside the tool directory so the model knows how to
+ * use each server's tools. Budget-capped.
+ */
+export function buildMcpInstructionsSummary(): string {
+  const servers = McpManager.getServerInstructions()
+  if (servers.length === 0) return ''
+
+  const lines = [
+    '## MCP server instructions',
+    "MCP tools are namespaced as mcp_<server>_<tool>. Follow each server's usage notes below when calling its tools.",
+    ''
+  ]
+  let chars = lines.join('\n').length + 1
+
+  for (const server of servers) {
+    const header = `### ${server.name}`
+    const body = server.instructions.replace(/\s+/g, ' ').trim()
+    if (chars + header.length + body.length + 2 > MCP_INSTRUCTIONS_BUDGET) {
+      lines.push('(remaining MCP server instructions omitted from this prompt budget)')
+      break
+    }
+    lines.push(header, body, '')
+    chars += header.length + body.length + 2
+  }
+
+  return lines.join('\n').trim()
 }
 
 export function buildAvailableSkillsSummary(): string {
@@ -221,6 +257,7 @@ export function prepareChatAgentMessages(
 ): ChatCompletionMessage[] {
   void resources
   const toolDirs = buildToolDirectorySummary('all', permissions)
+  const mcpSummary = buildMcpInstructionsSummary()
   const skillsSummary = buildAvailableSkillsSummary()
   const memorySegment = buildMemoryInjection()
   const modelProfile = buildModelPromptProfile(modelRuntime)
@@ -232,7 +269,7 @@ ${modelProfile ? `\n${modelProfile}` : ''}
 
 ${buildWorkspaceContextPrompt(projectRoot, projectName)}
 
-${toolDirs ? `${toolDirs}\n\n` : ''}${skillsSummary ? `${skillsSummary}\n\n` : ''}Operation history & cache — your second memory track:
+${toolDirs ? `${toolDirs}\n\n` : ''}${mcpSummary ? `${mcpSummary}\n\n` : ''}${skillsSummary ? `${skillsSummary}\n\n` : ''}Operation history & cache — your second memory track:
 This conversation is backed by two parallel tracks:
 1. The dialogue: alternating user and assistant turns.
 2. A persistent operation layer that survives across turns but is NOT replayed in the dialogue. Consult list_past_actions and get_past_action to see completed actions, and use list_cached_resources, read_cached_resource, or search_cached_resource for cached files, fetched content, and large terminal output.

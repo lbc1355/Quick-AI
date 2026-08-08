@@ -1,10 +1,12 @@
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { execFile } from 'child_process'
 import { shell } from 'electron'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import {
   CallToolResultSchema,
+  LoggingMessageNotificationSchema,
   ToolListChangedNotificationSchema
 } from '@modelcontextprotocol/sdk/types.js'
 import { getQuickAiRoot } from './paths'
@@ -13,6 +15,13 @@ import { ToolDefinition } from './tools/types'
 import { createMcpToolResult } from './tools/mcpResult'
 import { logger } from './logger'
 import { getMcpErrorMessage, listAllMcpTools, McpToolInfo, toMcpModelToolName } from './mcpCatalog'
+import { safeJsonStringify } from './tools/jsonSafe'
+
+export interface McpServerTimeouts {
+  connect_timeout?: number
+  execute_timeout?: number
+  read_timeout?: number
+}
 
 export interface McpServerConfig {
   command: string
@@ -20,17 +29,24 @@ export interface McpServerConfig {
   env?: Record<string, string>
   disabled?: boolean
   enabled?: boolean // support both for flexibility
+  /** Per-server override of the global `timeouts` block. */
+  timeouts?: McpServerTimeouts
 }
 
 export interface McpConfig {
-  timeouts?: {
-    connect_timeout?: number
-    execute_timeout?: number
-    read_timeout?: number
-  }
+  timeouts?: McpServerTimeouts
   servers?: Record<string, McpServerConfig>
   mcpServers?: Record<string, McpServerConfig>
 }
+
+/** Merge the global timeouts block with a server's own overrides (server wins). */
+const resolveServerTimeouts = (
+  globalTimeouts: McpConfig['timeouts'],
+  srvConfig: McpServerConfig
+): NonNullable<McpConfig['timeouts']> => ({
+  ...(globalTimeouts || {}),
+  ...(srvConfig.timeouts || {})
+})
 
 import { McpServerStatus } from '../shared/types'
 
@@ -86,6 +102,51 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMsg: string
   })
 }
 
+/**
+ * Kill a stdio server's process tree so no orphaned children survive a reload/shutdown.
+ * Windows: `taskkill /T /F` kills the whole tree in one call.
+ * POSIX: recursively collect descendants via `pgrep -P`, then SIGTERM them (same strategy as opencode).
+ */
+function killProcessTree(pid: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (process.platform === 'win32') {
+      execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve())
+      return
+    }
+
+    const collectDescendants = (rootPid: number): Promise<number[]> =>
+      new Promise((collectResolve) => {
+        execFile('pgrep', ['-P', String(rootPid)], { windowsHide: true }, (err, stdout) => {
+          if (err) return collectResolve([])
+          const children = stdout
+            .split('\n')
+            .map((line) => parseInt(line.trim(), 10))
+            .filter((value) => Number.isFinite(value))
+          Promise.all(children.map(collectDescendants)).then((nested) =>
+            collectResolve([...children, ...nested.flat()])
+          )
+        })
+      })
+
+    collectDescendants(pid).then((descendants) => {
+      for (const descendant of descendants) {
+        try {
+          process.kill(descendant, 'SIGTERM')
+        } catch {
+          // Already dead — ignore.
+        }
+      }
+      resolve()
+    })
+  })
+}
+
+const getTransportPid = (client: Client): number | undefined => {
+  if (!(client.transport instanceof StdioClientTransport)) return undefined
+  const pid = client.transport.pid
+  return pid === null || pid === undefined ? undefined : pid
+}
+
 class McpManagerImpl {
   private configPath: string = ''
   private clients = new Map<string, Client>()
@@ -94,6 +155,7 @@ class McpManagerImpl {
   private registeredToolNames = new Set<string>()
   private registeredToolNamesByServer = new Map<string, Set<string>>()
   private toolRefreshes = new Map<string, Promise<void>>()
+  private instructionsByServer = new Map<string, string>()
 
   private async cleanupServer(name: string): Promise<void> {
     const serverTools = this.registeredToolNamesByServer.get(name)
@@ -110,8 +172,14 @@ class McpManagerImpl {
     this.clients.delete(name)
     this.transports.delete(name)
     this.toolRefreshes.delete(name)
+    this.instructionsByServer.delete(name)
 
     if (client) {
+      const pid = getTransportPid(client)
+      if (pid !== undefined) {
+        // Kill the server's whole process tree first so no orphaned children linger.
+        await killProcessTree(pid)
+      }
       try {
         await client.close()
       } catch (err) {
@@ -281,9 +349,6 @@ class McpManagerImpl {
       return
     }
 
-    const timeouts = config.timeouts || {}
-
-    // Merge both "servers" and "mcpServers"
     const serversMap: Record<string, McpServerConfig> = {
       ...(config.mcpServers || {}),
       ...(config.servers || {})
@@ -309,7 +374,7 @@ class McpManagerImpl {
       })
 
       try {
-        await this.connectServer(name, srvConfig, timeouts)
+        await this.connectServer(name, srvConfig, resolveServerTimeouts(config.timeouts, srvConfig))
       } catch (err) {
         const errorMsg = (err as Error).message || String(err)
         this.statuses.set(name, {
@@ -371,7 +436,7 @@ class McpManagerImpl {
     })
 
     try {
-      await this.connectServer(name, srvConfig, config.timeouts || {})
+      await this.connectServer(name, srvConfig, resolveServerTimeouts(config.timeouts, srvConfig))
     } catch (err) {
       const errorMsg = (err as Error).message || String(err)
       const status: McpServerStatus = {
@@ -445,15 +510,11 @@ class McpManagerImpl {
             'MCP',
             'Error executing tool ' + tool.name + ' on server ' + serverName + ': ' + error.message
           )
-          if (/timed out|timeout/i.test(error.message)) {
-            this.statuses.set(serverName, {
-              name: serverName,
-              status: 'failed',
-              error: error.message,
-              tools: []
-            })
-            await this.cleanupServer(serverName)
-          }
+          // A tool timeout is a single failed call, not evidence the whole server is dead.
+          // Tearing the connection down here would kill every other tool on the server and
+          // churn the tool registry (breaking the prompt-cache prefix) for one slow call.
+          // A genuinely wedged server can be reloaded manually; give slow-but-alive servers
+          // a longer per-server execute_timeout instead.
           throw error
         }
       }
@@ -466,7 +527,10 @@ class McpManagerImpl {
     tools: McpToolInfo[],
     timeouts: NonNullable<McpConfig['timeouts']>
   ): void {
-    const definitions = tools.map((tool) =>
+    // Sort by tool name so an identical tool set always produces the same registry order and
+    // therefore the same system-prompt bytes (stable prompt-cache prefix across refreshes).
+    const sortedTools = [...tools].sort((a, b) => a.name.localeCompare(b.name))
+    const definitions = sortedTools.map((tool) =>
       this.createToolDefinition(serverName, tool, client, timeouts)
     )
     const nextNames = new Set<string>()
@@ -492,7 +556,7 @@ class McpManagerImpl {
     this.statuses.set(serverName, {
       name: serverName,
       status: 'connected',
-      tools: tools.map((tool) => ({ name: tool.name, description: tool.description }))
+      tools: sortedTools.map((tool) => ({ name: tool.name, description: tool.description }))
     })
   }
 
@@ -579,6 +643,67 @@ class McpManagerImpl {
 
     try {
       this.replaceServerTools(name, client, tools, timeouts)
+
+      // Capture the server's usage instructions (2025-06-18 MCP spec) for system-prompt injection.
+      const getInstructions = (
+        client as unknown as { getInstructions?: () => string | undefined }
+      ).getInstructions
+      const instructions =
+        typeof getInstructions === 'function' ? getInstructions.call(client) : undefined
+      if (instructions && instructions.trim()) {
+        this.instructionsByServer.set(name, instructions.trim())
+      } else {
+        this.instructionsByServer.delete(name)
+      }
+
+      // Detect an unexpected connection loss (server crash, killed process, EOF) instead of
+      // silently keeping a stale "connected" status. The renderer picks the new state up via
+      // its status poll; a manual reload can then restart the server.
+      client.onclose = () => {
+        if (this.clients.get(name) !== client) return
+        logger.warn('MCP', `Connection to server "${name}" closed unexpectedly`)
+        this.instructionsByServer.delete(name)
+        this.statuses.set(name, {
+          name,
+          status: 'failed',
+          error: 'Connection closed unexpectedly',
+          tools: []
+        })
+        this.cleanupServer(name).catch((err) => {
+          logger.warn(
+            'MCP',
+            `Error cleaning up server "${name}" after close: ${(err as Error).message}`
+          )
+        })
+      }
+
+      // Surface MCP server logs (LoggingMessageNotification) through the app logger.
+      client.setNotificationHandler(LoggingMessageNotificationSchema, (notification) => {
+        const params = notification.params as { level: string; logger?: string; data: unknown }
+        const data = typeof params.data === 'string' ? params.data : safeJsonStringify(params.data)
+        const message = `[${params.logger || name}] ${data}`
+        switch (params.level) {
+          case 'debug':
+            logger.debug('MCP', message)
+            break
+          case 'info':
+          case 'notice':
+            logger.info('MCP', message)
+            break
+          case 'warning':
+            logger.warn('MCP', message)
+            break
+          case 'error':
+          case 'critical':
+          case 'alert':
+          case 'emergency':
+            logger.error('MCP', message)
+            break
+          default:
+            logger.info('MCP', message)
+        }
+      })
+
       client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
         try {
           await this.queueServerToolRefresh(name, client, timeouts)
@@ -616,6 +741,11 @@ class McpManagerImpl {
     this.transports.clear()
     this.toolRefreshes.clear()
     for (const [name, client] of clients) {
+      const pid = getTransportPid(client)
+      if (pid !== undefined) {
+        // Kill the server's whole process tree first so no orphaned children linger.
+        await killProcessTree(pid)
+      }
       try {
         await client.close()
       } catch (err) {
@@ -623,10 +753,24 @@ class McpManagerImpl {
       }
     }
     this.statuses.clear()
+    this.instructionsByServer.clear()
   }
 
   getStatuses(): McpServerStatus[] {
     return Array.from(this.statuses.values())
+  }
+
+  /**
+   * Usage instructions published by connected MCP servers (2025-06-18 MCP spec).
+   * Consumed by the system-prompt builder so the model knows how to use each server's tools.
+   */
+  getServerInstructions(): { name: string; instructions: string }[] {
+    const result: { name: string; instructions: string }[] = []
+    for (const [name, instructions] of this.instructionsByServer) {
+      if (this.statuses.get(name)?.status !== 'connected') continue
+      result.push({ name, instructions })
+    }
+    return result.sort((a, b) => a.name.localeCompare(b.name))
   }
 
   openConfigFolder(): void {

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ChatToolDeclaration } from '../../shared/types'
 import { ToolDefinition } from '../tools/types'
 import { ToolRegistryView } from '../tools/registryView'
-import { createToolDeclarationCache } from './toolDeclarationCache'
+import { createToolDeclarationCache, hashToolDeclarations } from './toolDeclarationCache'
 
 const tool = (name: string, implemented = true): ToolDefinition => ({
   name,
@@ -182,5 +182,58 @@ describe('createToolDeclarationCache', () => {
     expect(first[0].function.description).toBe('file_read description')
     expect(second[0].function.description).toBe('replacement description')
     expect(second).not.toBe(first)
+  })
+
+  it('sorts declarations by name regardless of registry insertion order', () => {
+    const cache = createToolDeclarationCache({
+      toolRegistry: registryOf({
+        shell: tool('shell'),
+        file_read: tool('file_read'),
+        edit: tool('edit')
+      }),
+      toDeclaration: declarationFor
+    })
+
+    const declarations = cache.getDeclarations({
+      toolDiscovery: 'dynamic',
+      activeTools: new Set(['shell', 'file_read', 'edit']),
+      skillTools: []
+    })
+
+    expect(declarations.map((declaration) => declaration.function.name)).toEqual([
+      'edit',
+      'file_read',
+      'shell'
+    ])
+  })
+
+  it('keeps declaration bytes stable across registry orderings (prompt-cache prefix)', () => {
+    const cache = createToolDeclarationCache({
+      toolRegistry: registryOf({ a: tool('a'), b: tool('b'), c: tool('c') }),
+      toDeclaration: declarationFor
+    })
+    const baseInput = {
+      toolDiscovery: 'dynamic' as const,
+      activeTools: new Set(['a', 'b', 'c']),
+      skillTools: []
+    }
+
+    // Same tool set, different insertion order + a registry revision bump forces a rebuild.
+    const first = cache.getDeclarations({
+      ...baseInput,
+      toolRegistry: registryOf({ a: tool('a'), b: tool('b'), c: tool('c') }),
+      registryRevision: 1
+    })
+    const second = cache.getDeclarations({
+      ...baseInput,
+      toolRegistry: registryOf({ c: tool('c'), a: tool('a'), b: tool('b') }),
+      registryRevision: 2
+    })
+
+    expect(second).not.toBe(first)
+    expect(second.map((declaration) => declaration.function.name)).toEqual(['a', 'b', 'c'])
+    // The wire serialization that reaches the provider must not depend on registry order.
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first))
+    expect(hashToolDeclarations(second)).toBe(hashToolDeclarations(first))
   })
 })

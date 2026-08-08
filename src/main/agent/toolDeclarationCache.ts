@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { ChatToolDeclaration } from '../../shared/types'
 import { toChatToolDeclaration } from '../toolRegistry'
 import { ToolDefinition } from '../tools/types'
@@ -22,6 +23,15 @@ export interface CreateToolDeclarationCacheOptions {
 
 export interface ToolDeclarationCache {
   getDeclarations(input: ToolDeclarationCacheInput): ChatToolDeclaration[]
+}
+
+/**
+ * sha256 of the wire serialization of a declaration set. Byte-stable for a given
+ * tool set regardless of the order the registry handed them to us; used by tests
+ * and cache-shape diagnostics to catch nondeterministic tool schema serialization.
+ */
+export function hashToolDeclarations(declarations: ChatToolDeclaration[]): string {
+  return createHash('sha256').update(JSON.stringify(declarations)).digest('hex').slice(0, 16)
 }
 
 const buildSignature = (input: ToolDeclarationCacheInput): string => {
@@ -66,6 +76,13 @@ export function createToolDeclarationCache(
           declarations.push(toDeclaration(tool))
         }
       }
+
+      // Canonical alphabetical order keeps the provider prompt-cache prefix byte-stable across
+      // turns. Registry insertion order can shift (MCP server connect/disconnect, registry
+      // re-materialization) without the declared tool *set* changing; an unstable tools block
+      // invalidates every cached prefix that follows it. Tools are matched by name, so ordering
+      // is semantically neutral to the model.
+      declarations.sort((a, b) => a.function.name.localeCompare(b.function.name))
 
       cachedDeclarations = declarations
       cachedSignature = signature
