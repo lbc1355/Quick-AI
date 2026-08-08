@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Session } from '../../../../shared/types'
+import type { Session, SessionPromptAdmission } from '../../../../shared/types'
 import {
   appendQueuedPromptToSession,
   applyBackgroundShellNotification,
@@ -238,6 +238,79 @@ describe('session prompt queue UI mutations', () => {
     ])
   })
 
+  it('drops a stale queued result once the conversation moved on after it was queued', () => {
+    // Reload scenario: a background shell result was queued while [100, 101] existed (admission at
+    // t=150), the conversation advanced to [200, 201] before the result was drained, then the app
+    // restarted. Message ids are timestamps, so a message newer than admission.createdAt means the
+    // conversation moved on — materializing must NOT resurface the result as the latest turn.
+    const advanced: Session = {
+      id: 'session-1',
+      title: 'Session',
+      messages: [
+        { id: '100', role: 'user', content: 'A' },
+        { id: '101', role: 'assistant', content: 'B' },
+        { id: '200', role: 'user', content: 'E' },
+        { id: '201', role: 'assistant', content: 'F' }
+      ]
+    }
+    const admission: SessionPromptAdmission = {
+      id: 'admission-bg',
+      sessionId: 'session-1',
+      contextEpoch: 0,
+      mode: 'steer',
+      status: 'pending',
+      runMode: 'agent',
+      sourceMessageId: 'background-result-source-job-1',
+      assistantMessageId: 'background-result-assistant-job-1',
+      messages: [{ role: 'user', content: '### 后台 Shell 结果（自动消息）' }],
+      createdAt: 150,
+      updatedAt: 150
+    }
+
+    const materialized = materializeBackgroundPrompt(advanced, admission)
+
+    // Dropped: the transcript is untouched and the stale result never resurfaces.
+    expect(materialized).toBe(advanced)
+    expect(materialized.messages.map((m) => m.id)).toEqual(['100', '101', '200', '201'])
+  })
+
+  it('still materializes a queued result when the conversation has not moved on', () => {
+    // Admission at t=150, but the newest real message (101) predates it — the result is still the
+    // pending frontier and must be surfaced for the drain to process.
+    const frontier: Session = {
+      id: 'session-1',
+      title: 'Session',
+      messages: [
+        { id: '100', role: 'user', content: 'A' },
+        { id: '101', role: 'assistant', content: 'B' }
+      ]
+    }
+    const admission: SessionPromptAdmission = {
+      id: 'admission-bg-2',
+      sessionId: 'session-1',
+      contextEpoch: 0,
+      mode: 'steer',
+      status: 'pending',
+      runMode: 'agent',
+      sourceMessageId: 'background-result-source-job-2',
+      assistantMessageId: 'background-result-assistant-job-2',
+      messages: [{ role: 'user', content: '### 后台 Shell 结果（自动消息）' }],
+      createdAt: 150,
+      updatedAt: 150
+    }
+
+    const materialized = materializeBackgroundPrompt(frontier, admission)
+
+    expect(materialized.messages.map((m) => m.id)).toEqual([
+      '100',
+      '101',
+      'background-result-source-job-2',
+      'background-result-assistant-job-2'
+    ])
+    // The transient processing placeholder is hidden too — only the agent's real reply shows later.
+    expect(materialized.messages[3]).toMatchObject({ isInternal: true, isSynthetic: true })
+  })
+
   it('records completion on the original subagent card and persists a steered result', () => {
     const source: Session = {
       ...baseSession(),
@@ -309,7 +382,7 @@ describe('session prompt queue UI mutations', () => {
     )
   })
 
-  it('inserts a steered shell result as an internal source before the active response', () => {
+  it('appends a steered shell result as an internal source after the current transcript', () => {
     const next = applyBackgroundShellNotification(
       baseSession(),
       {
@@ -348,15 +421,17 @@ describe('session prompt queue UI mutations', () => {
           updatedAt: 1
         }
       },
-      'assistant-active'
+      'assistant-active' // anchor is ignored: the source always appends after the current transcript
     )
 
+    // The source is appended, not spliced before the in-flight assistant, matching the order the
+    // agent actually consumes the steered result (next step boundary, after the current reply).
     expect(next.messages.map((message) => message.id)).toEqual([
       'user-active',
-      'background-result-source-shell-1',
-      'assistant-active'
+      'assistant-active',
+      'background-result-source-shell-1'
     ])
-    expect(next.messages[1]).toMatchObject({ isInternal: true, content: 'shell result' })
+    expect(next.messages[2]).toMatchObject({ isInternal: true, content: 'shell result' })
     expect(next.resources).toContainEqual(
       expect.objectContaining({
         id: '11111111111111111111111111111111',

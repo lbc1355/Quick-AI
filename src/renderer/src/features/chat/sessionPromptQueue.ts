@@ -70,6 +70,15 @@ export function materializeBackgroundPrompt(
   if (!admission.assistantMessageId) return session
   if (session.messages.some((message) => message.id === admission.sourceMessageId)) return session
 
+  // Drop a stale queued result instead of surfacing it as the latest turn. Renderer message ids
+  // are millisecond timestamps, so a message created after the admission means the conversation
+  // moved on since the background result was queued — re-appending it would reorder history.
+  const movedOn = session.messages.some((message) => {
+    const created = Number(message.id)
+    return Number.isFinite(created) && created > admission.createdAt
+  })
+  if (movedOn) return session
+
   return appendQueuedPromptToSession(
     session,
     {
@@ -83,7 +92,9 @@ export function materializeBackgroundPrompt(
       id: admission.assistantMessageId,
       role: 'assistant',
       content: '⏳ 正在处理后台任务结果',
-      reasoning_content: ''
+      reasoning_content: '',
+      isSynthetic: true,
+      isInternal: true
     }
   )
 }
@@ -144,7 +155,9 @@ export function applyBackgroundSubagentNotification(
 export function applyBackgroundShellNotification(
   session: Session,
   notification: BackgroundShellResultNotification,
-  activeAssistantMessageId?: string
+  // Retained for signature parity with the sibling background-result handlers; the source is
+  // always appended now (see below), so the active assistant anchor is no longer consulted.
+  _activeAssistantMessageId?: string
 ): Session {
   let updated = session
   const completedResource = notification.resource
@@ -171,13 +184,10 @@ export function applyBackgroundShellNotification(
     isSynthetic: true,
     isInternal: true
   }
-  const assistantIndex = activeAssistantMessageId
-    ? updated.messages.findIndex((message) => message.id === activeAssistantMessageId)
-    : -1
-  const messages = [...updated.messages]
-  if (assistantIndex >= 0) messages.splice(assistantIndex, 0, source)
-  else messages.push(source)
-  return { ...updated, messages, lastActiveTime: Date.now() }
+  // Append, never insert. The agent consumes a steered background result at the NEXT step boundary
+  // — after the in-flight assistant message — so splicing it before that assistant would put it
+  // where the model never actually saw it and desync the transcript from the run's real order.
+  return { ...updated, messages: [...updated.messages, source], lastActiveTime: Date.now() }
 }
 
 export interface PreparedClaimedPromptRun {
@@ -343,6 +353,8 @@ export function prepareClaimedPromptRun(
       agentRunIds: _agentRunIds,
       agentEvents: _agentEvents,
       queuedPrompt: _queuedPrompt,
+      isInternal: _isInternal,
+      isSynthetic: _isSynthetic,
       ...base
     } = message
     return {
