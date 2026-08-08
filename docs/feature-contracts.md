@@ -1,6 +1,6 @@
 # QuickAI 功能业务契约(Feature Business Contracts)
 
-> 与 `.feature-doc-graph/graph.db` 中的功能文档图对应(13 Feature / 27 Flow / 58 Symbol)。
+> 与 `.feature-doc-graph/graph.db` 中的功能文档图对应(14 Feature / 29 Flow / 63 Symbol)。
 > 本文档记录静态图无法推导的业务语义:触发事件、终态、边界与硬性约束。
 > 状态约定:`draft` → `proposed` → `reviewed`,由人工审阅后更新。
 
@@ -179,9 +179,26 @@
 
 ---
 
+## 14. context-compaction(上下文压缩)
+
+- **触发事件**:用户执行 `/compact` 指令或点击压缩按钮。
+- **终态**:
+  - 成功:模型摘要拼接进历史,contextEpoch +1,toast 反馈已总结条数;
+  - 取消:AbortError 干净回滚且无错误提示;
+  - 失败:错误 toast + 状态还原。
+- **负责范围**:压缩触发与可压缩性校验、模型摘要生成(`compactContextWithModel`)、结果拼接(`applyCompactionResult`)、压缩 dock 状态与计时、取消压缩(`cancelCompaction`/`abortCompaction`)。
+- **不负责**:运行中的 stale 工具结果修剪(→ agent-run)、自动上下文裁剪(→ agent-run contextManager)。
+- **硬性约束**:
+  - 压缩期间会话忙(阻止并发发送);
+  - 取消经 AbortController 中止主进程模型调用;
+  - 摘要插入到压缩边界之后,历史中间。
+
+---
+
 ## 变更记录
 
 | 日期 | 变更 | 状态 |
 | --- | --- | --- |
 | 2026-08-06 | 首次编写 10 个功能的业务契约 | draft |
 | 2026-08-08 | 契约与图同步为 13 个功能;新增 reasoning、file-snapshot、session-clear | draft |
+| 2026-08-08 | 契约与图同步为 14 个功能;新增 context-compaction | draft |

@@ -48,7 +48,7 @@ ReAct 主循环：准备、模型回合、工具回合、强制收尾的逐 step
 ## 跨功能引用(注意:此链路上符号也属于)
 
 - `D-Git-Quick-Ai.src.main.agent.agentLoop.runAgentLoop` → file-snapshot, reasoning, session-management
-- `D-Git-Quick-Ai.src.main.agent.callModel.callModel` → chat
+- `D-Git-Quick-Ai.src.main.agent.callModel.callModel` → chat, context-compaction
 - `D-Git-Quick-Ai.src.main.agent.toolBatchRunner.runPreparedToolBatch` → file-operations
 - `D-Git-Quick-Ai.src.main.agent.toolStepProcessor.processPreparedToolStep` → file-operations
 - `D-Git-Quick-Ai.src.main.agent.toolTurnRunner.runToolTurn` → file-operations

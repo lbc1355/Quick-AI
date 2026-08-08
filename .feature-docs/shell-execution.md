@@ -27,6 +27,15 @@ Shell 执行：命令危险评级与阻断、前台命令执行、后台任务�
 2. D-Git-Quick-Ai.src.main.agent.backgroundJobManager.startBackgroundJob [✓] — 后台任务管理器登记/持久化任务
 
 
+### Flow: deliver-background-result
+
+后台任务结果投递：主进程路由后经 IPC 注入渲染端会话
+
+1. D-Git-Quick-Ai.src.main.agent.backgroundShellDelivery.deliverBackgroundShellResult [✓] — 后台 shell 完成投递入口：组装结果提示词
+2. D-Git-Quick-Ai.src.main.agent.backgroundResultDelivery.routeBackgroundResult [✓] — 路由：epoch 检查 + admit 持久化 + steer/queue
+3. D-Git-Quick-Ai.src.renderer.src.features.chat.sessionPromptQueue.applyBackgroundShellNotification [✓] — 渲染端应用：steered 结果追加到 transcript 末尾（IPC 边界；排队结果重启后经 materializeBackgroundPrompt 物化并丢弃 stale）
+
+
 ### Flow: run-command
 
 前台命令执行：危险评级通过后执行 shell 命令
