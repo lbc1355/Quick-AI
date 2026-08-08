@@ -18,7 +18,9 @@ import { normalizeRuntimeError } from '../../shared/runtimeErrors'
 import type {
   AdmitSessionPromptInput,
   AdmitSessionPromptResult,
-  SessionPromptAdmission
+  SessionPromptAdmission,
+  SessionRunPhase,
+  SessionRunStateNotification
 } from '../../shared/types'
 import { globalSessionCoordinator, SessionRunKind } from '../sessionCoordinator'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
@@ -43,7 +45,7 @@ interface CoordinatedRunInput {
   contextEpoch: number
   acceptsSteering?: boolean
   promptAdmissionId?: string
-  execute: () => Promise<void>
+  execute: (control: { markFinalizing: () => void }) => Promise<void>
   abort: () => void
 }
 
@@ -63,6 +65,19 @@ const getContextEpoch = (options: unknown): number =>
   )
 
 const startCoordinatedRun = (win: BrowserWindow, input: CoordinatedRunInput): void => {
+  let phase: SessionRunPhase | undefined
+  const publishPhase = (nextPhase: SessionRunPhase): void => {
+    if (phase === nextPhase || win.isDestroyed()) return
+    phase = nextPhase
+    const state: SessionRunStateNotification = {
+      sessionId: input.sessionId,
+      requestId: input.reqId,
+      contextEpoch: input.contextEpoch,
+      phase: nextPhase
+    }
+    win.webContents.send('session-run-state', state)
+  }
+
   void globalSessionCoordinator
     .start({
       reqId: input.reqId,
@@ -70,11 +85,16 @@ const startCoordinatedRun = (win: BrowserWindow, input: CoordinatedRunInput): vo
       kind: input.kind,
       contextEpoch: input.contextEpoch,
       acceptsSteering: input.acceptsSteering,
+      onStarted: () => publishPhase('generating'),
       onUnconsumedSteering: (prompts) => {
         requeueSessionPrompts(prompts.map((prompt) => prompt.admissionId))
       },
       execute: async (signal) => {
-        const run = input.execute()
+        const run = input.execute({
+          markFinalizing: () => {
+            if (globalSessionCoordinator.markFinalizing(input.reqId)) publishPhase('finalizing')
+          }
+        })
         const abort = (): void => input.abort()
         signal.addEventListener('abort', abort, { once: true })
         if (signal.aborted) abort()
@@ -101,6 +121,9 @@ const startCoordinatedRun = (win: BrowserWindow, input: CoordinatedRunInput): vo
         errorPayload: normalizeRuntimeError(err, 'agent')
       })
     })
+    // Idle is also published for a rejected start. The renderer may already have registered the
+    // optimistic request, and this terminal acknowledgement prevents that local entry leaking.
+    .finally(() => publishPhase('idle'))
 }
 
 const createSteeringControls = (reqId: string): AgentSteeringControls => ({
@@ -221,11 +244,16 @@ export function registerGenerationIpc(store: FileStore): void {
           kind: 'agent',
           acceptsSteering: true,
           promptAdmissionId: options.promptAdmissionId,
-          execute: () =>
+          execute: ({ markFinalizing }) =>
             runGeneralAgent(
               win,
               normalizedReqId,
-              { ...options, systemPrompt, ...steeringControls },
+              {
+                ...options,
+                systemPrompt,
+                ...steeringControls,
+                onResponseSettled: markFinalizing
+              },
               permissions
             ),
           abort: () => abortAgentSkill(normalizedReqId)
@@ -237,7 +265,11 @@ export function registerGenerationIpc(store: FileStore): void {
           contextEpoch,
           kind: 'chat',
           promptAdmissionId: options.promptAdmissionId,
-          execute: () => handleChatCompletion(win, normalizedReqId, options),
+          execute: ({ markFinalizing }) =>
+            handleChatCompletion(win, normalizedReqId, {
+              ...options,
+              onResponseSettled: markFinalizing
+            }),
           abort: () => abortChatCompletion(normalizedReqId)
         })
       }
@@ -258,8 +290,13 @@ export function registerGenerationIpc(store: FileStore): void {
         kind: 'skill',
         acceptsSteering: true,
         promptAdmissionId: options.promptAdmissionId,
-        execute: () =>
-          runAgentSkill(win, normalizedReqId, { ...options, ...steeringControls }, permissions),
+        execute: ({ markFinalizing }) =>
+          runAgentSkill(
+            win,
+            normalizedReqId,
+            { ...options, ...steeringControls, onResponseSettled: markFinalizing },
+            permissions
+          ),
         abort: () => abortAgentSkill(normalizedReqId)
       })
     }

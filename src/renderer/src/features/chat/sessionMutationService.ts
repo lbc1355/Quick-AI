@@ -32,6 +32,7 @@ export function resolveSessionForSend(
 
   const newSession: Session = {
     ...baseSession,
+    messages: baseSession.messages.map((message) => ({ ...message })),
     lastActiveTime: now
   }
   const nextSessions = [newSession, ...currentSessions]

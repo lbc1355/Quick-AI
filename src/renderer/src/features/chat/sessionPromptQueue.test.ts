@@ -7,8 +7,10 @@ import {
   applyBackgroundSubagentNotification,
   applySteeredAdmission,
   applySteeredPromptToSession,
+  markQueuedPromptInSessions,
   materializeBackgroundPrompt,
-  prepareClaimedPromptRun
+  prepareClaimedPromptRun,
+  removeQueuedPromptFromSessions
 } from './sessionPromptQueue'
 
 const baseSession = (): Session => ({
@@ -43,6 +45,36 @@ describe('session prompt queue UI mutations', () => {
     ])
   })
 
+  it('marks both visible messages only after durable queue admission', () => {
+    const appended = appendQueuedPromptToSession(
+      baseSession(),
+      { id: 'user-queued', role: 'user', content: 'next prompt' },
+      { id: 'assistant-queued', role: 'assistant', content: 'Queued' }
+    )
+    expect(appended.messages.find((message) => message.id === 'user-queued')?.queuedPrompt).toBe(
+      undefined
+    )
+
+    const [marked] = markQueuedPromptInSessions([appended], {
+      admissionId: 'admission-queued',
+      sessionId: 'session-1',
+      sourceMessageId: 'user-queued',
+      assistantMessageId: 'assistant-queued'
+    })
+    expect(marked.messages.find((message) => message.id === 'user-queued')?.queuedPrompt).toEqual({
+      admissionId: 'admission-queued',
+      sessionId: 'session-1',
+      assistantMessageId: 'assistant-queued'
+    })
+    expect(
+      marked.messages.find((message) => message.id === 'assistant-queued')?.queuedPrompt
+    ).toEqual({
+      admissionId: 'admission-queued',
+      sessionId: 'session-1',
+      assistantMessageId: 'assistant-queued'
+    })
+  })
+
   it('moves an accepted steer before the active assistant and removes its queue placeholder', () => {
     const queued = appendQueuedPromptToSession(
       baseSession(),
@@ -63,13 +95,86 @@ describe('session prompt queue UI mutations', () => {
     ])
   })
 
+  it('removes only the cancelled pending prompt pair', () => {
+    const source = appendQueuedPromptToSession(
+      baseSession(),
+      {
+        id: 'user-queued',
+        role: 'user',
+        content: 'cancel me',
+        queuedPrompt: {
+          admissionId: 'admission-queued',
+          sessionId: 'session-1',
+          assistantMessageId: 'assistant-queued'
+        }
+      },
+      { id: 'assistant-queued', role: 'assistant', content: 'Queued' }
+    )
+
+    const [cancelled] = removeQueuedPromptFromSessions([source], {
+      admissionId: 'admission-queued',
+      sessionId: 'session-1',
+      sourceMessageId: 'user-queued',
+      assistantMessageId: 'assistant-queued'
+    })
+
+    expect(cancelled.messages.map((message) => message.id)).toEqual([
+      'user-active',
+      'assistant-active'
+    ])
+    expect(source.messages.map((message) => message.id)).toContain('user-queued')
+  })
+
+  it('keeps the transcript when cancellation identity is stale', () => {
+    const source = appendQueuedPromptToSession(
+      baseSession(),
+      {
+        id: 'user-queued',
+        role: 'user',
+        content: 'already claimed',
+        queuedPrompt: {
+          admissionId: 'admission-current',
+          sessionId: 'session-1',
+          assistantMessageId: 'assistant-queued'
+        }
+      },
+      { id: 'assistant-queued', role: 'assistant', content: 'Queued' }
+    )
+
+    const [unchanged] = removeQueuedPromptFromSessions([source], {
+      admissionId: 'admission-stale',
+      sessionId: 'session-1',
+      sourceMessageId: 'user-queued',
+      assistantMessageId: 'assistant-queued'
+    })
+    expect(unchanged).toBe(source)
+  })
+
   it('prepares only the claimed prompt prefix and resets its assistant placeholder', () => {
     const withTwoQueued: Session = {
       ...baseSession(),
       messages: [
         ...baseSession().messages,
-        { id: 'user-1', role: 'user', content: 'first queued' },
-        { id: 'assistant-1', role: 'assistant', content: 'Queued' },
+        {
+          id: 'user-1',
+          role: 'user',
+          content: 'first queued',
+          queuedPrompt: {
+            admissionId: 'admission-1',
+            sessionId: 'session-1',
+            assistantMessageId: 'assistant-1'
+          }
+        },
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'Queued',
+          queuedPrompt: {
+            admissionId: 'admission-1',
+            sessionId: 'session-1',
+            assistantMessageId: 'assistant-1'
+          }
+        },
         { id: 'user-2', role: 'user', content: 'second queued' },
         { id: 'assistant-2', role: 'assistant', content: 'Queued' }
       ]
@@ -99,6 +204,12 @@ describe('session prompt queue UI mutations', () => {
     expect(
       prepared?.session.messages.find((message) => message.id === 'assistant-2')?.content
     ).toBe('Queued')
+    expect(
+      prepared?.session.messages.find((message) => message.id === 'user-1')?.queuedPrompt
+    ).toBeUndefined()
+    expect(
+      prepared?.session.messages.find((message) => message.id === 'assistant-1')?.queuedPrompt
+    ).toBeUndefined()
   })
 
   it('materializes a durable background result that has no renderer message pair yet', () => {
@@ -371,7 +482,16 @@ describe('applySteeredAdmission', () => {
       messages: [
         { id: 'user-active', role: 'user', content: 'active prompt' },
         { id: 'assistant-active', role: 'assistant', content: 'partial' },
-        { id: 'user-queued', role: 'user', content: 'steer' },
+        {
+          id: 'user-queued',
+          role: 'user',
+          content: 'steer',
+          queuedPrompt: {
+            admissionId: 'admission-steer',
+            sessionId: 'session-1',
+            assistantMessageId: 'assistant-queued'
+          }
+        },
         { id: 'assistant-queued', role: 'assistant', content: '⏳ 已加入队列' }
       ]
     },
@@ -391,6 +511,7 @@ describe('applySteeredAdmission', () => {
       'user-queued',
       'assistant-active'
     ])
+    expect(next[0].messages.find((m) => m.id === 'user-queued')?.queuedPrompt).toBeUndefined()
   })
 
   it('only drops the placeholder when there is no active answer to anchor to', () => {
@@ -405,6 +526,7 @@ describe('applySteeredAdmission', () => {
       'assistant-active',
       'user-queued'
     ])
+    expect(next[0].messages.find((m) => m.id === 'user-queued')?.queuedPrompt).toBeUndefined()
   })
 
   it('leaves other sessions untouched', () => {

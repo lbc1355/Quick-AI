@@ -14,6 +14,7 @@ import { estimateDraftContextTokens } from '../utils/contextLength'
 import { buildContextUsageBreakdown, formatUsagePercent } from '../utils/contextDiagnostics'
 import type { ContextDiagnosticsSnapshot, ContextUsageBreakdown } from '../utils/contextDiagnostics'
 import type { PendingPermission, PermissionResponsePayload } from '../features/chat/permissionTypes'
+import { resolveDraftSubmissionAction } from '../features/chat/draftSubmissionPolicy'
 import { AutocompleteMenu } from './chat-input/AutocompleteMenu'
 import { ChatComposer } from './chat-input/ChatComposer'
 import type { AttachedFile, AutocompleteGroup } from './chat-input/types'
@@ -350,9 +351,12 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
 
   const submitDraft = useCallback(
     (admissionMode?: SessionPromptAdmissionMode) => {
-      const promise = isCurrentSessionGenerating
-        ? handleAdmitPrompt(draftValueRef.current, admissionMode || ('steer' as const))
-        : handleSendMessage(draftValueRef.current)
+      const action = resolveDraftSubmissionAction(isCurrentSessionGenerating, admissionMode)
+      if (action.type === 'ignore') return
+      const promise =
+        action.type === 'admit'
+          ? handleAdmitPrompt(draftValueRef.current, action.mode)
+          : handleSendMessage(draftValueRef.current)
       promise
         .then((sent) => {
           if (!sent) return

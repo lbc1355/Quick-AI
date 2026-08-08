@@ -186,7 +186,12 @@ describe('sessionMutationService pure functions', () => {
     expect(session.id).toBe('s1')
     expect(updatedSessions).toBe(sessions)
 
-    const draft: Session = { id: 'draft-1', title: 'New', messages: [], lastActiveTime: 0 }
+    const draft: Session = {
+      id: 'draft-1',
+      title: 'New',
+      messages: [{ id: 'draft-message', role: 'user', content: 'draft' }],
+      lastActiveTime: 0
+    }
     const {
       session: s2,
       updatedSessions: u2,
@@ -194,6 +199,8 @@ describe('sessionMutationService pure functions', () => {
     } = resolveSessionForSend(sessions, 'draft-1', draft)
     expect(s2.id).toBe('draft-1')
     expect(u2[0].id).toBe('draft-1')
+    expect(s2.messages).not.toBe(draft.messages)
+    expect(s2.messages[0]).not.toBe(draft.messages[0])
     expect(draftSessionCleared).toBe(true)
   })
 

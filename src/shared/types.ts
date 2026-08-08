@@ -268,6 +268,12 @@ export interface Message {
   isSynthetic?: boolean
   /** Model context that is persisted but intentionally omitted from the chat interface. */
   isInternal?: boolean
+  /** Durable inbox identity while this visible message pair is queued but has not started. */
+  queuedPrompt?: {
+    admissionId: string
+    sessionId: string
+    assistantMessageId: string
+  }
 }
 
 export interface ChatCompletionMessage {
@@ -334,6 +340,19 @@ export interface SessionRevertState {
   revertedAt: number
 }
 
+/**
+ * Snapshot taken by /clear so the cleared conversation can be undone. Staged until the next
+ * prompt commits the clear (see planStagedRevertCommit), which is when the deferred
+ * resource-cache cleanup actually fires.
+ */
+export interface SessionClearDraft {
+  messages: Message[]
+  resources?: SessionResource[]
+  title: string
+  titleManuallyEdited?: boolean
+  clearedAt: number
+}
+
 export interface Session {
   id: string
   title: string
@@ -348,6 +367,8 @@ export interface Session {
   branchOf?: { sessionId: string; messageId: string; runId?: string }
   /** Staged session rollback. Messages remain recoverable until a new prompt commits it. */
   revert?: SessionRevertState
+  /** Undo snapshot for /clear. Discarded (and the deferred cache cleanup fired) on the next prompt. */
+  clearedDraft?: SessionClearDraft
   /** Per-session thinking intensity override. Absent means resolve from model defaults / auto. */
   reasoningPreference?: ReasoningPreference
 }
@@ -840,6 +861,16 @@ export interface ChatChunkData {
   cacheStats?: PromptCacheStats
 }
 
+export type SessionRunPhase = 'generating' | 'finalizing' | 'idle'
+
+/** Authoritative main-process lifecycle for one foreground session run. */
+export interface SessionRunStateNotification {
+  sessionId: string
+  requestId: string
+  contextEpoch: number
+  phase: SessionRunPhase
+}
+
 export interface ClearSessionCachesPayload {
   /** Conversation ids whose action-log files should be deleted (whole file). */
   sessionIds: string[]
@@ -1219,6 +1250,7 @@ export interface PreloadApi {
   }>
   showNotification: (title: string, body: string) => void
   onChatChunk: (callback: (data: ChatChunkData) => void) => () => void
+  onSessionRunState: (callback: (state: SessionRunStateNotification) => void) => () => void
   onBackgroundSubagentResult: (
     callback: (notification: BackgroundSubagentResultNotification) => void
   ) => () => void

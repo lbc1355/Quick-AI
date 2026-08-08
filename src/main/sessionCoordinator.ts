@@ -1,4 +1,4 @@
-import { ChatCompletionMessage } from '../shared/types'
+import { ChatCompletionMessage, SessionRunPhase } from '../shared/types'
 import { normalizeContextEpoch } from '../shared/contextEpoch'
 
 export type SessionRunKind = 'chat' | 'agent' | 'skill'
@@ -18,6 +18,7 @@ export interface SessionRunSnapshot {
   cancelling: boolean
   acceptsSteering: boolean
   pendingSteeringCount: number
+  phase: Exclude<SessionRunPhase, 'idle'>
 }
 
 export interface StartSessionRunOptions {
@@ -27,6 +28,7 @@ export interface StartSessionRunOptions {
   contextEpoch?: number
   acceptsSteering?: boolean
   onUnconsumedSteering?: (prompts: SessionSteeringPrompt[]) => void
+  onStarted?: (run: SessionRunSnapshot) => void
   execute: (signal: AbortSignal) => Promise<void>
 }
 
@@ -103,6 +105,7 @@ export class SessionCoordinator {
       cancelling: false,
       acceptsSteering: options.acceptsSteering === true,
       pendingSteeringCount: 0,
+      phase: 'generating',
       steering: [],
       controller: new AbortController()
     }
@@ -110,6 +113,7 @@ export class SessionCoordinator {
     this.sessionByRequest.set(reqId, sessionId)
 
     try {
+      options.onStarted?.(this.snapshot(active)!)
       await options.execute(active.controller.signal)
     } finally {
       if (this.bySession.get(sessionId) === active) {
@@ -157,6 +161,14 @@ export class SessionCoordinator {
     if (!active || active.cancelling) return false
     active.acceptsSteering = acceptsSteering
     return true
+  }
+
+  markFinalizing(reqId: string): SessionRunSnapshot | undefined {
+    const active = this.getActiveRunByRequest(reqId)
+    if (!active) return undefined
+    active.phase = 'finalizing'
+    active.acceptsSteering = false
+    return this.snapshot(active)
   }
 
   drainSteering(reqId: string, close = false): SessionSteeringPrompt[] {
@@ -230,7 +242,8 @@ export class SessionCoordinator {
       startedAt: active.startedAt,
       cancelling: active.cancelling,
       acceptsSteering: active.acceptsSteering,
-      pendingSteeringCount: active.steering.length
+      pendingSteeringCount: active.steering.length,
+      phase: active.phase
     }
   }
 }

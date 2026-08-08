@@ -21,6 +21,7 @@ import {
   AdmitSessionPromptInput,
   AdmitSessionPromptResult,
   SessionPromptAdmission,
+  SessionRunStateNotification,
   AgentFileRevertPreview,
   RevertAgentFileChangesInput,
   RevertAgentFileChangesResult,
@@ -133,6 +134,14 @@ const api = {
     ipcRenderer.on('chat-chunk', listener)
     return (): void => {
       ipcRenderer.removeListener('chat-chunk', listener)
+    }
+  },
+  onSessionRunState: (callback: (state: SessionRunStateNotification) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, state: SessionRunStateNotification): void =>
+      callback(state)
+    ipcRenderer.on('session-run-state', listener)
+    return (): void => {
+      ipcRenderer.removeListener('session-run-state', listener)
     }
   },
   onBackgroundSubagentResult: (

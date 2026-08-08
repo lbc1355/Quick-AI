@@ -230,6 +230,7 @@ function App(): React.JSX.Element {
     activeSession,
     handleNewSession,
     handleClearCurrentSession,
+    handleUndoClear,
     handleDeleteSession,
     handleRenameSession,
     handleMoveSession,
@@ -397,6 +398,7 @@ function App(): React.JSX.Element {
     generatingSessionIds,
     activeRequestId,
     activeRequestIds,
+    cancellingQueuedPromptIds,
     editingMessageId,
     setEditingMessageId,
     editingText,
@@ -405,6 +407,7 @@ function App(): React.JSX.Element {
     setRunMode,
     handleSendMessage,
     handleAdmitPrompt,
+    handleCancelQueuedPrompt,
     handleStartEdit,
     handleSaveEdit,
     handleRegenerate,
@@ -1311,6 +1314,13 @@ function App(): React.JSX.Element {
                               !isCurrentSessionGenerating
                             }
                             onRevertSession={handleOpenSessionRevert}
+                            onCancelQueuedPrompt={(message) => {
+                              void handleCancelQueuedPrompt(message)
+                            }}
+                            isCancellingQueuedPrompt={
+                              !!msg.queuedPrompt &&
+                              cancellingQueuedPromptIds.has(msg.queuedPrompt.admissionId)
+                            }
                             onOpenBranch={(sessionId) => openSession(sessionId)}
                             onOpenSubagent={handleOpenSubagentRoute}
                             onChangeEditingText={setEditingText}
@@ -1395,6 +1405,24 @@ function App(): React.JSX.Element {
                   disabled={isCurrentSessionGenerating}
                 >
                   恢复
+                </button>
+              </div>
+            )}
+
+            {activeSession?.clearedDraft && !activeSubagentRoutePanel && (
+              <div className="session-clear-dock" role="status">
+                <div className="session-revert-dock-copy">
+                  <History size={14} />
+                  <span>
+                    已清空 {activeSession.clearedDraft.messages.length} 条消息，可撤销。
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleUndoClear()}
+                  disabled={isCurrentSessionGenerating}
+                >
+                  撤销
                 </button>
               </div>
             )}

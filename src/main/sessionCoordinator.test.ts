@@ -45,6 +45,33 @@ describe('SessionCoordinator', () => {
     expect(coordinator.getActiveSession('session-1')).toBeUndefined()
   })
 
+  it('owns the generating and finalizing phases until executor cleanup settles', async () => {
+    const coordinator = new SessionCoordinator()
+    const onStarted = vi.fn()
+    let finish: (() => void) | undefined
+    const run = coordinator.start({
+      sessionId: 'session-phases',
+      reqId: 'req-phases',
+      kind: 'agent',
+      onStarted,
+      execute: () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    })
+
+    expect(onStarted).toHaveBeenCalledWith(expect.objectContaining({ phase: 'generating' }))
+    expect(coordinator.markFinalizing('req-phases')).toMatchObject({
+      phase: 'finalizing',
+      acceptsSteering: false
+    })
+    expect(coordinator.getActiveSession('session-phases')?.phase).toBe('finalizing')
+
+    finish?.()
+    await run
+    expect(coordinator.getActiveSession('session-phases')).toBeUndefined()
+  })
+
   it('routes idempotent request cancellation through the coordinator signal', async () => {
     const coordinator = new SessionCoordinator()
     const run = coordinator.start({

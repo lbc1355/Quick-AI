@@ -253,6 +253,8 @@ interface MessageBubbleProps {
   onRevertAgentFiles?: (msg: Message) => void
   canRevertSession?: boolean
   onRevertSession?: (msg: Message) => void
+  onCancelQueuedPrompt?: (msg: Message) => void
+  isCancellingQueuedPrompt?: boolean
   onOpenBranch: (sessionId: string) => void
   onOpenSubagent?: (messageId: string, subagentId: string) => void
   onChangeEditingText: (text: string) => void
@@ -274,6 +276,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
     onRevertAgentFiles,
     canRevertSession = false,
     onRevertSession,
+    onCancelQueuedPrompt,
+    isCancellingQueuedPrompt = false,
     onOpenBranch,
     onOpenSubagent,
     onChangeEditingText
@@ -809,9 +813,12 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                   {msg.role === 'user' ? (
                     <MessageActions
                       align="flex-end"
-                      canEdit={!isGenerating && !msg.isSynthetic}
+                      canCopy={!!finalReplyText}
+                      canEdit={!isGenerating && !msg.isSynthetic && !msg.queuedPrompt}
                       canRegenerate={false}
                       canResume={false}
+                      canCancelQueued={!!msg.queuedPrompt && !!onCancelQueuedPrompt}
+                      cancellingQueued={isCancellingQueuedPrompt}
                       copied={copied}
                       onCopy={handleCopy}
                       onEdit={() => onStartEdit(msg)}
@@ -820,13 +827,14 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                       canRevertFiles={false}
                       canRevertSession={canRevertSession}
                       onRevertSession={() => onRevertSession?.(msg)}
+                      onCancelQueued={() => onCancelQueuedPrompt?.(msg)}
                     />
                   ) : (
                     <MessageActions
                       align="flex-start"
                       canEdit={false}
                       canResume={!!msg.agentRunId && agentStatus === 'failed' && !isGenerating}
-                      canRegenerate={!isGenerating}
+                      canRegenerate={!isGenerating && !msg.queuedPrompt}
                       canCopy={!isGenerating && !!finalReplyText}
                       copied={copied}
                       onCopy={handleCopy}
@@ -877,6 +885,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       return false
     if (prevProps.canRevertSession !== nextProps.canRevertSession) return false
     if (Boolean(prevProps.onRevertSession) !== Boolean(nextProps.onRevertSession)) return false
+    if (Boolean(prevProps.onCancelQueuedPrompt) !== Boolean(nextProps.onCancelQueuedPrompt))
+      return false
+    if (prevProps.isCancellingQueuedPrompt !== nextProps.isCancellingQueuedPrompt) return false
     for (let i = 0; i < prevBranches.length; i += 1) {
       if (
         prevBranches[i].sessionId !== nextBranches[i].sessionId ||

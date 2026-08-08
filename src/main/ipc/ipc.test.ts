@@ -309,9 +309,11 @@ describe('IPC Registration Modules', () => {
     mockListeners['start-chat-completion']({ sender: {} } as IpcMainEvent, 'req-1', {
       runMode: 'chat'
     })
-    expect(handleChatCompletion).toHaveBeenCalledWith(expect.any(Object), 'req-1', {
-      runMode: 'chat'
-    })
+    expect(handleChatCompletion).toHaveBeenCalledWith(
+      expect.any(Object),
+      'req-1',
+      expect.objectContaining({ runMode: 'chat', onResponseSettled: expect.any(Function) })
+    )
 
     // Test start-chat-completion in agent mode
     mockListeners['start-chat-completion']({ sender: {} } as IpcMainEvent, 'req-2', {
@@ -437,6 +439,14 @@ describe('IPC Registration Modules', () => {
         })
       )
     })
+    await vi.waitFor(() => {
+      expect(mockWebContentsSend).toHaveBeenCalledWith('session-run-state', {
+        sessionId: 'session-1',
+        requestId: 'req-busy',
+        contextEpoch: 0,
+        phase: 'idle'
+      })
+    })
     expect(handleChatCompletion).toHaveBeenCalledTimes(1)
 
     mockListeners['abort-generation']({} as IpcMainEvent, 'req-active')
@@ -445,5 +455,39 @@ describe('IPC Registration Modules', () => {
     await vi.waitFor(() => {
       expect(globalSessionCoordinator.getActiveSession('session-1')).toBeUndefined()
     })
+  })
+
+  it('publishes finalizing before releasing the authoritative session run as idle', async () => {
+    const mockStore = {
+      get: vi.fn().mockReturnValue({ permissions: {}, systemPrompt: 'sys-prompt' })
+    } as unknown as FileStore
+    let finishFinalization: (() => void) | undefined
+    vi.mocked(handleChatCompletion).mockImplementation(async (_window, _requestId, options) => {
+      options.onResponseSettled?.()
+      await new Promise<void>((resolve) => {
+        finishFinalization = resolve
+      })
+    })
+    registerGenerationIpc(mockStore)
+
+    mockListeners['start-chat-completion']({ sender: {} } as IpcMainEvent, 'req-phases', {
+      runMode: 'chat',
+      sessionId: 'session-phases',
+      contextEpoch: 3
+    })
+
+    const phases = (): string[] =>
+      mockWebContentsSend.mock.calls
+        .filter(
+          ([channel, state]) => channel === 'session-run-state' && state.requestId === 'req-phases'
+        )
+        .map(([, state]) => state.phase)
+
+    await vi.waitFor(() => expect(phases()).toEqual(['generating', 'finalizing']))
+    expect(globalSessionCoordinator.getActiveSession('session-phases')).toBeDefined()
+
+    finishFinalization?.()
+    await vi.waitFor(() => expect(phases()).toEqual(['generating', 'finalizing', 'idle']))
+    expect(globalSessionCoordinator.getActiveSession('session-phases')).toBeUndefined()
   })
 })

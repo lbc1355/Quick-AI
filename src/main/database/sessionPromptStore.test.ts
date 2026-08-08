@@ -108,6 +108,14 @@ describeWithSqlite('sessionPromptStore', () => {
     expect(getSessionPrompt('prompt-b')?.status).toBe('cancelled')
   })
 
+  it('does not cancel a prompt after the queue has atomically claimed it', () => {
+    admitSessionPrompt(makeInput('prompt-running'))
+    expect(claimNextSessionPrompt('session-1')?.status).toBe('running')
+
+    expect(cancelSessionPrompt('prompt-running')).toBe(false)
+    expect(getSessionPrompt('prompt-running')?.status).toBe('running')
+  })
+
   it('recovers running prompts after process restart', () => {
     admitSessionPrompt(makeInput('prompt-a'))
     claimNextSessionPrompt('session-1')

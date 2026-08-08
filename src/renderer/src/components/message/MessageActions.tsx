@@ -1,5 +1,5 @@
 import React from 'react'
-import { Check, Copy, Edit, History, Play, RefreshCw, Undo2 } from 'lucide-react'
+import { Check, Copy, Edit, History, Play, RefreshCw, Undo2, X } from 'lucide-react'
 
 interface MessageActionsProps {
   align?: 'flex-start' | 'flex-end'
@@ -8,6 +8,8 @@ interface MessageActionsProps {
   canResume: boolean
   canRevertFiles?: boolean
   canRevertSession?: boolean
+  canCancelQueued?: boolean
+  cancellingQueued?: boolean
   filesReverted?: boolean
   canCopy?: boolean
   copied: boolean
@@ -17,6 +19,7 @@ interface MessageActionsProps {
   onResume: () => void
   onRevertFiles?: () => void
   onRevertSession?: () => void
+  onCancelQueued?: () => void
 }
 
 export const MessageActions: React.FC<MessageActionsProps> = ({
@@ -26,6 +29,8 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   canResume,
   canRevertFiles = false,
   canRevertSession = false,
+  canCancelQueued = false,
+  cancellingQueued = false,
   filesReverted = false,
   canCopy = false,
   copied,
@@ -34,13 +39,33 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onRegenerate,
   onResume,
   onRevertFiles,
-  onRevertSession
+  onRevertSession,
+  onCancelQueued
 }) => {
-  if (!canEdit && !canRegenerate && !canResume && !canCopy && !canRevertFiles && !canRevertSession)
+  if (
+    !canEdit &&
+    !canRegenerate &&
+    !canResume &&
+    !canCopy &&
+    !canRevertFiles &&
+    !canRevertSession &&
+    !canCancelQueued
+  )
     return null
 
   return (
     <div className="message-actions" style={{ justifyContent: align }}>
+      {canCancelQueued && (
+        <button
+          className="msg-action-btn"
+          onClick={onCancelQueued}
+          disabled={cancellingQueued}
+          title="取消这条尚未开始执行的排队消息"
+        >
+          <X size={10} />
+          <span>{cancellingQueued ? '取消中…' : '取消排队'}</span>
+        </button>
+      )}
       {canEdit && (
         <button className="msg-action-btn" onClick={onEdit}>
           <Edit size={10} />

@@ -198,6 +198,67 @@ export function appendQueuedPromptToSession(
   }
 }
 
+/** Attach the durable admission identity only after the main process confirms it is pending. */
+export function markQueuedPromptInSessions(
+  sessions: Session[],
+  input: {
+    admissionId: string
+    sessionId: string
+    sourceMessageId: string
+    assistantMessageId: string
+  }
+): Session[] {
+  const queuedPrompt = {
+    admissionId: input.admissionId,
+    sessionId: input.sessionId,
+    assistantMessageId: input.assistantMessageId
+  }
+  return sessions.map((session) => {
+    if (session.id !== input.sessionId) return session
+    const hasSource = session.messages.some((message) => message.id === input.sourceMessageId)
+    const hasAssistant = session.messages.some((message) => message.id === input.assistantMessageId)
+    if (!hasSource || !hasAssistant) return session
+    return {
+      ...session,
+      messages: session.messages.map((message) =>
+        message.id === input.sourceMessageId || message.id === input.assistantMessageId
+          ? { ...message, queuedPrompt }
+          : message
+      )
+    }
+  })
+}
+
+export const withoutQueuedPrompt = (message: Message): Message => {
+  if (!message.queuedPrompt) return message
+  const { queuedPrompt: _queuedPrompt, ...rest } = message
+  return rest
+}
+
+/** Remove a cancelled pending admission and its assistant placeholder from the transcript. */
+export function removeQueuedPromptFromSessions(
+  sessions: Session[],
+  input: {
+    admissionId: string
+    sessionId: string
+    sourceMessageId: string
+    assistantMessageId: string
+  }
+): Session[] {
+  return sessions.map((session) => {
+    if (session.id !== input.sessionId) return session
+    const source = session.messages.find((message) => message.id === input.sourceMessageId)
+    if (source?.queuedPrompt?.admissionId !== input.admissionId) return session
+    return {
+      ...session,
+      messages: session.messages.filter(
+        (message) => message.id !== input.sourceMessageId && message.id !== input.assistantMessageId
+      ),
+      lastActiveTime: Date.now()
+    }
+  })
+}
+
 /** Move an accepted steer immediately before the assistant stream it is steering. */
 export function applySteeredPromptToSession(
   session: Session,
@@ -217,7 +278,7 @@ export function applySteeredPromptToSession(
   if (activeAssistantIndex < 0) return session
 
   const messages = [...remaining]
-  messages.splice(activeAssistantIndex, 0, sourceMessage)
+  messages.splice(activeAssistantIndex, 0, withoutQueuedPrompt(sourceMessage))
   return { ...session, messages, lastActiveTime: Date.now() }
 }
 
@@ -243,9 +304,11 @@ export function applySteeredAdmission(
     if (!input.activeAssistantMessageId) {
       return {
         ...session,
-        messages: session.messages.filter(
-          (message) => message.id !== input.queuedAssistantMessageId
-        )
+        messages: session.messages
+          .filter((message) => message.id !== input.queuedAssistantMessageId)
+          .map((message) =>
+            message.id === input.sourceMessageId ? withoutQueuedPrompt(message) : message
+          )
       }
     }
     return applySteeredPromptToSession(
@@ -269,6 +332,7 @@ export function prepareClaimedPromptRun(
   if (sourceIndex < 0 || assistantIndex <= sourceIndex) return undefined
 
   const messages = session.messages.map((message) => {
+    if (message.id === sourceMessageId) return withoutQueuedPrompt(message)
     if (message.id !== assistantMessageId) return message
     const {
       isRuntimeError: _isRuntimeError,
@@ -278,6 +342,7 @@ export function prepareClaimedPromptRun(
       agentRunId: _agentRunId,
       agentRunIds: _agentRunIds,
       agentEvents: _agentEvents,
+      queuedPrompt: _queuedPrompt,
       ...base
     } = message
     return {

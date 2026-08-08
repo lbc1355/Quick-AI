@@ -171,14 +171,6 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             >
               <ListPlus size={14} />
             </button>
-            <button
-              className="input-action-btn send"
-              onClick={() => onSubmitDraft('steer')}
-              disabled={!canSend}
-              title="在下一安全边界调整当前 Agent；不支持时自动排队"
-            >
-              <Send size={14} />
-            </button>
           </>
         ) : (
           <button
