@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import {
   AgentRunContext,
   clearSessionApprovals,
+  clearSessionSeenFiles,
   getSessionAdditionalRoots
 } from './AgentRunContext'
 import { globalPermissionManager } from './permissionManager'
@@ -190,5 +191,14 @@ describe('AgentRunContext session-scoped seen-file inheritance', () => {
     a.markFileSeen('C:/project/src/solo.ts')
     const b = makeRun()
     expect(b.hasSeenFile('C:/project/src/solo.ts')).toBe(false)
+  })
+
+  it('clearSessionSeenFiles drops a session seen set so new runs re-demand a read', () => {
+    clearSessionApprovals('sess-seen-clear')
+    makeSessionRun('req-seen-a', 'sess-seen-clear').markFileSeen('C:/project/src/seen.ts')
+    clearSessionSeenFiles('sess-seen-clear')
+
+    const after = makeSessionRun('req-seen-b', 'sess-seen-clear')
+    expect(after.hasSeenFile('C:/project/src/seen.ts')).toBe(false)
   })
 })

@@ -70,6 +70,29 @@ describe('applyCompactionResult', () => {
     expect(result).toHaveLength(7)
   })
 
+  it('preserves messages appended after the compacted boundary (background results landing mid-compaction)', () => {
+    // 7 messages at compaction start (compact 1, keep 6); a background result appends m6..m8 while
+    // the model summarizes. Merging into the latest list must keep every message after the
+    // compacted boundary, not just the original kept tail.
+    const result = applyCompactionResult({
+      messages: messages(9),
+      result: { summary: 's', compactedCount: 1, keptCount: 6 },
+      now: 1000
+    })
+    expect(result.map((m) => m.id)).toEqual([
+      'm0',
+      'compact-1000',
+      'm1',
+      'm2',
+      'm3',
+      'm4',
+      'm5',
+      'm6',
+      'm7',
+      'm8'
+    ])
+  })
+
   it('marks the summary so context cropping can find the boundary', () => {
     const summary = createCompactionSummaryMessage(
       { summary: 's', compactedCount: 1, keptCount: 1, tokenSpeed: 7 },

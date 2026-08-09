@@ -488,8 +488,9 @@ export const useChatCompletion = ({
       return true
     }
 
-    const reverted = commitStagedRevert(currentSessions, found)
-    const currentSession = reverted.session
+    const revertPlan = planStagedRevertCommit(currentSessions, found)
+    const currentSession = revertPlan.session
+    const revertCacheCleanup = revertPlan.cacheCleanup
 
     beginSessionGeneration(currentSession.id, null, null)
     setInputVal('')
@@ -513,9 +514,15 @@ export const useChatCompletion = ({
       // Apply the summary to the LATEST session, not the stale clone: a background result may have
       // landed while the model was summarizing. Preserve anything appended after the compaction
       // boundary instead of overwriting it with the pre-compaction snapshot.
-      const latest =
-        sessionsRef.current.find((session) => session.id === currentSession.id) ?? currentSession
-      if (getSessionContextEpoch(latest) !== getSessionContextEpoch(currentSession)) return false
+      const latest = sessionsRef.current.find((session) => session.id === currentSession.id)
+      if (!latest || getSessionContextEpoch(latest) !== getSessionContextEpoch(currentSession)) {
+        return false
+      }
+      // Only now is the staged rollback's cache cleanup safe to fire — on failure/cancel the
+      // revert stays fully intact (UI + caches), so restore can still succeed.
+      if (revertCacheCleanup) {
+        void window.api.clearSessionCaches(revertCacheCleanup).catch(console.warn)
+      }
       const mergedSession = {
         ...latest,
         messages: applyCompactionResult({ messages: latest.messages, result, now: Date.now() }),
