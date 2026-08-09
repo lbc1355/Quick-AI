@@ -42,9 +42,7 @@ export const ProjectDeleteModal: React.FC<ProjectDeleteModalProps> = ({
         <div className="tool-detail-header">
           <div className="tool-detail-title-group">
             {isFolder ? <Library size={15} /> : <Folder size={15} />}
-            <strong id="project-delete-title">
-              {isFolder ? '删除对话文件夹' : '移除项目'}
-            </strong>
+            <strong id="project-delete-title">{isFolder ? '删除对话文件夹' : '移除项目'}</strong>
           </div>
           <button type="button" className="tool-detail-close" onClick={onClose}>
             <X size={15} />

@@ -184,8 +184,7 @@ export const useSessions = (): UseSessionsReturn => {
       // A previously staged rollback/clear is superseded by this clear, so its deferred cache
       // cleanup can finally run. The CURRENT conversation's resources stay put so /clear remains
       // undoable — they are pruned when the new draft is committed by the next prompt.
-      const supersededResources =
-        target.revert?.originalResources ?? target.clearedDraft?.resources
+      const supersededResources = target.revert?.originalResources ?? target.clearedDraft?.resources
       if (supersededResources) {
         const survivors = sessions.filter((s) => s.id !== activeSessionId)
         await clearCachesFor(

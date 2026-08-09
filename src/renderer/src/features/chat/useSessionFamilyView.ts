@@ -78,13 +78,13 @@ export function useSessionFamilyView({
       setSessionFamilyRootId(info && info.members.length > 1 ? rootId : null)
       setDismissedSessionFamilyViewForId(null)
     },
-    [sessions]
+    [sessions, setDismissedSessionFamilyViewForId, setSessionFamilyRootId]
   )
 
   const exitSessionFamilyView = useCallback((): void => {
     setSessionFamilyRootId(null)
     setDismissedSessionFamilyViewForId(activeSessionId ?? null)
-  }, [activeSessionId])
+  }, [activeSessionId, setDismissedSessionFamilyViewForId, setSessionFamilyRootId])
 
   const openSession = useCallback(
     (sessionId: string, messageId?: string): void => {

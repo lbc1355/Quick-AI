@@ -176,9 +176,7 @@ describe('prepareAgentRun', () => {
 
     expect(result.resumeCheckpoint).toBe(checkpoint)
     expect(result.resumeLoadError).toBeUndefined()
-    expect(result.messages).toEqual([
-      { role: 'user', content: 'original request' }
-    ])
+    expect(result.messages).toEqual([{ role: 'user', content: 'original request' }])
     expect(result.initialActiveTools).toEqual(['search_tools', 'file_read'])
     expect(result.ambiguousActions).toEqual(checkpoint.ambiguousActions)
   })

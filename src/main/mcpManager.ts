@@ -110,7 +110,9 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMsg: string
 function killProcessTree(pid: number): Promise<void> {
   return new Promise((resolve) => {
     if (process.platform === 'win32') {
-      execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve())
+      execFile('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true }, () =>
+        resolve()
+      )
       return
     }
 
@@ -645,9 +647,8 @@ class McpManagerImpl {
       this.replaceServerTools(name, client, tools, timeouts)
 
       // Capture the server's usage instructions (2025-06-18 MCP spec) for system-prompt injection.
-      const getInstructions = (
-        client as unknown as { getInstructions?: () => string | undefined }
-      ).getInstructions
+      const getInstructions = (client as unknown as { getInstructions?: () => string | undefined })
+        .getInstructions
       const instructions =
         typeof getInstructions === 'function' ? getInstructions.call(client) : undefined
       if (instructions && instructions.trim()) {

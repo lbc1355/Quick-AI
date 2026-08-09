@@ -224,9 +224,21 @@ describe('McpManager', () => {
     mcpMockState.listToolsResults = [
       {
         tools: [
-          { name: 'zeta_tool', description: 'z tool', inputSchema: { type: 'object', properties: {} } },
-          { name: 'alpha_tool', description: 'a tool', inputSchema: { type: 'object', properties: {} } },
-          { name: 'mid_tool', description: 'm tool', inputSchema: { type: 'object', properties: {} } }
+          {
+            name: 'zeta_tool',
+            description: 'z tool',
+            inputSchema: { type: 'object', properties: {} }
+          },
+          {
+            name: 'alpha_tool',
+            description: 'a tool',
+            inputSchema: { type: 'object', properties: {} }
+          },
+          {
+            name: 'mid_tool',
+            description: 'm tool',
+            inputSchema: { type: 'object', properties: {} }
+          }
         ]
       }
     ]
