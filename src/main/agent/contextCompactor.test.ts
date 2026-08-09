@@ -20,6 +20,7 @@ describe('contextCompactor', () => {
 
     const result = await compactContextWithModel(
       {
+        sessionId: 'session-test',
         apiUrl: 'https://api.example.com/v1',
         apiKey: 'key',
         model: 'model-a',
@@ -70,6 +71,7 @@ describe('contextCompactor', () => {
   it('rejects sessions with too little old context to compact', async () => {
     await expect(
       compactContextWithModel({
+        sessionId: 'session-test',
         apiUrl: 'https://api.example.com/v1',
         apiKey: 'key',
         model: 'model-a',

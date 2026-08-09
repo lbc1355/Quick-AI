@@ -240,6 +240,16 @@ export function cancelSessionPrompt(id: string): boolean {
   return result.changes === 1
 }
 
+/**
+ * Terminate a prompt that was already claimed (status `running`) but whose run never started —
+ * e.g. a stale background result that was dropped at materialization. `cancelSessionPrompt` only
+ * handles `pending` (a user can't cancel something already running); this is the explicit
+ * "the claimant decided not to run it" counterpart.
+ */
+export function cancelClaimedSessionPrompt(id: string): boolean {
+  return finishSessionPrompt(id, 'cancelled')
+}
+
 export function finishSessionPrompt(
   id: string,
   status: Extract<SessionPromptAdmissionStatus, 'completed' | 'cancelled'>

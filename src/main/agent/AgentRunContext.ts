@@ -68,6 +68,15 @@ export function clearSessionApprovals(sessionId: string): void {
   sessionSeenFiles.delete(sessionId)
 }
 
+/**
+ * Drop a session's seen-file set when its context is reset (clear / compaction). A compaction
+ * rebases the model context onto the summary, so files read before it are no longer in context —
+ * the surgical edit guards must not treat them as observed.
+ */
+export function clearSessionSeenFiles(sessionId: string): void {
+  sessionSeenFiles.delete(sessionId)
+}
+
 export function getSessionAdditionalRoots(sessionId: string): AdditionalRoot[] {
   return cloneAdditionalRoots(sessionAdditionalRoots.get(sessionId))
 }

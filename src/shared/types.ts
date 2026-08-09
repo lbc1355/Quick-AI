@@ -1083,6 +1083,7 @@ export interface ChatRunOptions {
 }
 
 export interface ContextCompactionRequest {
+  sessionId: string
   apiUrl: string
   apiKey: string
   providerConnection?: ResolvedProviderConnection
@@ -1228,9 +1229,10 @@ export interface PreloadApi {
   ) => Promise<SessionPromptAdmission | undefined>
   completeSessionPrompt: (admissionId: string) => Promise<boolean>
   cancelSessionPrompt: (admissionId: string) => Promise<boolean>
+  cancelClaimedSessionPrompt: (admissionId: string) => Promise<boolean>
   requeueSessionPrompt: (admissionId: string) => Promise<boolean>
   compactContext: (payload: ContextCompactionRequest) => Promise<ContextCompactionResult>
-  abortCompaction: () => void
+  abortCompaction: (sessionId: string) => void
   previewAgentFileRevert: (sessionId: string, runId: string) => Promise<AgentFileRevertPreview>
   revertAgentFileChanges: (
     input: RevertAgentFileChangesInput

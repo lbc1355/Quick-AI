@@ -213,10 +213,9 @@ export const useChatCompletion = ({
     () => new Set()
   )
   const [activeRequestIds, setActiveRequestIds] = useState<ReadonlySet<string>>(() => new Set())
-  /** Live /compact progress — non-null while the compaction model call is in flight. */
-  const [compaction, setCompaction] = useState<{ sessionId: string; startedAt: number } | null>(
-    null
-  )
+  /** Live /compact progress keyed by session — several sessions can compact concurrently, and
+   *  each dock/cancel must be scoped to its own session. */
+  const [compactionBySession, setCompactionBySession] = useState<Record<string, number>>({})
   const cancellingQueuedPromptIdsRef = useRef<Set<string>>(new Set())
   const [cancellingQueuedPromptIds, setCancellingQueuedPromptIds] = useState<ReadonlySet<string>>(
     () => new Set()
@@ -496,10 +495,11 @@ export const useChatCompletion = ({
     setInputVal('')
     // The transcript stays untouched while compaction runs — a dock shows the progress instead
     // of a phantom message that would shift the scroll position and pollute the history.
-    setCompaction({ sessionId: currentSession.id, startedAt: Date.now() })
+    setCompactionBySession((prev) => ({ ...prev, [currentSession.id]: Date.now() }))
 
     try {
       const result = await window.api.compactContext({
+        sessionId: currentSession.id,
         apiUrl: requestConfig.apiUrl,
         apiKey: requestConfig.apiKey,
         providerConnection: requestConfig.providerConnection,
@@ -510,15 +510,21 @@ export const useChatCompletion = ({
         systemPrompt: requestConfig.systemPrompt
       })
 
-      currentSession.messages = applyCompactionResult({
-        messages: currentSession.messages,
-        result,
-        now: Date.now()
-      })
-      currentSession.contextEpoch = getSessionContextEpoch(currentSession) + 1
-      currentSession.lastActiveTime = Date.now()
-      window.api.advanceSessionContext(currentSession.id, currentSession.contextEpoch)
-      const updatedSessions = replaceSessionInSnapshot(sessionsRef.current, currentSession)
+      // Apply the summary to the LATEST session, not the stale clone: a background result may have
+      // landed while the model was summarizing. Preserve anything appended after the compaction
+      // boundary instead of overwriting it with the pre-compaction snapshot.
+      const latest =
+        sessionsRef.current.find((session) => session.id === currentSession.id) ?? currentSession
+      if (getSessionContextEpoch(latest) !== getSessionContextEpoch(currentSession)) return false
+      const mergedSession = {
+        ...latest,
+        messages: applyCompactionResult({ messages: latest.messages, result, now: Date.now() }),
+        revert: undefined,
+        contextEpoch: getSessionContextEpoch(latest) + 1,
+        lastActiveTime: Date.now()
+      }
+      window.api.advanceSessionContext(mergedSession.id, mergedSession.contextEpoch)
+      const updatedSessions = replaceSessionInSnapshot(sessionsRef.current, mergedSession)
       setSessions(updatedSessions)
       sessionsRef.current = updatedSessions
       persistSessionsSnapshotSoon(updatedSessions)
@@ -534,15 +540,22 @@ export const useChatCompletion = ({
       }
       return false
     } finally {
-      setCompaction(null)
+      setCompactionBySession((prev) => {
+        if (prev[currentSession.id] === undefined) return prev
+        const next = { ...prev }
+        delete next[currentSession.id]
+        return next
+      })
       finishSessionGeneration(currentSession.id, null)
     }
   }
 
-  /** Ask the main process to cancel the in-flight compaction; the pending promise rejects with an
-   *  AbortError and the catch above restores the pre-compaction state. */
+  /** Ask the main process to cancel the in-flight compaction for the active session; the pending
+   *  promise rejects with an AbortError and the catch above restores the pre-compaction state. */
   const cancelCompaction = (): void => {
-    window.api.abortCompaction()
+    if (activeSessionId && compactionBySession[activeSessionId] !== undefined) {
+      window.api.abortCompaction(activeSessionId)
+    }
   }
 
   const handleSendMessage = async (
@@ -903,7 +916,9 @@ export const useChatCompletion = ({
         !admission.assistantMessageId ||
         admission.contextEpoch !== getSessionContextEpoch(sourceSession)
       ) {
-        await window.api.cancelSessionPrompt(admission.id)
+        // The admission was already claimed (running); cancelClaimedSessionPrompt is the only
+        // cancel that terminates a running inbox entry.
+        await window.api.cancelClaimedSessionPrompt(admission.id)
         claimedAdmissionId = undefined
         return
       }
@@ -919,7 +934,7 @@ export const useChatCompletion = ({
         admission.runMode
       )
       if (!prepared) {
-        await window.api.cancelSessionPrompt(admission.id)
+        await window.api.cancelClaimedSessionPrompt(admission.id)
         claimedAdmissionId = undefined
         return
       }
@@ -1321,7 +1336,10 @@ export const useChatCompletion = ({
     handleResumeAgentRun,
     showHelpMessage,
     handleCompactCurrentSession,
-    compaction,
+    compaction:
+      activeSessionId && compactionBySession[activeSessionId] !== undefined
+        ? { sessionId: activeSessionId, startedAt: compactionBySession[activeSessionId] }
+        : null,
     cancelCompaction,
     handleAbortGeneration
   }

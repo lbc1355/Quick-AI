@@ -100,11 +100,13 @@ const api = {
     ipcRenderer.invoke('complete-session-prompt', admissionId),
   cancelSessionPrompt: (admissionId: string): Promise<boolean> =>
     ipcRenderer.invoke('cancel-session-prompt', admissionId),
+  cancelClaimedSessionPrompt: (admissionId: string): Promise<boolean> =>
+    ipcRenderer.invoke('cancel-claimed-session-prompt', admissionId),
   requeueSessionPrompt: (admissionId: string): Promise<boolean> =>
     ipcRenderer.invoke('requeue-session-prompt', admissionId),
   compactContext: (payload: ContextCompactionRequest): Promise<ContextCompactionResult> =>
     ipcRenderer.invoke('compact-context', payload),
-  abortCompaction: (): void => ipcRenderer.send('abort-compaction'),
+  abortCompaction: (sessionId: string): void => ipcRenderer.send('abort-compaction', sessionId),
   previewAgentFileRevert: (sessionId: string, runId: string): Promise<AgentFileRevertPreview> =>
     ipcRenderer.invoke('preview-agent-file-revert', sessionId, runId),
   revertAgentFileChanges: (

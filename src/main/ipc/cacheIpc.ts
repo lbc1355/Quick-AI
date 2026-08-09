@@ -25,9 +25,10 @@ import {
   revertAgentFileChanges
 } from '../agent/agentFileSnapshot'
 
-// The single in-flight compaction — only one session can compact at a time (guarded by the
-// renderer's busy state). Kept so 'abort-compaction' can cancel it; cleared when the call settles.
-let activeCompactionController: AbortController | null = null
+// In-flight compactions keyed by session — sessions compact independently (busy state is per
+// session), so a cross-session cancel must abort the right one. Entries are removed when the call
+// settles.
+const activeCompactionControllers = new Map<string, AbortController>()
 
 export function registerCacheIpc(): void {
   ipcMain.handle('preview-agent-file-revert', (_event, sessionId: string, runId: string) =>
@@ -119,16 +120,20 @@ export function registerCacheIpc(): void {
   })
 
   ipcMain.handle('compact-context', async (_event, payload) => {
+    const sessionId = String(payload?.sessionId || '').trim()
     const controller = new AbortController()
-    activeCompactionController = controller
+    if (sessionId) activeCompactionControllers.set(sessionId, controller)
     try {
       return await compactContextWithModel(payload, { signal: controller.signal })
     } finally {
-      if (activeCompactionController === controller) activeCompactionController = null
+      if (sessionId && activeCompactionControllers.get(sessionId) === controller) {
+        activeCompactionControllers.delete(sessionId)
+      }
     }
   })
 
-  ipcMain.on('abort-compaction', () => {
-    activeCompactionController?.abort()
+  ipcMain.on('abort-compaction', (_event, sessionId) => {
+    const id = String(sessionId || '').trim()
+    if (id) activeCompactionControllers.get(id)?.abort()
   })
 }

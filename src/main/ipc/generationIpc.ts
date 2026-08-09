@@ -27,6 +27,7 @@ import { normalizeContextEpoch } from '../../shared/contextEpoch'
 import type { AgentSteeringControls } from '../agent/agentRunPreparation'
 import {
   admitSessionPrompt,
+  cancelClaimedSessionPrompt,
   cancelSessionPrompt,
   cancelStaleSessionPrompts,
   claimNextSessionPrompt,
@@ -37,6 +38,7 @@ import {
   markSessionPromptRunning,
   requeueSessionPrompts
 } from '../database/sessionPromptStore'
+import { clearSessionSeenFiles } from '../agent/AgentRunContext'
 
 interface CoordinatedRunInput {
   reqId: string
@@ -186,8 +188,11 @@ export function registerGenerationIpc(store: FileStore): void {
     const normalizedEpoch = normalizeContextEpoch(contextEpoch)
     const currentEpoch = globalSessionCoordinator.getContextEpoch(normalizedSessionId)
     if (currentEpoch !== undefined && normalizedEpoch < currentEpoch) return
-    globalSessionCoordinator.advanceContext(normalizedSessionId, normalizedEpoch)
+    const advanced = globalSessionCoordinator.advanceContext(normalizedSessionId, normalizedEpoch)
     cancelStaleSessionPrompts(normalizedSessionId, normalizedEpoch)
+    // A context reset (clear / compaction) rebases the model context, so reads from before it are
+    // no longer in context — stop treating those files as seen for the surgical edit guards.
+    if (advanced) clearSessionSeenFiles(normalizedSessionId)
   })
 
   ipcMain.handle('complete-session-prompt', (_event, admissionId: string): boolean =>
@@ -196,6 +201,10 @@ export function registerGenerationIpc(store: FileStore): void {
 
   ipcMain.handle('cancel-session-prompt', (_event, admissionId: string): boolean =>
     cancelSessionPrompt(admissionId)
+  )
+
+  ipcMain.handle('cancel-claimed-session-prompt', (_event, admissionId: string): boolean =>
+    cancelClaimedSessionPrompt(admissionId)
   )
 
   ipcMain.handle(
