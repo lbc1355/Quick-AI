@@ -49,6 +49,7 @@ import {
 import {
   cloneSessionsDeep,
   cloneSessionInSnapshot,
+  fireCacheCleanupAfterPersist,
   planRemovedRunCleanup,
   planStagedRevertCommit,
   replaceSessionInSnapshot,
@@ -518,11 +519,6 @@ export const useChatCompletion = ({
       if (!latest || getSessionContextEpoch(latest) !== getSessionContextEpoch(currentSession)) {
         return false
       }
-      // Only now is the staged rollback's cache cleanup safe to fire — on failure/cancel the
-      // revert stays fully intact (UI + caches), so restore can still succeed.
-      if (revertCacheCleanup) {
-        void window.api.clearSessionCaches(revertCacheCleanup).catch(console.warn)
-      }
       const mergedSession = {
         ...latest,
         messages: applyCompactionResult({ messages: latest.messages, result, now: Date.now() }),
@@ -534,7 +530,25 @@ export const useChatCompletion = ({
       const updatedSessions = replaceSessionInSnapshot(sessionsRef.current, mergedSession)
       setSessions(updatedSessions)
       sessionsRef.current = updatedSessions
-      persistSessionsSnapshotSoon(updatedSessions)
+
+      // Persist the committed rollback BEFORE clearing its caches: if the write fails (or the app
+      // quits mid-window), the on-disk session keeps `revert` with its caches intact, so restore
+      // can still recover. Clearing first would leave a revert plan pointing at deleted rows.
+      // On persist failure the cleanup is skipped — cache residue is collectable garbage.
+      try {
+        await fireCacheCleanupAfterPersist({
+          persist: () => persistSessionsSnapshot(updatedSessions),
+          cacheCleanup: revertCacheCleanup,
+          clearCaches: (payload) =>
+            window.api.clearSessionCaches(payload).catch((err) => {
+              console.warn('Failed to clear caches after compaction:', err)
+            })
+        })
+      } catch (err) {
+        console.warn('Compaction applied in memory but the session write failed:', err)
+        toast.error('压缩结果已应用，但会话保存失败，重启后可能回退。')
+        return false
+      }
       toast.success(`压缩完成：前 ${result.compactedCount} 条历史消息已总结为摘要。`)
       return true
     } catch (err) {

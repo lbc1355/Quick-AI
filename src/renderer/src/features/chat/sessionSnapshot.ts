@@ -149,3 +149,30 @@ export const planStagedRevertCommit = (
       : {})
   }
 }
+
+export interface CacheCleanupAfterPersistOptions {
+  /** The durable write that commits the staged rollback (drops `revert` on disk). */
+  persist: () => Promise<void>
+  /** Disk cleanup the commit freed up; absent → nothing to fire. */
+  cacheCleanup?: ClearSessionCachesPayload
+  /** How to clear the caches (the `window.api.clearSessionCaches` IPC). */
+  clearCaches: (payload: ClearSessionCachesPayload) => Promise<unknown>
+}
+
+/**
+ * Fire a staged-rollback commit's cache cleanup only once the commit has durably persisted.
+ *
+ * Ordering contract: clearing the caches before the on-disk session drops `revert` leaves a revert
+ * plan pointing at deleted rows — restore breaks if the app quits in the window between. Persist
+ * first; when the write fails the on-disk revert stays fully intact and the cleanup is skipped
+ * (cache residue is collectable garbage). Cleanup errors never surface: the commit already
+ * succeeded and a leftover cache is harmless.
+ */
+export const fireCacheCleanupAfterPersist = async (
+  options: CacheCleanupAfterPersistOptions
+): Promise<void> => {
+  await options.persist()
+  if (options.cacheCleanup) {
+    await options.clearCaches(options.cacheCleanup).catch(() => undefined)
+  }
+}

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { Session, SessionResource } from '../../../../shared/types'
+import type { ClearSessionCachesPayload, Session, SessionResource } from '../../../../shared/types'
 import {
   cloneSessionInSnapshot,
   cloneSessionsDeep,
+  fireCacheCleanupAfterPersist,
   planRemovedRunCleanup,
   planStagedRevertCommit,
   replaceSessionInSnapshot,
@@ -268,5 +269,77 @@ describe('planStagedRevertCommit', () => {
     const sessions = [session]
     planStagedRevertCommit(sessions, session)
     expect(sessions[0].clearedDraft).toBeDefined()
+  })
+})
+
+describe('fireCacheCleanupAfterPersist', () => {
+  const cleanupPayload = (): ClearSessionCachesPayload => ({
+    sessionIds: [],
+    resourceIds: ['r-undone'],
+    partialActions: [{ sessionId: 'session-1', runIds: ['run-undone'] }]
+  })
+
+  it('clears the caches only after the commit durably persists', async () => {
+    const calls: string[] = []
+    await fireCacheCleanupAfterPersist({
+      persist: async () => {
+        calls.push('persist')
+      },
+      cacheCleanup: cleanupPayload(),
+      clearCaches: async (payload) => {
+        calls.push(`clear:${payload.resourceIds.join(',')}`)
+      }
+    })
+
+    expect(calls).toEqual(['persist', 'clear:r-undone'])
+  })
+
+  it('skips the cleanup entirely when the commit freed nothing', async () => {
+    const calls: string[] = []
+    await fireCacheCleanupAfterPersist({
+      persist: async () => {
+        calls.push('persist')
+      },
+      cacheCleanup: undefined,
+      clearCaches: async () => {
+        calls.push('clear')
+      }
+    })
+
+    expect(calls).toEqual(['persist'])
+  })
+
+  it('never clears the caches when the persist fails', async () => {
+    const calls: string[] = []
+    await expect(
+      fireCacheCleanupAfterPersist({
+        persist: async () => {
+          calls.push('persist')
+          throw new Error('disk write failed')
+        },
+        cacheCleanup: cleanupPayload(),
+        clearCaches: async () => {
+          calls.push('clear')
+        }
+      })
+    ).rejects.toThrow('disk write failed')
+
+    expect(calls).toEqual(['persist'])
+  })
+
+  it('does not surface a cache-clear failure after a successful persist', async () => {
+    const calls: string[] = []
+    await fireCacheCleanupAfterPersist({
+      persist: async () => {
+        calls.push('persist')
+      },
+      cacheCleanup: cleanupPayload(),
+      clearCaches: async () => {
+        calls.push('clear')
+        throw new Error('cache clear failed')
+      }
+    })
+
+    expect(calls).toEqual(['persist', 'clear'])
   })
 })
