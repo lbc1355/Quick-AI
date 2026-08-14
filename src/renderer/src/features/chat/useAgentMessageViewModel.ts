@@ -184,7 +184,7 @@ export function useAgentMessageViewModel({ msg, isGenerating }: UseAgentMessageV
   }
 
   const currentStep = lastProgressEvent?.step || 1
-  const maxSteps = lastProgressEvent?.maxSteps || 30
+  const maxSteps = lastProgressEvent?.maxSteps ?? Infinity
 
   const parsedRun = useMemo(() => {
     return parseAgentSteps(msg.agentEvents, msg.content)
@@ -315,6 +315,9 @@ export function useAgentMessageViewModel({ msg, isGenerating }: UseAgentMessageV
       }
     }
     if (inProgressTask) return inProgressTask.title
+    if (!Number.isFinite(maxSteps) || maxSteps <= 0) {
+      return `第 ${currentStep} 步`
+    }
     return `第 ${currentStep}/${maxSteps} 步`
   }, [activeParsedStep, inProgressTask, currentStep, maxSteps])
 

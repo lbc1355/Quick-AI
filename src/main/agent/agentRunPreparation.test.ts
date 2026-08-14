@@ -67,7 +67,7 @@ describe('prepareAgentRun', () => {
 
     expect(result.isSkill).toBe(false)
     expect(result.toolDiscovery).toBe('dynamic')
-    expect(result.maxSteps).toBe(30)
+    expect(result.maxSteps).toBe(Infinity)
     expect(result.conversationId).toBe('session-1')
     expect(result.toolScope).toBe('all')
     expect(result.skillTools).toEqual([])

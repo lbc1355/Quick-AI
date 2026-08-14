@@ -85,7 +85,7 @@ export class AgentRunContext {
   status: 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' = 'running'
   readonly startedAt: number = Date.now()
   currentStep = 1
-  maxSteps = 30
+  maxSteps = Infinity
   completedAt?: number
   error?: string
   readonly reqId: string

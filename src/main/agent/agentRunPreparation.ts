@@ -144,7 +144,7 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
       ? 'dynamic'
       : 'static'
     : 'dynamic'
-  const maxSteps = isSkill ? clampMaxSteps(options.skill!.maxSteps) : 30
+  const maxSteps = isSkill ? clampMaxSteps(options.skill!.maxSteps) : Infinity
   const resourceToolNames =
     options.resources && options.resources.length > 0 ? RESOURCE_TOOL_NAMES : []
   const skillTools = isSkill

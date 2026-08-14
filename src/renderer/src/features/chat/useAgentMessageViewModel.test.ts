@@ -167,7 +167,7 @@ describe('useAgentMessageViewModel hook', () => {
     expect(vm.hasStructuredEvents).toBe(true)
     expect(vm.agentStatus).toBe('running')
     expect(vm.currentStep).toBe(1) // agent_progress event was not in the timeline, defaults to step 1
-    expect(vm.maxSteps).toBe(30)
+    expect(vm.maxSteps).toBe(Infinity)
     expect(vm.activeStepTitle).toBe('Reading configurations')
     expect(vm.pendingToolCall).toBeDefined()
     expect(vm.pendingToolCall?.toolName).toBe('file_read')

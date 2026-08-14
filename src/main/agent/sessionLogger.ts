@@ -235,8 +235,9 @@ export class SessionLogger {
       step,
       maxSteps
     })
+    const maxStepsStr = Number.isFinite(maxSteps) ? ` / ${maxSteps}` : ''
     const md = `
-### Step ${step} / ${maxSteps} (Timestamp: ${time})
+### Step ${step}${maxStepsStr} (Timestamp: ${time})
 `
     this.append(sessionId, md)
   }
