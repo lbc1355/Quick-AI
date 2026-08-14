@@ -378,7 +378,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
         data-message-role={msg.role}
       >
         {/* 1. Collapsible logs area for structured events */}
-        {hasStructuredEvents &&
+        {(hasStructuredEvents ||
+          (isGenerating && msg.role === 'assistant' && Boolean(msg.agentRunId))) &&
           (agentStatus !== 'completed' || isGenerating || pendingToolCall) && (
             <div
               className="agent-inline-summary-box"
@@ -594,7 +595,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                     )}
 
                     {/* Render main text content */}
-                    {hasStructuredEvents || parsedRun.steps.length > 0 ? (
+                    {hasStructuredEvents ||
+                    parsedRun.steps.length > 0 ||
+                    (isGenerating && msg.role === 'assistant' && Boolean(msg.agentRunId)) ? (
                       <div className="agent-structured-steps-area">
                         {isGenerating ? (
                           parsedRun.steps.map(renderAgentStep)
@@ -775,14 +778,16 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           )}
                         </>
                       )
-                    ) : (
-                      isGenerating &&
-                      displayReasoning && (
-                        <span style={{ opacity: 0.5, fontSize: '13px', fontStyle: 'italic' }}>
-                          思考完毕，正在生成回答..
+                    ) : isGenerating && msg.role === 'assistant' ? (
+                      <span className="agent-startup-indicator">
+                        <Loader2 size={13} className="animate-spin" />
+                        <span>
+                          {displayReasoning
+                            ? '思考完毕，正在生成回答...'
+                            : latestProgressMessage || '正在连接模型并等待响应...'}
                         </span>
-                      )
-                    )}
+                      </span>
+                    ) : null}
                   </div>
 
                   {branchChildren.length > 0 && (
