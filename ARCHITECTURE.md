@@ -33,16 +33,16 @@
 
 QuickAI 是一个 **Spotlight 风格的桌面 AI 助手**，通过 `Alt+/` 全局快捷键在屏幕上方居中位置瞬间召唤/隐藏悬浮窗口，同时支持切换为常规可缩放窗口模式（`WindowMode`）。应用支持多种 AI 服务商（opencode、GLM、Kimi/Moonshot、MiMo、DeepSeek、阶跃星辰、Ollama 本地部署及任意自定义 OpenAI 兼容端点），并在底层构建了高度灵活的 ReAct 智能体（Agent）系统。
 
-| 层级 | 技术 | 用途 |
-| --- | --- | --- |
-| **桌面容器** | Electron 39 | 窗口位置优化、系统托盘、全局快捷键、进程级隔离 |
-| **构建工具** | electron-vite 5 | 统一 main/preload/renderer 三端的快速开发与打包 |
-| **持久化层** | better-sqlite3 12 | 基于 SQLite 的关系型本地数据库，WAL 模式保障并发写入 |
-| **长期记忆** | Git CLI + Markdown | 自动 Git 版本化的 Markdown 长期知识库 |
-| **文件快照** | Git CLI (`refs/quickai`) | Agent 改动前后的工作区快照与精确回滚 |
-| **协议扩展** | MCP SDK 1.29 | stdio 传输的 Model Context Protocol 客户端 |
-| **前端框架** | React 19 + TypeScript 5.9 | 渲染进程的响应式 UI 状态与事件响应 |
-| **测试** | Vitest 4 | 覆盖主进程、共享层与渲染层纯逻辑的单元测试 |
+| 层级         | 技术                      | 用途                                                 |
+| ------------ | ------------------------- | ---------------------------------------------------- |
+| **桌面容器** | Electron 39               | 窗口位置优化、系统托盘、全局快捷键、进程级隔离       |
+| **构建工具** | electron-vite 5           | 统一 main/preload/renderer 三端的快速开发与打包      |
+| **持久化层** | better-sqlite3 12         | 基于 SQLite 的关系型本地数据库，WAL 模式保障并发写入 |
+| **长期记忆** | Git CLI + Markdown        | 自动 Git 版本化的 Markdown 长期知识库                |
+| **文件快照** | Git CLI (`refs/quickai`)  | Agent 改动前后的工作区快照与精确回滚                 |
+| **协议扩展** | MCP SDK 1.29              | stdio 传输的 Model Context Protocol 客户端           |
+| **前端框架** | React 19 + TypeScript 5.9 | 渲染进程的响应式 UI 状态与事件响应                   |
+| **测试**     | Vitest 4                  | 覆盖主进程、共享层与渲染层纯逻辑的单元测试           |
 
 > **模型 SDK 说明**：项目**不依赖任何厂商 SDK**（无 `openai`、无 `@anthropic-ai/*`）。Chat Completions 与 Responses 两套协议的流式传输均为自行实现，见 [§5.4 传输层](#54-传输层与模型调用运行时)。这是为了完全掌控多服务商之间的协议差异与兼容性修补。
 
@@ -244,24 +244,24 @@ src/
 
 数据库逻辑不再堆叠在单文件中，而是采用 Repository 模式解耦为以下子模块：
 
-*   **连接配置管理器 —— [connection.ts](file:///d:/Git/Quick%20Ai/src/main/database/connection.ts)**：
-    负责数据库首次初始化，定位 `{userData}/quickai.db` 文件，并应用高性能 SQLite Pragma 优化：
-    *   `journal_mode = WAL`：开启 Write-Ahead Logging 模式，提供高并发读写性能。
-    *   `foreign_keys = ON`：强制启用外键物理约束。
-    *   `synchronous = NORMAL`：在安全与磁盘 I/O 间取得平衡。
-*   **结构定义与表定义 —— [schema.ts](file:///d:/Git/Quick%20Ai/src/main/database/schema.ts)**：
-    定义关系数据库各张表的 DDL，并通过 `ensureColumn()` 对既有安装执行**幂等的增量列升级**（避免为每次字段新增编写迁移脚本）。
-*   **数据迁移与导入引擎 —— [migration.ts](file:///d:/Git/Quick%20Ai/src/main/database/migration.ts)**：
-    处理版本迭代时的表结构平滑迁移，以及 `migrateFromJson()`（在数据库为空时读取旧的 `quickai_store.json` 进行一次性原子导入，并生成 `.bak` 备份）。
-*   **业务逻辑持久化仓库 (Repositories)**：
-    *   [settingsStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/settingsStore.ts)：全局 KV 配置存储。
-    *   [providerStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/providerStore.ts)：服务商**定义**与**账号**的拆分持久化，兼容旧 `providers` 单表回迁（见 [§5.2](#52-定义与账号的拆分持久化)）。
-    *   [sessionStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/sessionStore.ts)：会话及其下层级联消息（Messages & Files）的管理仓库。
-    *   [sessionPromptStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/sessionPromptStore.ts)：生成期间追加提示的收件箱队列（见 [§12](#12-会话提示队列与上下文纪元-steering--context-epoch)）。
-    *   [backgroundJobStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/backgroundJobStore.ts)：后台任务记录与跨重启状态恢复。
-    *   [skillStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/skillStore.ts)：AI 技能包元数据和资源路径存储。
-    *   [projectStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/projectStore.ts)：多工作空间项目属性持久化。
-    *   [resourceStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/resourceStore.ts)：网页抓取及 PDF 读入的切片级缓存管理器。
+- **连接配置管理器 —— [connection.ts](file:///d:/Git/Quick%20Ai/src/main/database/connection.ts)**：
+  负责数据库首次初始化，定位 `{userData}/quickai.db` 文件，并应用高性能 SQLite Pragma 优化：
+  - `journal_mode = WAL`：开启 Write-Ahead Logging 模式，提供高并发读写性能。
+  - `foreign_keys = ON`：强制启用外键物理约束。
+  - `synchronous = NORMAL`：在安全与磁盘 I/O 间取得平衡。
+- **结构定义与表定义 —— [schema.ts](file:///d:/Git/Quick%20Ai/src/main/database/schema.ts)**：
+  定义关系数据库各张表的 DDL，并通过 `ensureColumn()` 对既有安装执行**幂等的增量列升级**（避免为每次字段新增编写迁移脚本）。
+- **数据迁移与导入引擎 —— [migration.ts](file:///d:/Git/Quick%20Ai/src/main/database/migration.ts)**：
+  处理版本迭代时的表结构平滑迁移，以及 `migrateFromJson()`（在数据库为空时读取旧的 `quickai_store.json` 进行一次性原子导入，并生成 `.bak` 备份）。
+- **业务逻辑持久化仓库 (Repositories)**：
+  - [settingsStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/settingsStore.ts)：全局 KV 配置存储。
+  - [providerStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/providerStore.ts)：服务商**定义**与**账号**的拆分持久化，兼容旧 `providers` 单表回迁（见 [§5.2](#52-定义与账号的拆分持久化)）。
+  - [sessionStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/sessionStore.ts)：会话及其下层级联消息（Messages & Files）的管理仓库。
+  - [sessionPromptStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/sessionPromptStore.ts)：生成期间追加提示的收件箱队列（见 [§12](#12-会话提示队列与上下文纪元-steering--context-epoch)）。
+  - [backgroundJobStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/backgroundJobStore.ts)：后台任务记录与跨重启状态恢复。
+  - [skillStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/skillStore.ts)：AI 技能包元数据和资源路径存储。
+  - [projectStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/projectStore.ts)：多工作空间项目属性持久化。
+  - [resourceStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/resourceStore.ts)：网页抓取及 PDF 读入的切片级缓存管理器。
 
 ### 4.2 数据库 Schema 结构
 
@@ -444,12 +444,12 @@ erDiagram
 
 每个内置服务商是一条 `ProviderRegistration`，包含四块互不耦合的声明：
 
-| 字段 | 内容 | 示例 |
-| --- | --- | --- |
-| `definition` | 类型、显示名、内置模型列表、默认模型 | `type: 'glm'`, `defaultModel: 'glm-4.5-air'` |
-| `accountDefaults` | 默认 Base URL、鉴权方式、默认请求头 | `apiUrl: 'https://open.bigmodel.cn/api/paas/v4'`, `authType: 'bearer'` |
-| `runtime` | 端点类型、API 格式、传输 ID、支持的传输集合、提示词画像、**特性开关**、**兼容性修补** | GLM: `streamUsage: false` + `omitToolChoice: true` |
-| `modelDiscovery` | 模型发现的端点路径与响应字段候选路径 | `endpointPath: 'models'`, `idPaths: ['id','name','model']` |
+| 字段              | 内容                                                                                  | 示例                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `definition`      | 类型、显示名、内置模型列表、默认模型                                                  | `type: 'glm'`, `defaultModel: 'glm-4.5-air'`                           |
+| `accountDefaults` | 默认 Base URL、鉴权方式、默认请求头                                                   | `apiUrl: 'https://open.bigmodel.cn/api/paas/v4'`, `authType: 'bearer'` |
+| `runtime`         | 端点类型、API 格式、传输 ID、支持的传输集合、提示词画像、**特性开关**、**兼容性修补** | GLM: `streamUsage: false` + `omitToolChoice: true`                     |
+| `modelDiscovery`  | 模型发现的端点路径与响应字段候选路径                                                  | `endpointPath: 'models'`, `idPaths: ['id','name','model']`             |
 
 `createProviderRuntimeProfile()` 提供 OpenAI 兼容的默认画像，各服务商只声明**差异部分**。目前内置 8 家：`opencode`、`glm`、`kimi`、`mimo`、`deepseek`、`ollama`、`step`（阶跃星辰）、`custom`（自定义端点）。
 
@@ -487,10 +487,10 @@ erDiagram
 
 [modelTransport.ts](file:///d:/Git/Quick%20Ai/src/main/agent/modelTransport.ts) 维护一张传输注册表，把协议实现与调用方解耦：
 
-| 传输 ID | API 格式 | 实现 |
-| --- | --- | --- |
+| 传输 ID                   | API 格式           | 实现                                                                                                |
+| ------------------------- | ------------------ | --------------------------------------------------------------------------------------------------- |
 | `openai-chat-completions` | `chat-completions` | [callChatCompletionsModel.ts](file:///d:/Git/Quick%20Ai/src/main/agent/callChatCompletionsModel.ts) |
-| `openai-responses` | `responses` | [callResponsesModel.ts](file:///d:/Git/Quick%20Ai/src/main/agent/callResponsesModel.ts) |
+| `openai-responses`        | `responses`        | [callResponsesModel.ts](file:///d:/Git/Quick%20Ai/src/main/agent/callResponsesModel.ts)             |
 
 `registerModelTransport()` 是为未来接入原生协议驱动预留的扩展点（重复注册会抛错，返回值为注销函数）。围绕传输层的配套模块：
 
@@ -552,7 +552,10 @@ export interface ToolDefinition {
     properties: Record<string, any>
     required?: string[]
   }
-  execute: (args: ToolArgs, ctx: ToolExecutionContext) => Promise<{
+  execute: (
+    args: ToolArgs,
+    ctx: ToolExecutionContext
+  ) => Promise<{
     resultForModel: string
     resultForUi: ToolResultUi
   }>
@@ -567,28 +570,28 @@ export interface ToolDefinition {
 
 #### 核心工具模块划分：
 
-*   **文件操作工具（File Tools）**：
-    *   `fileReadTool.ts` / `fileWriteTool.ts` / `fileEditTool.ts` / `multiEditTool.ts` / `fileDeleteTool.ts`：读写删改。
-    *   `fileCopyTool.ts` / `fileMoveTool.ts` / `directoryCreateTool.ts`：复制、移动和目录创建。
-    *   `workspaceListFilesTool.ts` / `workspaceSearchTool.ts` / `workspaceGlob.ts`：工作空间文件列举、正则和 Glob 检索。
-    *   `codeSymbolTool.ts` 及其扫描/选取子模块：按符号结构读取源码，避免整文件灌入上下文。
-*   **网络操作工具（Web Tools）**：
-    *   `webFetchTool.ts` / `webSearchTool.ts` / `webPageTools.ts`：网页抓取、级联搜索与页面二次检索。
-*   **系统与通知工具（System Tools）**：
-    *   `notifyTool.ts` / `inspectEnvironmentTool.ts` / `environmentProbe.ts`：通知系统与本地运行时环境检测。
-    *   `taskTool.ts`：用于 Agent 追踪计划分解的步骤记录。
-    *   `userChoice.ts`：向用户发起结构化选择请求并阻塞等待。
-    *   `reminderTools.ts`：运行期自我提醒。
-*   **Shell 工具**：
-    *   `shell.ts` / `shellExecutor.ts` / `shellEncoding.ts`：命令执行与跨平台编码处理。
-    *   `backgroundShell.ts`：长时命令转入后台任务，输出持久化后异步回投。
-*   **长期记忆管理工具（Memory Tools）**：
-    *   `memoryReadTools.ts` / `memoryWriteTools.ts` / `memoryActionTools.ts`：长期知识库与行动历史记录的管理。
-*   **子 Agent 与运行时（Subagent & Core Tools）**：
-    *   `subagentTool.ts`：派生独立沙箱子 Agent（支持前台阻塞与后台异步两种模式）。
-    *   `toolOutputTools.ts` / `cachedResourceTools.ts`：大容量工具输出和资源抓取缓存检索。
-*   **技能生命周期管理（Skill Tools）**：
-    *   `skillCreateTool.ts` / `skillInstallTool.ts` / `skillRemoveTool.ts` / `skillListTool.ts` / `skillValidationTool.ts`：自定义技能包的热插拔管理与格式校验。
+- **文件操作工具（File Tools）**：
+  - `fileReadTool.ts` / `fileWriteTool.ts` / `fileEditTool.ts` / `multiEditTool.ts` / `fileDeleteTool.ts`：读写删改。
+  - `fileCopyTool.ts` / `fileMoveTool.ts` / `directoryCreateTool.ts`：复制、移动和目录创建。
+  - `workspaceListFilesTool.ts` / `workspaceSearchTool.ts` / `workspaceGlob.ts`：工作空间文件列举、正则和 Glob 检索。
+  - `codeSymbolTool.ts` 及其扫描/选取子模块：按符号结构读取源码，避免整文件灌入上下文。
+- **网络操作工具（Web Tools）**：
+  - `webFetchTool.ts` / `webSearchTool.ts` / `webPageTools.ts`：网页抓取、级联搜索与页面二次检索。
+- **系统与通知工具（System Tools）**：
+  - `notifyTool.ts` / `inspectEnvironmentTool.ts` / `environmentProbe.ts`：通知系统与本地运行时环境检测。
+  - `taskTool.ts`：用于 Agent 追踪计划分解的步骤记录。
+  - `userChoice.ts`：向用户发起结构化选择请求并阻塞等待。
+  - `reminderTools.ts`：运行期自我提醒。
+- **Shell 工具**：
+  - `shell.ts` / `shellExecutor.ts` / `shellEncoding.ts`：命令执行与跨平台编码处理。
+  - `backgroundShell.ts`：长时命令转入后台任务，输出持久化后异步回投。
+- **长期记忆管理工具（Memory Tools）**：
+  - `memoryReadTools.ts` / `memoryWriteTools.ts` / `memoryActionTools.ts`：长期知识库与行动历史记录的管理。
+- **子 Agent 与运行时（Subagent & Core Tools）**：
+  - `subagentTool.ts`：派生独立沙箱子 Agent（支持前台阻塞与后台异步两种模式）。
+  - `toolOutputTools.ts` / `cachedResourceTools.ts`：大容量工具输出和资源抓取缓存检索。
+- **技能生命周期管理（Skill Tools）**：
+  - `skillCreateTool.ts` / `skillInstallTool.ts` / `skillRemoveTool.ts` / `skillListTool.ts` / `skillValidationTool.ts`：自定义技能包的热插拔管理与格式校验。
 
 主进程启动时会利用 `ToolRegistryImpl` 注册所有内置模块。为了兼容旧版代码直接使用 `ToolRegistry[name]` 的属性语法访问，[registry.ts](file:///d:/Git/Quick%20Ai/src/main/tools/registry.ts) 暴露了一个 Proxy 代理。当调用 `ToolRegistry[name]` 时，代理会将调用路由至 `ToolRegistryImpl.get(name)`。同时，它配合 [registryView.ts](file:///d:/Git/Quick%20Ai/src/main/tools/registryView.ts) 支持对动态加载的工具进行元数据审查与迭代；`toolDeclarationCache.ts` 依据注册表修订号缓存工具声明，避免每步重复序列化。
 
@@ -626,10 +629,10 @@ Agent 执行引擎基于 ReAct 循环，解耦为了高度模块化的管线处�
 4.  **工具批量执行器（Tool Turn Runner）**：
     由 `toolTurnRunner.ts` 进行工具调度。当有多项无依赖的工具调用时，由 `toolBatchRunner.ts` 开启并发执行，通过 `preparedToolExecutor.ts` 分发具体的本地原子工具（`*Tool.ts`）并回收结果。
 5.  **步骤落地与清洗管道（Step Processor & Applicator）**：
-    *   `toolStepProcessor.ts`：将执行结果与原始调用请求封装为完整的步骤块。
-    *   `toolStepApplicator.ts`：处理可能发生的文件系统与变量状态变更应用。
-    *   `toolStepFinalizer.ts`：执行步骤的最终结算，并进行 `persistCheckpoint` 数据落盘。
-    *   `toolStepPresentation.ts`：实时将最终步骤的视觉化结果推送回 React 渲染进程进行展示。
+    - `toolStepProcessor.ts`：将执行结果与原始调用请求封装为完整的步骤块。
+    - `toolStepApplicator.ts`：处理可能发生的文件系统与变量状态变更应用。
+    - `toolStepFinalizer.ts`：执行步骤的最终结算，并进行 `persistCheckpoint` 数据落盘。
+    - `toolStepPresentation.ts`：实时将最终步骤的视觉化结果推送回 React 渲染进程进行展示。
 6.  **收尾（Finalization）**：
     工具轮结束但未产出最终答案时（触顶 `maxSteps` 或 LoopGuard 熔断），`forcedFinalTurnRunner.ts` 强制索取一次尽力而为的最终回答；随后 `finalizeFileSnapshot()` 汇总本次运行的文件变更并作为 `file_changes` 事件发出。
 
@@ -644,10 +647,10 @@ Agent 执行引擎基于 ReAct 循环，解耦为了高度模块化的管线处�
 ```typescript
 export interface RunCheckpoint {
   version: number
-  sessionId: string     // 关联会话ID
-  reqId: string         // 关联运行ID
+  sessionId: string // 关联会话ID
+  reqId: string // 关联运行ID
   updatedAt: number
-  step: number          // 当前执行的步数
+  step: number // 当前执行的步数
   messages: ChatCompletionMessage[] // 当前全量历史消息
   activeTools: string[] // 当前已发现激活的工具
   lastCompletedCallId?: string
@@ -666,13 +669,13 @@ export interface AgentRunManifest {
   version: number
   runId: string
   sessionId: string
-  sourceMessageId?: string      // 触发该 Run 的 User 消息 ID
-  assistantMessageId?: string   // 本次 Run 写入的 Assistant 消息 ID
-  parentRunId?: string          // 如果是 Resume，父级 Run 的 ID
+  sourceMessageId?: string // 触发该 Run 的 User 消息 ID
+  assistantMessageId?: string // 本次 Run 写入的 Assistant 消息 ID
+  parentRunId?: string // 如果是 Resume，父级 Run 的 ID
   branchOf?: { sessionId: string; messageId: string; runId?: string } // 分支来源
   status: 'running' | 'completed' | 'failed' | 'cancelled' | 'max_steps'
-  actionCallIds: string[]       // 调用过的所有 action id 列表
-  resourceIds: string[]         // 涉及的全部 fetched 网页缓存ID
+  actionCallIds: string[] // 调用过的所有 action id 列表
+  resourceIds: string[] // 涉及的全部 fetched 网页缓存ID
   sideEffects: SideEffectEntry[] // 发生的副作用列表（如文件写入、shell执行）
 }
 ```
@@ -710,13 +713,13 @@ Agent 运行期间产生的事件流（推理增量、工具调用、步骤进�
 
 `createAgentEventJournalWriter()` 返回的 writer 被挂在 `createAgentEventStream()` 的发射钩子上，每个事件**同时**做两件事：追加进日志、经 IPC 推送。写入端设有多重保护：
 
-| 常量 | 值 | 作用 |
-| --- | --- | --- |
-| `FLUSH_INTERVAL_MS` | 150ms | 批量刷盘间隔，避免高频流式事件打爆磁盘 |
-| `MAX_EVENTS` | 1500 | 单次运行的事件条数上限 |
-| `MAX_JOURNAL_CHARS` | 5 MB | 单个日志文件的字符上限 |
-| `MAX_EVENT_CHARS` | 256 KB | 单条事件的字符上限 |
-| `MAX_VALUE_DEPTH` / `MAX_ARRAY_ITEMS` / `MAX_OBJECT_KEYS` | 10 / 200 / 200 | 序列化时的结构深度与广度截断 |
+| 常量                                                      | 值             | 作用                                   |
+| --------------------------------------------------------- | -------------- | -------------------------------------- |
+| `FLUSH_INTERVAL_MS`                                       | 150ms          | 批量刷盘间隔，避免高频流式事件打爆磁盘 |
+| `MAX_EVENTS`                                              | 1500           | 单次运行的事件条数上限                 |
+| `MAX_JOURNAL_CHARS`                                       | 5 MB           | 单个日志文件的字符上限                 |
+| `MAX_EVENT_CHARS`                                         | 256 KB         | 单条事件的字符上限                     |
+| `MAX_VALUE_DEPTH` / `MAX_ARRAY_ITEMS` / `MAX_OBJECT_KEYS` | 10 / 200 / 200 | 序列化时的结构深度与广度截断           |
 
 敏感字段在序列化阶段替换为 `[REDACTED]`，与 ActionLog 的脱敏策略一致。
 
@@ -741,10 +744,10 @@ Agent 拥有写文件与执行 Shell 的能力，因此"撤销这次运行改了
 
 ### 10.2 两级回滚
 
-| 粒度 | 入口通道 | 语义 |
-| --- | --- | --- |
-| **单次运行回滚** | `preview-agent-file-revert` → `revert-agent-file-changes` | 撤销某一个 Run 造成的文件改动，UI 经 `AgentFileRevertModal` 先预览差异再确认 |
-| **时间线回退** | `preview-session-file-transition` → `apply-session-file-transition` | 会话回退/前进到某个历史消息节点时，一并把工作区文件迁移到对应状态（`SessionRevertModal`），由 `sessions.revertState` 记录当前所处位置 |
+| 粒度             | 入口通道                                                            | 语义                                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **单次运行回滚** | `preview-agent-file-revert` → `revert-agent-file-changes`           | 撤销某一个 Run 造成的文件改动，UI 经 `AgentFileRevertModal` 先预览差异再确认                                                          |
+| **时间线回退**   | `preview-session-file-transition` → `apply-session-file-transition` | 会话回退/前进到某个历史消息节点时，一并把工作区文件迁移到对应状态（`SessionRevertModal`），由 `sessions.revertState` 记录当前所处位置 |
 
 回滚以 `CHECKOUT_BATCH_SIZE`（100）为批次执行 checkout，避免超长参数列表。
 
@@ -881,11 +884,11 @@ Preload 层 ([index.ts](file:///d:/Git/Quick%20Ai/src/preload/index.ts)) 通过 
 
 ### 14.1 安全边界现状
 
-| 配置 | 取值 | 说明 |
-| --- | --- | --- |
-| `contextIsolation` | 默认开启 | 隔离 preload 与页面脚本的执行上下文 |
-| `nodeIntegration` | 默认关闭 | 渲染层无 `require` |
-| `sandbox` | **`false`** | preload 需要访问 Node 模块，故未开启沙箱 |
+| 配置                   | 取值                          | 说明                                               |
+| ---------------------- | ----------------------------- | -------------------------------------------------- |
+| `contextIsolation`     | 默认开启                      | 隔离 preload 与页面脚本的执行上下文                |
+| `nodeIntegration`      | 默认关闭                      | 渲染层无 `require`                                 |
+| `sandbox`              | **`false`**                   | preload 需要访问 Node 模块，故未开启沙箱           |
 | `setWindowOpenHandler` | `deny` + `shell.openExternal` | 页面内跳转一律外部浏览器打开，不新开 BrowserWindow |
 
 > `sandbox: false` 削弱了渲染进程被攻破后的第二道防线。当前风险由「contextIsolation 开启 + 暴露面收敛为固定方法清单 + 无任意 `invoke` 透传」共同兜底；若未来 preload 能去掉 Node 依赖，应改回 `sandbox: true`。
@@ -956,13 +959,13 @@ Preload 层 ([index.ts](file:///d:/Git/Quick%20Ai/src/preload/index.ts)) 通过 
 
 ### 15.4 渲染性能优化
 
-| 模块 | 手段 |
-| --- | --- |
-| `useVirtualizedMessages.ts` | 长会话消息虚拟化，只渲染视口附近的气泡 |
-| `useSmoothStreamText.ts` | 流式文本节流，消除逐 token 重绘造成的双帧抖动 |
-| `codeHighlight.tsx` | 自研轻量代码高亮，替代重型高亮库 |
-| `messageFormat.tsx` | Markdown + KaTeX 渲染，流式期间对未闭合结构做预览态处理 |
-| `ToastContext.tsx` | 状态与动作拆分为两个 Context，避免动作调用触发全树重渲染 |
+| 模块                        | 手段                                                     |
+| --------------------------- | -------------------------------------------------------- |
+| `useVirtualizedMessages.ts` | 长会话消息虚拟化，只渲染视口附近的气泡                   |
+| `useSmoothStreamText.ts`    | 流式文本节流，消除逐 token 重绘造成的双帧抖动            |
+| `codeHighlight.tsx`         | 自研轻量代码高亮，替代重型高亮库                         |
+| `messageFormat.tsx`         | Markdown + KaTeX 渲染，流式期间对未闭合结构做预览态处理  |
+| `ToastContext.tsx`          | 状态与动作拆分为两个 Context，避免动作调用触发全树重渲染 |
 
 ---
 
@@ -983,55 +986,55 @@ Preload 层 ([index.ts](file:///d:/Git/Quick%20Ai/src/preload/index.ts)) 通过 
 
 ### 16.1 IPC 接口全景表
 
-| 模式 | 通道名称 | 传参 | 返回值 | 职责描述 |
-| --- | --- | --- | --- | --- |
-| **Invoke** | `store-get` | `key: StoreKey` | `StoreValue` | 读取 store 白名单内的配置数据 |
-| **Invoke** | `store-set` | `key, value` | `boolean` | 写入 store 允许配置 |
-| **Invoke** | `get-app-info` | 无 | `{ storePath, version }` | 返回物理存储路径与版本 |
-| **Invoke** | `list-agent-tools` | 无 | `AgentToolInfo[]` | 列举当前注册表内的全部工具 |
-| **Invoke** | `select-project-directory` | 无 | `{name, path} \| null` | 打开目录选择器绑定工作区 |
-| **Invoke** | `get-window-state` | 无 | `WindowState` | 查询当前窗口模式与最大化状态 |
-| **Invoke** | `set-window-mode` | `mode: WindowMode` | `WindowState` | 悬浮/常规窗口模式切换 |
-| **Invoke** | `fetch-models` | `ProviderModelDiscoveryRequest` | `FetchedModelInfo[]` | 按发现策略拉取服务商模型列表 |
-| **Invoke** | `test-provider-connection` | `ProviderModelDiscoveryRequest` | `ProviderConnectionTestResult` | 服务商连通性诊断 |
-| **Invoke** | `compact-context` | `ContextCompactionRequest` | `ContextCompactionResult` | 主动压缩会话上下文 |
-| **Invoke** | `admit-session-prompt` | `AdmitSessionPromptInput` | `AdmitSessionPromptResult` | 生成中追加提示入队 |
-| **Invoke** | `list-session-prompts` | `sessionId` | `SessionPromptAdmission[]` | 列举收件箱内的待处理提示 |
-| **Invoke** | `claim-next-session-prompt` | `sessionId, contextEpoch?` | `SessionPromptAdmission?` | 认领下一条待消费提示 |
-| **Invoke** | `complete-session-prompt` | `admissionId` | `boolean` | 标记提示消费完成 |
-| **Invoke** | `cancel-session-prompt` | `admissionId` | `boolean` | 取消排队中的提示 |
-| **Invoke** | `requeue-session-prompt` | `admissionId` | `boolean` | 异常后重新入队 |
-| **Invoke** | `preview-agent-file-revert` | `sessionId, runId` | `AgentFileRevertPreview` | 预览单次运行的文件改动 |
-| **Invoke** | `revert-agent-file-changes` | `RevertAgentFileChangesInput` | `RevertAgentFileChangesResult` | 回滚单次运行的文件改动 |
-| **Invoke** | `preview-session-file-transition` | `SessionFileTransitionInput` | `SessionFileTransitionPreview` | 预览时间线回退的文件迁移 |
-| **Invoke** | `apply-session-file-transition` | `SessionFileTransitionInput` | `SessionFileTransitionResult` | 应用时间线回退的文件迁移 |
-| **Invoke** | `clear-session-caches` | `ClearSessionCachesPayload` | `{ ok: true }` | 物理清除磁盘日志及孤立缓存 |
-| **Invoke** | `fork-session-caches` | `ForkSessionCachesPayload` | `{ ok, actions, checkpoints, manifests, events }` | 分叉会话时拷贝运行缓存 |
-| **Invoke** | `background-job-list` | `sessionId?` | `BackgroundJobInfo[]` | 列举后台任务 |
-| **Invoke** | `background-job-cancel` | `id` | `boolean` | 取消指定后台任务 |
-| **Invoke** | `mcp-get-config` / `mcp-set-config` | — / `config` | 配置对象 | 读写 `mcp.json` |
-| **Invoke** | `mcp-get-status` | 无 | `McpServerStatus[]` | 查询各 MCP 服务连接状态 |
-| **Invoke** | `mcp-reload-server` / `mcp-delete-server` | `name` | `boolean` | 单服务热重载 / 注销 |
-| **Invoke** | `mcp-open-config` | 无 | 无 | 用系统编辑器打开配置文件 |
-| **Invoke** | `memory-entries` | 无 | `MemoryEntry[]` | 返回全部长期记忆文件描述 |
-| **Invoke** | `memory-entry-read` | `id` | `string` | 读特定长期记忆内容 |
-| **Invoke** | `memory-entry-write` | `id, content` | `{ ok: true }` | 更新记忆文件并执行 Git 提交 |
-| **Send** | `start-chat-completion` | `reqId, ChatRunOptions` | 无 | 启动对话流（Agent 与 Chat） |
-| **Send** | `start-agent-skill` | `reqId, AgentSkillRunOptions` | 无 | 启动特定 Agent 技能运行 |
-| **Send** | `abort-generation` | `reqId` | 无 | 中断该次生成 |
-| **Send** | `advance-session-context` | `sessionId, contextEpoch` | 无 | 推进上下文纪元（`/clear` 等） |
-| **Send** | `respond-tool-permission` | `reqId, callId, approved` | 无 | 反馈工具授权响应（支持按前缀/工具批准） |
-| **Send** | `respond-user-choice` | `reqId, requestId, response` | 无 | 反馈结构化用户选择 |
-| **Send** | `hide-window` / `minimize-window` / `toggle-window-maximized` / `re-summon-window` | 无 | 无 | 窗口控制 |
-| **Send** | `set-file-picker-active` | `active: boolean` | 无 | 防止系统选择文件时失焦折叠窗口 |
-| **Send** | `set-window-pinned` | `pinned: boolean` | 无 | 置顶悬浮框 |
-| **Send** | `toggle-devtools` | 无 | 无 | 切换控制台面板 |
-| **Send** | `show-notification` | `title, body` | 无 | 发送系统桌面横幅通知 |
-| **On** | `chat-chunk` | `ChatChunkData` | — | 流式事件推送（含 `contextEpoch` 校验位） |
-| **On** | `background-subagent-result` / `background-shell-result` / `background-subagent-event` | 通知载荷 | — | 后台任务结果与中间事件 |
-| **On** | `user-choice-request` | `UserChoiceRequest` | — | Agent 发起的结构化选择请求 |
-| **On** | `skills-updated` | `Skill[]` | — | 技能目录变更广播 |
-| **On** | `window-state-changed` | `WindowState` | — | 窗口模式/最大化状态变更 |
+| 模式       | 通道名称                                                                               | 传参                            | 返回值                                            | 职责描述                                 |
+| ---------- | -------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------- | ---------------------------------------- |
+| **Invoke** | `store-get`                                                                            | `key: StoreKey`                 | `StoreValue`                                      | 读取 store 白名单内的配置数据            |
+| **Invoke** | `store-set`                                                                            | `key, value`                    | `boolean`                                         | 写入 store 允许配置                      |
+| **Invoke** | `get-app-info`                                                                         | 无                              | `{ storePath, version }`                          | 返回物理存储路径与版本                   |
+| **Invoke** | `list-agent-tools`                                                                     | 无                              | `AgentToolInfo[]`                                 | 列举当前注册表内的全部工具               |
+| **Invoke** | `select-project-directory`                                                             | 无                              | `{name, path} \| null`                            | 打开目录选择器绑定工作区                 |
+| **Invoke** | `get-window-state`                                                                     | 无                              | `WindowState`                                     | 查询当前窗口模式与最大化状态             |
+| **Invoke** | `set-window-mode`                                                                      | `mode: WindowMode`              | `WindowState`                                     | 悬浮/常规窗口模式切换                    |
+| **Invoke** | `fetch-models`                                                                         | `ProviderModelDiscoveryRequest` | `FetchedModelInfo[]`                              | 按发现策略拉取服务商模型列表             |
+| **Invoke** | `test-provider-connection`                                                             | `ProviderModelDiscoveryRequest` | `ProviderConnectionTestResult`                    | 服务商连通性诊断                         |
+| **Invoke** | `compact-context`                                                                      | `ContextCompactionRequest`      | `ContextCompactionResult`                         | 主动压缩会话上下文                       |
+| **Invoke** | `admit-session-prompt`                                                                 | `AdmitSessionPromptInput`       | `AdmitSessionPromptResult`                        | 生成中追加提示入队                       |
+| **Invoke** | `list-session-prompts`                                                                 | `sessionId`                     | `SessionPromptAdmission[]`                        | 列举收件箱内的待处理提示                 |
+| **Invoke** | `claim-next-session-prompt`                                                            | `sessionId, contextEpoch?`      | `SessionPromptAdmission?`                         | 认领下一条待消费提示                     |
+| **Invoke** | `complete-session-prompt`                                                              | `admissionId`                   | `boolean`                                         | 标记提示消费完成                         |
+| **Invoke** | `cancel-session-prompt`                                                                | `admissionId`                   | `boolean`                                         | 取消排队中的提示                         |
+| **Invoke** | `requeue-session-prompt`                                                               | `admissionId`                   | `boolean`                                         | 异常后重新入队                           |
+| **Invoke** | `preview-agent-file-revert`                                                            | `sessionId, runId`              | `AgentFileRevertPreview`                          | 预览单次运行的文件改动                   |
+| **Invoke** | `revert-agent-file-changes`                                                            | `RevertAgentFileChangesInput`   | `RevertAgentFileChangesResult`                    | 回滚单次运行的文件改动                   |
+| **Invoke** | `preview-session-file-transition`                                                      | `SessionFileTransitionInput`    | `SessionFileTransitionPreview`                    | 预览时间线回退的文件迁移                 |
+| **Invoke** | `apply-session-file-transition`                                                        | `SessionFileTransitionInput`    | `SessionFileTransitionResult`                     | 应用时间线回退的文件迁移                 |
+| **Invoke** | `clear-session-caches`                                                                 | `ClearSessionCachesPayload`     | `{ ok: true }`                                    | 物理清除磁盘日志及孤立缓存               |
+| **Invoke** | `fork-session-caches`                                                                  | `ForkSessionCachesPayload`      | `{ ok, actions, checkpoints, manifests, events }` | 分叉会话时拷贝运行缓存                   |
+| **Invoke** | `background-job-list`                                                                  | `sessionId?`                    | `BackgroundJobInfo[]`                             | 列举后台任务                             |
+| **Invoke** | `background-job-cancel`                                                                | `id`                            | `boolean`                                         | 取消指定后台任务                         |
+| **Invoke** | `mcp-get-config` / `mcp-set-config`                                                    | — / `config`                    | 配置对象                                          | 读写 `mcp.json`                          |
+| **Invoke** | `mcp-get-status`                                                                       | 无                              | `McpServerStatus[]`                               | 查询各 MCP 服务连接状态                  |
+| **Invoke** | `mcp-reload-server` / `mcp-delete-server`                                              | `name`                          | `boolean`                                         | 单服务热重载 / 注销                      |
+| **Invoke** | `mcp-open-config`                                                                      | 无                              | 无                                                | 用系统编辑器打开配置文件                 |
+| **Invoke** | `memory-entries`                                                                       | 无                              | `MemoryEntry[]`                                   | 返回全部长期记忆文件描述                 |
+| **Invoke** | `memory-entry-read`                                                                    | `id`                            | `string`                                          | 读特定长期记忆内容                       |
+| **Invoke** | `memory-entry-write`                                                                   | `id, content`                   | `{ ok: true }`                                    | 更新记忆文件并执行 Git 提交              |
+| **Send**   | `start-chat-completion`                                                                | `reqId, ChatRunOptions`         | 无                                                | 启动对话流（Agent 与 Chat）              |
+| **Send**   | `start-agent-skill`                                                                    | `reqId, AgentSkillRunOptions`   | 无                                                | 启动特定 Agent 技能运行                  |
+| **Send**   | `abort-generation`                                                                     | `reqId`                         | 无                                                | 中断该次生成                             |
+| **Send**   | `advance-session-context`                                                              | `sessionId, contextEpoch`       | 无                                                | 推进上下文纪元（`/clear` 等）            |
+| **Send**   | `respond-tool-permission`                                                              | `reqId, callId, approved`       | 无                                                | 反馈工具授权响应（支持按前缀/工具批准）  |
+| **Send**   | `respond-user-choice`                                                                  | `reqId, requestId, response`    | 无                                                | 反馈结构化用户选择                       |
+| **Send**   | `hide-window` / `minimize-window` / `toggle-window-maximized` / `re-summon-window`     | 无                              | 无                                                | 窗口控制                                 |
+| **Send**   | `set-file-picker-active`                                                               | `active: boolean`               | 无                                                | 防止系统选择文件时失焦折叠窗口           |
+| **Send**   | `set-window-pinned`                                                                    | `pinned: boolean`               | 无                                                | 置顶悬浮框                               |
+| **Send**   | `toggle-devtools`                                                                      | 无                              | 无                                                | 切换控制台面板                           |
+| **Send**   | `show-notification`                                                                    | `title, body`                   | 无                                                | 发送系统桌面横幅通知                     |
+| **On**     | `chat-chunk`                                                                           | `ChatChunkData`                 | —                                                 | 流式事件推送（含 `contextEpoch` 校验位） |
+| **On**     | `background-subagent-result` / `background-shell-result` / `background-subagent-event` | 通知载荷                        | —                                                 | 后台任务结果与中间事件                   |
+| **On**     | `user-choice-request`                                                                  | `UserChoiceRequest`             | —                                                 | Agent 发起的结构化选择请求               |
+| **On**     | `skills-updated`                                                                       | `Skill[]`                       | —                                                 | 技能目录变更广播                         |
+| **On**     | `window-state-changed`                                                                 | `WindowState`                   | —                                                 | 窗口模式/最大化状态变更                  |
 
 ---
 
@@ -1039,15 +1042,15 @@ Preload 层 ([index.ts](file:///d:/Git/Quick%20Ai/src/preload/index.ts)) 通过 
 
 QuickAI 建立了多级缓存结构，分工明确，保障性能与安全：
 
-| 缓存类型 | 存储位置 | 生命周期 | 淘汰策略 | 清理时机 | 功能目的 |
-| --- | --- | --- | --- | --- | --- |
-| **ActionLog** | `{userData}/action_logs/{sessionId}.jsonl` | 跨会话持久化 | 最多 500 条 | 会话清除 / 删除时物理移出磁盘 | 供 Agent 使用 `list_past_actions` 查询历史工具行动轨迹，支持参数脱敏 |
-| **AgentEventJournal** | `{userData}` 下的运行事件日志 | Run 级别（持久） | 1500 条 / 5MB / 单事件 256KB | 会话清理时随之移除 | 崩溃后重建时间线、把僵尸运行标记为 `interrupted` |
-| **ResourceCache** | SQLite (`resource_cache` / `resource_chunks` / `resource_links`) | 跨会话共享持久化 | 字符数超出 2MB 则淘汰旧 chunk | 当前会话被清理且该资源不被其他存活会话引用 (Orphan Pruning) | 对 `fetch_url` 网页抓取的大文本分块索引，支持分页重读 |
-| **ToolOutputStore** | 内存 Map ([AgentRunContext.ts](file:///d:/Git/Quick%20Ai/src/main/agent/AgentRunContext.ts)) | Run 级别（临时） | 最大 5MB | 运行退出/销毁时释放内存 | 临时缓存超出阈值的巨量工具输出，防止在 Trim 时永久丢失 |
-| **RunCheckpoint** | `{userData}/run_checkpoints/{sessionId}/{reqId}.json` | Run 级别（半持久） | 无 | 关联会话删除或清理时 | 存储单 Turn 的执行切片消息，为 Resume 中断恢复提供基准数据 |
-| **FileSnapshot** | Git `refs/quickai/**`（用户项目仓库内） | Run 级别（7 天） | 单文件 > 2MB 不纳入 | 每 24 小时维护，清理 7 天前且无清单引用的 ref | 支撑文件级回滚与时间线迁移 |
-| **ModelDiscoveryCache** | `provider_accounts.modelDiscovery` (SQLite) | 账号级 | 6 小时过期，失败后 5 分钟内不重试 | 用户手动刷新或改动 Base URL | 避免配置页反复请求服务商模型列表 |
+| 缓存类型                | 存储位置                                                                                     | 生命周期           | 淘汰策略                          | 清理时机                                                    | 功能目的                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------------- | ------------------ | --------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| **ActionLog**           | `{userData}/action_logs/{sessionId}.jsonl`                                                   | 跨会话持久化       | 最多 500 条                       | 会话清除 / 删除时物理移出磁盘                               | 供 Agent 使用 `list_past_actions` 查询历史工具行动轨迹，支持参数脱敏 |
+| **AgentEventJournal**   | `{userData}` 下的运行事件日志                                                                | Run 级别（持久）   | 1500 条 / 5MB / 单事件 256KB      | 会话清理时随之移除                                          | 崩溃后重建时间线、把僵尸运行标记为 `interrupted`                     |
+| **ResourceCache**       | SQLite (`resource_cache` / `resource_chunks` / `resource_links`)                             | 跨会话共享持久化   | 字符数超出 2MB 则淘汰旧 chunk     | 当前会话被清理且该资源不被其他存活会话引用 (Orphan Pruning) | 对 `fetch_url` 网页抓取的大文本分块索引，支持分页重读                |
+| **ToolOutputStore**     | 内存 Map ([AgentRunContext.ts](file:///d:/Git/Quick%20Ai/src/main/agent/AgentRunContext.ts)) | Run 级别（临时）   | 最大 5MB                          | 运行退出/销毁时释放内存                                     | 临时缓存超出阈值的巨量工具输出，防止在 Trim 时永久丢失               |
+| **RunCheckpoint**       | `{userData}/run_checkpoints/{sessionId}/{reqId}.json`                                        | Run 级别（半持久） | 无                                | 关联会话删除或清理时                                        | 存储单 Turn 的执行切片消息，为 Resume 中断恢复提供基准数据           |
+| **FileSnapshot**        | Git `refs/quickai/**`（用户项目仓库内）                                                      | Run 级别（7 天）   | 单文件 > 2MB 不纳入               | 每 24 小时维护，清理 7 天前且无清单引用的 ref               | 支撑文件级回滚与时间线迁移                                           |
+| **ModelDiscoveryCache** | `provider_accounts.modelDiscovery` (SQLite)                                                  | 账号级             | 6 小时过期，失败后 5 分钟内不重试 | 用户手动刷新或改动 Base URL                                 | 避免配置页反复请求服务商模型列表                                     |
 
 ### 17.1 提示缓存诊断
 
@@ -1089,12 +1092,12 @@ QuickAI 建立了多级缓存结构，分工明确，保障性能与安全：
 
 ### 19.1 结构化异常管理设计
 
-*   **共享分类与规范化中心**：[runtimeErrors.ts](file:///d:/Git/Quick%20Ai/src/shared/runtimeErrors.ts) 定义了归一化的错误实体（`RuntimeErrorPayload`），涵盖 `timeout`（连接或执行超时）、`rate_limit`（频次超限）、`unauthorized`（密钥验证失败）、`network`（DNS/套接字连接失败）等类别。
-*   **SQLite 消息层持久化**：[schema.ts](file:///d:/Git/Quick%20Ai/src/main/database/schema.ts) 为 messages 增加了 `errorPayload` 字段并执行 ensureColumn 列升级。在 [sessionStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/sessionStore.ts) 中对该异常信息执行持久化存取与会话 Hash 感知，防止状态丢失。
-*   **文案呈现与消息加工解耦**：
-    *   [runtimeErrorPresenter.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/features/errors/runtimeErrorPresenter.ts)：承载全部中文文案与排错指南映射逻辑。
-    *   [runtimeErrorMessage.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/features/errors/runtimeErrorMessage.ts)：封装 `applyRuntimeErrorToMessage` 进行流写入与最终事件追加。
-*   **UI 隔离与呈现**：[RuntimeErrorPanel.tsx](file:///d:/Git/Quick%20Ai/src/renderer/src/components/errors/RuntimeErrorPanel.tsx) 作为隔离的 React 组件渲染错误并支持"重试并发送"，而 [MessageBubble.tsx](file:///d:/Git/Quick%20Ai/src/renderer/src/components/MessageBubble.tsx) 只负责消费并嵌入该组件。
+- **共享分类与规范化中心**：[runtimeErrors.ts](file:///d:/Git/Quick%20Ai/src/shared/runtimeErrors.ts) 定义了归一化的错误实体（`RuntimeErrorPayload`），涵盖 `timeout`（连接或执行超时）、`rate_limit`（频次超限）、`unauthorized`（密钥验证失败）、`network`（DNS/套接字连接失败）等类别。
+- **SQLite 消息层持久化**：[schema.ts](file:///d:/Git/Quick%20Ai/src/main/database/schema.ts) 为 messages 增加了 `errorPayload` 字段并执行 ensureColumn 列升级。在 [sessionStore.ts](file:///d:/Git/Quick%20Ai/src/main/database/sessionStore.ts) 中对该异常信息执行持久化存取与会话 Hash 感知，防止状态丢失。
+- **文案呈现与消息加工解耦**：
+  - [runtimeErrorPresenter.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/features/errors/runtimeErrorPresenter.ts)：承载全部中文文案与排错指南映射逻辑。
+  - [runtimeErrorMessage.ts](file:///d:/Git/Quick%20Ai/src/renderer/src/features/errors/runtimeErrorMessage.ts)：封装 `applyRuntimeErrorToMessage` 进行流写入与最终事件追加。
+- **UI 隔离与呈现**：[RuntimeErrorPanel.tsx](file:///d:/Git/Quick%20Ai/src/renderer/src/components/errors/RuntimeErrorPanel.tsx) 作为隔离的 React 组件渲染错误并支持"重试并发送"，而 [MessageBubble.tsx](file:///d:/Git/Quick%20Ai/src/renderer/src/components/MessageBubble.tsx) 只负责消费并嵌入该组件。
 
 ---
 
@@ -1108,18 +1111,18 @@ QuickAI 建立了多级缓存结构，分工明确，保障性能与安全：
 
 ### 20.1 核心测试用例分类
 
-| 测试类 | 测试文件 | 测试的核心边界 |
-| --- | --- | --- |
-| **数据库/持久化** | `sessionStore.test.ts`、`providerStore.test.ts`、`schema.test.ts` | SQLite 结构校验、拆分表回迁、外键及级联删除校验 |
-| **Agent 执行** | `agentLoop.test.ts` | 步数上限控制、故障中断与恢复、分支轨迹隔离与重载、steering 边界合并 |
-| **事件日志** | `agentEventJournal.test.ts`、`agentEventRecovery.test.ts` | 落盘阈值截断、脱敏、崩溃后 `interrupted` 标记 |
-| **文件快照** | `agentFileSnapshot.test.ts` | 快照 ref 生命周期、差异计算、回滚正确性 |
-| **服务商层** | `providerRegistry.test.ts`、`providerConfig.test.ts`、`providerProfiles.test.ts`、`providerModelDiscovery*.test.ts` | 注册表结构自检、定义/账号拆分往返一致、兼容性合并顺序、发现响应归一化与缓存过期 |
-| **提示队列** | `sessionPromptQueue.test.ts`、`sessionPromptStore.test.ts` | steer/queue 语义、状态机流转、纪元隔离 |
-| **后台任务** | `backgroundJobManager.test.ts`、`background*Delivery.test.ts` | 取消传播、跨重启状态恢复、结果回投的纪元校验 |
-| **行动日志管理** | `actionLog.test.ts` | JSONL 读写、敏感密钥过滤、FIFO 溢出 |
-| **安全宪法守卫** | `constitution.test.ts`、`commandSafety.test.ts`、`pathPolicy.test.ts` | 逃逸路径拦截、敏感配置读取拦截、多行 shell 命令评级 |
-| **LoopGuard 熔断** | `loopGuard.test.ts` | 循环哈希防重放、最大重试阶梯警告、失败阈值 halt 截断 |
-| **SSRF 网络防护** | `urlSafety.test.ts` | 本地回环地址拦截、重定向追溯检查、级联搜索引擎切换 |
-| **消息裁剪机制** | `contextManager.test.ts` | 两阶段裁剪中大工具输出转为 retrievable pointer、旧消息整组裁剪 |
-| **路径根解析** | `paths.test.ts` | 环境变量哨兵值（`"undefined"`/`"null"`/空串）不得污染磁盘根目录 |
+| 测试类             | 测试文件                                                                                                            | 测试的核心边界                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **数据库/持久化**  | `sessionStore.test.ts`、`providerStore.test.ts`、`schema.test.ts`                                                   | SQLite 结构校验、拆分表回迁、外键及级联删除校验                                 |
+| **Agent 执行**     | `agentLoop.test.ts`                                                                                                 | 步数上限控制、故障中断与恢复、分支轨迹隔离与重载、steering 边界合并             |
+| **事件日志**       | `agentEventJournal.test.ts`、`agentEventRecovery.test.ts`                                                           | 落盘阈值截断、脱敏、崩溃后 `interrupted` 标记                                   |
+| **文件快照**       | `agentFileSnapshot.test.ts`                                                                                         | 快照 ref 生命周期、差异计算、回滚正确性                                         |
+| **服务商层**       | `providerRegistry.test.ts`、`providerConfig.test.ts`、`providerProfiles.test.ts`、`providerModelDiscovery*.test.ts` | 注册表结构自检、定义/账号拆分往返一致、兼容性合并顺序、发现响应归一化与缓存过期 |
+| **提示队列**       | `sessionPromptQueue.test.ts`、`sessionPromptStore.test.ts`                                                          | steer/queue 语义、状态机流转、纪元隔离                                          |
+| **后台任务**       | `backgroundJobManager.test.ts`、`background*Delivery.test.ts`                                                       | 取消传播、跨重启状态恢复、结果回投的纪元校验                                    |
+| **行动日志管理**   | `actionLog.test.ts`                                                                                                 | JSONL 读写、敏感密钥过滤、FIFO 溢出                                             |
+| **安全宪法守卫**   | `constitution.test.ts`、`commandSafety.test.ts`、`pathPolicy.test.ts`                                               | 逃逸路径拦截、敏感配置读取拦截、多行 shell 命令评级                             |
+| **LoopGuard 熔断** | `loopGuard.test.ts`                                                                                                 | 循环哈希防重放、最大重试阶梯警告、失败阈值 halt 截断                            |
+| **SSRF 网络防护**  | `urlSafety.test.ts`                                                                                                 | 本地回环地址拦截、重定向追溯检查、级联搜索引擎切换                              |
+| **消息裁剪机制**   | `contextManager.test.ts`                                                                                            | 两阶段裁剪中大工具输出转为 retrievable pointer、旧消息整组裁剪                  |
+| **路径根解析**     | `paths.test.ts`                                                                                                     | 环境变量哨兵值（`"undefined"`/`"null"`/空串）不得污染磁盘根目录                 |
