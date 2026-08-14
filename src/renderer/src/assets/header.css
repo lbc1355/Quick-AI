@@ -36,7 +36,7 @@
 }
 
 .logo-text {
-  font-size: 13.5px;
+  font-size: var(--font-size-base);
   font-weight: 700;
   letter-spacing: 0.5px;
   color: #fff;
@@ -52,17 +52,17 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 6px #10b981;
+  background: var(--color-success);
+  box-shadow: 0 0 6px var(--color-success);
 }
 
 .status-dot.loading {
-  background: #f59e0b;
-  box-shadow: 0 0 6px #f59e0b;
+  background: var(--color-warning);
+  box-shadow: 0 0 6px var(--color-warning);
 }
 
 .model-name {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--color-text-muted);
 }
@@ -89,6 +89,6 @@
 }
 
 .header-action-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-overlay-soft);
   color: #fff;
 }

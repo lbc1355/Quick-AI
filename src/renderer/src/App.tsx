@@ -1228,7 +1228,7 @@ function App(): React.JSX.Element {
                 <div
                   className="empty-title"
                   style={{
-                    fontSize: '16px',
+                    fontSize: 'var(--font-size-lg)',
                     fontWeight: '600',
                     color: 'var(--color-text-title)',
                     marginTop: '14px'
@@ -1239,8 +1239,8 @@ function App(): React.JSX.Element {
                 <div
                   className="empty-desc"
                   style={{
-                    fontSize: '12.5px',
-                    color: '#6b7280',
+                    fontSize: 'var(--font-size-base)',
+                    color: 'var(--color-text-muted)',
                     marginTop: '6px',
                     maxWidth: '380px'
                   }}

@@ -49,7 +49,7 @@ export const SubagentRunCard: React.FC<SubagentRunCardProps> = ({ subagent, onCl
       case 'completed':
         return <CheckCircle2 size={13} style={{ color: 'var(--color-status-success, #10b981)' }} />
       case 'failed':
-        return <XCircle size={13} style={{ color: 'var(--color-danger, #ef4444)' }} />
+        return <XCircle size={13} style={{ color: 'var()' }} />
       case 'max_steps':
         return <AlertTriangle size={13} style={{ color: 'var(--color-warning, #f59e0b)' }} />
       case 'cancelled':
@@ -90,7 +90,7 @@ export const SubagentRunCard: React.FC<SubagentRunCardProps> = ({ subagent, onCl
         border: '1px solid var(--color-border)',
         borderRadius: '6px',
         cursor: 'pointer',
-        fontSize: '12px',
+        fontSize: 'var(--font-size-sm)',
         color: 'var(--color-text)',
         maxWidth: '100%',
         textAlign: 'left',
@@ -112,7 +112,7 @@ export const SubagentRunCard: React.FC<SubagentRunCardProps> = ({ subagent, onCl
       <span
         style={{
           fontFamily: 'var(--font-mono)',
-          fontSize: '11px',
+          fontSize: 'var(--font-size-xs)',
           background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)',
           color: 'var(--color-primary)',
           padding: '1px 5px',
@@ -141,7 +141,7 @@ export const SubagentRunCard: React.FC<SubagentRunCardProps> = ({ subagent, onCl
           alignItems: 'center',
           gap: '4px',
           color: 'var(--color-text-muted)',
-          fontSize: '11px',
+          fontSize: 'var(--font-size-xs)',
           marginLeft: '4px'
         }}
       >

@@ -12,6 +12,15 @@ colors:
   success: '#3fb950'
   info: '#64748b'
   statusMuted: '#94a3b8'
+  # 焦点/选中/激活的系统语义蓝（仅用于 focus ring、选中态、链接，不做大面积填充）
+  focus: '#3b82f6'
+  # Agent 模式身份色（小面积：运行模式按钮、subagent 表面）
+  accentAgent: '#c084fc'
+  accentAgentHover: '#d8b4fe'
+  scrim: 'rgba(7, 8, 10, 0.72)'
+  overlaySoft: 'rgba(255, 255, 255, 0.05)'
+  scrollbarThumb: 'rgba(255, 255, 255, 0.14)'
+  scrollbarThumbHover: 'rgba(255, 255, 255, 0.26)'
   bgDarker: '#111111'
   bgHeader: '#151515'
   bgMain: '#181818'
@@ -19,7 +28,7 @@ colors:
   panelSoft: '#202020'
   border: '#2a2a2a'
   borderStrong: '#333333'
-  borderFocus: '#2f6f8f'
+  borderFocus: '#746d63'
   text: '#d7dde7'
   textTitle: '#eef2f8'
   textMuted: '#9aa3ad'
@@ -33,7 +42,16 @@ colors:
   codeBlockText: '#d7dde7'
   codeBlockBorder: '#333333'
 
+shadows:
+  sm: '0 1px 3px rgba(0, 0, 0, 0.06)'
+  md: '0 4px 14px rgba(0, 0, 0, 0.14)'
+  lg: '0 16px 40px rgba(0, 0, 0, 0.34)'
+  window: '0 24px 70px rgba(0, 0, 0, 0.36)'
+
 typography:
+  2xs:
+    fontSize: '10px'
+    lineHeight: '1.4'
   xs:
     fontSize: '11px'
     lineHeight: '1.4'
@@ -43,9 +61,15 @@ typography:
   base:
     fontSize: '13px'
     lineHeight: '1.7'
+  md:
+    fontSize: '14px'
+    lineHeight: '1.78'
   lg:
     fontSize: '15px'
     lineHeight: '1.65'
+  xl:
+    fontSize: '18px'
+    lineHeight: '1.4'
 
 rounded:
   xs: '3px'
@@ -179,6 +203,13 @@ modes:
       success: '#0f9f6e'
       info: '#706d66'
       statusMuted: '#85827a'
+      focus: '#2563eb'
+      accentAgent: '#7c3aed'
+      accentAgentHover: '#6d28d9'
+      scrim: 'rgba(15, 23, 42, 0.45)'
+      overlaySoft: 'rgba(15, 23, 42, 0.04)'
+      scrollbarThumb: 'rgba(15, 23, 42, 0.22)'
+      scrollbarThumbHover: 'rgba(15, 23, 42, 0.34)'
       bgDarker: '#eeeeeb'
       bgHeader: '#f7f7f5'
       bgMain: '#fbfbfa'
@@ -199,6 +230,11 @@ modes:
       codeBlockBg: '#f5f5f2'
       codeBlockText: '#242421'
       codeBlockBorder: '#deded9'
+    shadows:
+      sm: '0 1px 3px rgba(15, 23, 42, 0.08)'
+      md: '0 4px 14px rgba(15, 23, 42, 0.1)'
+      lg: '0 16px 40px rgba(15, 23, 42, 0.16)'
+      window: '0 24px 70px rgba(15, 23, 42, 0.18)'
 ---
 
 ## Brand & Style

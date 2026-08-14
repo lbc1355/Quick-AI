@@ -170,9 +170,9 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               className="input-action-btn stop"
               onClick={handleAbortGeneration}
               title="终止回答"
-              style={{ color: '#ef4444' }}
+              style={{ color: 'var(--color-danger)' }}
             >
-              <Square size={14} fill="#ef4444" />
+              <Square size={14} fill="var(--color-danger)" />
             </button>
             <button
               className="input-action-btn send"

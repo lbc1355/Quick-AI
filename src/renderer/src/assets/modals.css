@@ -5,7 +5,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(10, 10, 14, 0.42);
+  background: var(--color-scrim);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -15,7 +15,7 @@
 }
 
 .app-container.theme-light .modal-backdrop {
-  background: rgba(15, 23, 42, 0.18);
+  background: var(--color-overlay-soft);
 }
 
 .modal-card {
@@ -24,7 +24,7 @@
   background: var(--color-panel);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -52,7 +52,7 @@
 }
 
 .modal-title {
-  font-size: 14.5px;
+  font-size: var(--font-size-md);
   font-weight: 700;
   color: var(--color-text-title);
 }
@@ -83,7 +83,7 @@
   background: transparent;
   color: var(--color-text);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--font-size-base);
 }
 
 .modal-search-input::placeholder {
@@ -107,7 +107,7 @@
   background: var(--color-card-bg);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: var(--color-text);
 }
 
@@ -134,7 +134,7 @@
   overflow: hidden;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -145,7 +145,7 @@
   align-items: center;
   gap: 4px;
   color: var(--color-text-muted);
-  font-size: 10.5px;
+  font-size: var(--font-size-xs);
 }
 
 .model-capability-badge {
@@ -178,9 +178,9 @@
 }
 
 .modal-action-btn.add {
-  background: rgba(59, 130, 246, 0.12);
+  background: color-mix(in srgb, var(--color-focus) 12%, transparent);
   color: var(--color-primary);
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  border: 1px solid color-mix(in srgb, var(--color-focus) 20%, transparent);
 }
 
 .modal-action-btn.add:hover {
@@ -189,13 +189,13 @@
 }
 
 .modal-action-btn.remove {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  color: var(--color-danger);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 20%, transparent);
 }
 
 .modal-action-btn.remove:hover {
-  background: #ef4444;
+  background: var(--color-danger);
   color: #fff;
 }
 
@@ -204,7 +204,7 @@
   border: 1px dashed var(--color-border);
   border-radius: 8px;
   color: var(--color-text-muted);
-  font-size: 12.5px;
+  font-size: var(--font-size-base);
   text-align: center;
 }
 
@@ -222,7 +222,7 @@
   color: white;
   border-radius: 6px;
   padding: 6px 14px;
-  font-size: 12.5px;
+  font-size: var(--font-size-base);
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
@@ -246,13 +246,13 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-md);
   z-index: 100;
   box-sizing: border-box;
 }
 
 .app-container:not(.theme-light) .permission-popup-container {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-lg);
 }
 
 .permission-popup-header {
@@ -260,7 +260,7 @@
   align-items: center;
   gap: 6px;
   color: var(--color-text-title);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
 }
 
@@ -283,7 +283,7 @@
 
 .permission-popup-tool {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 700;
   color: var(--color-primary);
   background: var(--color-bg-main);
@@ -295,14 +295,14 @@
 .permission-popup-action {
   min-width: 0;
   color: var(--color-text-title);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   overflow-wrap: anywhere;
 }
 
 .permission-popup-target {
   color: var(--color-text);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -312,7 +312,7 @@
   flex-wrap: wrap;
   gap: 6px;
   color: var(--color-text-muted);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
 }
 
 .permission-popup-details span {
@@ -324,7 +324,7 @@
 
 .permission-popup-code {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   color: var(--color-text);
   background: var(--color-bg-main);
   border: 1px solid var(--color-code-block-border);
@@ -347,7 +347,7 @@
   gap: 8px;
   padding: 6px 10px;
   border-radius: 5px;
-  font-size: 10.5px;
+  font-size: var(--font-size-xs);
   color: var(--color-text);
   cursor: pointer;
   transition:
@@ -397,7 +397,7 @@
 }
 
 .permission-popup-btn {
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   cursor: pointer;
   border-radius: 4px;
   transition: all 0.15s ease;
@@ -452,7 +452,7 @@
   border: 1px solid var(--color-border);
   border-radius: 10px;
   background: var(--color-bg-main);
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--shadow-lg);
 }
 
 .user-choice-popup-header {
@@ -460,7 +460,7 @@
   align-items: center;
   gap: 7px;
   color: var(--color-text-title);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
 }
 
@@ -470,7 +470,7 @@
   border-radius: 7px;
   background: var(--color-code-block-bg);
   color: var(--color-text);
-  font-size: 12.5px;
+  font-size: var(--font-size-base);
   line-height: 1.5;
 }
 
@@ -513,7 +513,7 @@
   background: var(--color-bg-main);
   color: var(--color-primary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-weight: 700;
 }
 
@@ -525,13 +525,13 @@
 
 .user-choice-option-label {
   color: var(--color-text-title);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 650;
 }
 
 .user-choice-option-desc {
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1.4;
 }
 
@@ -551,7 +551,7 @@
   background: var(--color-input-container-bg);
   color: var(--color-text);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   outline: none;
 }
 
@@ -571,7 +571,7 @@
   padding: 0 10px;
   border-radius: 6px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   cursor: pointer;
 }
 

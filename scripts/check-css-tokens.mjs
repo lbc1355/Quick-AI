@@ -12,6 +12,10 @@
  *      Component-scoped custom properties (on a class selector) are fine.
  *   2. Every token referenced with var() must be declared somewhere.
  *   3. Every declared token must be referenced (dead tokens are reported, not fatal).
+ *   4. Component stylesheets must not hardcode raw colors (hex / rgb() / rgba() / hsl()).
+ *      All theme colors go through tokens or color-mix() on a token. The workbench skin files
+ *      are a separate theme layer and are exempt; a small allowlist covers on-accent `#fff`
+ *      text and the intentional pastel tool-category palette in chat.css.
  *
  * Run: npm run lint:css-tokens
  */
@@ -94,6 +98,45 @@ for (const token of required) {
 }
 for (const token of declared) {
   if (!referenced.has(token) && !token.startsWith('--ev-')) warnings.push(token)
+}
+
+/** Workbench skin files are a parallel theme layer with their own dark/light definitions. */
+const RAW_COLOR_EXEMPT_FILES = new Set([
+  'base.css',
+  'workbench-core.css',
+  'workbench-core.light.css',
+  'workbench-skin.light.css'
+])
+/**
+ * Intentional literals outside the token system:
+ * - on-accent text (`#fff` over filled primary/danger buttons)
+ * - the pastel tool-category chips in chat.css (content palette, not theme palette)
+ */
+const RAW_COLOR_ALLOWED = new Set([
+  '#fff',
+  '#ffffff',
+  '#c4b5fd',
+  '#fde68a',
+  '#e7e1d7',
+  '#ddd6cc',
+  '#bbf7d0',
+  '#f0abfc',
+  '#d4d4d8',
+  '#78716c',
+  '#57534e'
+])
+
+for (const file of files) {
+  if (file === TOKEN_SOURCE || RAW_COLOR_EXEMPT_FILES.has(file)) continue
+  const src = readFileSync(join(ASSETS, file), 'utf8')
+  for (const m of src.matchAll(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/g)) {
+    const literal = m[0].toLowerCase()
+    if (RAW_COLOR_ALLOWED.has(literal)) continue
+    const line = src.slice(0, m.index).split('\n').length
+    errors.push(
+      `${file}:${line} 硬编码颜色 "${m[0]}"。主题色必须通过 var(--color-*) 或 color-mix(in srgb, var(--color-*) N%, transparent) 引用。`
+    )
+  }
 }
 
 if (warnings.length) {

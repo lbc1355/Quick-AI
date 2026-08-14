@@ -269,7 +269,11 @@ export const SkillManager: React.FC = () => {
       <div className="skill-manager-header">
         <span
           className="settings-label"
-          style={{ fontSize: '13.5px', color: 'var(--color-text-title)', fontWeight: 'bold' }}
+          style={{
+            fontSize: 'var(--font-size-base)',
+            color: 'var(--color-text-title)',
+            fontWeight: 'bold'
+          }}
         >
           Skills
         </span>

@@ -235,8 +235,8 @@ const markdownComponents: Components = {
           padding: '2px 4px',
           borderRadius: '4px',
           fontFamily: 'var(--font-mono)',
-          fontSize: '12px',
-          color: '#f43f5e'
+          fontSize: 'var(--font-size-sm)',
+          color: 'var(--color-danger)'
         }}
         {...props}
       >
@@ -393,7 +393,7 @@ const MessageCodeBlock = React.memo<{
           background: 'var(--color-code-block-bg)',
           color: 'var(--color-code-block-text)',
           fontFamily: 'var(--font-mono)',
-          fontSize: '12px',
+          fontSize: 'var(--font-size-sm)',
           lineHeight: '1.6'
         }}
       >
@@ -486,7 +486,7 @@ export interface ParsedAgentRun {
   steps: ParsedAgentStep[]
   finalAnswer: string
   finalReasoning: string
-  status: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps'
+  status: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' | 'safety_stop'
   totalToolsCount: number
   failedToolsCount: number
 }
