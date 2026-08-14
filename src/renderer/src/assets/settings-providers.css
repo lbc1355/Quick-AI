@@ -347,7 +347,7 @@
   max-height: none;
   flex: 1;
   resize: none;
-  font-family: 'Consolas', 'Courier New', Courier, monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.55;
 }

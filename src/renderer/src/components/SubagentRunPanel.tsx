@@ -153,7 +153,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span
               style={{
-                fontFamily: 'Consolas, monospace',
+                fontFamily: 'var(--font-mono)',
                 fontSize: '11px',
                 background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)',
                 color: 'var(--color-primary)',
@@ -229,7 +229,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
                   borderRadius: '6px',
                   color: 'var(--color-danger)',
                   fontSize: '13px',
-                  fontFamily: 'Consolas, monospace',
+                  fontFamily: 'var(--font-mono)',
                   marginTop: '10px',
                   whiteSpace: 'pre-wrap'
                 }}

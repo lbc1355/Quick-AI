@@ -375,6 +375,7 @@
   color: var(--color-text);
   font-family: inherit;
   font-size: 13.5px;
+  line-height: 1.6;
   resize: none;
   height: 24px;
   max-height: 120px;
@@ -924,7 +925,7 @@
 
 .context-panel-total-line {
   color: var(--color-text);
-  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
@@ -978,7 +979,7 @@
   justify-content: space-between;
   gap: 12px;
   color: var(--color-text-muted);
-  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
@@ -1082,7 +1083,7 @@
 
 .context-role-legend-share {
   color: var(--color-text-faint);
-  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1123,7 +1124,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--color-text-title);
-  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1183,7 +1184,7 @@
 
 .context-panel-factor-value {
   color: var(--color-text-muted);
-  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }

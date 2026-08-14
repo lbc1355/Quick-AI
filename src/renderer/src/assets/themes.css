@@ -22,11 +22,10 @@ body {
   height: 100vh;
   overflow: hidden;
   background: transparent !important; /* Critical for showing border-radius of the app wrapper correctly */
-  font-family:
-    'Outfit',
-    'Inter',
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   user-select: none;
 }
 
@@ -614,7 +613,7 @@ select {
 .message-text {
   border-radius: 8px;
   font-size: 13.2px;
-  line-height: 1.56;
+  line-height: 1.72;
 }
 
 .message-bubble.user .message-text {
@@ -1094,7 +1093,7 @@ select {
 
 .message-branch-run {
   color: var(--color-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
@@ -1388,7 +1387,7 @@ select {
 .skills-trigger {
   max-width: min(220px, 35vw);
   color: var(--color-text-title);
-  font-family: 'SFMono-Regular', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;

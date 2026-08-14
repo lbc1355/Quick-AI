@@ -35,17 +35,17 @@ colors:
 
 typography:
   xs:
-    size: '11px'
-    lineHeight: '1.25'
-  sm:
-    size: '12px'
+    fontSize: '11px'
     lineHeight: '1.4'
-  base:
-    size: '13px'
+  sm:
+    fontSize: '12px'
     lineHeight: '1.5'
+  base:
+    fontSize: '13px'
+    lineHeight: '1.7'
   lg:
-    size: '15px'
-    lineHeight: '1.6'
+    fontSize: '15px'
+    lineHeight: '1.65'
 
 rounded:
   xs: '3px'
@@ -225,8 +225,9 @@ QuickAI 采用中性、简约、桌面原生的工作台风格。界面应像 ID
 
 ## Typography
 
-- **基准字体**：系统 Sans-serif 字体家族，界面文字采用平滑的抗锯齿效果。
-- **等宽/代码字体**：统一采用 `Consolas, 'SFMono-Regular', monospace`，用以展示文件路径、代码片段及 Agent 内部调用。
+- **基准正文字体**：统一采用 `--font-sans` (`-apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', Inter, Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei', sans-serif`)，具备完整的跨平台中英文抗锯齿与回退链。
+- **等宽/代码字体**：统一采用 `--font-mono` (`'Cascadia Code', 'Cascadia Mono', 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace`)，用以展示文件路径、代码片段及 Agent 内部调用。
+- **数字微排版**：动态数字与耗时统计区域启用 `font-variant-numeric: tabular-nums` 避免抖动。
 - 标题保持克制，主要标题通常为 18-22px；面板标题和列表标题通常为 12-15px。
 - 不使用夸张 hero 字号；QuickAI 是工具界面，不是落地页。
 

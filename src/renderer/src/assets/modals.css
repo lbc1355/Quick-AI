@@ -112,7 +112,7 @@
 }
 
 .modal-model-id {
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -133,7 +133,7 @@
   max-width: 100%;
   overflow: hidden;
   color: var(--color-text-muted);
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -323,7 +323,7 @@
 }
 
 .permission-popup-code {
-  font-family: Consolas, Monaco, 'Andale Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--color-text);
   background: var(--color-bg-main);
@@ -374,7 +374,7 @@
   height: 16px;
   font-size: 9px;
   font-weight: 600;
-  font-family: monospace;
+  font-family: var(--font-mono);
   border-radius: 3px;
   border: 1px solid var(--color-border);
   background: var(--color-bg-main);
@@ -512,7 +512,7 @@
   border-radius: 4px;
   background: var(--color-bg-main);
   color: var(--color-primary);
-  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
 }

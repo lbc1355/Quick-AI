@@ -274,7 +274,7 @@
 }
 
 .bg-shell-item-id {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
   color: var(--color-text-title);
@@ -287,7 +287,7 @@
 }
 
 .bg-shell-item-cmd-preview {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--color-text-faint);
   white-space: nowrap;
@@ -297,7 +297,7 @@
 }
 
 .bg-shell-item-pid {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--color-text-faint);
   flex-shrink: 0;
@@ -377,7 +377,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   max-width: 320px;
 }
 
@@ -468,7 +468,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--color-text-title);
-  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -490,7 +490,7 @@
 
 .background-job-error pre {
   color: var(--color-danger);
-  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -547,7 +547,7 @@
   margin: 0;
   padding: var(--spacing-3);
   color: var(--color-code-block-text);
-  font-family: Consolas, 'SFMono-Regular', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;

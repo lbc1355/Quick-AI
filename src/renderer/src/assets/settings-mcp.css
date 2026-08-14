@@ -9,7 +9,7 @@
 
 .mcp-textarea {
   flex: 1;
-  font-family: 'Consolas', 'Courier New', Courier, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   resize: none;
@@ -361,7 +361,7 @@
   border-radius: var(--rounded-md);
   padding: 8px 10px;
   color: #f87171;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.4;
   word-break: break-all;
@@ -409,7 +409,7 @@
   display: block;
   min-width: 0;
   overflow: hidden;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   font-weight: 700;
   color: var(--color-primary);

@@ -204,14 +204,24 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
     {
       type: 'deepseek',
       name: 'DeepSeek',
-      models: ['deepseek-chat', 'deepseek-reasoner'],
-      defaultModel: 'deepseek-chat'
+      models: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'],
+      defaultModel: 'deepseek-v4-flash'
     },
     { apiUrl: 'https://api.deepseek.com/v1', authType: 'bearer' },
     createProviderRuntimeProfile({
       compatibility: { preserveToolCallReasoningContent: true },
       modelReasoningRules: [
         {
+          // Official DeepSeek V4 exposes thinking toggle + reasoning_effort (low/high/xhigh/max).
+          includes: ['deepseek-v4'],
+          reasoningControl: {
+            mode: 'effort',
+            encoding: 'openai-effort',
+            levels: ['low', 'high', 'xhigh', 'max']
+          }
+        },
+        {
+          // Legacy deepseek-reasoner exposes only the thinking toggle.
           includes: ['reasoner', 'r1'],
           reasoningControl: {
             mode: 'toggle',

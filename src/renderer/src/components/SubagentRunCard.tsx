@@ -111,7 +111,7 @@ export const SubagentRunCard: React.FC<SubagentRunCardProps> = ({ subagent, onCl
     >
       <span
         style={{
-          fontFamily: 'Consolas, monospace',
+          fontFamily: 'var(--font-mono)',
           fontSize: '11px',
           background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)',
           color: 'var(--color-primary)',

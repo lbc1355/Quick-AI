@@ -234,7 +234,7 @@ const markdownComponents: Components = {
           background: 'var(--color-inline-code-bg)',
           padding: '2px 4px',
           borderRadius: '4px',
-          fontFamily: 'Consolas, monospace',
+          fontFamily: 'var(--font-mono)',
           fontSize: '12px',
           color: '#f43f5e'
         }}
@@ -388,12 +388,13 @@ const MessageCodeBlock = React.memo<{
       <pre
         style={{
           margin: 0,
-          padding: '10px',
+          padding: '12px',
           overflowX: 'auto',
           background: 'var(--color-code-block-bg)',
           color: 'var(--color-code-block-text)',
-          fontFamily: 'Consolas, monospace',
-          fontSize: '12px'
+          fontFamily: 'var(--font-mono)',
+          fontSize: '12px',
+          lineHeight: '1.6'
         }}
       >
         <code>{renderHighlightedCode(block.code, block.lang)}</code>
