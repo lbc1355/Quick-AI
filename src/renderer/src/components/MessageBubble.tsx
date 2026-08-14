@@ -320,7 +320,8 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
       statusText,
       opText,
       toolsSummaryText,
-      cockpitColor
+      cockpitColor,
+      latestProgressMessage
     } = vm
     const smoothCleanContent = useSmoothStreamText(
       cleanContent,
@@ -715,8 +716,9 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                           </div>
                         )}
                         {isGenerating && parsedRun.steps.length === 0 && !parsedRun.finalAnswer && (
-                          <span style={{ opacity: 0.5, fontSize: '13px', fontStyle: 'italic' }}>
-                            正在启动中..
+                          <span className="agent-startup-indicator">
+                            <Loader2 size={13} className="animate-spin" />
+                            <span>{latestProgressMessage || '正在连接模型并等待响应...'}</span>
                           </span>
                         )}
                       </div>

@@ -344,7 +344,7 @@ export function useAgentMessageViewModel({ msg, isGenerating }: UseAgentMessageV
         ? `当前操作：正在整理结果${totalToolsCount > 0 ? `（已运行 ${totalToolsCount} 个工具）` : ''}`
         : latestToolCall
           ? `当前操作：${latestToolCall.purpose || formatToolDisplayText(latestToolCall.toolName, latestToolCall.args)}`
-          : '当前操作：思考分析中...'
+          : '当前操作：正在连接模型并等待响应...'
     toolsSummaryText = `已耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败已恢复` : ''}`
   } else if (agentStatus === 'completed') {
     cockpitColor = 'var(--color-status-success)'

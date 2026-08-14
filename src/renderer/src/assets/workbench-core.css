@@ -2453,3 +2453,12 @@ body {
   border-color: #333333;
   background: #151515;
 }
+
+.agent-startup-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  opacity: 0.85;
+}

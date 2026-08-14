@@ -376,7 +376,8 @@ export const runAgentLoop = async (
         step,
         maxSteps,
         stepId,
-        activeTools: Array.from(runCtx.activeTools)
+        activeTools: Array.from(runCtx.activeTools),
+        message: step === 1 ? '正在连接模型并等待响应...' : undefined
       })
 
       SessionLogger.logStepStart(conversationId, step, maxSteps)
