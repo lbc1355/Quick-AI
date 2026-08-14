@@ -81,4 +81,18 @@ describe('providerRegistry', () => {
         ?.preserveToolCallReasoningContent
     ).toBe(false)
   })
+
+  it('registers official DeepSeek V4 models with only distinct effort levels', () => {
+    const registration = getProviderRegistration('deepseek')
+    expect(registration).toBeDefined()
+    expect(registration?.definition.models).toEqual(['deepseek-v4-flash', 'deepseek-v4-pro'])
+
+    const provider = createProviderFromRegistration(registration!)
+    expect(provider.model).toBe('deepseek-v4-flash')
+    expect(getProviderModelRuntimeConfig(provider, 'deepseek-v4-pro')?.reasoningControl).toEqual({
+      mode: 'effort',
+      encoding: 'openai-effort',
+      levels: ['high', 'max']
+    })
+  })
 })

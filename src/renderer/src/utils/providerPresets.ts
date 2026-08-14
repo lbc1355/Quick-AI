@@ -8,7 +8,37 @@ import {
 } from '../../../shared/providerRegistry'
 import { createProviderFromRegistration } from '../../../shared/providerFactory'
 
-export const PROVIDER_PRESET_VERSION = 3
+export const PROVIDER_PRESET_VERSION = 4
+
+const RETIRED_DEEPSEEK_MODEL_IDS = new Set(['deepseek-chat', 'deepseek-reasoner'])
+
+const normalizeApiUrl = (value: string): string => value.trim().replace(/\/+$/, '').toLowerCase()
+
+const migrateOfficialDeepSeekV4Preset = (provider: ApiProvider): ApiProvider => {
+  const registration = getProviderRegistration('deepseek')
+  if (
+    !registration ||
+    provider.type !== 'deepseek' ||
+    normalizeApiUrl(provider.apiUrl) !== normalizeApiUrl(registration.accountDefaults.apiUrl || '')
+  ) {
+    return provider
+  }
+
+  const existingModelIds = provider.modelsList?.length
+    ? provider.modelsList
+    : Object.keys(provider.models || {})
+  const modelsList = Array.from(
+    new Set([
+      ...registration.definition.models,
+      ...existingModelIds.filter((id) => !RETIRED_DEEPSEEK_MODEL_IDS.has(id))
+    ])
+  )
+  const model = RETIRED_DEEPSEEK_MODEL_IDS.has(provider.model)
+    ? registration.definition.defaultModel
+    : provider.model
+
+  return { ...provider, model, modelsList }
+}
 
 const providerMatchesRegistration = (
   provider: ApiProvider,
@@ -54,7 +84,12 @@ export function ensureCoreProviderPresets(settings: AppSettings): {
       ? settings.activeProviderId
       : providers[0]?.id || ''
 
-  const normalizedProviders = providers.map((provider) => {
+  const migratedProviders = shouldInstallCorePresets
+    ? providers.map(migrateOfficialDeepSeekV4Preset)
+    : providers
+  changed = changed || migratedProviders.some((provider, index) => provider !== providers[index])
+
+  const normalizedProviders = migratedProviders.map((provider) => {
     const normalized = normalizeProviderModelCatalog(provider)
     return {
       ...normalized,

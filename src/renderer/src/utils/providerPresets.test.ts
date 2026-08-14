@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AppSettings } from '../../../shared/types'
 import { getProviderRegistration } from '../../../shared/providerRegistry'
 import { createProviderFromRegistration } from '../../../shared/providerFactory'
-import { ensureCoreProviderPresets } from './providerPresets'
+import { ensureCoreProviderPresets, PROVIDER_PRESET_VERSION } from './providerPresets'
 
 describe('providerPresets', () => {
   it('builds registered providers with normalized model catalog metadata', () => {
@@ -22,7 +22,7 @@ describe('providerPresets', () => {
       providerId: 'provider-opencode',
       endpointType: 'openai-compatible',
       enabled: true,
-      limit: { context: 128000 }
+      limit: { context: 200000 }
     })
   })
 
@@ -68,13 +68,42 @@ describe('providerPresets', () => {
       activeProviderId: 'provider-opencode',
       systemPrompt: '',
       autoHideOnBlur: true,
-      providerPresetVersion: 3
+      providerPresetVersion: PROVIDER_PRESET_VERSION
     }
 
     const { settings: repaired, changed } = ensureCoreProviderPresets(settings)
 
     expect(changed).toBe(true)
-    expect(repaired.providers[0].models?.['deepseek-v4-flash-free']?.limit.context).toBe(128000)
+    expect(repaired.providers[0].models?.['deepseek-v4-flash-free']?.limit.context).toBe(200000)
+  })
+
+  it('migrates retired official DeepSeek model ids to the V4 catalog once', () => {
+    const settings: AppSettings = {
+      providers: [
+        {
+          id: 'provider-deepseek',
+          name: 'DeepSeek',
+          type: 'deepseek',
+          apiKey: '',
+          apiUrl: 'https://api.deepseek.com/v1/',
+          model: 'deepseek-reasoner',
+          modelsList: ['deepseek-chat', 'deepseek-reasoner']
+        }
+      ],
+      activeProviderId: 'provider-deepseek',
+      systemPrompt: '',
+      autoHideOnBlur: true,
+      providerPresetVersion: PROVIDER_PRESET_VERSION - 1
+    }
+
+    const { settings: migrated, changed } = ensureCoreProviderPresets(settings)
+    const provider = migrated.providers[0]
+
+    expect(changed).toBe(true)
+    expect(provider.model).toBe('deepseek-v4-flash')
+    expect(provider.modelsList).toEqual(['deepseek-v4-flash', 'deepseek-v4-pro'])
+    expect(provider.models?.['deepseek-chat']).toBeUndefined()
+    expect(provider.models?.['deepseek-reasoner']).toBeUndefined()
   })
 
   it('uses the shared registration for step defaults', () => {

@@ -204,7 +204,7 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
     {
       type: 'deepseek',
       name: 'DeepSeek',
-      models: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'],
+      models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
       defaultModel: 'deepseek-v4-flash'
     },
     { apiUrl: 'https://api.deepseek.com/v1', authType: 'bearer' },
@@ -212,12 +212,13 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
       compatibility: { preserveToolCallReasoningContent: true },
       modelReasoningRules: [
         {
-          // Official DeepSeek V4 exposes thinking toggle + reasoning_effort (low/high/xhigh/max).
+          // DeepSeek V4 has two distinct effort levels. Compatibility aliases such as low and
+          // xhigh map onto these values and should not appear as duplicate UI choices.
           includes: ['deepseek-v4'],
           reasoningControl: {
             mode: 'effort',
             encoding: 'openai-effort',
-            levels: ['low', 'high', 'xhigh', 'max']
+            levels: ['high', 'max']
           }
         },
         {
