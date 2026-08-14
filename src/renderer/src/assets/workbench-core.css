@@ -2457,8 +2457,13 @@ body {
 .agent-startup-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   font-size: 13px;
   color: var(--color-text-muted);
-  opacity: 0.85;
+  opacity: 0.9;
+  user-select: none;
+}
+
+.agent-startup-indicator svg {
+  flex-shrink: 0;
 }
