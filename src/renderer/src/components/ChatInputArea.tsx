@@ -288,15 +288,13 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   const cacheShapeDiagnostics = contextDiagnostics.cache.latestDiagnostics
   const hasContextShift = Boolean(
     cacheShapeDiagnostics &&
-      (cacheShapeDiagnostics.prefixChanged ||
-        cacheShapeDiagnostics.appendOnlyFromPrevious === false ||
-        (cacheShapeDiagnostics.duplicateToolCallIds &&
-          cacheShapeDiagnostics.duplicateToolCallIds.length > 0))
+    (cacheShapeDiagnostics.prefixChanged ||
+      cacheShapeDiagnostics.appendOnlyFromPrevious === false ||
+      (cacheShapeDiagnostics.duplicateToolCallIds &&
+        cacheShapeDiagnostics.duplicateToolCallIds.length > 0))
   )
   const contextShiftReason = cacheShapeDiagnostics?.prefixChangeReasons?.length
-    ? cacheShapeDiagnostics.prefixChangeReasons
-        .map((r) => cacheReasonLabels[r] || r)
-        .join('、')
+    ? cacheShapeDiagnostics.prefixChangeReasons.map((r) => cacheReasonLabels[r] || r).join('、')
     : cacheShapeDiagnostics?.appendOnlyFromPrevious === false
       ? '历史消息结构变动'
       : cacheShapeDiagnostics?.duplicateToolCallIds?.length

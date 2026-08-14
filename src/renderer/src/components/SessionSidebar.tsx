@@ -113,10 +113,7 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
     const folder = isConversationFolder(project)
     const isProjectMenuOpen = menuProjectId === project.id
     return (
-      <div
-        key={project.id}
-        className={`project-entry ${isProjectMenuOpen ? 'menu-open' : ''}`}
-      >
+      <div key={project.id} className={`project-entry ${isProjectMenuOpen ? 'menu-open' : ''}`}>
         <button
           type="button"
           className={`project-row ${activeProjectId === project.id ? 'active' : ''}`}
@@ -125,9 +122,7 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
         >
           {folder ? <Library size={13} /> : <Folder size={13} />}
           <span className="project-row-title">{project.name}</span>
-          <span className="project-row-count">
-            {projectSessionCounts.get(project.id) || 0}
-          </span>
+          <span className="project-row-count">{projectSessionCounts.get(project.id) || 0}</span>
         </button>
         <div
           className="project-item-actions"
