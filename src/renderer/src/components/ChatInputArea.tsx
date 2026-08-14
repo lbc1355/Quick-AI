@@ -11,7 +11,11 @@ import { FilePreviewList } from './FilePreviewList'
 import { PermissionPopup } from './PermissionPopup'
 import { ContextPanel } from './ContextPanel'
 import { estimateDraftContextTokens } from '../utils/contextLength'
-import { buildContextUsageBreakdown, formatUsagePercent } from '../utils/contextDiagnostics'
+import {
+  buildContextUsageBreakdown,
+  formatUsagePercent,
+  cacheReasonLabels
+} from '../utils/contextDiagnostics'
 import type { ContextDiagnosticsSnapshot, ContextUsageBreakdown } from '../utils/contextDiagnostics'
 import type { PendingPermission, PermissionResponsePayload } from '../features/chat/permissionTypes'
 import { resolveDraftSubmissionAction } from '../features/chat/draftSubmissionPolicy'
@@ -281,7 +285,27 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
   const contextMeterStyle = {
     '--context-progress-angle': `${contextUsage.totalPercent * 3.6}deg`
   } as React.CSSProperties
-  const contextMeterLabel = `上下文 ${contextUsage.totalTokens.toLocaleString()} / ${contextUsage.contextWindowTokens.toLocaleString()} tokens`
+  const cacheShapeDiagnostics = contextDiagnostics.cache.latestDiagnostics
+  const hasContextShift = Boolean(
+    cacheShapeDiagnostics &&
+      (cacheShapeDiagnostics.prefixChanged ||
+        cacheShapeDiagnostics.appendOnlyFromPrevious === false ||
+        (cacheShapeDiagnostics.duplicateToolCallIds &&
+          cacheShapeDiagnostics.duplicateToolCallIds.length > 0))
+  )
+  const contextShiftReason = cacheShapeDiagnostics?.prefixChangeReasons?.length
+    ? cacheShapeDiagnostics.prefixChangeReasons
+        .map((r) => cacheReasonLabels[r] || r)
+        .join('、')
+    : cacheShapeDiagnostics?.appendOnlyFromPrevious === false
+      ? '历史消息结构变动'
+      : cacheShapeDiagnostics?.duplicateToolCallIds?.length
+        ? '工具上下文重复'
+        : undefined
+
+  const contextMeterLabel = hasContextShift
+    ? `上下文 ${contextUsage.totalTokens.toLocaleString()} / ${contextUsage.contextWindowTokens.toLocaleString()} tokens · ⚠️ 上下文变动: ${contextShiftReason || '前缀已变更'}`
+    : `上下文 ${contextUsage.totalTokens.toLocaleString()} / ${contextUsage.contextWindowTokens.toLocaleString()} tokens`
   const roleTokenTotals = contextDiagnostics.compositionSegments.reduce<Record<string, number>>(
     (totals, segment) => {
       totals[segment.role] = (totals[segment.role] || 0) + segment.tokenEstimate
@@ -427,6 +451,8 @@ export const ChatInputArea: React.FC<ChatInputAreaProps> = ({
           contextUsageLevel={contextUsageLevel}
           contextMeterStyle={contextMeterStyle}
           contextMeterLabel={contextMeterLabel}
+          hasContextShift={hasContextShift}
+          contextShiftReason={contextShiftReason}
           onOpenContextUsage={() => setIsContextUsagePopoverOpen((open) => !open)}
           textareaRef={textareaRef}
           pendingPermission={pendingPermission}

@@ -28,6 +28,15 @@ export interface PromptCacheDiagnostics {
   latestDiagnostics?: CacheShapeDiagnostics
 }
 
+export const cacheReasonLabels: Record<string, string> = {
+  system: '系统提示变化',
+  tools: '工具 schema 变化',
+  context_retention: '上下文保留模式变化',
+  message_content: '历史消息内容变化',
+  message_shape: '消息结构非追加',
+  tool_call_duplication: '工具上下文重复'
+}
+
 export interface ConversationTokenDiagnostics {
   promptTokens: number
   completionTokens: number

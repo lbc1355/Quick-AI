@@ -13,7 +13,8 @@ import {
 import {
   buildContextUsageBreakdown,
   formatUsagePercent,
-  formatCacheRate
+  formatCacheRate,
+  cacheReasonLabels
 } from '../utils/contextDiagnostics'
 import type {
   ContextCompositionGroupKind,
@@ -55,15 +56,6 @@ const formatMaybeTokens = (available: boolean, tokens: number): string =>
   available ? Math.max(0, tokens).toLocaleString() : '未返回'
 
 const formatMaybeRate = (rate: number | undefined): string => formatCacheRate(rate) || '未返回'
-
-const cacheReasonLabels: Record<string, string> = {
-  system: '系统提示变化',
-  tools: '工具 schema 变化',
-  context_retention: '上下文保留模式变化',
-  message_content: '历史消息内容变化',
-  message_shape: '消息结构非追加',
-  tool_call_duplication: '工具上下文重复'
-}
 
 const getUsageTone = (percent: number): 'ok' | 'warn' | 'danger' => {
   if (percent >= 90) return 'danger'

@@ -15,6 +15,8 @@ interface ChatComposerProps {
   contextUsageLevel: 'ok' | 'warn' | 'danger'
   contextMeterStyle: React.CSSProperties
   contextMeterLabel: string
+  hasContextShift?: boolean
+  contextShiftReason?: string
   onOpenContextUsage: () => void
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
   pendingPermission: PendingPermission | null
@@ -41,6 +43,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   contextUsageLevel,
   contextMeterStyle,
   contextMeterLabel,
+  hasContextShift,
+  contextShiftReason,
   onOpenContextUsage,
   textareaRef,
   pendingPermission,
@@ -113,12 +117,19 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
       </div>
       <button
         type="button"
-        className={`input-context-meter ${contextUsageLevel}`}
+        className={`input-context-meter ${contextUsageLevel} ${hasContextShift ? 'context-shifted' : ''}`}
         aria-label="Open context usage summary"
         title={contextMeterLabel}
         onClick={onOpenContextUsage}
       >
         <span className="context-progress-ring" style={contextMeterStyle} aria-hidden="true" />
+        {hasContextShift && (
+          <span
+            className="context-shift-indicator"
+            aria-hidden="true"
+            title={contextShiftReason || '上下文已变动'}
+          />
+        )}
       </button>
       <textarea
         ref={textareaRef}
