@@ -65,3 +65,9 @@ body {
   animation: spin 1s linear infinite;
   transform-origin: center;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin {
+    animation: none;
+  }
+}
