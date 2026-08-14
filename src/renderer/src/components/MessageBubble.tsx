@@ -1,29 +1,24 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useCallback } from 'react'
 import { AgentEvent, Message } from '../../../shared/types'
-import {
-  Paperclip,
-  Sparkles,
-  ChevronRight,
-  Check,
-  AlertCircle,
-  GitBranch,
-  Loader2
-} from 'lucide-react'
+import { ChevronRight, GitBranch, Loader2 } from 'lucide-react'
 import { RuntimeErrorPanel } from './errors/RuntimeErrorPanel'
-import {
-  MessageMarkdown,
-  renderMessageContent,
-  ParsedAgentStep,
-  ParsedToolCall
-} from '../utils/messageFormat'
+import { MessageMarkdown, ParsedAgentStep } from '../utils/messageFormat'
 import { type BranchChildInfo } from '../utils/branchDisplay'
 import { MessageActions } from './message/MessageActions'
 import { SubagentRunCard } from './SubagentRunCard'
 import { SubagentRunPanel } from './SubagentRunPanel'
 import { ToolDetailModal } from './message/ToolDetailModal'
 import { useAgentMessageViewModel } from '../features/chat/useAgentMessageViewModel'
-import { formatToolArgsSummary } from './message/toolDisplay'
 import { useSmoothStreamText } from '../hooks/useSmoothStreamText'
+import { StepToolEvents } from './message/StepToolEvents'
+import { StepProgressMessage } from './message/StepProgressMessage'
+import { StepReasoningBlock } from './message/StepReasoningBlock'
+import { AgentInlineSummary } from './message/AgentInlineSummary'
+import { GenerationStats } from './message/GenerationStats'
+import { LegacyReasoningBlock } from './message/LegacyReasoningBlock'
+import { MessageFileChips } from './message/MessageFileChips'
+import { BranchChildrenList } from './message/BranchChildrenList'
+import { MessageEditContainer } from './message/MessageEditContainer'
 
 const formatWorkedDuration = (seconds: number, stepsCount: number): string => {
   if (seconds > 0) {
@@ -35,207 +30,6 @@ const formatWorkedDuration = (seconds: number, stepsCount: number): string => {
     return `Worked for ${secs}s`
   }
   return `Worked for ${stepsCount} step${stepsCount === 1 ? '' : 's'}`
-}
-
-const getToolEventVerb = (toolCall: ParsedToolCall): string => {
-  if (toolCall.status === 'failed') return 'Failed'
-  if (toolCall.status === 'denied') return 'Denied'
-  if (toolCall.status === 'pending') return 'Waiting'
-  if (toolCall.status === 'running') return 'Running'
-
-  const name = toolCall.toolName.toLowerCase()
-  if (name.includes('search')) return 'Searched'
-  if (name.includes('read') || name.includes('fetch') || name.includes('open')) return 'Read'
-  if (name.includes('write') || name.includes('edit') || name.includes('patch')) return 'Edited'
-  if (name.includes('list')) return 'Listed'
-  if (name.includes('shell') || name.includes('command') || name.includes('run')) return 'Ran'
-  return 'Used'
-}
-
-const getToolChipText = (toolCall: ParsedToolCall): string => {
-  return (
-    toolCall.purpose || formatToolArgsSummary(toolCall.toolName, toolCall.args) || toolCall.toolName
-  )
-}
-
-const getToolFailurePreview = (toolCall: ParsedToolCall): string => {
-  if (toolCall.status !== 'failed' && toolCall.status !== 'denied') return ''
-  const fallback = toolCall.status === 'denied' ? 'Permission denied' : 'Tool failed'
-  const text = (toolCall.error || fallback).replace(/\s+/g, ' ').trim()
-  return text.length > 120 ? text.substring(0, 117) + '...' : text
-}
-
-interface ToolEventGroup {
-  id: string
-  verb: string
-  calls: ParsedToolCall[]
-}
-
-const groupConsecutiveToolCalls = (step: ParsedAgentStep): ToolEventGroup[] => {
-  const groups: ToolEventGroup[] = []
-
-  step.toolCalls.forEach((toolCall) => {
-    const verb = getToolEventVerb(toolCall)
-    const latestGroup = groups[groups.length - 1]
-    if (
-      latestGroup &&
-      latestGroup.calls[0].toolName === toolCall.toolName &&
-      latestGroup.verb === verb
-    ) {
-      latestGroup.calls.push(toolCall)
-      return
-    }
-
-    groups.push({
-      id: `${step.id}-${toolCall.callId}-${verb}`,
-      verb,
-      calls: [toolCall]
-    })
-  })
-
-  return groups
-}
-
-export const StepToolEvents: React.FC<{
-  step: ParsedAgentStep
-  onOpenToolDetail: (toolCall: ParsedToolCall) => void
-}> = ({ step, onOpenToolDetail }) => {
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
-
-  if (step.toolCalls.length === 0) return null
-
-  const toolGroups = groupConsecutiveToolCalls(step)
-
-  const toggleGroup = (groupId: string): void => {
-    setExpandedGroups((prev) => ({
-      ...prev,
-      [groupId]: !prev[groupId]
-    }))
-  }
-
-  const renderToolEvent = (tc: ParsedToolCall, hideName = false): React.ReactNode => {
-    const isFocused = tc.status === 'running' || tc.status === 'pending'
-    const failurePreview = getToolFailurePreview(tc)
-    const hasFailure = Boolean(failurePreview)
-    return (
-      <button
-        key={tc.callId}
-        type="button"
-        className={`agent-tool-event ${tc.status} ${isFocused ? 'focused' : ''} ${hasFailure ? 'has-failure' : ''}`}
-        onClick={() => onOpenToolDetail(tc)}
-        title="查看工具详情"
-      >
-        <span className="agent-tool-event-line">
-          {hasFailure && <AlertCircle size={12} className="agent-tool-failure-icon" />}
-          {!hideName && <span className="agent-tool-name">{tc.toolName}</span>}
-          <span className="agent-tool-chip">{getToolChipText(tc)}</span>
-          {tc.result?.readStartLine !== undefined && tc.result?.readEndLine !== undefined && (
-            <span className="agent-tool-line-range">{`#L${tc.result.readStartLine}-${tc.result.readEndLine}`}</span>
-          )}
-          {tc.result?.addedLines !== undefined && (
-            <span className="agent-tool-diff-added">{`+${tc.result.addedLines}`}</span>
-          )}
-          {tc.result?.removedLines !== undefined && (
-            <span className="agent-tool-diff-removed">{`-${tc.result.removedLines}`}</span>
-          )}
-          <span className="agent-tool-verb">{getToolEventVerb(tc)}</span>
-        </span>
-        {failurePreview && <span className="agent-tool-failure-preview">{failurePreview}</span>}
-      </button>
-    )
-  }
-
-  return (
-    <div className="agent-tool-events">
-      {toolGroups.map((group) => {
-        if (group.calls.length === 1) return renderToolEvent(group.calls[0])
-
-        const isFocused = group.calls.some(
-          (tc) => tc.status === 'running' || tc.status === 'pending'
-        )
-        const hasFailure = group.calls.some(
-          (tc) => tc.status === 'failed' || tc.status === 'denied'
-        )
-        const groupStatus = hasFailure ? 'failed' : isFocused ? 'running' : 'completed'
-        const isExpanded = expandedGroups[group.id] ?? isFocused
-        const failedCallsCount = group.calls.filter(
-          (tc) => tc.status === 'failed' || tc.status === 'denied'
-        ).length
-
-        return (
-          <div key={group.id} className="agent-tool-group">
-            <button
-              type="button"
-              className={`agent-tool-group-toggle ${groupStatus} ${isFocused ? 'focused' : ''} ${isExpanded ? 'expanded' : ''}`}
-              onClick={() => toggleGroup(group.id)}
-              title={isExpanded ? 'Collapse tool group' : 'Expand tool group'}
-            >
-              <ChevronRight size={12} className="agent-tool-group-caret" />
-              {hasFailure && <AlertCircle size={12} className="agent-tool-failure-icon" />}
-              <span className="agent-tool-name">{group.calls[0].toolName}</span>
-              <span className="agent-tool-group-count">{group.calls.length}</span>
-              {failedCallsCount > 0 && (
-                <span className="agent-tool-group-failure">{failedCallsCount} failed</span>
-              )}
-              <span className="agent-tool-verb">{group.verb}</span>
-            </button>
-            {isExpanded && (
-              <div className="agent-tool-group-items">
-                {group.calls.map((tc) => renderToolEvent(tc, true))}
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-const getSystemGeneratedProgressText = (message: string): string | null => {
-  const clean = message.trim()
-  const match = clean.match(/^准备(?:调用|执行)\s+\d+\s*个工具[：:]\s*(.+?)[。.]?$/)
-  if (!match) return null
-  return `即将调用工具：${match[1].trim()}`
-}
-
-export const StepProgressMessage: React.FC<{ message: string }> = ({ message }) => {
-  const systemText = getSystemGeneratedProgressText(message)
-
-  if (systemText) {
-    return (
-      <div className="agent-step-progress-message system-generated">
-        <span className="system-progress-label">系统进度</span>
-        <span>{systemText}</span>
-      </div>
-    )
-  }
-
-  return <div className="agent-step-progress-message">{renderMessageContent(message)}</div>
-}
-
-export const StepReasoningBlock: React.FC<{
-  reasoning: string
-  autoOpen?: boolean
-  autoStateKey?: string
-}> = ({ reasoning, autoOpen = false, autoStateKey }) => {
-  const [isOpen, setIsOpen] = useState(autoOpen)
-
-  useEffect(() => {
-    setIsOpen(autoOpen)
-  }, [autoOpen, autoStateKey])
-
-  if (!reasoning.trim()) return null
-
-  return (
-    <details
-      className="agent-step-reasoning"
-      open={autoOpen || isOpen}
-      onToggle={(event) => setIsOpen(event.currentTarget.open)}
-    >
-      <summary>思考</summary>
-      <div className="agent-step-reasoning-content">{reasoning}</div>
-    </details>
-  )
 }
 
 interface MessageBubbleProps {
@@ -342,6 +136,13 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
           (!msg.agentRunId || !event.runId || event.runId === msg.agentRunId)
       )
 
+    const handleOpenToolDetail = useCallback(
+      (toolCall: { callId: string }): void => {
+        setSelectedToolCallId(toolCall.callId)
+      },
+      [setSelectedToolCallId]
+    )
+
     const renderAgentStep = (step: ParsedAgentStep): React.ReactNode => (
       <div key={step.id} className={`agent-step-block ${step.status}`}>
         {step.progressMessage && <StepProgressMessage message={step.progressMessage} />}
@@ -350,10 +151,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
           autoOpen={shouldAutoOpenStepReasoning(step)}
           autoStateKey={reasoningAutoStateKey}
         />
-        <StepToolEvents
-          step={step}
-          onOpenToolDetail={(toolCall) => setSelectedToolCallId(toolCall.callId)}
-        />
+        <StepToolEvents step={step} onOpenToolDetail={handleOpenToolDetail} />
       </div>
     )
 
@@ -381,99 +179,32 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
         {(hasStructuredEvents ||
           (isGenerating && msg.role === 'assistant' && Boolean(msg.agentRunId))) &&
           (agentStatus !== 'completed' || isGenerating || pendingToolCall) && (
-            <div
-              className="agent-inline-summary-box"
-              style={{
-                borderColor: pendingToolCall ? 'var(--color-status-pending)' : undefined
-              }}
-            >
-              <div className="summary-header">
-                <div className="summary-title-wrapper">
-                  {agentStatus === 'running' || pendingToolCall ? (
-                    <Loader2
-                      size={12}
-                      className="animate-spin summary-status-icon"
-                      style={{ color: cockpitColor }}
-                    />
-                  ) : agentStatus === 'completed' ? (
-                    <Check
-                      size={12}
-                      className="summary-status-icon"
-                      style={{ color: cockpitColor }}
-                    />
-                  ) : (
-                    <AlertCircle
-                      size={12}
-                      className="summary-status-icon"
-                      style={{ color: cockpitColor }}
-                    />
-                  )}
-                  <span className="summary-status-text" style={{ color: cockpitColor }}>
-                    {statusText}
-                  </span>
-                  {agentStatus === 'running' && !pendingToolCall && (
-                    <span className="summary-timer">• {elapsed}s</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="summary-body">
-                {tasks.length > 0 &&
-                  (() => {
-                    const totalTasks = tasks.length
-                    const completedTasks = tasks.filter((t) => t.status === 'completed').length
-                    const inProgressTask = tasks.find((t) => t.status === 'in_progress')
-
-                    let currentTaskIdx = completedTasks + 1
-                    let currentTaskTitle = ''
-
-                    if (inProgressTask) {
-                      const idx = tasks.findIndex((t) => t.id === inProgressTask.id)
-                      if (idx !== -1) {
-                        currentTaskIdx = idx + 1
-                      }
-                      currentTaskTitle = inProgressTask.title
-                    } else {
-                      const pendingTask = tasks.find((t) => t.status === 'pending')
-                      if (pendingTask) {
-                        const idx = tasks.findIndex((t) => t.id === pendingTask.id)
-                        if (idx !== -1) {
-                          currentTaskIdx = idx + 1
-                        }
-                        currentTaskTitle = pendingTask.title
-                      } else {
-                        currentTaskIdx = completedTasks
-                        currentTaskTitle = tasks[tasks.length - 1]?.title || ''
-                      }
-                    }
-
-                    return (
-                      <div className="summary-task-progress-line">
-                        <span className="summary-task-progress-label">任务进度：</span>
-                        <span className="summary-task-progress-value">
-                          {currentTaskIdx}/{totalTasks} &ldquo;{currentTaskTitle}&rdquo;
-                        </span>
-                      </div>
-                    )
-                  })()}
-                <div className="summary-current-op" title={opText}>
-                  {opText}
-                </div>
-                {toolsSummaryText && <div className="summary-tools-info">{toolsSummaryText}</div>}
-              </div>
-            </div>
+            <AgentInlineSummary
+              agentStatus={agentStatus}
+              hasPendingToolCall={Boolean(pendingToolCall)}
+              cockpitColor={cockpitColor}
+              statusText={statusText}
+              elapsed={elapsed}
+              tasks={tasks}
+              opText={opText}
+              toolsSummaryText={toolsSummaryText}
+            />
           )}
 
         {/* 3. Message bubble wrapper */}
         {(cleanContent ||
           (displayReasoning && !hasStructuredEvents) ||
           msg.role === 'user' ||
-          (isGenerating && !displayReasoning && !hasLogs) ||
+          (isGenerating && !displayReasoning && !hasLogs && !msg.agentRunId) ||
           agentStatus === 'failed' ||
           agentStatus === 'cancelled' ||
+          agentStatus === 'safety_stop' ||
           msg.isRuntimeError ||
           ((hasStructuredEvents || parsedRun.steps.length > 0) &&
-            (parsedRun.steps.length > 0 || parsedRun.finalAnswer || isGenerating))) && (
+            (parsedRun.steps.length > 0 ||
+              parsedRun.finalReasoning ||
+              parsedRun.finalAnswer ||
+              subagents.length > 0))) && (
           <div className={`message-bubble ${msg.role}`}>
             {msg.role === 'user' && <div className={`avatar ${msg.role}`}>U</div>}
             <div className="message-content-wrapper" style={{ maxWidth: '100%' }}>
@@ -485,119 +216,29 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                 </div>
               )}
               {isEditing ? (
-                <div className="message-edit-container">
-                  <textarea
-                    className="message-edit-textarea"
-                    value={editingText}
-                    onChange={(e) => onChangeEditingText(e.target.value)}
-                  />
-                  <div className="message-edit-actions">
-                    <button className="edit-btn cancel" onClick={onCancelEdit}>
-                      取消
-                    </button>
-                    <button
-                      className="edit-btn save"
-                      onClick={() => onSaveEdit(msg.id, editingText)}
-                    >
-                      保存并重发
-                    </button>
-                  </div>
-                </div>
+                <MessageEditContainer
+                  editingText={editingText}
+                  onChange={onChangeEditingText}
+                  onCancel={onCancelEdit}
+                  onSave={() => onSaveEdit(msg.id, editingText)}
+                />
               ) : (
                 <>
                   <div className="message-text">
-                    {msg.files && msg.files.length > 0 && (
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: '6px',
-                          flexWrap: 'wrap',
-                          marginBottom: '8px'
-                        }}
-                      >
-                        {msg.files.map((f, fileIdx) => (
-                          <div
-                            key={fileIdx}
-                            style={{
-                              fontSize: '11px',
-                              background: 'rgba(255, 255, 255, 0.08)',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                          >
-                            <Paperclip size={10} />
-                            <span>{f.name}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    {msg.files && <MessageFileChips files={msg.files} />}
 
                     {/* Thinking/Reasoning block rendering (DeepSeek R1 style for legacy messages) */}
                     {!hasStructuredEvents && displayReasoning && (
-                      <div
-                        className="reasoning-block"
-                        style={{
-                          marginBottom: '10px'
-                        }}
-                      >
-                        <div
-                          onClick={() => setIsExpanded(!isExpanded)}
-                          style={{
-                            fontSize: '12px',
-                            color: 'var(--color-text-accent)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            userSelect: 'none',
-                            marginBottom: '6px',
-                            fontWeight: '600'
-                          }}
-                        >
-                          <Sparkles
-                            size={11}
-                            style={{
-                              animation:
-                                isGenerating && !cleanContent ? 'spin 3s linear infinite' : 'none'
-                            }}
-                          />
-                          <span>
-                            {isGenerating && !cleanContent
-                              ? '正在思考中..'
-                              : isExpanded
-                                ? '思考过程 (收起)'
-                                : '思考过程 (展开)'}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            display: isExpanded ? 'block' : 'none',
-                            fontSize: '12px',
-                            color: 'var(--color-text-muted)',
-                            borderLeft:
-                              '2px solid color-mix(in srgb, var(--color-primary) 35%, transparent)',
-                            paddingLeft: '10px',
-                            marginLeft: '4px',
-                            fontStyle: 'italic',
-                            whiteSpace: 'pre-wrap',
-                            lineHeight: '1.6',
-                            background: 'var(--color-card-bg)',
-                            padding: '6px 10px',
-                            borderRadius: '0 6px 6px 0'
-                          }}
-                        >
-                          {displayReasoning}
-                        </div>
-                      </div>
+                      <LegacyReasoningBlock
+                        reasoning={displayReasoning}
+                        isThinking={isGenerating && !cleanContent}
+                        isExpanded={isExpanded}
+                        onToggle={() => setIsExpanded(!isExpanded)}
+                      />
                     )}
 
                     {/* Render main text content */}
-                    {hasStructuredEvents ||
-                    parsedRun.steps.length > 0 ||
-                    (isGenerating && msg.role === 'assistant' && Boolean(msg.agentRunId)) ? (
+                    {hasStructuredEvents || parsedRun.steps.length > 0 ? (
                       <div className="agent-structured-steps-area">
                         {isGenerating ? (
                           parsedRun.steps.map(renderAgentStep)
@@ -680,49 +321,12 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                                 onRetry={() => onRegenerate(idx)}
                               />
                             )}
-                            {(generationDurationText ||
-                              msg.tokenSpeed !== undefined ||
-                              cacheHitRateText) && (
-                              <div
-                                className="msg-generation-stats"
-                                style={{
-                                  fontSize: '11px',
-                                  color: 'var(--color-text-muted)',
-                                  marginTop: '8px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  opacity: 0.7
-                                }}
-                              >
-                                <Sparkles
-                                  size={10}
-                                  style={{ color: 'var(--color-status-success)' }}
-                                />
-                                {generationDurationText && <span>{generationDurationText}</span>}
-                                {msg.tokenSpeed !== undefined && (
-                                  <>
-                                    {generationDurationText && <span>·</span>}
-                                    <span>{msg.tokenSpeed} token/s</span>
-                                  </>
-                                )}
-                                {cacheHitRateText && (
-                                  <>
-                                    {(generationDurationText || msg.tokenSpeed !== undefined) && (
-                                      <span>·</span>
-                                    )}
-                                    <span>{cacheHitRateText}</span>
-                                  </>
-                                )}
-                              </div>
-                            )}
+                            <GenerationStats
+                              generationDurationText={generationDurationText}
+                              tokenSpeed={msg.tokenSpeed}
+                              cacheHitRateText={cacheHitRateText}
+                            />
                           </div>
-                        )}
-                        {isGenerating && parsedRun.steps.length === 0 && !parsedRun.finalAnswer && (
-                          <span className="agent-startup-indicator">
-                            <Loader2 size={13} className="animate-spin" />
-                            <span>{latestProgressMessage || '正在连接模型并等待响应...'}</span>
-                          </span>
                         )}
                       </div>
                     ) : /* Legacy standard rendering */
@@ -740,42 +344,11 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                             text={smoothCleanContent}
                             streaming={isStreamingAssistant}
                           />
-                          {(generationDurationText ||
-                            msg.tokenSpeed !== undefined ||
-                            cacheHitRateText) && (
-                            <div
-                              className="msg-generation-stats"
-                              style={{
-                                fontSize: '11px',
-                                color: 'var(--color-text-muted)',
-                                marginTop: '8px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                opacity: 0.7
-                              }}
-                            >
-                              <Sparkles
-                                size={10}
-                                style={{ color: 'var(--color-status-success)' }}
-                              />
-                              {generationDurationText && <span>{generationDurationText}</span>}
-                              {msg.tokenSpeed !== undefined && (
-                                <>
-                                  {generationDurationText && <span>·</span>}
-                                  <span>{msg.tokenSpeed} token/s</span>
-                                </>
-                              )}
-                              {cacheHitRateText && (
-                                <>
-                                  {(generationDurationText || msg.tokenSpeed !== undefined) && (
-                                    <span>·</span>
-                                  )}
-                                  <span>{cacheHitRateText}</span>
-                                </>
-                              )}
-                            </div>
-                          )}
+                          <GenerationStats
+                            generationDurationText={generationDurationText}
+                            tokenSpeed={msg.tokenSpeed}
+                            cacheHitRateText={cacheHitRateText}
+                          />
                         </>
                       )
                     ) : isGenerating && msg.role === 'assistant' ? (
@@ -790,32 +363,7 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                     ) : null}
                   </div>
 
-                  {branchChildren.length > 0 && (
-                    <div className="message-branch-children">
-                      <div className="message-branch-children-label">
-                        <GitBranch size={12} />
-                        <span>派生分支</span>
-                      </div>
-                      <div className="message-branch-children-list">
-                        {branchChildren.map((branch) => (
-                          <button
-                            key={branch.sessionId}
-                            type="button"
-                            className="message-branch-link"
-                            onClick={() => onOpenBranch(branch.sessionId)}
-                            title={`打开分支：${branch.title}`}
-                          >
-                            <span className="message-branch-link-title">{branch.title}</span>
-                            <span className="message-branch-link-meta">
-                              {branch.messageCount} msg{branch.messageCount === 1 ? '' : 's'}
-                              {branch.shortRunId ? ` · run ${branch.shortRunId}` : ''}
-                            </span>
-                            <ChevronRight size={12} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <BranchChildrenList branchChildren={branchChildren} onOpenBranch={onOpenBranch} />
 
                   {msg.role === 'user' ? (
                     <MessageActions
@@ -840,7 +388,11 @@ export const MessageBubble = React.memo<MessageBubbleProps>(
                     <MessageActions
                       align="flex-start"
                       canEdit={false}
-                      canResume={!!msg.agentRunId && agentStatus === 'failed' && !isGenerating}
+                      canResume={
+                        !!msg.agentRunId &&
+                        (agentStatus === 'failed' || agentStatus === 'safety_stop') &&
+                        !isGenerating
+                      }
                       canRegenerate={!isGenerating && !msg.queuedPrompt}
                       canCopy={!isGenerating && !!finalReplyText}
                       copied={copied}

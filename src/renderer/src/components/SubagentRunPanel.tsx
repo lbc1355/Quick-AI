@@ -7,7 +7,9 @@ import {
   ParsedToolCall,
   ParsedAgentStep
 } from '../utils/messageFormat'
-import { StepProgressMessage, StepReasoningBlock, StepToolEvents } from './MessageBubble'
+import { StepProgressMessage } from './message/StepProgressMessage'
+import { StepReasoningBlock } from './message/StepReasoningBlock'
+import { StepToolEvents } from './message/StepToolEvents'
 import { SubagentRunState } from './SubagentRunCard'
 import { ToolDetailModal } from './message/ToolDetailModal'
 import { useSmoothStreamText } from '../hooks/useSmoothStreamText'
@@ -154,7 +156,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
             <span
               style={{
                 fontFamily: 'var(--font-mono)',
-                fontSize: '11px',
+                fontSize: 'var(--font-size-xs)',
                 background: 'color-mix(in srgb, var(--color-primary) 10%, transparent)',
                 color: 'var(--color-primary)',
                 padding: '2px 6px',
@@ -164,11 +166,11 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
             >
               {subagent.info.label} Agent
             </span>
-            <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
               最大迭代步数: {subagent.info.maxSteps} 步
             </span>
           </div>
-          <h2 style={{ fontSize: '16px', fontWeight: 600, margin: '4px 0 12px' }}>
+          <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 600, margin: '4px 0 12px' }}>
             {getShortTaskTitle(subagent.info.task)}
           </h2>
         </div>
@@ -180,7 +182,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
               background: 'var(--color-card-bg)',
               borderLeft: '4px solid var(--color-primary)',
               borderRadius: '0 6px 6px 0',
-              fontSize: '13px',
+              fontSize: 'var(--font-size-base)',
               color: 'var(--color-text-muted)',
               lineHeight: '1.6',
               marginBottom: '4px',
@@ -189,7 +191,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
           >
             <div
               style={{
-                fontSize: '11px',
+                fontSize: 'var(--font-size-xs)',
                 fontWeight: 600,
                 color: 'var(--color-text)',
                 marginBottom: '4px',
@@ -228,7 +230,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
                   border: '1px solid color-mix(in srgb, var(--color-danger) 20%, transparent)',
                   borderRadius: '6px',
                   color: 'var(--color-danger)',
-                  fontSize: '13px',
+                  fontSize: 'var(--font-size-base)',
                   fontFamily: 'var(--font-mono)',
                   marginTop: '10px',
                   whiteSpace: 'pre-wrap'
@@ -252,7 +254,7 @@ export const SubagentRunPanel: React.FC<SubagentRunPanelProps> = ({ subagent, on
             justifyContent: 'space-between',
             flexWrap: 'wrap',
             gap: '12px',
-            fontSize: '12px',
+            fontSize: 'var(--font-size-sm)',
             color: 'var(--color-text-muted)',
             flex: '0 0 auto'
           }}
