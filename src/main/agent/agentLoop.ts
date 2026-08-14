@@ -39,6 +39,13 @@ import {
   commitCacheShapeForSession,
   previewCacheShapeForSession
 } from './cacheShapeDiagnostics'
+import {
+  getForcedFinalError,
+  getForcedFinalStatus,
+  resolveAgentLoopStepLimit,
+  resolveForcedFinalReason,
+  toReportedMaxSteps
+} from './agentRunLimits'
 
 const sendEvent = (
   mainWindow: BrowserWindow,
@@ -294,11 +301,13 @@ export const runAgentLoop = async (
     options.onResponseSettled?.()
   }
 
-  // Behavioural guardrails (repeated-call blocking + consecutive-failure halt) that
-  // complement the hard maxSteps ceiling. Scoped to this run.
+  // Behavioural guardrails catch repeated calls and consecutive failures. Otherwise-unbounded
+  // main runs also get an independent emergency ceiling for alternating-but-unproductive work.
   const loopGuard = new LoopGuard()
   let haltRequested = false
   const ambiguousActions = [...preparedRun.ambiguousActions]
+  const loopStepLimit = resolveAgentLoopStepLimit(maxSteps)
+  const reportedMaxSteps = toReportedMaxSteps(maxSteps)
 
   const persistCheckpoint = (checkpointStep: number, lastCompletedCallId?: string): void => {
     persistAgentRunCheckpoint({
@@ -356,7 +365,7 @@ export const runAgentLoop = async (
     const toolRegistry = getToolRegistryView()
     const toolDeclarationCache = createToolDeclarationCache({ toolRegistry })
 
-    for (let step = 1; step <= maxSteps; ) {
+    for (let step = 1; step <= loopStepLimit; ) {
       runCtx.currentStep = step
       const stepId = `${reqId}:step:${step}`
       if (signal.aborted) {
@@ -374,13 +383,13 @@ export const runAgentLoop = async (
       eventStream.emit({
         type: 'agent_progress',
         step,
-        maxSteps,
+        maxSteps: reportedMaxSteps,
         stepId,
         activeTools: Array.from(runCtx.activeTools),
         message: step === 1 ? '正在连接模型并等待响应...' : undefined
       })
 
-      SessionLogger.logStepStart(conversationId, step, maxSteps)
+      SessionLogger.logStepStart(conversationId, step, reportedMaxSteps)
 
       const toolRegistrySnapshot = materializeToolRegistry(toolRegistry)
       const toolsToDeclare = toolDeclarationCache.getDeclarations({
@@ -403,7 +412,7 @@ export const runAgentLoop = async (
         eventStream.emit({
           type: 'agent_progress',
           step,
-          maxSteps,
+          maxSteps: reportedMaxSteps,
           stepId,
           activeTools: Array.from(runCtx.activeTools),
           message: `Compacted ${staleToolCompaction.compactedCount} stale tool results before context trimming`
@@ -439,7 +448,7 @@ export const runAgentLoop = async (
         eventStream.emit({
           type: 'agent_progress',
           step,
-          maxSteps,
+          maxSteps: reportedMaxSteps,
           stepId,
           activeTools: Array.from(runCtx.activeTools),
           message
@@ -482,7 +491,7 @@ export const runAgentLoop = async (
           eventStream.emit({
             type: 'agent_progress',
             step,
-            maxSteps,
+            maxSteps: reportedMaxSteps,
             stepId,
             activeTools: Array.from(runCtx.activeTools),
             message: formatToolCallProgressMessage(progress)
@@ -515,7 +524,7 @@ export const runAgentLoop = async (
           reqId,
           conversationId,
           step,
-          maxSteps,
+          maxSteps: reportedMaxSteps,
           stepId,
           signal,
           host: hostActions,
@@ -575,12 +584,14 @@ export const runAgentLoop = async (
       }
     }
 
-    // Tool use ended without a final answer, either the step ceiling was hit or the loop
-    // guard halted on repeated failures. Ask the model for a best-effort final answer.
+    // Tool use ended without a final answer: a finite skill limit, the loop guard, or the
+    // independent emergency ceiling for otherwise-unbounded main runs. Ask the model for a
+    // best-effort final answer and preserve the actual terminal reason.
     options.setSteeringAcceptance?.(false)
+    const forcedFinalReason = resolveForcedFinalReason(maxSteps, haltRequested)
     const forcedFinalTurn = await runForcedFinalTurn({
       messages,
-      haltRequested,
+      reason: forcedFinalReason,
       signal,
       modelConfig: {
         apiUrl: options.apiUrl,
@@ -604,7 +615,7 @@ export const runAgentLoop = async (
 
     markResponseSettled()
     await finalizeFileSnapshot()
-    setRunEnd('max_steps')
+    setRunEnd(getForcedFinalStatus(forcedFinalReason), getForcedFinalError(forcedFinalReason))
     mainWindow.webContents.send('chat-chunk', buildDoneChunk())
   } catch (error) {
     const err = error as Error

@@ -664,6 +664,57 @@ describe('runAgentLoop', () => {
     expect(failureError?.error).toBe('String not found')
   })
 
+  it('reports repeated-failure loop-guard halts as safety_stop for an unbounded main run', async () => {
+    vi.spyOn(ToolRegistry.file_read, 'execute').mockRejectedValue(
+      new Error('Persistent read error')
+    )
+
+    let callCount = 0
+    vi.mocked(callModel).mockImplementation(async () => {
+      callCount++
+      if (callCount <= 8) {
+        return {
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: `tc-loop-failure-${callCount}`,
+              type: 'function',
+              function: {
+                name: 'file_read',
+                arguments: JSON.stringify({ path: `missing-${callCount}.ts` })
+              }
+            }
+          ]
+        }
+      }
+      return { role: 'assistant', content: 'Best effort after the safety stop.' }
+    })
+
+    await runAgentLoop(mockWindow, 'loop-guard-safety-stop', {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'Keep reading missing files' }]
+    })
+
+    expect(callCount).toBe(9)
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'loop-guard-safety-stop',
+      contextEpoch: 0,
+      event: expect.objectContaining({
+        type: 'agent_end',
+        status: 'safety_stop',
+        error: expect.stringContaining('tool failures')
+      })
+    })
+    expect(sendMock).toHaveBeenCalledWith('chat-chunk', {
+      reqId: 'loop-guard-safety-stop',
+      contextEpoch: 0,
+      event: expect.objectContaining({ type: 'agent_progress', maxSteps: 0 })
+    })
+  })
+
   it('records run manifest source ids and successful actions', async () => {
     vi.spyOn(ToolRegistry.file_read, 'execute').mockResolvedValue({
       resultForModel: 'Read manifest file content.',

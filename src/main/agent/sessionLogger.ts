@@ -235,7 +235,7 @@ export class SessionLogger {
       step,
       maxSteps
     })
-    const maxStepsStr = Number.isFinite(maxSteps) ? ` / ${maxSteps}` : ''
+    const maxStepsStr = Number.isFinite(maxSteps) && maxSteps > 0 ? ` / ${maxSteps}` : ''
     const md = `
 ### Step ${step}${maxStepsStr} (Timestamp: ${time})
 `

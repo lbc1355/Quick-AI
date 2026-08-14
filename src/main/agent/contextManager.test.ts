@@ -10,6 +10,9 @@ import { ChatCompletionMessage } from '../../shared/types'
 describe('getContextWindowSize', () => {
   it('uses the explicit table for known models', () => {
     expect(getContextWindowSize('deepseek-chat')).toBe(64000)
+    expect(getContextWindowSize('deepseek-v4-flash')).toBe(1000000)
+    expect(getContextWindowSize('deepseek-v4-flash-free')).toBe(200000)
+    expect(getContextWindowSize('deepseek-v4-pro')).toBe(1000000)
     expect(getContextWindowSize('moonshot-v1-128k')).toBe(128000)
   })
 

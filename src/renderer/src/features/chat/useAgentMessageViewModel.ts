@@ -172,7 +172,14 @@ export function useAgentMessageViewModel({ msg, isGenerating }: UseAgentMessageV
 
   const latestProgressMessage = lastProgressEvent?.message?.trim() || ''
 
-  let agentStatus: 'idle' | 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' = 'idle'
+  let agentStatus:
+    | 'idle'
+    | 'running'
+    | 'completed'
+    | 'cancelled'
+    | 'failed'
+    | 'max_steps'
+    | 'safety_stop' = 'idle'
   if (msg.agentEvents || msg.agentRunId) {
     if (agentEndEvent) {
       agentStatus = agentEndEvent.status
@@ -184,7 +191,9 @@ export function useAgentMessageViewModel({ msg, isGenerating }: UseAgentMessageV
   }
 
   const currentStep = lastProgressEvent?.step || 1
-  const maxSteps = lastProgressEvent?.maxSteps ?? Infinity
+  const reportedMaxSteps = lastProgressEvent?.maxSteps
+  const maxSteps =
+    reportedMaxSteps !== undefined && reportedMaxSteps > 0 ? reportedMaxSteps : Infinity
 
   const parsedRun = useMemo(() => {
     return parseAgentSteps(msg.agentEvents, msg.content)
@@ -196,7 +205,8 @@ export function useAgentMessageViewModel({ msg, isGenerating }: UseAgentMessageV
     (agentStatus === 'completed' ||
       agentStatus === 'cancelled' ||
       agentStatus === 'failed' ||
-      agentStatus === 'max_steps')
+      agentStatus === 'max_steps' ||
+      agentStatus === 'safety_stop')
 
   useEffect(() => {
     if (isGenerating || agentStatus === 'running') {
@@ -359,6 +369,10 @@ export function useAgentMessageViewModel({ msg, isGenerating }: UseAgentMessageV
     cockpitColor = 'var(--color-status-danger)'
     statusText = agentStatus === 'max_steps' ? '步数上限' : '执行失败'
     opText = `共运行 ${totalToolsCount} 个工具 · 累计耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败` : ''}`
+  } else if (agentStatus === 'safety_stop') {
+    cockpitColor = 'var(--color-status-warning)'
+    statusText = '安全停止'
+    opText = `已安全停止 · 共运行 ${totalToolsCount} 个工具 · 累计耗时 ${formatElapsedDuration(elapsed)}${failedToolsCount > 0 ? ` · ${failedToolsCount} 个失败` : ''}`
   } else {
     statusText = '空闲'
     opText = `共运行 ${totalToolsCount} 个工具`

@@ -1,8 +1,9 @@
 export const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'deepseek-chat': 64000,
   'deepseek-reasoner': 64000,
-  'deepseek-v4-flash-free': 128000,
-  'deepseek-v4-pro': 128000,
+  'deepseek-v4-flash': 1000000,
+  'deepseek-v4-flash-free': 200000,
+  'deepseek-v4-pro': 1000000,
   'qwen3-coder-plus': 128000,
   'glm-4.5-air': 128000,
   'glm-4.5': 128000,

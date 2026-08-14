@@ -57,8 +57,11 @@ describe('SessionLogger', () => {
 
     // 2. Log Step Start
     SessionLogger.logStepStart(sessionId, 1, 5)
+    SessionLogger.logStepStart(sessionId, 2, 0)
     content = readFileSync(logPath, 'utf8')
     expect(content).toContain('### Step 1 / 5')
+    expect(content).toContain('### Step 2 (')
+    expect(content).not.toContain('### Step 2 / 0')
 
     // 3. Log Model Request/Response
     SessionLogger.logModelRequest(sessionId, {

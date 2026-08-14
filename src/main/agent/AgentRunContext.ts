@@ -82,7 +82,7 @@ export function getSessionAdditionalRoots(sessionId: string): AdditionalRoot[] {
 }
 
 export class AgentRunContext {
-  status: 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' = 'running'
+  status: 'running' | 'completed' | 'cancelled' | 'failed' | 'max_steps' | 'safety_stop' = 'running'
   readonly startedAt: number = Date.now()
   currentStep = 1
   maxSteps = Infinity

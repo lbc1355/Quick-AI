@@ -233,6 +233,44 @@ describe('useAgentMessageViewModel hook', () => {
     expect(vm.isStepsExpanded).toBe(false)
   })
 
+  it('normalizes the unbounded marker and exposes a distinct safety-stop state', () => {
+    const msg: Message = {
+      id: 'safety-stop-message',
+      role: 'assistant',
+      agentRunId: 'run-safety',
+      content: '',
+      agentEvents: [
+        {
+          type: 'agent_progress',
+          step: 200,
+          maxSteps: 0,
+          stepId: 'run-safety:step:200'
+        },
+        {
+          type: 'agent_step',
+          stepId: 'run-safety:step:200',
+          step: 200,
+          maxSteps: 0,
+          title: 'Final safety step',
+          message: 'Stopping safely',
+          status: 'failed'
+        },
+        {
+          type: 'agent_end',
+          status: 'safety_stop',
+          error: 'Emergency limit reached'
+        }
+      ]
+    }
+
+    const vm = useAgentMessageViewModel({ msg, isGenerating: false })
+
+    expect(vm.maxSteps).toBe(Infinity)
+    expect(vm.agentStatus).toBe('safety_stop')
+    expect(vm.statusText).toBe('安全停止')
+    expect(vm.opText).toContain('已安全停止')
+  })
+
   it('restores completed agent duration from persisted event timestamps', () => {
     const events: AgentEvent[] = [
       { type: 'agent_start', skillName: 'shell', timestamp: 1000, runId: 'run-1', sequence: 1 },

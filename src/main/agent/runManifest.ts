@@ -5,7 +5,13 @@ import { AgentFileChange, ReasoningPreference, ToolArgs } from '../../shared/typ
 
 const MANIFEST_VERSION = 1
 
-export type RunManifestStatus = 'running' | 'completed' | 'failed' | 'cancelled' | 'max_steps'
+export type RunManifestStatus =
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'max_steps'
+  | 'safety_stop'
 export type SideEffectKind =
   | 'read'
   | 'cache'

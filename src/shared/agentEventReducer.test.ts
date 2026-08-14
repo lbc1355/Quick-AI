@@ -277,4 +277,26 @@ describe('prepareMessageForInlineResume', () => {
       { type: 'tool_call', callId: 'call-1', toolName: 'file_read', args: {} }
     ])
   })
+
+  it('drops a safety-stop terminator when preparing an inline resume', () => {
+    const prepared = prepareMessageForInlineResume(
+      {
+        id: 'm-safety',
+        role: 'assistant',
+        content: 'best effort',
+        agentRunId: 'run-safety',
+        agentEvents: [
+          { type: 'agent_start', skillName: 'General Agent', runId: 'run-safety' },
+          { type: 'final', content: 'best effort', runId: 'run-safety' },
+          { type: 'agent_end', status: 'safety_stop', runId: 'run-safety' }
+        ]
+      },
+      'run-resumed'
+    )
+
+    expect(prepared.agentEvents).toEqual([
+      { type: 'agent_start', skillName: 'General Agent', runId: 'run-safety' }
+    ])
+    expect(prepared.agentRunId).toBe('run-resumed')
+  })
 })

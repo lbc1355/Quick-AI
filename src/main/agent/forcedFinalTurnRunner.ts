@@ -7,6 +7,7 @@ import { CallModelOptions } from './callModel'
 import { RunUsageTracker } from './runUsageTracker'
 import { runModelTurn as defaultRunModelTurn } from './modelTurnRunner'
 import { getMessageText as getAssistantText } from './messageText'
+import type { ForcedFinalReason } from './agentRunLimits'
 
 export interface RunForcedFinalTurnDependencies {
   trimMessagesToFit?: typeof defaultTrimMessagesToFit
@@ -15,7 +16,7 @@ export interface RunForcedFinalTurnDependencies {
 
 export interface RunForcedFinalTurnOptions {
   messages: ChatCompletionMessage[]
-  haltRequested: boolean
+  reason: ForcedFinalReason
   signal: AbortSignal
   modelConfig: CallModelOptions
   contextSize: number
@@ -39,9 +40,12 @@ export async function runForcedFinalTurn(
     ...options.messages,
     {
       role: 'user' as const,
-      content: options.haltRequested
-        ? 'Tool execution was halted after repeated consecutive failures. Please provide the best final answer you can based only on the observations available.'
-        : 'The maximum number of tool steps has been reached. Please provide a final answer based only on the observations available.'
+      content:
+        options.reason === 'loop_guard'
+          ? 'Tool execution was halted after repeated consecutive failures. Please provide the best final answer you can based only on the observations available.'
+          : options.reason === 'safety_limit'
+            ? 'The emergency safety limit for this agent run has been reached. Please provide the best final answer you can based only on the observations available.'
+            : 'The maximum number of tool steps has been reached. Please provide a final answer based only on the observations available.'
     }
   ]
 

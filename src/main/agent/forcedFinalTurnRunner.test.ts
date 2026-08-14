@@ -26,7 +26,7 @@ describe('runForcedFinalTurn', () => {
 
     const result = await runForcedFinalTurn({
       messages,
-      haltRequested: false,
+      reason: 'step_limit',
       signal: new AbortController().signal,
       modelConfig: {
         apiUrl: 'https://api.example.com',
@@ -76,7 +76,7 @@ describe('runForcedFinalTurn', () => {
 
     await runForcedFinalTurn({
       messages: [],
-      haltRequested: true,
+      reason: 'loop_guard',
       signal: new AbortController().signal,
       modelConfig: {
         apiUrl: 'https://api.example.com',
@@ -97,5 +97,42 @@ describe('runForcedFinalTurn', () => {
     })
 
     expect(emitFinal).toHaveBeenCalledWith('Fallback final.')
+  })
+
+  it('uses a distinct prompt for the emergency safety limit', async () => {
+    const trimMessagesToFit = vi.fn((messages: ChatCompletionMessage[]) => messages)
+
+    await runForcedFinalTurn({
+      messages: [],
+      reason: 'safety_limit',
+      signal: new AbortController().signal,
+      modelConfig: {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'key',
+        model: 'model'
+      },
+      contextSize: 8000,
+      usageTracker: createRunUsageTracker(),
+      emitReasoning: vi.fn(),
+      emitFinal: vi.fn(),
+      dependencies: {
+        trimMessagesToFit,
+        runModelTurn: vi.fn(async () => ({
+          assistantMessage: { role: 'assistant', content: 'Safety final.' },
+          streamedText: ''
+        }))
+      }
+    })
+
+    expect(trimMessagesToFit).toHaveBeenCalledWith(
+      [
+        {
+          role: 'user',
+          content:
+            'The emergency safety limit for this agent run has been reached. Please provide the best final answer you can based only on the observations available.'
+        }
+      ],
+      expect.any(Object)
+    )
   })
 })

@@ -33,6 +33,7 @@ export type AgentEventJournalStatus =
   | 'cancelled'
   | 'failed'
   | 'max_steps'
+  | 'safety_stop'
   | 'interrupted'
 
 export interface AgentEventJournalSnapshot {

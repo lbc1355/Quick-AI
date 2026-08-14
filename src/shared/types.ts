@@ -136,6 +136,7 @@ export type AgentEvent =
       type: 'agent_step'
       stepId: string
       step: number
+      /** Zero denotes a main-agent run without an ordinary user-facing step limit. */
       maxSteps: number
       title: string
       message: string
@@ -183,6 +184,7 @@ export type AgentEvent =
   | WithAgentEventMetadata<{
       type: 'agent_progress'
       step: number
+      /** Zero denotes a main-agent run without an ordinary user-facing step limit. */
       maxSteps: number
       activeTools?: string[]
       message?: string
@@ -190,7 +192,7 @@ export type AgentEvent =
     }>
   | WithAgentEventMetadata<{
       type: 'agent_end'
-      status: 'completed' | 'cancelled' | 'failed' | 'max_steps'
+      status: 'completed' | 'cancelled' | 'failed' | 'max_steps' | 'safety_stop'
       error?: string
     }>
   | WithAgentEventMetadata<{

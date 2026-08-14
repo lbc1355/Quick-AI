@@ -202,10 +202,11 @@ const RUNTIME_ERROR_PREFIXES = [
   'Agent resume failed:'
 ]
 
-const isFailureAgentEnd = (
+const isResumableAgentEnd = (
   event: AgentEvent
 ): event is Extract<AgentEvent, { type: 'agent_end' }> =>
-  event.type === 'agent_end' && (event.status === 'failed' || event.status === 'cancelled')
+  event.type === 'agent_end' &&
+  (event.status === 'failed' || event.status === 'cancelled' || event.status === 'safety_stop')
 
 const isRuntimeErrorFinal = (event: AgentEvent): boolean => {
   if (event.type !== 'final') return false
@@ -214,10 +215,14 @@ const isRuntimeErrorFinal = (event: AgentEvent): boolean => {
 }
 
 export const prepareMessageForInlineResume = (msg: Message, nextRunId: string): Message => {
-  const dropFinalEvents = isRuntimeErrorAssistantMessage(msg)
+  const dropFinalEvents =
+    isRuntimeErrorAssistantMessage(msg) ||
+    (msg.agentEvents || []).some(
+      (event) => event.type === 'agent_end' && event.status === 'safety_stop'
+    )
   const cleanedEvents = (msg.agentEvents || []).filter(
     (event) =>
-      !isFailureAgentEnd(event) &&
+      !isResumableAgentEnd(event) &&
       !isRuntimeErrorFinal(event) &&
       !(dropFinalEvents && event.type === 'final')
   )
