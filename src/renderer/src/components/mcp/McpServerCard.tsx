@@ -2,20 +2,18 @@ import React from 'react'
 import {
   AlertCircle,
   CheckCircle,
-  ChevronDown,
   ChevronRight,
-  Code,
   RefreshCw,
   Server,
-  Trash2
+  Trash2,
+  Wrench
 } from 'lucide-react'
 import type { McpServerStatus } from '../../../../shared/types'
 
 interface McpServerCardProps {
   server: McpServerStatus
-  isExpanded: boolean
   isReloading: boolean
-  onToggleExpanded: (name: string) => void
+  onSelectServer: (name: string) => void
   onReloadServer: (name: string) => void
   onDeleteServer: (name: string) => void
 }
@@ -23,13 +21,13 @@ interface McpServerCardProps {
 function getStatusIcon(status: McpServerStatus['status']): React.ReactElement {
   switch (status) {
     case 'connected':
-      return <CheckCircle size={14} className="mcp-icon-success" />
+      return <CheckCircle size={13} className="mcp-icon-success" />
     case 'failed':
-      return <AlertCircle size={14} className="mcp-icon-danger" />
+      return <AlertCircle size={13} className="mcp-icon-danger" />
     case 'connecting':
-      return <RefreshCw size={14} className="mcp-icon-warning spin" />
+      return <RefreshCw size={13} className="mcp-icon-warning spin" />
     default:
-      return <Server size={14} className="mcp-icon-muted" />
+      return <Server size={13} className="mcp-icon-muted" />
   }
 }
 
@@ -50,13 +48,23 @@ function getStatusLabel(status: McpServerStatus['status']): string {
 
 export const McpServerCard: React.FC<McpServerCardProps> = ({
   server,
-  isExpanded,
   isReloading,
-  onToggleExpanded,
+  onSelectServer,
   onReloadServer,
   onDeleteServer
 }) => (
-  <div className={`mcp-server-card ${server.status} ${isExpanded ? 'expanded' : ''}`}>
+  <div
+    className={`mcp-server-card ${server.status}`}
+    onClick={() => onSelectServer(server.name)}
+    role="button"
+    tabIndex={0}
+    onKeyDown={(e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        onSelectServer(server.name)
+      }
+    }}
+  >
     <div className="mcp-server-info-row">
       <div className="mcp-server-name-block">
         <span className="mcp-server-name" title={server.name}>
@@ -68,17 +76,7 @@ export const McpServerCard: React.FC<McpServerCardProps> = ({
         </div>
       </div>
 
-      <div className="mcp-card-actions">
-        {server.status === 'connected' && server.tools.length > 0 && (
-          <button
-            type="button"
-            className="mcp-expand-btn"
-            onClick={() => onToggleExpanded(server.name)}
-          >
-            <span className="mcp-expand-label">{server.tools.length} 个工具</span>
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        )}
+      <div className="mcp-card-actions" onClick={(e) => e.stopPropagation()}>
         {server.status !== 'disabled' && (
           <button
             type="button"
@@ -108,20 +106,15 @@ export const McpServerCard: React.FC<McpServerCardProps> = ({
       </div>
     )}
 
-    {server.status === 'connected' && isExpanded && server.tools.length > 0 && (
-      <div className="mcp-server-tools-tree">
-        {server.tools.map((tool) => (
-          <div key={tool.name} className="mcp-tool-tree-item">
-            <div className="mcp-tool-title-row">
-              <Code size={12} className="mcp-icon-tool" />
-              <code className="mcp-tool-name">
-                mcp_{server.name}_{tool.name}
-              </code>
-            </div>
-            {tool.description && <p className="mcp-tool-description">{tool.description}</p>}
-          </div>
-        ))}
+    <div className="mcp-server-footer">
+      <div className="mcp-tools-badge">
+        <Wrench size={12} />
+        <span>{server.tools.length} 个工具</span>
       </div>
-    )}
+      <span className="mcp-card-hint">
+        <span>配置与工具</span>
+        <ChevronRight size={13} />
+      </span>
+    </div>
   </div>
 )

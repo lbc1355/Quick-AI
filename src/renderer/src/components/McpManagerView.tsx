@@ -1,10 +1,19 @@
-import React from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Plus } from 'lucide-react'
+import type { AgentToolInfo } from '../../../shared/types'
+import { useSettings } from '../contexts/SettingsContext'
 import { useMcpManager } from '../features/mcp/useMcpManager'
 import { McpConfigModal } from './mcp/McpConfigModal'
 import { McpServerCard } from './mcp/McpServerCard'
+import { McpServerDrawer } from './mcp/McpServerDrawer'
+import {
+  getInitialToolLanguage,
+  getToolDisplay,
+  type ToolDisplayLanguage
+} from './settings/toolDisplay'
 
 export const McpManagerView: React.FC = () => {
+  const { permissions, onChangeToolPermission } = useSettings()
   const {
     configDraftText,
     serverStatuses,
@@ -12,16 +21,48 @@ export const McpManagerView: React.FC = () => {
     isSaving,
     reloadingServers,
     saveMessage,
-    expandedServers,
     isConfigEditorOpen,
     setIsConfigEditorOpen,
     handleConfigChange,
     handleSave,
     handleDeleteServer,
     handleReloadServer,
-    toggleServerExpanded,
     handleAddMcpCard
   } = useMcpManager()
+
+  const [selectedServerName, setSelectedServerName] = useState<string | null>(null)
+  const [agentTools, setAgentTools] = useState<AgentToolInfo[]>([])
+  const [toolDisplayLanguage, setToolDisplayLanguage] =
+    useState<ToolDisplayLanguage>(getInitialToolLanguage)
+
+  const loadAgentTools = useCallback((): void => {
+    window.api
+      .listAgentTools()
+      .then((tools) => setAgentTools(tools))
+      .catch((err) => console.error('Failed to load agent tools for MCP:', err))
+  }, [])
+
+  useEffect(() => {
+    loadAgentTools()
+  }, [loadAgentTools])
+
+  const setToolLanguage = (language: ToolDisplayLanguage): void => {
+    setToolDisplayLanguage(language)
+    try {
+      window.localStorage.setItem('quickai.agentToolLanguage', language)
+    } catch {
+      // Preference only
+    }
+  }
+
+  const handleReloadAndRefresh = async (name: string): Promise<void> => {
+    await handleReloadServer(name)
+    loadAgentTools()
+  }
+
+  const selectedServer = selectedServerName
+    ? serverStatuses.find((s) => s.name === selectedServerName) || null
+    : null
 
   return (
     <div className="mcp-layout">
@@ -46,10 +87,9 @@ export const McpManagerView: React.FC = () => {
             <McpServerCard
               key={server.name}
               server={server}
-              isExpanded={!!expandedServers[server.name]}
               isReloading={!!reloadingServers[server.name]}
-              onToggleExpanded={toggleServerExpanded}
-              onReloadServer={(name) => void handleReloadServer(name)}
+              onSelectServer={(name) => setSelectedServerName(name)}
+              onReloadServer={(name) => void handleReloadAndRefresh(name)}
               onDeleteServer={(name) => void handleDeleteServer(name)}
             />
           ))}
@@ -65,6 +105,21 @@ export const McpManagerView: React.FC = () => {
           onChangeConfig={handleConfigChange}
           onSave={() => void handleSave()}
           onClose={() => setIsConfigEditorOpen(false)}
+        />
+      )}
+
+      {selectedServer && (
+        <McpServerDrawer
+          server={selectedServer}
+          agentTools={agentTools}
+          permissions={permissions}
+          isReloading={!!reloadingServers[selectedServer.name]}
+          toolDisplayLanguage={toolDisplayLanguage}
+          onToolDisplayLanguageChange={setToolLanguage}
+          getToolDisplay={getToolDisplay}
+          onChangeToolPermission={onChangeToolPermission}
+          onReloadServer={(name) => void handleReloadAndRefresh(name)}
+          onClose={() => setSelectedServerName(null)}
         />
       )}
     </div>
