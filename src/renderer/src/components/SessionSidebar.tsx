@@ -105,8 +105,69 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
 
   const freeSessionCount = sessions.filter((session) => !session.projectId).length
   const conversationFolders = projects.filter((project) => isConversationFolder(project))
+  const filesystemProjects = projects.filter((project) => !isConversationFolder(project))
   const pendingDeleteProject =
     projects.find((project) => project.id === pendingDeleteProjectId) || null
+
+  const renderProjectEntry = (project: Project): React.ReactNode => {
+    const folder = isConversationFolder(project)
+    const isProjectMenuOpen = menuProjectId === project.id
+    return (
+      <div
+        key={project.id}
+        className={`project-entry ${isProjectMenuOpen ? 'menu-open' : ''}`}
+      >
+        <button
+          type="button"
+          className={`project-row ${activeProjectId === project.id ? 'active' : ''}`}
+          onClick={() => onOpenProject(project.id)}
+          title={folder ? project.name : project.path}
+        >
+          {folder ? <Library size={13} /> : <Folder size={13} />}
+          <span className="project-row-title">{project.name}</span>
+          <span className="project-row-count">
+            {projectSessionCounts.get(project.id) || 0}
+          </span>
+        </button>
+        <div
+          className="project-item-actions"
+          ref={isProjectMenuOpen ? projectMenuContainerRef : undefined}
+        >
+          <button
+            type="button"
+            className="project-menu-btn"
+            aria-haspopup="menu"
+            aria-expanded={isProjectMenuOpen}
+            onClick={(event) => {
+              event.stopPropagation()
+              setMenuSessionId(null)
+              setMenuProjectId((current) => (current === project.id ? null : project.id))
+            }}
+            title="更多操作"
+          >
+            <MoreHorizontal size={12} />
+          </button>
+          {isProjectMenuOpen ? (
+            <div className="session-item-menu project-item-menu" role="menu">
+              <button
+                type="button"
+                className="session-item-menu-item danger"
+                role="menuitem"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setMenuProjectId(null)
+                  setPendingDeleteProjectId(project.id)
+                }}
+              >
+                <Trash2 size={12} />
+                <span>{folder ? '删除文件夹' : '移除项目'}</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
   const startNewSession = (): void => {
     setSessionFamilyRootId(null)
     setDismissedSessionFamilyViewForId(null)
@@ -326,7 +387,20 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
                 </div>
               </div>
             ) : null}
-            {projects.length === 0 && !isCreatingFolder ? (
+            {/* 渲染所有对话文件夹 */}
+            {conversationFolders.map(renderProjectEntry)}
+
+            {/* 渲染项目文件夹（有独立的项目子分组与分隔线） */}
+            {filesystemProjects.length > 0 && (
+              <div className="project-subgroup">
+                <div className="project-subgroup-divider" />
+                <div className="project-subgroup-title">
+                  <span>项目</span>
+                </div>
+                {filesystemProjects.map(renderProjectEntry)}
+              </div>
+            )}
+            {projects.length === 0 && !isCreatingFolder && (
               <button
                 type="button"
                 className="project-row project-empty-row"
@@ -336,68 +410,6 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
                 <span className="project-row-title">添加分类</span>
                 <span className="project-row-count">+</span>
               </button>
-            ) : (
-              projects.map((project) => {
-                const folder = isConversationFolder(project)
-                const isProjectMenuOpen = menuProjectId === project.id
-                return (
-                  <div
-                    key={project.id}
-                    className={`project-entry ${isProjectMenuOpen ? 'menu-open' : ''}`}
-                  >
-                    <button
-                      type="button"
-                      className={`project-row ${activeProjectId === project.id ? 'active' : ''}`}
-                      onClick={() => onOpenProject(project.id)}
-                      title={folder ? project.name : project.path}
-                    >
-                      {folder ? <Library size={13} /> : <Folder size={13} />}
-                      <span className="project-row-title">{project.name}</span>
-                      <span className="project-row-count">
-                        {projectSessionCounts.get(project.id) || 0}
-                      </span>
-                    </button>
-                    <div
-                      className="project-item-actions"
-                      ref={isProjectMenuOpen ? projectMenuContainerRef : undefined}
-                    >
-                      <button
-                        type="button"
-                        className="project-menu-btn"
-                        aria-haspopup="menu"
-                        aria-expanded={isProjectMenuOpen}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          setMenuSessionId(null)
-                          setMenuProjectId((current) =>
-                            current === project.id ? null : project.id
-                          )
-                        }}
-                        title="更多操作"
-                      >
-                        <MoreHorizontal size={12} />
-                      </button>
-                      {isProjectMenuOpen ? (
-                        <div className="session-item-menu project-item-menu" role="menu">
-                          <button
-                            type="button"
-                            className="session-item-menu-item danger"
-                            role="menuitem"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setMenuProjectId(null)
-                              setPendingDeleteProjectId(project.id)
-                            }}
-                          >
-                            <Trash2 size={12} />
-                            <span>{folder ? '删除文件夹' : '移除项目'}</span>
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                )
-              })
             )}
           </div>
         </div>
