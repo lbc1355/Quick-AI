@@ -1,4 +1,5 @@
 export { closeDb, getDb, isDatabaseInitialized } from './database/connection'
+export { createStartupBackup, restoreLatestBackupIfNeeded } from './database/backup'
 export { loadSettings, saveSettings } from './database/settingsStore'
 export { deleteProject, loadProjects, saveProjects } from './database/projectStore'
 export { loadSessions, saveSessions } from './database/sessionStore'

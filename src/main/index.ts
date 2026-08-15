@@ -393,6 +393,17 @@ function maintainAgentFileSnapshots(): void {
     })
 }
 
+// Single instance lock: a second launch would fight over the SQLite file, tray icon,
+// and global shortcut registrations, so it just summons the existing instance instead.
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    showWindow()
+  })
+}
+
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(() => {
