@@ -34,6 +34,8 @@ let store: FileStore | null = null
 let stopSkillWatcher: (() => void) | null = null
 let snapshotMaintenanceTimeout: NodeJS.Timeout | null = null
 let snapshotMaintenanceInterval: NodeJS.Timeout | null = null
+let isMainWindowReadyToShow = false
+let pendingSecondInstanceShow = false
 let isWindowVisible = false
 let isFilePickerActive = false
 let isQuitting = false
@@ -80,6 +82,8 @@ function emitWindowState(): void {
 }
 
 function createWindow(): void {
+  isMainWindowReadyToShow = false
+
   // Floating mode starts off-screen so shortcut summon can position it without flicker.
   // Window mode should behave like a regular app window from startup.
   const initialBounds =
@@ -159,6 +163,7 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    isMainWindowReadyToShow = false
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -177,6 +182,13 @@ function createWindow(): void {
   // Pre-paint the window off-screen so shortcut summon only repositions it.
   // Calling show()/hide() on every toggle triggers the native Windows easing animation.
   mainWindow.once('ready-to-show', () => {
+    isMainWindowReadyToShow = true
+    if (pendingSecondInstanceShow) {
+      pendingSecondInstanceShow = false
+      showWindow()
+      return
+    }
+
     if (windowMode === 'window') {
       isWindowVisible = true
       mainWindow?.show()
@@ -400,6 +412,10 @@ if (!gotTheLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
+    if (!mainWindow || !isMainWindowReadyToShow) {
+      pendingSecondInstanceShow = true
+      return
+    }
     showWindow()
   })
 }

@@ -558,7 +558,13 @@ class McpManagerImpl {
     this.statuses.set(serverName, {
       name: serverName,
       status: 'connected',
-      tools: sortedTools.map((tool) => ({ name: tool.name, description: tool.description }))
+      tools: definitions.map((definition, index) => ({
+        name: sortedTools[index].name,
+        modelName: definition.name,
+        description: definition.description,
+        risk: definition.risk,
+        parameters: definition.parameters
+      }))
     })
   }
 

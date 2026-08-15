@@ -158,6 +158,7 @@ describe('McpManager', () => {
     expect(gitStatus?.status).toBe('connected')
     expect(gitStatus?.tools).toHaveLength(1)
     expect(gitStatus?.tools[0].name).toBe('test_tool')
+    expect(gitStatus?.tools[0].modelName).toBe('mcp_git_test_tool')
 
     const disabledStatus = statuses.find((s) => s.name === 'disabledSrv')
     expect(disabledStatus).toBeDefined()
@@ -216,7 +217,13 @@ describe('McpManager', () => {
     expect(registry.has('mcp_git_test_tool')).toBe(false)
     expect(registry.has(refreshedName)).toBe(true)
     expect(McpManager.getStatuses()[0].tools).toEqual([
-      { name: 'fresh.tool', description: 'Refreshed tool' }
+      {
+        name: 'fresh.tool',
+        modelName: refreshedName,
+        description: 'Refreshed tool',
+        risk: 'medium',
+        parameters: { type: 'object', properties: {}, required: undefined }
+      }
     ])
   })
 
@@ -610,6 +617,18 @@ describe('McpManager', () => {
     const registry = getToolRegistry()
     expect(registry.has('mcp_git_test_tool')).toBe(true)
     expect(registry.has('mcp_git_extra_test_tool')).toBe(true)
+    expect(
+      McpManager.getStatuses().find((status) => status.name === 'git')?.tools[0]
+    ).toMatchObject({
+      name: 'test_tool',
+      modelName: 'mcp_git_test_tool'
+    })
+    expect(
+      McpManager.getStatuses().find((status) => status.name === 'git_extra')?.tools[0]
+    ).toMatchObject({
+      name: 'test_tool',
+      modelName: 'mcp_git_extra_test_tool'
+    })
 
     // Directly trigger cleanupServer('git')
     await (McpManager as any).cleanupServer('git')

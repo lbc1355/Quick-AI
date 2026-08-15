@@ -1175,8 +1175,13 @@ export interface McpServerStatus {
   status: 'connected' | 'connecting' | 'failed' | 'disabled'
   error?: string
   tools: {
+    /** Raw tool name reported by this MCP server. */
     name: string
+    /** Exact namespaced name registered in the Agent tool registry. */
+    modelName: string
     description?: string
+    risk: AgentToolInfo['risk']
+    parameters?: AgentToolInfo['parameters']
   }[]
 }
 

@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import Database from 'better-sqlite3'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { createSchema } from './schema'
 import { migrateFromJson } from './migration'
@@ -13,17 +14,30 @@ export function getDb(): Database.Database {
 
   const dataDir = app.getPath('userData')
   const dbPath = join(dataDir, 'quickai.db')
+  const databaseExistedAtStartup = existsSync(dbPath)
 
-  // Startup backup keeps the last snapshots before anything can mutate the live db.
-  const restored = restoreLatestBackupIfNeeded(dataDir)
-  if (restored) {
+  const restore = restoreLatestBackupIfNeeded(dataDir)
+  if (restore.restored) {
     logger.warn(
       'Database',
       'quickai.db was missing; restored it from the newest backup. Recent data may be lost.'
     )
+  } else if (restore.error) {
+    logger.warn('Database', 'Database restore was skipped:', restore.error.message)
   }
 
   db = new Database(dbPath)
+
+  // Snapshot an existing/restored database before journal-mode, schema, or legacy-data changes.
+  // A brand-new database has no state to protect and is backed up on its next startup.
+  if (databaseExistedAtStartup || restore.restored) {
+    const backup = createStartupBackup(db, dataDir)
+    if (backup.error) {
+      logger.warn('Database', 'Startup backup was incomplete:', backup.error.message)
+    } else if (backup.performed) {
+      logger.info('Database', `Startup backup written: ${backup.backupPaths?.join(', ')}`)
+    }
+  }
 
   // Performance and safety pragmas
   db.pragma('journal_mode = WAL')
@@ -33,13 +47,6 @@ export function getDb(): Database.Database {
 
   createSchema(db)
   migrateFromJson(db, dataDir)
-
-  const backup = createStartupBackup(db, dataDir)
-  if (backup.error) {
-    logger.warn('Database', 'Startup backup failed:', backup.error.message)
-  } else if (backup.performed) {
-    logger.info('Database', `Startup backup written: ${backup.backupPath}`)
-  }
 
   return db
 }

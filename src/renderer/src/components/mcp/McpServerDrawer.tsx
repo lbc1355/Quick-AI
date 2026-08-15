@@ -21,7 +21,6 @@ type PermissionFilter = 'all' | ToolPermission
 
 interface McpServerDrawerProps {
   server: McpServerStatus
-  agentTools: AgentToolInfo[]
   permissions: Record<string, ToolPermission>
   isReloading: boolean
   toolDisplayLanguage: ToolDisplayLanguage
@@ -88,7 +87,6 @@ function getParameterRows(tool: AgentToolInfo): Array<{
 
 export const McpServerDrawer: React.FC<McpServerDrawerProps> = ({
   server,
-  agentTools,
   permissions,
   isReloading,
   toolDisplayLanguage,
@@ -103,29 +101,21 @@ export const McpServerDrawer: React.FC<McpServerDrawerProps> = ({
   const [permissionFilter, setPermissionFilter] = useState<PermissionFilter>('all')
   const [selectedToolName, setSelectedToolName] = useState<string | null>(null)
 
-  // Map server.tools into rich AgentToolInfo instances
+  // Server status carries the exact namespaced registry name, so tools with the same raw name on
+  // different MCP servers never share permission state or schema details.
   const mcpTools = useMemo<AgentToolInfo[]>(() => {
-    return server.tools.map((st) => {
-      const matched = agentTools.find(
-        (at) =>
-          at.name === st.name ||
-          (at.source === 'mcp' &&
-            (at.title === st.name || at.name.endsWith(`_${st.name}`) || at.name.includes(st.name)))
-      )
-
-      if (matched) return matched
-
-      const fallbackName = `mcp_${server.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${st.name.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+    return server.tools.map((tool) => {
       return {
-        name: fallbackName,
-        title: st.name,
-        description: st.description || '',
+        name: tool.modelName,
+        title: tool.name,
+        description: tool.description || '',
         category: 'system',
-        risk: 'medium' as const,
-        source: 'mcp' as const
+        risk: tool.risk,
+        source: 'mcp' as const,
+        parameters: tool.parameters
       }
     })
-  }, [agentTools, server])
+  }, [server.tools])
 
   const filteredTools = useMemo(() => {
     const cleanQuery = query.trim().toLowerCase()
