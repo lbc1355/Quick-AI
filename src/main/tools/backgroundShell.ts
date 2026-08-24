@@ -15,6 +15,7 @@ import {
   cancelBackgroundJob,
   clearBackgroundJobsForTests,
   getBackgroundJob,
+  getBackgroundJobForSession,
   listBackgroundJobs,
   startBackgroundJob,
   updateBackgroundJob
@@ -245,14 +246,15 @@ const appendOutputChunk = (
   appendBoundedOutput(run, stream === 'stderr' ? labelStderr(decoded) : decoded)
 }
 
-const getShellJobOrThrow = (processId: unknown): BackgroundJobInfo => {
+const getShellJobOrThrow = (processId: unknown, ctx?: ToolExecutionContext): BackgroundJobInfo => {
   if (typeof processId !== 'string' || !processId.trim()) {
     throw new Error('Missing or invalid processId parameter')
   }
   const id = processId.trim()
   const live = liveRuns.get(id)
   if (live) persistRun(live)
-  const job = getBackgroundJob(id)
+  const sessionId = ctx?.reqId ? getRun(ctx.reqId)?.sessionId : undefined
+  const job = getBackgroundJobForSession(id, sessionId)
   if (!job || job.type !== 'shell') {
     throw new Error(`No background shell process found for processId "${id}".`)
   }
@@ -570,8 +572,11 @@ export async function executeBackgroundShellStart(
   })
 }
 
-export async function executeBackgroundShellRead(args: ToolArgs): Promise<ToolExecutionResult> {
-  const job = getShellJobOrThrow(args.processId)
+export async function executeBackgroundShellRead(
+  args: ToolArgs,
+  ctx?: ToolExecutionContext
+): Promise<ToolExecutionResult> {
+  const job = getShellJobOrThrow(args.processId, ctx)
   const metadata = getShellMetadata(job)
   const details = formatOutputWindow(job, args.offset, args.maxChars)
   return createBackgroundShellResult({
@@ -581,13 +586,16 @@ export async function executeBackgroundShellRead(args: ToolArgs): Promise<ToolEx
   })
 }
 
-export async function executeBackgroundShellStop(args: ToolArgs): Promise<ToolExecutionResult> {
-  let job = getShellJobOrThrow(args.processId)
+export async function executeBackgroundShellStop(
+  args: ToolArgs,
+  ctx?: ToolExecutionContext
+): Promise<ToolExecutionResult> {
+  let job = getShellJobOrThrow(args.processId, ctx)
   const live = liveRuns.get(job.id)
   if (job.status === 'running') {
     cancelBackgroundJob(job.id)
     if (live) await waitForProcessClose(live, STOP_WAIT_MS)
-    job = getShellJobOrThrow(job.id)
+    job = getShellJobOrThrow(job.id, ctx)
   }
 
   const details = [
@@ -610,7 +618,9 @@ export async function executeBackgroundShellList(
 ): Promise<ToolExecutionResult> {
   for (const run of liveRuns.values()) persistRun(run)
   const runCtx = ctx?.reqId ? getRun(ctx.reqId) : undefined
-  const jobs = listBackgroundJobs(runCtx?.sessionId).filter((job) => job.type === 'shell')
+  const jobs = listBackgroundJobs(runCtx?.sessionId).filter(
+    (job) => job.type === 'shell' && job.sessionId === runCtx?.sessionId
+  )
   const details =
     jobs.length === 0
       ? 'No background shell tasks.'

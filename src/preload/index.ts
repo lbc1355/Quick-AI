@@ -232,8 +232,8 @@ const api = {
   mcpOpenConfig: (): Promise<void> => ipcRenderer.invoke('mcp-open-config'),
   backgroundJobList: (sessionId?: string): Promise<BackgroundJobInfo[]> =>
     ipcRenderer.invoke('background-job-list', sessionId),
-  backgroundJobCancel: (id: string): Promise<BackgroundJobInfo> =>
-    ipcRenderer.invoke('background-job-cancel', id)
+  backgroundJobCancel: (id: string, sessionId?: string): Promise<BackgroundJobInfo> =>
+    ipcRenderer.invoke('background-job-cancel', id, sessionId)
 } satisfies PreloadApi
 
 // Use `contextBridge` APIs to expose Electron APIs to

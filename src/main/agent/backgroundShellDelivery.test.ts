@@ -22,7 +22,9 @@ const dependencies = (): BackgroundResultDeliveryDependencies => ({
   admit: vi.fn(() => ({ prompt, inserted: true })),
   steer: vi.fn(() => false),
   markRunning: vi.fn(() => true),
-  removeSteering: vi.fn(() => true)
+  removeSteering: vi.fn(() => true),
+  getJob: vi.fn(() => undefined),
+  markReported: vi.fn(() => undefined)
 })
 
 describe('background shell result delivery', () => {
@@ -55,11 +57,13 @@ describe('background shell result delivery', () => {
         id: 'background-result-admission-shell-1',
         messages: [
           expect.objectContaining({
-            content: expect.stringMatching(/Tests passed[\s\S]*read_cached_resource/)
+            content: expect.stringMatching(/Resource ID:[\s\S]*read_cached_resource/)
           })
         ]
       })
     )
+    const content = vi.mocked(deps.admit).mock.calls[0][0].messages[0].content
+    expect(content).not.toContain('Tests passed')
     expect(send).toHaveBeenCalledWith(result)
   })
 })

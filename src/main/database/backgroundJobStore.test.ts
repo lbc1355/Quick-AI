@@ -41,6 +41,8 @@ describeWithSqlite('backgroundJobStore', () => {
       status: 'running',
       metadata: { command: 'npm run dev', pid: 42 },
       output: 'ready\n',
+      reportedAt: 11,
+      reportDisposition: 'queued',
       createdAt: 10,
       updatedAt: 10
     })
@@ -60,7 +62,9 @@ describeWithSqlite('backgroundJobStore', () => {
       sessionId: 'session-1',
       status: 'running',
       metadata: { command: 'npm run dev', pid: 42 },
-      output: 'ready\n'
+      output: 'ready\n',
+      reportedAt: 11,
+      reportDisposition: 'queued'
     })
     expect(listBackgroundJobRecords('session-1').map((job) => job.id)).toEqual(['job-1'])
     expect(listBackgroundJobRecords().map((job) => job.id)).toEqual(['job-2', 'job-1'])

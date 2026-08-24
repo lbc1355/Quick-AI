@@ -20,15 +20,18 @@ export type BackgroundSubagentDeliveryDependencies = BackgroundResultDeliveryDep
 
 const renderResultPrompt = (completion: BackgroundSubagentCompletion): string => {
   const state =
-    completion.status === 'completed' || completion.status === 'max_steps' ? '已完成' : '失败'
+    completion.status === 'completed' || completion.status === 'max_steps'
+      ? 'completed'
+      : completion.status
+  const error = completion.error?.slice(0, 300)
   return [
-    '### 后台子任务结果（自动消息）',
-    `- Job ID：${completion.jobId}`,
-    `- 状态：${state}`,
-    `- 任务：${completion.task}`,
-    completion.result ? `\n结果：\n${completion.result}` : '',
-    completion.error ? `\n错误：\n${completion.error}` : '',
-    '\n请在下一次回复中使用这个结果，不要重复执行或轮询该任务。'
+    'A background subagent has finished.',
+    `- Job ID: ${completion.jobId}`,
+    `- Status: ${state}`,
+    `- Task: ${completion.task}`,
+    error ? `- Error summary: ${error}` : '',
+    `Read the persisted result with background_job_read {"jobId":"${completion.jobId}"}.`,
+    'Do not poll, repeat, or restart the task.'
   ]
     .filter(Boolean)
     .join('\n')
@@ -57,6 +60,6 @@ export function deliverBackgroundSubagentResult(
     disposition: route.disposition,
     ...(route.prompt ? { prompt: route.prompt } : {})
   }
-  input.send(notification)
+  if (route.disposition !== 'duplicate') input.send(notification)
   return notification
 }

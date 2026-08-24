@@ -106,7 +106,7 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
   const handleCancelJob = async (id: string): Promise<void> => {
     if (!window.confirm('确定要取消这个后台子 Agent 任务吗？')) return
     try {
-      await window.api.backgroundJobCancel(id)
+      await window.api.backgroundJobCancel(id, jobs.find((job) => job.id === id)?.sessionId)
       await fetchJobs(true)
     } catch (error) {
       toast.error(`取消后台任务失败：${error instanceof Error ? error.message : String(error)}`)
@@ -116,7 +116,7 @@ export const BackgroundTaskManagerModal: React.FC<BackgroundTaskManagerModalProp
   const handleStopShell = async (id: string): Promise<void> => {
     if (!window.confirm('确定要终止该后台进程及其所有子进程吗？')) return
     try {
-      await window.api.backgroundJobCancel(id)
+      await window.api.backgroundJobCancel(id, jobs.find((job) => job.id === id)?.sessionId)
       await fetchJobs(true)
     } catch (error) {
       toast.error(`停止进程失败：${error instanceof Error ? error.message : String(error)}`)

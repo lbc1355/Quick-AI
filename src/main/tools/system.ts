@@ -7,6 +7,7 @@ import { skillTools } from './skillTools'
 import { inspectEnvironmentTool } from './inspectEnvironmentTool'
 import { notifyTool } from './notifyTool'
 import { subagentTool } from './subagentTool'
+import { backgroundJobReadTool } from './backgroundJobTool'
 
 export const systemTools: Record<string, ToolDefinition> = {
   ...resourceTools,
@@ -14,6 +15,7 @@ export const systemTools: Record<string, ToolDefinition> = {
   inspect_environment: inspectEnvironmentTool,
   ask_user_choice: askUserChoiceTool,
   subagent: subagentTool,
+  background_job_read: backgroundJobReadTool,
   ...reminderTools,
   notify: notifyTool,
   ...skillTools

@@ -933,6 +933,7 @@ export type RunMode = 'chat' | 'agent'
 
 export type SessionPromptAdmissionMode = 'steer' | 'queue'
 export type SessionPromptAdmissionStatus = 'pending' | 'running' | 'completed' | 'cancelled'
+export type SessionPromptOrigin = 'user' | 'background'
 
 /** A durable user prompt waiting to steer the active agent or start after it. */
 export interface SessionPromptAdmission {
@@ -941,6 +942,8 @@ export interface SessionPromptAdmission {
   contextEpoch: number
   mode: SessionPromptAdmissionMode
   status: SessionPromptAdmissionStatus
+  /** Distinguishes real user turns from automatic detached-task wake-ups. */
+  origin?: SessionPromptOrigin
   runMode: RunMode
   sourceMessageId: string
   assistantMessageId?: string
@@ -957,6 +960,7 @@ export interface AdmitSessionPromptInput {
   sessionId: string
   contextEpoch?: number
   mode: SessionPromptAdmissionMode
+  origin?: SessionPromptOrigin
   runMode: RunMode
   sourceMessageId: string
   assistantMessageId?: string
@@ -980,6 +984,8 @@ export type BackgroundJobStatus =
   | 'max_steps'
   | 'interrupted'
 
+export type BackgroundJobReportDisposition = 'steered' | 'queued' | 'stale' | 'read'
+
 /** Persisted lifecycle metadata for a detached background task. */
 export interface BackgroundJobInfo {
   id: string
@@ -991,6 +997,9 @@ export interface BackgroundJobInfo {
   createdAt: number
   updatedAt: number
   completedAt?: number
+  /** First terminal-result delivery/read, used to make automatic reporting idempotent. */
+  reportedAt?: number
+  reportDisposition?: BackgroundJobReportDisposition
   error?: string
   /** Task-specific, JSON-serializable details such as a shell PID or output offsets. */
   metadata?: Record<string, unknown>
@@ -1063,7 +1072,7 @@ export interface BackgroundSubagentResultNotification extends BackgroundSubagent
   contextEpoch: number
   parentRunId: string
   parentAssistantMessageId?: string
-  disposition: 'steered' | 'queued' | 'stale'
+  disposition: 'steered' | 'queued' | 'stale' | 'duplicate'
   prompt?: SessionPromptAdmission
 }
 
@@ -1073,7 +1082,7 @@ export interface BackgroundShellResultNotification extends BackgroundShellComple
   contextEpoch: number
   parentRunId: string
   parentAssistantMessageId?: string
-  disposition: 'steered' | 'queued' | 'stale'
+  disposition: 'steered' | 'queued' | 'stale' | 'duplicate'
   prompt?: SessionPromptAdmission
 }
 
@@ -1315,5 +1324,5 @@ export interface PreloadApi {
   mcpReloadServer: (name: string) => Promise<McpServerStatus>
   mcpOpenConfig: () => Promise<void>
   backgroundJobList: (sessionId?: string) => Promise<BackgroundJobInfo[]>
-  backgroundJobCancel: (id: string) => Promise<BackgroundJobInfo>
+  backgroundJobCancel: (id: string, sessionId?: string) => Promise<BackgroundJobInfo>
 }

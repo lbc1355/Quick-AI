@@ -4,8 +4,10 @@ import {
   SessionPromptAdmission,
   SessionPromptAdmissionMode,
   SessionPromptAdmissionStatus,
+  SessionPromptOrigin,
   RunMode
 } from '../../shared/types'
+import { resetBackgroundWakeBudget, tryClaimBackgroundWake } from '../agent/backgroundWakeBudget'
 import { getDb } from './connection'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
 import { normalizeReasoningPreference } from '../../shared/reasoningControl'
@@ -15,6 +17,7 @@ interface SessionPromptRow {
   sessionId: string
   contextEpoch: number
   mode: string
+  origin: string
   status: string
   runMode: string
   sourceMessageId: string
@@ -53,6 +56,7 @@ const rowToPrompt = (row: SessionPromptRow): SessionPromptAdmission => ({
   contextEpoch: normalizeContextEpoch(row.contextEpoch),
   mode: row.mode as SessionPromptAdmissionMode,
   status: row.status as SessionPromptAdmissionStatus,
+  ...(row.origin === 'background' ? { origin: 'background' as SessionPromptOrigin } : {}),
   runMode: row.runMode as RunMode,
   sourceMessageId: row.sourceMessageId,
   ...(row.assistantMessageId ? { assistantMessageId: row.assistantMessageId } : {}),
@@ -90,6 +94,7 @@ export function admitSessionPrompt(input: AdmitSessionPromptInput): StoredSessio
   if (input.runMode !== 'chat' && input.runMode !== 'agent') {
     throw new Error('Prompt run mode must be chat or agent')
   }
+  const origin: SessionPromptOrigin = input.origin === 'background' ? 'background' : 'user'
   if (!Array.isArray(input.messages) || input.messages.length === 0) {
     throw new Error('Prompt messages are required')
   }
@@ -104,14 +109,15 @@ export function admitSessionPrompt(input: AdmitSessionPromptInput): StoredSessio
   const result = getDb()
     .prepare(
       `INSERT OR IGNORE INTO session_prompt_inbox
-       (id, sessionId, contextEpoch, mode, status, runMode, sourceMessageId, assistantMessageId, messages, requestedReasoningPreference, effectiveReasoningPreference, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, sessionId, contextEpoch, mode, origin, status, runMode, sourceMessageId, assistantMessageId, messages, requestedReasoningPreference, effectiveReasoningPreference, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       id,
       sessionId,
       contextEpoch,
       input.mode,
+      origin,
       input.runMode,
       sourceMessageId,
       assistantMessageId,
@@ -129,6 +135,7 @@ export function admitSessionPrompt(input: AdmitSessionPromptInput): StoredSessio
     normalizeContextEpoch(row.contextEpoch) !== contextEpoch ||
     row.sourceMessageId !== sourceMessageId ||
     row.mode !== input.mode ||
+    row.origin !== origin ||
     row.runMode !== input.runMode ||
     row.assistantMessageId !== assistantMessageId ||
     row.messages !== JSON.stringify(input.messages)
@@ -157,6 +164,7 @@ export function getSessionPrompt(id: string): SessionPromptAdmission | undefined
 
 export function markSessionPromptRunning(id: string): boolean {
   const normalizedId = requireText(id, 'Prompt admission id')
+  const row = getPromptRow(normalizedId)
   const result = getDb()
     .prepare(
       `UPDATE session_prompt_inbox
@@ -164,6 +172,9 @@ export function markSessionPromptRunning(id: string): boolean {
        WHERE id = ? AND status = 'pending'`
     )
     .run(Date.now(), normalizedId)
+  if (result.changes === 1 && row && row.origin !== 'background') {
+    resetBackgroundWakeBudget(row.sessionId)
+  }
   return result.changes === 1
 }
 
@@ -185,35 +196,48 @@ export function claimNextSessionPrompt(
         )
         .run(Date.now(), normalizedSessionId, normalizedEpoch)
     }
-    const row = database
-      .prepare(
-        `SELECT * FROM session_prompt_inbox
-         WHERE sessionId = ? AND status = 'pending'
-           ${normalizedEpoch === undefined ? '' : 'AND contextEpoch = ?'}
-         ORDER BY createdAt ASC, rowid ASC LIMIT 1`
-      )
-      .get(
+    const selectNext = database.prepare(
+      `SELECT * FROM session_prompt_inbox
+       WHERE sessionId = ? AND status = 'pending'
+         ${normalizedEpoch === undefined ? '' : 'AND contextEpoch = ?'}
+       ORDER BY createdAt ASC, rowid ASC LIMIT 1`
+    )
+    const claim = database.prepare(
+      `UPDATE session_prompt_inbox
+       SET status = 'running', updatedAt = ?
+       WHERE id = ? AND status = 'pending'`
+    )
+    const cancel = database.prepare(
+      `UPDATE session_prompt_inbox
+       SET status = 'cancelled', updatedAt = ?
+       WHERE id = ? AND status = 'pending'`
+    )
+
+    while (true) {
+      const row = selectNext.get(
         ...(normalizedEpoch === undefined
           ? [normalizedSessionId]
           : [normalizedSessionId, normalizedEpoch])
       ) as SessionPromptRow | undefined
-    if (!row) return undefined
+      if (!row) return undefined
 
-    const result = database
-      .prepare(
-        `UPDATE session_prompt_inbox
-         SET status = 'running', updatedAt = ?
-         WHERE id = ? AND status = 'pending'`
-      )
-      .run(Date.now(), row.id)
-    if (result.changes !== 1) return undefined
-    return rowToPrompt(getPromptRow(row.id)!)
+      if (row.origin === 'background' && !tryClaimBackgroundWake(normalizedSessionId)) {
+        cancel.run(Date.now(), row.id)
+        continue
+      }
+
+      const result = claim.run(Date.now(), row.id)
+      if (result.changes !== 1) continue
+      if (row.origin !== 'background') resetBackgroundWakeBudget(normalizedSessionId)
+      return rowToPrompt(getPromptRow(row.id)!)
+    }
   })()
 }
 
 export function cancelStaleSessionPrompts(sessionId: string, contextEpoch: number): number {
   const normalizedSessionId = requireText(sessionId, 'Session id')
   const normalizedEpoch = normalizeContextEpoch(contextEpoch)
+  resetBackgroundWakeBudget(normalizedSessionId)
   const result = getDb()
     .prepare(
       `UPDATE session_prompt_inbox

@@ -14,6 +14,8 @@ interface BackgroundJobRow {
   createdAt: number
   updatedAt: number
   completedAt: number | null
+  reportedAt: number | null
+  reportDisposition: BackgroundJobInfo['reportDisposition'] | null
 }
 
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000
@@ -52,6 +54,8 @@ const rowToJob = (row: BackgroundJobRow): BackgroundJobInfo => {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     ...(row.completedAt !== null ? { completedAt: row.completedAt } : {}),
+    ...(row.reportedAt !== null ? { reportedAt: row.reportedAt } : {}),
+    ...(row.reportDisposition ? { reportDisposition: row.reportDisposition } : {}),
     ...(row.error ? { error: row.error } : {}),
     ...(metadata ? { metadata } : {}),
     ...(row.output !== null ? { output: row.output } : {})
@@ -69,6 +73,8 @@ export function saveBackgroundJob(job: BackgroundJobInfo): BackgroundJobInfo {
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     ...(job.completedAt !== undefined ? { completedAt: job.completedAt } : {}),
+    ...(job.reportedAt !== undefined ? { reportedAt: job.reportedAt } : {}),
+    ...(job.reportDisposition ? { reportDisposition: job.reportDisposition } : {}),
     ...(optionalText(job.error) ? { error: optionalText(job.error) } : {}),
     ...(job.metadata ? { metadata: { ...job.metadata } } : {}),
     ...(job.output !== undefined ? { output: job.output } : {})
@@ -77,8 +83,8 @@ export function saveBackgroundJob(job: BackgroundJobInfo): BackgroundJobInfo {
   getDb()
     .prepare(
       `INSERT INTO background_jobs
-       (id, type, title, description, sessionId, status, error, metadata, output, createdAt, updatedAt, completedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (id, type, title, description, sessionId, status, error, metadata, output, createdAt, updatedAt, completedAt, reportedAt, reportDisposition)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          type = excluded.type,
          title = excluded.title,
@@ -89,7 +95,9 @@ export function saveBackgroundJob(job: BackgroundJobInfo): BackgroundJobInfo {
          metadata = excluded.metadata,
          output = excluded.output,
          updatedAt = excluded.updatedAt,
-         completedAt = excluded.completedAt`
+         completedAt = excluded.completedAt,
+         reportedAt = excluded.reportedAt,
+         reportDisposition = excluded.reportDisposition`
     )
     .run(
       normalized.id,
@@ -103,7 +111,9 @@ export function saveBackgroundJob(job: BackgroundJobInfo): BackgroundJobInfo {
       normalized.output ?? null,
       normalized.createdAt,
       normalized.updatedAt,
-      normalized.completedAt ?? null
+      normalized.completedAt ?? null,
+      normalized.reportedAt ?? null,
+      normalized.reportDisposition ?? null
     )
 
   return normalized

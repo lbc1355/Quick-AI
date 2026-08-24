@@ -17,28 +17,23 @@ export interface DeliverBackgroundShellInput {
 }
 
 const renderResultPrompt = (completion: BackgroundShellCompletion): string => {
-  const status =
-    completion.status === 'completed'
-      ? '已完成'
-      : completion.status === 'cancelled'
-        ? '已取消'
-        : '失败'
+  const error = completion.error?.slice(0, 300)
   return [
-    '### 后台 Shell 结果（自动消息）',
-    `- Job ID：${completion.jobId}`,
-    `- 状态：${status}`,
-    `- 命令：${completion.command}`,
-    completion.exitCode !== undefined ? `- 退出码：${completion.exitCode ?? '无'}` : '',
-    completion.signal ? `- 信号：${completion.signal}` : '',
+    'A background shell command has finished.',
+    `- Job ID: ${completion.jobId}`,
+    `- Status: ${completion.status}`,
+    `- Command: ${completion.command}`,
+    completion.exitCode !== undefined ? `- Exit code: ${completion.exitCode ?? 'none'}` : '',
+    completion.signal ? `- Signal: ${completion.signal}` : '',
     completion.totalOutputChars !== undefined
-      ? `- 输出：${completion.totalOutputChars} 字符 / ${completion.totalOutputLines || 0} 行`
+      ? `- Output: ${completion.totalOutputChars} chars / ${completion.totalOutputLines || 0} lines`
       : '',
-    completion.resourceId ? `- Resource ID：${completion.resourceId}` : '',
-    completion.output ? `\n输出摘要：\n${completion.output}` : '',
-    completion.error ? `\n错误：\n${completion.error}` : '',
+    completion.resourceId ? `- Resource ID: ${completion.resourceId}` : '',
+    error ? `- Error summary: ${error}` : '',
     completion.resourceId
-      ? `\n如摘要不足，请用 search_cached_resource 或 read_cached_resource 查询 Resource ID ${completion.resourceId}；不要重新执行或轮询该命令。`
-      : '\n请在下一次回复中使用这个结果，不要重复执行或轮询该命令。'
+      ? `Use search_cached_resource/read_cached_resource for full output from ${completion.resourceId}.`
+      : `Read the persisted result with background_job_read {"jobId":"${completion.jobId}"}.`,
+    'Do not poll, repeat, or restart the command.'
   ]
     .filter(Boolean)
     .join('\n')
@@ -66,6 +61,6 @@ export function deliverBackgroundShellResult(
     disposition: route.disposition,
     ...(route.prompt ? { prompt: route.prompt } : {})
   }
-  input.send(notification)
+  if (route.disposition !== 'duplicate') input.send(notification)
   return notification
 }

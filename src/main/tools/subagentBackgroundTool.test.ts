@@ -32,7 +32,7 @@ vi.mock('../agent/subagentRunner', () => ({
   )
 }))
 
-import { clearBackgroundJobsForTests } from '../agent/backgroundJobManager'
+import { clearBackgroundJobsForTests, getBackgroundJob } from '../agent/backgroundJobManager'
 import { subagentTool } from './subagentTool'
 
 const flush = async (): Promise<void> => {
@@ -90,6 +90,8 @@ describe('background subagent tool', () => {
         result: 'Inspection complete'
       })
     )
+    const jobId = vi.mocked(publish).mock.calls[0][0].jobId
+    expect(getBackgroundJob(jobId)?.output).toBe('Inspection complete')
     expect(publishEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({

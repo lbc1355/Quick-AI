@@ -5,7 +5,9 @@ import {
   configureBackgroundJobPersistence,
   discardBackgroundJobsForSession,
   getBackgroundJob,
+  getBackgroundJobForSession,
   listBackgroundJobs,
+  markBackgroundJobReported,
   startBackgroundJob,
   updateBackgroundJob
 } from './backgroundJobManager'
@@ -145,6 +147,39 @@ describe('background job manager', () => {
       metadata: { pid: 42, totalOutputChars: 5 },
       output: 'hello'
     })
+  })
+
+  it('reports a terminal result only once and preserves the first disposition', () => {
+    startBackgroundJob({
+      id: 'job-report',
+      type: 'subagent',
+      title: 'Inspect',
+      sessionId: 'session-1',
+      run: () => new Promise<void>(() => undefined)
+    })
+
+    expect(markBackgroundJobReported('job-report', 'queued', 10)).toMatchObject({
+      reportedAt: 10,
+      reportDisposition: 'queued'
+    })
+    expect(markBackgroundJobReported('job-report', 'steered', 20)).toMatchObject({
+      reportedAt: 10,
+      reportDisposition: 'queued'
+    })
+  })
+
+  it('only exposes a background job to its owning session', () => {
+    startBackgroundJob({
+      id: 'job-owned',
+      type: 'shell',
+      title: 'Build',
+      sessionId: 'session-1',
+      run: () => new Promise<void>(() => undefined)
+    })
+
+    expect(getBackgroundJobForSession('job-owned', 'session-1')?.id).toBe('job-owned')
+    expect(getBackgroundJobForSession('job-owned', 'session-2')).toBeUndefined()
+    expect(getBackgroundJobForSession('job-owned', undefined)).toBeUndefined()
   })
 
   it('persists lifecycle changes and merges recovered records into listings', async () => {

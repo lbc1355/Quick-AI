@@ -171,6 +171,8 @@ export function createSchema(database: Database.Database): void {
       sessionId          TEXT NOT NULL,
       contextEpoch       INTEGER NOT NULL DEFAULT 0,
       mode               TEXT NOT NULL CHECK (mode IN ('steer', 'queue')),
+      origin             TEXT NOT NULL DEFAULT 'user'
+                         CHECK (origin IN ('user', 'background')),
       status             TEXT NOT NULL DEFAULT 'pending'
                          CHECK (status IN ('pending', 'running', 'completed', 'cancelled')),
       runMode            TEXT NOT NULL CHECK (runMode IN ('chat', 'agent')),
@@ -198,7 +200,9 @@ export function createSchema(database: Database.Database): void {
       output      TEXT,
       createdAt   INTEGER NOT NULL,
       updatedAt   INTEGER NOT NULL,
-      completedAt INTEGER
+      completedAt INTEGER,
+      reportedAt INTEGER,
+      reportDisposition TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_background_jobs_session
       ON background_jobs(sessionId, createdAt DESC);
@@ -250,10 +254,13 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'skills', 'packageRoot', 'TEXT')
   ensureColumn(database, 'skills', 'packageFiles', "TEXT DEFAULT '[]'")
   ensureColumn(database, 'session_prompt_inbox', 'contextEpoch', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn(database, 'session_prompt_inbox', 'origin', "TEXT NOT NULL DEFAULT 'user'")
   ensureColumn(database, 'session_prompt_inbox', 'requestedReasoningPreference', 'TEXT')
   ensureColumn(database, 'session_prompt_inbox', 'effectiveReasoningPreference', 'TEXT')
   ensureColumn(database, 'background_jobs', 'metadata', 'TEXT')
   ensureColumn(database, 'background_jobs', 'output', 'TEXT')
+  ensureColumn(database, 'background_jobs', 'reportedAt', 'INTEGER')
+  ensureColumn(database, 'background_jobs', 'reportDisposition', 'TEXT')
 }
 
 /** Add a column to an existing table if it is missing. Idempotent; safe to call on every boot. */

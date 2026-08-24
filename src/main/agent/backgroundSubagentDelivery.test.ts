@@ -38,6 +38,8 @@ const dependencies = (
   steer: vi.fn(() => true),
   markRunning: vi.fn(() => true),
   removeSteering: vi.fn(() => true),
+  getJob: vi.fn(() => undefined),
+  markReported: vi.fn(() => undefined),
   ...overrides
 })
 
@@ -61,6 +63,11 @@ describe('background subagent result delivery', () => {
       expect.objectContaining({ admissionId: prompt().id, contextEpoch: 3 })
     )
     expect(deps.markRunning).toHaveBeenCalledWith(prompt().id)
+    expect(deps.markReported).toHaveBeenCalledWith('job-1', 'steered')
+    const admitted = vi.mocked(deps.admit).mock.calls[0][0]
+    expect(admitted.origin).toBe('background')
+    expect(admitted.messages[0].content).not.toContain(completion.result)
+    expect(admitted.messages[0].content).toContain('background_job_read')
   })
 
   it('leaves the durable result queued when no active run accepts steering', () => {
@@ -81,5 +88,28 @@ describe('background subagent result delivery', () => {
     expect(result.disposition).toBe('stale')
     expect(deps.admit).not.toHaveBeenCalled()
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ disposition: 'stale' }))
+    expect(deps.markReported).toHaveBeenCalledWith('job-1', 'stale')
+  })
+
+  it('suppresses a duplicate terminal notification that was already reported', () => {
+    const send = vi.fn()
+    const deps = dependencies({
+      getJob: vi.fn(() => ({
+        id: 'job-1',
+        type: 'subagent',
+        title: 'Inspect',
+        status: 'completed' as const,
+        createdAt: 1,
+        updatedAt: 2,
+        reportedAt: 2,
+        reportDisposition: 'queued' as const
+      }))
+    })
+
+    const result = deliverBackgroundSubagentResult(input(send), deps)
+
+    expect(result.disposition).toBe('duplicate')
+    expect(deps.admit).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
   })
 })

@@ -73,7 +73,7 @@ async function startBackgroundSubagent(
     throw new Error('Background subagent delivery is unavailable in this host.')
   }
 
-  const [{ startBackgroundJob }, { runSubagentTask }] = await Promise.all([
+  const [{ startBackgroundJob, updateBackgroundJob }, { runSubagentTask }] = await Promise.all([
     import('../agent/backgroundJobManager'),
     import('../agent/subagentRunner')
   ])
@@ -124,6 +124,12 @@ async function startBackgroundSubagent(
       const fallbackError =
         failure instanceof Error ? failure.message : failure ? String(failure) : undefined
       const status = completionEvent?.status || (signal.aborted ? 'cancelled' : 'failed')
+      const persistedResult = result?.resultForModel || completionEvent?.finalAnswer
+      const persistedError = completionEvent?.error || fallbackError
+      updateBackgroundJob(jobId, {
+        ...(persistedResult !== undefined ? { output: persistedResult } : {}),
+        ...(persistedError ? { error: persistedError } : {})
+      })
       try {
         ctx.host?.publishBackgroundSubagentCompletion?.({
           jobId,
@@ -132,8 +138,8 @@ async function startBackgroundSubagent(
           task: request.task,
           label: request.label || (request.tools ? 'Custom' : 'General'),
           status,
-          result: result?.resultForModel || completionEvent?.finalAnswer,
-          error: completionEvent?.error || fallbackError,
+          result: persistedResult,
+          error: persistedError,
           durationMs: completionEvent?.durationMs
         })
       } finally {

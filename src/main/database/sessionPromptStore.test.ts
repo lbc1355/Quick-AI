@@ -16,6 +16,11 @@ import {
   requeueSessionPrompts
 } from './sessionPromptStore'
 import { describeWithSqlite } from '../testSupport/nativeSqlite'
+import {
+  clearBackgroundWakeBudgetsForTests,
+  getBackgroundWakeCount,
+  MAX_CONSECUTIVE_BACKGROUND_WAKES
+} from '../agent/backgroundWakeBudget'
 
 const testDir = join(__dirname, '../../../temp-session-prompt-store-test')
 
@@ -38,12 +43,14 @@ const makeInput = (id: string, mode: 'steer' | 'queue' = 'queue'): AdmitSessionP
 
 describeWithSqlite('sessionPromptStore', () => {
   beforeEach(async () => {
+    clearBackgroundWakeBudgetsForTests()
     closeDb()
     if (existsSync(testDir)) await fs.rm(testDir, { recursive: true, force: true })
     await fs.mkdir(testDir, { recursive: true })
   })
 
   afterEach(async () => {
+    clearBackgroundWakeBudgetsForTests()
     closeDb()
     if (existsSync(testDir)) await fs.rm(testDir, { recursive: true, force: true })
   })
@@ -133,5 +140,37 @@ describeWithSqlite('sessionPromptStore', () => {
         sessionId: 'different-session'
       })
     ).toThrow('already used by another prompt')
+  })
+
+  it('limits consecutive automatic background wake-ups until a user prompt is consumed', () => {
+    for (let index = 1; index <= MAX_CONSECUTIVE_BACKGROUND_WAKES + 1; index += 1) {
+      admitSessionPrompt({
+        ...makeInput(`background-${index}`),
+        origin: 'background'
+      })
+    }
+
+    for (let index = 1; index <= MAX_CONSECUTIVE_BACKGROUND_WAKES; index += 1) {
+      expect(claimNextSessionPrompt('session-1')?.id).toBe(`background-${index}`)
+    }
+    expect(claimNextSessionPrompt('session-1')).toBeUndefined()
+    expect(getSessionPrompt(`background-${MAX_CONSECUTIVE_BACKGROUND_WAKES + 1}`)?.status).toBe(
+      'cancelled'
+    )
+  })
+
+  it('resets the automatic wake allowance after consuming a real user prompt', () => {
+    for (let index = 1; index <= MAX_CONSECUTIVE_BACKGROUND_WAKES; index += 1) {
+      admitSessionPrompt({ ...makeInput(`background-${index}`), origin: 'background' })
+      expect(claimNextSessionPrompt('session-1')?.id).toBe(`background-${index}`)
+    }
+    expect(getBackgroundWakeCount('session-1')).toBe(MAX_CONSECUTIVE_BACKGROUND_WAKES)
+
+    admitSessionPrompt(makeInput('user-reset'))
+    expect(claimNextSessionPrompt('session-1')?.id).toBe('user-reset')
+    expect(getBackgroundWakeCount('session-1')).toBe(0)
+
+    admitSessionPrompt({ ...makeInput('background-after-user'), origin: 'background' })
+    expect(claimNextSessionPrompt('session-1')?.id).toBe('background-after-user')
   })
 })
