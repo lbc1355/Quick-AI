@@ -122,7 +122,13 @@ export const buildSideEffectEntry = (
     reversibility = 'metadata_only'
   }
 
-  if (status === 'denied' || status === 'blocked' || status === 'error') {
+  if (
+    status === 'denied' ||
+    status === 'blocked' ||
+    status === 'error' ||
+    status === 'timeout' ||
+    status === 'cancelled'
+  ) {
     reversibility = reversibility === 'irreversible' ? 'irreversible' : 'metadata_only'
   }
 
@@ -132,7 +138,7 @@ export const buildSideEffectEntry = (
     toolName,
     kind,
     reversibility,
-    status: status === 'timeout' ? 'error' : status,
+    status,
     summary: resultContent.slice(0, 300),
     args,
     command,

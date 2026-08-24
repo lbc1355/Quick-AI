@@ -33,7 +33,7 @@ export interface SideEffectEntry {
   toolName: string
   kind: SideEffectKind
   reversibility: SideEffectReversibility
-  status: 'success' | 'error' | 'denied' | 'blocked' | 'ambiguous'
+  status: 'success' | 'error' | 'timeout' | 'cancelled' | 'denied' | 'blocked' | 'ambiguous'
   summary: string
   args?: ToolArgs
   command?: string

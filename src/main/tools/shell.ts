@@ -9,6 +9,8 @@ import { executeShellCommand } from './shellExecutor'
 import { ToolDefinition, ToolExecutionContext } from './types'
 export { decodeShellOutputForDisplay } from './shellEncoding'
 
+const SHELL_TOOL_TIMEOUT_MS = 60_000
+
 export const shellTools: Record<string, ToolDefinition> = {
   shell: {
     name: 'shell',
@@ -17,6 +19,7 @@ export const shellTools: Record<string, ToolDefinition> = {
     tags: ['shell', 'exec', 'command', 'terminal'],
     category: 'shell',
     risk: 'high',
+    timeoutMs: SHELL_TOOL_TIMEOUT_MS,
     implemented: true,
     discoverable: true,
     parameters: {

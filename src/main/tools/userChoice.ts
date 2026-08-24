@@ -17,6 +17,14 @@ export const askUserChoiceTool: ToolDefinition = {
   category: 'system',
   risk: 'low',
   isConcurrencySafe: () => false,
+  timeoutMs: (args) => {
+    const seconds =
+      typeof args.timeoutSeconds === 'number' && Number.isFinite(args.timeoutSeconds)
+        ? Math.min(Math.max(args.timeoutSeconds, 5), 3600)
+        : 600
+    // Let UserChoiceManager own the visible timeout and settle before the outer lifecycle closes.
+    return seconds * 1000 + 1000
+  },
   implemented: true,
   discoverable: true,
   parameters: {

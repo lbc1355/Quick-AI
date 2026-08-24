@@ -8,8 +8,13 @@ import {
 import { createToolResult, normalizeToolExecutionResult } from '../tools/result'
 import { safeJsonStringify } from '../tools/jsonSafe'
 import { RetryPolicy, isRetryableError, withRetry } from './retryPolicy'
+import {
+  isToolExecutionLifecycleError,
+  resolveToolTimeoutMs,
+  runWithToolExecutionLifecycle
+} from './toolExecutionLifecycle'
 
-export type ToolRuntimeFailureStatus = 'error' | 'ambiguous'
+export type ToolRuntimeFailureStatus = 'error' | 'timeout' | 'cancelled' | 'ambiguous'
 
 export interface ToolRuntimeErrorClassification {
   interrupted: boolean
@@ -76,7 +81,7 @@ export interface ApplyRuntimeToolCallResultOptions {
 }
 
 export interface RuntimeToolActionDraft {
-  resultStatus: 'success' | 'error' | 'ambiguous' | 'denied' | 'blocked'
+  resultStatus: 'success' | ToolRuntimeFailureStatus | 'denied' | 'blocked'
   resultContent: string
 }
 
@@ -131,17 +136,44 @@ export function classifyToolRuntimeError(
   options: ClassifyToolRuntimeErrorOptions
 ): ToolRuntimeErrorClassification {
   const message = error.message || ''
+  const lifecycleError = isToolExecutionLifecycleError(error) ? error : undefined
+  const lifecycleKind = lifecycleError?.kind
+  const timedOut =
+    lifecycleKind === 'timed_out' ||
+    error.name === 'TimeoutError' ||
+    /(?:timed?\s*out|timeout)/i.test(message)
   const interrupted =
+    lifecycleKind === 'cancelled' ||
     !!options.signal?.aborted ||
     error.name === 'AbortError' ||
     message.toLowerCase().includes('aborted') ||
     message.toLowerCase().includes('cancelled')
 
-  if (options.isSideEffecting && interrupted) {
+  if (
+    options.isSideEffecting &&
+    lifecycleError?.executionStarted !== false &&
+    (interrupted || timedOut)
+  ) {
     return {
       interrupted,
       status: 'ambiguous',
       category: '[Ambiguous Side Effect - inspect state before repeating]'
+    }
+  }
+
+  if (timedOut) {
+    return {
+      interrupted,
+      status: 'timeout',
+      category: '[Tool Timeout - the late result was ignored]'
+    }
+  }
+
+  if (interrupted) {
+    return {
+      interrupted,
+      status: 'cancelled',
+      category: '[Tool Cancelled]'
     }
   }
 
@@ -353,20 +385,26 @@ export async function executeRuntimeToolCall(
   options: ExecuteRuntimeToolCallOptions
 ): Promise<ToolRuntimeCallResult> {
   try {
-    if (options.context.signal.aborted) {
-      throw new Error('Agent execution aborted by user.')
-    }
-
-    const rawResult = await withRetry(
-      () => options.tool.execute(options.args, options.context),
-      options.retryPolicy,
-      options.context.signal
-    )
+    const timeoutMs = resolveToolTimeoutMs(options.tool, options.args)
+    const rawResult = await runWithToolExecutionLifecycle({
+      toolName: options.toolName,
+      callerSignal: options.context.signal,
+      timeoutMs,
+      execute: (signal) =>
+        withRetry(
+          () =>
+            options.tool.execute(options.args, {
+              ...options.context,
+              signal
+            }),
+          options.retryPolicy,
+          signal,
+          // A retryable transport error does not prove that a write failed before committing.
+          // Only read-only/idempotent calls are safe to repeat automatically.
+          () => !options.isSideEffecting
+        )
+    })
     const executionResult = normalizeToolExecutionResult(rawResult, options.callId)
-
-    if (options.context.signal.aborted) {
-      throw new Error('Agent execution aborted by user.')
-    }
 
     return {
       status: 'success',

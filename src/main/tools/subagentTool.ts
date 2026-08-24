@@ -171,6 +171,7 @@ export const subagentTool: ToolDefinition = {
   tags: ['agent', 'subagent', 'delegate', 'parallel', 'research', 'inspect', '子任务', '子agent'],
   category: 'system',
   risk: 'medium',
+  timeoutMs: (args) => (args.background === true ? 60_000 : 10 * 60_000),
   implemented: true,
   discoverable: true,
   parameters: {

@@ -75,6 +75,8 @@ export interface ToolDefinition {
    * Omit for the conservative source/risk default; classifiers must be synchronous and total.
    */
   isConcurrencySafe?: (args: ToolArgs) => boolean
+  /** Overall deadline for one call, including retries. A resolver may choose by arguments. */
+  timeoutMs?: number | ((args: ToolArgs) => number | undefined)
   implemented: boolean
   discoverable: boolean
   parameters: {

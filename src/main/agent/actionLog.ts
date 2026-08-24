@@ -52,7 +52,7 @@ export interface ActionRecord {
   timestamp: number
   toolName: string
   args: Record<string, unknown>
-  resultStatus: 'success' | 'error' | 'timeout' | 'denied' | 'blocked' | 'ambiguous'
+  resultStatus: 'success' | 'error' | 'timeout' | 'cancelled' | 'denied' | 'blocked' | 'ambiguous'
   /** First 500 chars of the tool result — enough for the model to judge relevance. */
   resultSummary: string
   resultSize: number

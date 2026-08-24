@@ -74,5 +74,14 @@ describe('normalizeToolDefinition', () => {
     expect(() => normalizeToolDefinition(tool({ isConcurrencySafe: 'yes' as never }))).toThrow(
       'isConcurrencySafe must be a function'
     )
+    expect(() => normalizeToolDefinition(tool({ timeoutMs: 0 }))).toThrow(
+      'timeoutMs must be a positive number or function'
+    )
+  })
+
+  it('preserves valid static and dynamic timeout metadata', () => {
+    expect(normalizeToolDefinition(tool({ timeoutMs: 5000 })).timeoutMs).toBe(5000)
+    const resolver = (): number => 1000
+    expect(normalizeToolDefinition(tool({ timeoutMs: resolver })).timeoutMs).toBe(resolver)
   })
 })

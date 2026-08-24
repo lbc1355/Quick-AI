@@ -76,6 +76,17 @@ export function normalizeToolDefinition(definition: ToolDefinition): ToolDefinit
   ) {
     throw new Error(`Tool definition "${name}" isConcurrencySafe must be a function`)
   }
+  if (
+    definition.timeoutMs !== undefined &&
+    !(
+      typeof definition.timeoutMs === 'function' ||
+      (typeof definition.timeoutMs === 'number' &&
+        Number.isFinite(definition.timeoutMs) &&
+        definition.timeoutMs > 0)
+    )
+  ) {
+    throw new Error(`Tool definition "${name}" timeoutMs must be a positive number or function`)
+  }
   if (typeof definition.execute !== 'function') {
     throw new Error(`Tool definition "${name}" execute must be a function`)
   }

@@ -199,7 +199,12 @@ export async function executePreparedToolCall(
       }
     },
     retryPolicy: options.retryPolicy,
-    isSideEffecting: options.isSideEffecting
+    isSideEffecting:
+      options.isSideEffecting ||
+      // External tools are conservative by default. MCP read tools opt out through
+      // readOnlyHint -> isConcurrencySafe; an interrupted unknown/write call is ambiguous.
+      (['mcp', 'plugin', 'external'].includes(options.tool.source || '') &&
+        options.tool.isConcurrencySafe?.(toolArgs) !== true)
   })
 
   let toolOutputResource: Awaited<ReturnType<typeof persistToolOutputResource>> | undefined

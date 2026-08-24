@@ -6,7 +6,9 @@ import { decodeShellOutputForDisplay, getShellFallbackEncoding } from './shellEn
 import { buildShellDetails, trimLivePreview } from './shellResult'
 import { ToolExecutionContext, ToolExecutionResult } from './types'
 
-const SHELL_TIMEOUT_MS = 60000
+// The tool runtime owns the normal 60s deadline. This later timer is only a direct-call fallback.
+const SHELL_FALLBACK_TIMEOUT_MS = 65_000
+const SHELL_TERMINATION_GRACE_MS = 2_000
 const SHELL_MAX_OUTPUT_BYTES = 10 * 1024 * 1024
 const SHELL_OUTPUT_FLUSH_MS = 100
 
@@ -32,14 +34,50 @@ export async function executeShellCommand(
     let spawnError: Error | undefined
     let flushTimer: NodeJS.Timeout | undefined
     let timeout: NodeJS.Timeout | undefined
+    let terminationTimer: NodeJS.Timeout | undefined
+    let terminationRequested = false
     let resolved = false
 
     const child = spawn(command, {
       cwd: root,
       shell: true,
       windowsHide: true,
+      detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe']
     })
+
+    const requestTermination = (): void => {
+      if (terminationRequested) return
+      terminationRequested = true
+
+      if (process.platform === 'win32' && child.pid) {
+        const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
+          windowsHide: true,
+          stdio: 'ignore'
+        })
+        killer.on('error', () => child.kill())
+      } else {
+        try {
+          if (child.pid) process.kill(-child.pid, 'SIGTERM')
+          else child.kill('SIGTERM')
+        } catch {
+          child.kill('SIGTERM')
+        }
+      }
+
+      // Wait for `close` so pipes are drained and process cleanup has a chance to finish. Keep a
+      // bounded fallback for pathological child processes that never report closure.
+      terminationTimer = setTimeout(() => {
+        try {
+          if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, 'SIGKILL')
+          else child.kill('SIGKILL')
+        } catch {
+          child.kill('SIGKILL')
+        }
+        finish(1)
+      }, SHELL_TERMINATION_GRACE_MS)
+      terminationTimer.unref?.()
+    }
 
     const decodeStdout = (): string =>
       decodeShellOutputForDisplay(Buffer.concat(stdoutChunks), fallbackEncoding)
@@ -76,14 +114,12 @@ export async function executeShellCommand(
 
       if (outputBytes > SHELL_MAX_OUTPUT_BYTES && !outputLimitExceeded) {
         outputLimitExceeded = true
-        child.kill()
-        finish(1)
+        requestTermination()
       }
     }
 
     const abortHandler = (): void => {
-      child.kill()
-      finish(1)
+      requestTermination()
     }
 
     function finish(code: number | null): void {
@@ -97,6 +133,10 @@ export async function executeShellCommand(
       if (timeout) {
         clearTimeout(timeout)
         timeout = undefined
+      }
+      if (terminationTimer) {
+        clearTimeout(terminationTimer)
+        terminationTimer = undefined
       }
       ctx.signal?.removeEventListener('abort', abortHandler)
 
@@ -115,7 +155,7 @@ export async function executeShellCommand(
       if (status === 'cancelled') {
         statusText = 'Command execution was cancelled.'
       } else if (status === 'timeout') {
-        statusText = `Command timed out after ${SHELL_TIMEOUT_MS}ms and was terminated.`
+        statusText = `Command timed out after ${SHELL_FALLBACK_TIMEOUT_MS}ms and was terminated.`
       } else if (status === 'output_limit') {
         statusText = `Command exceeded the ${SHELL_MAX_OUTPUT_BYTES} byte output limit and was terminated.`
       }
@@ -160,9 +200,8 @@ export async function executeShellCommand(
 
     timeout = setTimeout(() => {
       timedOut = true
-      child.kill()
-      finish(1)
-    }, SHELL_TIMEOUT_MS)
+      requestTermination()
+    }, SHELL_FALLBACK_TIMEOUT_MS)
 
     ctx.signal?.addEventListener('abort', abortHandler, { once: true })
 

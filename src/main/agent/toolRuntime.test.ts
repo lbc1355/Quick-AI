@@ -31,6 +31,13 @@ const makeTool = (execute: ToolDefinition['execute']): ToolDefinition => ({
   execute
 })
 
+const rejectWhenAborted = (signal: AbortSignal): Promise<never> =>
+  new Promise((_resolve, reject) => {
+    const rejectAbort = (): void => reject(signal.reason || new Error('aborted'))
+    if (signal.aborted) rejectAbort()
+    else signal.addEventListener('abort', rejectAbort, { once: true })
+  })
+
 describe('tool runtime helpers', () => {
   it('classifies interrupted side-effecting tools as ambiguous', () => {
     const controller = new AbortController()
@@ -139,6 +146,114 @@ describe('tool runtime helpers', () => {
     expect(result.response.content).toContain('Permanent Error')
     expect(result.executionResult.resultForUi.title).toBe('Tool Failed: test_tool')
     expect(result.executionResult.resultForUi.details).toContain('"path": "missing.ts"')
+  })
+
+  it('classifies a read-only tool deadline as timeout', async () => {
+    const tool = {
+      ...makeTool(vi.fn((_args, ctx) => rejectWhenAborted(ctx.signal))),
+      timeoutMs: 10
+    }
+
+    const result = await executeRuntimeToolCall({
+      toolName: 'test_tool',
+      callId: 'call-timeout',
+      args: {},
+      tool,
+      context: { reqId: 'req-1', signal: new AbortController().signal },
+      retryPolicy,
+      isSideEffecting: false
+    })
+
+    expect(result.status).toBe('timeout')
+    expect(result.response.content).toContain('Tool Timeout')
+    expect(result.errorMessage).toContain('timed out after 10ms')
+  })
+
+  it('classifies a side-effecting tool deadline as ambiguous', async () => {
+    const tool = {
+      ...makeTool(vi.fn((_args, ctx) => rejectWhenAborted(ctx.signal))),
+      timeoutMs: 10
+    }
+
+    const result = await executeRuntimeToolCall({
+      toolName: 'test_tool',
+      callId: 'call-ambiguous-timeout',
+      args: {},
+      tool,
+      context: { reqId: 'req-1', signal: new AbortController().signal },
+      retryPolicy,
+      isSideEffecting: true
+    })
+
+    expect(result.status).toBe('ambiguous')
+    expect(result.response.content).toContain('inspect state before repeating')
+  })
+
+  it('classifies caller cancellation separately from timeout', async () => {
+    const controller = new AbortController()
+    const tool = makeTool(vi.fn((_args, ctx) => rejectWhenAborted(ctx.signal)))
+    const pending = executeRuntimeToolCall({
+      toolName: 'test_tool',
+      callId: 'call-cancelled',
+      args: {},
+      tool,
+      context: { reqId: 'req-1', signal: controller.signal },
+      retryPolicy,
+      isSideEffecting: false
+    })
+
+    controller.abort()
+    const result = await pending
+
+    expect(result.status).toBe('cancelled')
+    expect(result.response.content).toContain('Tool Cancelled')
+  })
+
+  it('does not mark a side effect ambiguous when cancellation prevented it from starting', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const execute = vi.fn(async () => ({
+      resultForModel: 'never',
+      resultForUi: { title: 'never' }
+    }))
+
+    const result = await executeRuntimeToolCall({
+      toolName: 'test_tool',
+      callId: 'call-cancelled-before-start',
+      args: {},
+      tool: makeTool(execute),
+      context: { reqId: 'req-1', signal: controller.signal },
+      retryPolicy,
+      isSideEffecting: true
+    })
+
+    expect(result.status).toBe('cancelled')
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('does not retry a side-effecting tool after a retryable error', async () => {
+    const execute = vi.fn(async () => {
+      throw new Error('network error after request dispatch')
+    })
+    const tool = makeTool(execute)
+
+    const result = await executeRuntimeToolCall({
+      toolName: 'test_tool',
+      callId: 'call-no-retry',
+      args: {},
+      tool,
+      context: { reqId: 'req-1', signal: new AbortController().signal },
+      retryPolicy: {
+        maxRetries: 2,
+        baseDelayMs: 1,
+        maxDelayMs: 1,
+        retryableErrors: new Set(['network error'])
+      },
+      isSideEffecting: true
+    })
+
+    expect(result.status).toBe('error')
+    expect(execute).toHaveBeenCalledTimes(1)
   })
 
   it('applies successful runtime results into response, events, and output-store requests', () => {

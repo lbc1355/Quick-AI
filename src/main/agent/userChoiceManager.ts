@@ -35,7 +35,9 @@ export class UserChoiceManager {
 
       const timeoutId = setTimeout(() => {
         cleanup()
-        reject(new Error('User choice request timed out after 10 minutes.'))
+        reject(
+          new Error(`User choice request timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`)
+        )
       }, timeoutMs)
 
       const abortHandler = (): void => {
