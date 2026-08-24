@@ -473,6 +473,8 @@ export interface ModelCompatibilityProfile {
   stripEmptyToolCalls?: boolean
   omitToolChoice?: boolean
   reasoningFormat?: 'deepseek-style'
+  /** Non-standard streaming shape used by gateways that emit reasoning before a lone </think>. */
+  reasoningResponseFormat?: 'closing-think-tag'
 }
 
 export interface ResolvedModelCompatibilityProfile {
@@ -483,6 +485,7 @@ export interface ResolvedModelCompatibilityProfile {
   stripEmptyToolCalls: boolean
   omitToolChoice: boolean
   reasoningFormat?: 'deepseek-style'
+  reasoningResponseFormat?: 'closing-think-tag'
 }
 
 /** Adjustable reasoning intensity levels. Not every model exposes every level. */
@@ -557,6 +560,8 @@ export interface ModelInfo {
   discoveredReasoningControl?: ModelReasoningControl
   /** Explicit per-model override; wins over discovery and provider defaults. */
   reasoningControlOverride?: ModelReasoningControl
+  /** Custom-provider-only JSON fields merged into this model's generated request body. */
+  requestBodyOverrides?: Record<string, unknown>
   limit: {
     context: number
     output?: number
@@ -656,6 +661,8 @@ export interface ModelRuntimeConfig {
   compatibility?: ResolvedModelCompatibilityProfile
   promptProfile?: ModelPromptProfile
   reasoningControl?: ModelReasoningControl
+  /** Custom-provider-only JSON fields merged into the generated request body. */
+  requestBodyOverrides?: Record<string, unknown>
   contextWindowTokens?: number
   outputTokenLimit?: number
   transportId?: ModelTransportId

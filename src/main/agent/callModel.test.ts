@@ -205,6 +205,53 @@ describe('callModel retry behavior', () => {
     expect(onFinalChunk).toHaveBeenCalledWith('Hello from the gateway.')
   })
 
+  it('splits closing-only think tags for a configured custom gateway', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(
+        sseStream([
+          sseLine({ content: 'Plan the change.<' }),
+          sseLine({ content: '/thi' }),
+          sseLine({ content: 'nk>Final answer.' }),
+          'data: [DONE]\n'
+        ])
+      )
+    )
+
+    const onReasoning = vi.fn()
+    const onFinalChunk = vi.fn()
+    const result = await callModel(
+      {
+        apiUrl: 'https://api.example.com/v1',
+        apiKey: 'k',
+        model: 'Deepseek-v4-flash',
+        modelRuntime: {
+          providerType: 'custom',
+          endpointType: 'openai-compatible',
+          modelId: 'Deepseek-v4-flash',
+          apiModel: 'Deepseek-v4-flash',
+          compatibility: {
+            stripReasoningContent: true,
+            preserveToolCallReasoningContent: true,
+            stripToolMessageName: false,
+            normalizeToolCallContent: false,
+            stripEmptyToolCalls: false,
+            omitToolChoice: true,
+            reasoningResponseFormat: 'closing-think-tag'
+          }
+        }
+      },
+      [{ role: 'user', content: 'solve it' }],
+      undefined,
+      undefined,
+      { onReasoning, onFinalChunk }
+    )
+
+    expect(result.reasoning_content).toBe('Plan the change.')
+    expect(result.content).toBe('Final answer.')
+    expect(onReasoning).toHaveBeenCalledWith('Plan the change.')
+    expect(onFinalChunk).toHaveBeenCalledWith('Final answer.')
+  })
+
   it('does not promote reasoning from a tool-call turn', async () => {
     fetchMock.mockResolvedValue(
       okResponse(
@@ -367,6 +414,51 @@ describe('callModel retry behavior', () => {
       'api-key': 'custom-secret'
     })
     expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization')
+  })
+
+  it('merges custom model request fields while keeping runtime fields authoritative', async () => {
+    fetchMock.mockResolvedValue(
+      okResponse(sseStream([sseLine({ content: 'Hello' }), 'data: [DONE]\n']))
+    )
+
+    await callModel(
+      {
+        apiUrl: 'https://api.example.com/v1',
+        apiKey: 'k',
+        model: 'friendly-name',
+        reasoningPreference: 'high',
+        modelRuntime: {
+          providerType: 'custom',
+          endpointType: 'openai-compatible',
+          modelId: 'friendly-name',
+          apiModel: 'Deepseek-v4-flash',
+          reasoningControl: {
+            mode: 'effort',
+            encoding: 'openai-effort',
+            levels: ['high', 'max']
+          },
+          requestBodyOverrides: {
+            model: 'wrong-model',
+            messages: [{ role: 'user', content: 'wrong-message' }],
+            stream: false,
+            thinking: { type: 'enabled' },
+            reasoning_effort: 'max',
+            max_tokens: 48000
+          }
+        }
+      },
+      [{ role: 'user', content: 'real-message' }]
+    )
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body).toMatchObject({
+      model: 'Deepseek-v4-flash',
+      messages: [{ role: 'user', content: 'real-message' }],
+      stream: true,
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'high',
+      max_tokens: 48000
+    })
   })
 
   it('does not declare tools when the selected model runtime explicitly lacks tool capability', async () => {
@@ -616,7 +708,15 @@ describe('Responses API Compatibility', () => {
         apiUrl: 'https://api.example.com',
         apiKey: 'k',
         model: 'test-model',
-        apiFormat: 'responses'
+        apiFormat: 'responses',
+        modelRuntime: {
+          providerType: 'custom',
+          endpointType: 'custom',
+          modelId: 'test-model',
+          apiModel: 'test-model',
+          transportId: 'openai-responses',
+          requestBodyOverrides: { metadata: { source: 'quick-ai' }, store: true }
+        }
       },
       [{ role: 'user', content: 'hi' }],
       undefined,
@@ -640,6 +740,7 @@ describe('Responses API Compatibility', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
     expect(body.store).toBe(false)
     expect(body.model).toBe('test-model')
+    expect(body.metadata).toEqual({ source: 'quick-ai' })
 
     expect(getPromptCacheStats(result)).toEqual({
       hasCacheStats: true,

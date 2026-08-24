@@ -14,12 +14,14 @@ import {
 } from 'lucide-react'
 import {
   ModelPromptProfile,
+  ModelReasoningControl,
   ProviderApiFormat,
   ProviderAuthType,
   ProviderConnectionTestResult,
   ReasoningLevel
 } from '../../../shared/types'
 import { getContextWindowInfo } from '../../../shared/modelContext'
+import { parseModelRequestBodyOverrides } from '../../../shared/modelRequestBody'
 import {
   buildReasoningControlFromPreset,
   DEFAULT_EFFORT_LEVELS,
@@ -122,15 +124,45 @@ export const ProviderEditor: React.FC = () => {
     handleDeleteProviderHeader: onDeleteProviderHeader,
     handleChangeEditingProviderApiFormat: onChangeApiFormat,
     handleChangeEditingProviderPromptProfile: onChangePromptProfile,
-    handleChangeEditingProviderDefaultReasoningControl: onChangeDefaultReasoningControl
+    handleChangeEditingProviderDefaultReasoningControl: onChangeDefaultReasoningControl,
+    handleChangeEditingModelAdvancedConfig: onChangeModelAdvancedConfig
   } = useSettings()
   const [visibleKeyIds, setVisibleKeyIds] = useState<Record<string, boolean>>({})
+  const [expandedModelId, setExpandedModelId] = useState<string | null>(null)
+  const [requestBodyDrafts, setRequestBodyDrafts] = useState<Record<string, string>>({})
+  const [requestBodyErrors, setRequestBodyErrors] = useState<Record<string, string | undefined>>({})
 
   const provider = providers.find((p) => p.id === editingProviderId)
   const onCancel = (): void => setIsEditingProviderDetail(false)
   const onChangeSelectedModel = setSelectedModel
   const onChangeManualModelInput = setManualModelInput
   const onChangeFetchModelsUrl = setFetchModelsUrl
+
+  const updateModelAdvancedConfig = (
+    modelId: string,
+    patch: {
+      requestBodyOverrides?: Record<string, unknown>
+      reasoningControlOverride?: ModelReasoningControl
+      reasoningResponseFormat?: 'closing-think-tag'
+    }
+  ): void => {
+    onChangeModelAdvancedConfig(modelId, patch)
+  }
+
+  const handleRequestBodyDraftChange = (modelId: string, text: string): void => {
+    const draftKey = `${editingProviderId}\u0000${modelId}`
+    setRequestBodyDrafts((previous) => ({ ...previous, [draftKey]: text }))
+    try {
+      const overrides = parseModelRequestBodyOverrides(text)
+      setRequestBodyErrors((previous) => ({ ...previous, [draftKey]: undefined }))
+      updateModelAdvancedConfig(modelId, { requestBodyOverrides: overrides })
+    } catch (error) {
+      setRequestBodyErrors((previous) => ({
+        ...previous,
+        [draftKey]: error instanceof Error ? error.message : '请求体 JSON 无效。'
+      }))
+    }
+  }
 
   const toggleKeyVisibility = (id: string): void => {
     setVisibleKeyIds((prev) => ({
@@ -143,6 +175,13 @@ export const ProviderEditor: React.FC = () => {
     provider.modelDiscovery?.sourceUrl === fetchModelsUrl.trim()
       ? provider.modelDiscovery
       : undefined
+  const requestBodyDraftPrefix = `${provider.id}\u0000`
+  const hasRequestBodyErrors = Object.entries(requestBodyErrors).some(
+    ([key, error]) =>
+      key.startsWith(requestBodyDraftPrefix) &&
+      modelsList.includes(key.slice(requestBodyDraftPrefix.length)) &&
+      Boolean(error)
+  )
 
   return (
     <div className="provider-editor">
@@ -531,78 +570,227 @@ export const ProviderEditor: React.FC = () => {
                   const isDefault = selectedModel === model
                   const automaticContext = getContextWindowInfo(model).tokens
                   const configuredContext = modelContextWindows[model]
+                  const modelInfo = provider.models?.[model]
+                  const modelReasoningControl = modelInfo?.reasoningControlOverride
+                  const requestBodyDraftKey = `${provider.id}\u0000${model}`
+                  const requestBodyDraft =
+                    requestBodyDrafts[requestBodyDraftKey] ??
+                    JSON.stringify(modelInfo?.requestBodyOverrides || {}, null, 2)
+                  const requestBodyError = requestBodyErrors[requestBodyDraftKey]
+                  const isAdvancedOpen = provider.type === 'custom' && expandedModelId === model
 
                   return (
-                    <div
-                      key={model}
-                      className={`model-context-row ${isDefault ? 'is-default' : ''}`}
-                    >
+                    <React.Fragment key={model}>
                       <div
-                        className="model-context-main"
-                        onClick={() => onChangeSelectedModel(model)}
-                        title={isDefault ? '当前默认模型' : '点击设为默认模型'}
+                        className={`model-context-row ${isDefault ? 'is-default' : ''} ${isAdvancedOpen ? 'advanced-open' : ''}`}
                       >
-                        <div className="model-context-name-row">
-                          <span className="model-context-name" title={model}>
-                            {model}
-                          </span>
-                          {isDefault && <span className="default-model-badge">默认</span>}
+                        <div
+                          className="model-context-main"
+                          onClick={() => onChangeSelectedModel(model)}
+                          title={isDefault ? '当前默认模型' : '点击设为默认模型'}
+                        >
+                          <div className="model-context-name-row">
+                            <span className="model-context-name" title={model}>
+                              {model}
+                            </span>
+                            {isDefault && <span className="default-model-badge">默认</span>}
+                            <button
+                              type="button"
+                              className="model-context-refresh-btn"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onRefreshModelContext(model)
+                              }}
+                              disabled={refreshingModelContextId === model}
+                              title="刷新上下文长度"
+                            >
+                              <RefreshCw
+                                size={11}
+                                className={refreshingModelContextId === model ? 'spin' : undefined}
+                              />
+                            </button>
+                          </div>
+                          <small>Auto {formatContextTokens(automaticContext)}</small>
+                        </div>
+
+                        <div className="model-context-field-group">
+                          <label className="model-context-field">
+                            <input
+                              type="number"
+                              className="settings-input model-context-input"
+                              min={2000}
+                              max={10000000}
+                              step={1000}
+                              placeholder={String(automaticContext)}
+                              value={configuredContext ?? ''}
+                              onChange={(e) => onChangeModelContextWindow(model, e.target.value)}
+                            />
+                          </label>
+                          <div className="context-preset-chips">
+                            {[8000, 32000, 128000, 200000, 1000000].map((preset) => (
+                              <button
+                                key={preset}
+                                type="button"
+                                className="context-chip"
+                                onClick={() => onChangeModelContextWindow(model, String(preset))}
+                                title={`填入 ${preset.toLocaleString()} tokens`}
+                              >
+                                {preset >= 1000000 ? `${preset / 1000000}M` : `${preset / 1000}k`}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="model-context-actions">
+                          {provider.type === 'custom' && (
+                            <button
+                              type="button"
+                              className={`model-advanced-btn ${isAdvancedOpen ? 'active' : ''}`}
+                              onClick={() => setExpandedModelId(isAdvancedOpen ? null : model)}
+                              title="模型高级请求配置"
+                            >
+                              <Sliders size={13} />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            className="model-context-refresh-btn"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onRefreshModelContext(model)
-                            }}
-                            disabled={refreshingModelContextId === model}
-                            title="刷新上下文长度"
+                            className="remove-model-btn"
+                            onClick={() => onRemoveModel(model)}
+                            title="移出列表"
                           >
-                            <RefreshCw
-                              size={11}
-                              className={refreshingModelContextId === model ? 'spin' : undefined}
-                            />
+                            <X size={13} />
                           </button>
                         </div>
-                        <small>Auto {formatContextTokens(automaticContext)}</small>
                       </div>
 
-                      <div className="model-context-field-group">
-                        <label className="model-context-field">
-                          <input
-                            type="number"
-                            className="settings-input model-context-input"
-                            min={2000}
-                            max={10000000}
-                            step={1000}
-                            placeholder={String(automaticContext)}
-                            value={configuredContext ?? ''}
-                            onChange={(e) => onChangeModelContextWindow(model, e.target.value)}
-                          />
-                        </label>
-                        <div className="context-preset-chips">
-                          {[8000, 32000, 128000, 200000, 1000000].map((preset) => (
-                            <button
-                              key={preset}
-                              type="button"
-                              className="context-chip"
-                              onClick={() => onChangeModelContextWindow(model, String(preset))}
-                              title={`填入 ${preset.toLocaleString()} tokens`}
+                      {isAdvancedOpen && (
+                        <div className="custom-model-advanced-panel">
+                          <div className="custom-model-advanced-header">
+                            <div>
+                              <strong>{model}</strong>
+                              <small>仅作用于这个自定义模型</small>
+                            </div>
+                          </div>
+
+                          <label className="settings-field">
+                            <span className="settings-label">模型级推理控制</span>
+                            <select
+                              className="settings-select"
+                              value={getReasoningControlPresetId(modelReasoningControl)}
+                              onChange={(event) => {
+                                const preset = event.target.value as ReasoningControlPresetId
+                                updateModelAdvancedConfig(model, {
+                                  reasoningControlOverride: buildReasoningControlFromPreset(
+                                    preset,
+                                    getReasoningControlPresetLevels(modelReasoningControl)
+                                  )
+                                })
+                              }}
                             >
-                              {preset >= 1000000 ? `${preset / 1000000}M` : `${preset / 1000}k`}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                              <option value="none">继承服务商</option>
+                              <option value="fixed">固定推理</option>
+                              <option value="openai-effort">OpenAI effort</option>
+                              <option value="openrouter-reasoning">
+                                OpenRouter reasoning effort
+                              </option>
+                              <option value="openrouter-budget">OpenRouter budget</option>
+                              <option value="qwen-enable-thinking">Qwen enable_thinking</option>
+                              <option value="deepseek-thinking-toggle">
+                                DeepSeek thinking toggle
+                              </option>
+                            </select>
+                          </label>
 
-                      <button
-                        type="button"
-                        className="remove-model-btn"
-                        onClick={() => onRemoveModel(model)}
-                        title="移出列表"
-                      >
-                        <X size={13} />
-                      </button>
-                    </div>
+                          {(modelReasoningControl?.mode === 'effort' ||
+                            modelReasoningControl?.mode === 'budget') && (
+                            <div className="settings-field">
+                              <span className="settings-label">模型支持的思考强度</span>
+                              <div className="reasoning-level-checklist">
+                                {REASONING_LEVEL_OPTIONS.map((level) => {
+                                  const selected = new Set(
+                                    getReasoningControlPresetLevels(modelReasoningControl)
+                                  )
+                                  const checked = selected.has(level)
+                                  return (
+                                    <label key={level} className="reasoning-level-check">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => {
+                                          const next = new Set(selected)
+                                          if (checked) next.delete(level)
+                                          else next.add(level)
+                                          const levels =
+                                            next.size > 0
+                                              ? REASONING_LEVEL_OPTIONS.filter((item) =>
+                                                  next.has(item)
+                                                )
+                                              : DEFAULT_EFFORT_LEVELS
+                                          updateModelAdvancedConfig(model, {
+                                            reasoningControlOverride:
+                                              buildReasoningControlFromPreset(
+                                                getReasoningControlPresetId(modelReasoningControl),
+                                                levels
+                                              )
+                                          })
+                                        }}
+                                      />
+                                      <span>{REASONING_LEVEL_LABELS[level]}</span>
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          <label className="settings-field">
+                            <span className="settings-label">思维链响应格式</span>
+                            <select
+                              className="settings-select"
+                              value={
+                                modelInfo?.compatibility?.reasoningResponseFormat || 'standard'
+                              }
+                              onChange={(event) =>
+                                updateModelAdvancedConfig(model, {
+                                  reasoningResponseFormat:
+                                    event.target.value === 'closing-think-tag'
+                                      ? 'closing-think-tag'
+                                      : undefined
+                                })
+                              }
+                            >
+                              <option value="standard">标准 reasoning_content / think 标签</option>
+                              <option value="closing-think-tag">
+                                仅结束标签 &lt;/think&gt;（微信 Coding Plan）
+                              </option>
+                            </select>
+                          </label>
+
+                          <label className="settings-field custom-model-request-body-field">
+                            <span className="settings-label">附加请求体 JSON</span>
+                            <textarea
+                              className={`settings-textarea custom-model-request-body ${requestBodyError ? 'error' : ''}`}
+                              spellCheck={false}
+                              value={requestBodyDraft}
+                              onChange={(event) =>
+                                handleRequestBodyDraftChange(model, event.target.value)
+                              }
+                              placeholder={'{\n  "thinking": { "type": "enabled" }\n}'}
+                            />
+                            {requestBodyError ? (
+                              <small className="custom-model-request-error">
+                                {requestBodyError}
+                              </small>
+                            ) : (
+                              <small>
+                                深度合并到该模型请求；model、messages、tools、stream
+                                等核心字段不可覆盖。
+                              </small>
+                            )}
+                          </label>
+                        </div>
+                      )}
+                    </React.Fragment>
                   )
                 })}
               </div>
@@ -642,7 +830,13 @@ export const ProviderEditor: React.FC = () => {
       </div>
 
       <footer className="provider-editor-footer">
-        <button type="button" className="settings-save-btn" onClick={onSave}>
+        <button
+          type="button"
+          className="settings-save-btn"
+          onClick={onSave}
+          disabled={hasRequestBodyErrors}
+          title={hasRequestBodyErrors ? '请先修正模型请求体 JSON' : undefined}
+        >
           保存
         </button>
         <button type="button" className="settings-secondary-btn" onClick={onCancel}>

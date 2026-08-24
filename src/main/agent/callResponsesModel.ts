@@ -18,6 +18,7 @@ import {
   REASONING_UNSUPPORTED_USER_MESSAGE
 } from './reasoningRequestPolicy'
 import { chatMessagesToResponsesInput, chatToolsToResponsesTools } from './responsesAdapter'
+import { applyModelRequestBodyOverrides } from './requestBodyOverrides'
 
 interface FatalMarkedError extends Error {
   isFatal?: boolean
@@ -51,6 +52,13 @@ export async function callResponsesModel(
     body.tools = chatToolsToResponsesTools(toolsToDeclare)
     body.tool_choice = 'auto'
   }
+
+  body = applyModelRequestBodyOverrides(
+    body,
+    options.modelRuntime?.providerType === 'custom'
+      ? options.modelRuntime.requestBodyOverrides
+      : undefined
+  )
 
   body = applyReasoningRequest({
     body,

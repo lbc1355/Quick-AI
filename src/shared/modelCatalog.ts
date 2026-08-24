@@ -45,6 +45,7 @@ export function createModelInfo(
     reasoningControl: previous?.reasoningControl,
     discoveredReasoningControl: previous?.discoveredReasoningControl,
     reasoningControlOverride: previous?.reasoningControlOverride,
+    requestBodyOverrides: previous?.requestBodyOverrides,
     limit: {
       context: normalizedContext,
       ...(previous?.limit?.output ? { output: previous.limit.output } : {})
@@ -164,6 +165,9 @@ export function getProviderModelRuntimeConfig(
     compatibility: resolveModelCompatibility(normalized, modelInfo),
     promptProfile: resolveModelPromptProfile(normalized, modelInfo),
     ...(reasoningControl ? { reasoningControl } : {}),
+    ...(normalized.type === 'custom' && modelInfo.requestBodyOverrides
+      ? { requestBodyOverrides: { ...modelInfo.requestBodyOverrides } }
+      : {}),
     contextWindowTokens: contextWindow,
     ...(modelInfo.limit.output ? { outputTokenLimit: modelInfo.limit.output } : {})
   }

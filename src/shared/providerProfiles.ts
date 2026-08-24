@@ -91,12 +91,22 @@ export function resolveModelCompatibility(
     .filter((rule) => rule.includes.some((part) => modelId.includes(part)))
     .reduce<ModelCompatibilityProfile>((result, rule) => ({ ...result, ...rule.compatibility }), {})
 
-  return {
+  const resolved = {
     ...profile.compatibility,
     ...(provider.compatibility || {}),
     ...inferred,
     ...(model.compatibility || {})
   }
+  if (resolved.reasoningResponseFormat === 'closing-think-tag') {
+    return {
+      ...resolved,
+      // DeepSeek-style tool turns require their reasoning to be replayed, and these gateways may
+      // reject OpenAI's explicit tool_choice while thinking mode is enabled.
+      preserveToolCallReasoningContent: true,
+      omitToolChoice: true
+    }
+  }
+  return resolved
 }
 
 export function resolveModelPromptProfile(

@@ -207,4 +207,62 @@ describe('modelCatalog', () => {
     const runtimeUpdated = getProviderModelRuntimeConfig(customProvider, 'my-model')
     expect(runtimeUpdated?.apiFormat).toBe('chat-completions')
   })
+
+  it('carries request body overrides only for custom providers', () => {
+    const model = {
+      id: 'deepseek-v4-flash',
+      apiId: 'Deepseek-v4-flash',
+      providerId: 'provider-custom',
+      endpointType: 'openai-compatible' as const,
+      limit: { context: 200000, output: 48000 },
+      enabled: true,
+      requestBodyOverrides: { thinking: { type: 'enabled' } }
+    }
+    const customProvider = provider({
+      id: 'provider-custom',
+      type: 'custom',
+      modelsList: [model.id],
+      model: model.id,
+      models: { [model.id]: model }
+    })
+    const builtInProvider = provider({
+      modelsList: [model.id],
+      model: model.id,
+      models: { [model.id]: model }
+    })
+
+    expect(getProviderModelRuntimeConfig(customProvider, model.id)?.requestBodyOverrides).toEqual({
+      thinking: { type: 'enabled' }
+    })
+    expect(
+      getProviderModelRuntimeConfig(builtInProvider, model.id)?.requestBodyOverrides
+    ).toBeUndefined()
+  })
+
+  it('applies closing-think gateway tool-call compatibility at model level', () => {
+    const customProvider = provider({
+      type: 'custom',
+      modelsList: ['wechat-model'],
+      model: 'wechat-model',
+      models: {
+        'wechat-model': {
+          id: 'wechat-model',
+          apiId: 'Deepseek-v4-flash',
+          providerId: 'provider-glm',
+          endpointType: 'openai-compatible',
+          limit: { context: 200000 },
+          enabled: true,
+          compatibility: { reasoningResponseFormat: 'closing-think-tag' }
+        }
+      }
+    })
+
+    expect(
+      getProviderModelRuntimeConfig(customProvider, 'wechat-model')?.compatibility
+    ).toMatchObject({
+      reasoningResponseFormat: 'closing-think-tag',
+      preserveToolCallReasoningContent: true,
+      omitToolChoice: true
+    })
+  })
 })

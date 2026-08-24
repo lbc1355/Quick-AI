@@ -10,7 +10,9 @@ import {
   ProviderAuthType,
   ProviderApiFormat,
   ModelPromptProfile,
+  ModelInfo,
   ModelReasoningControl,
+  ModelCompatibilityProfile,
   ReasoningPreference,
   ResolvedProviderConnection,
   ProviderModelDiscoveryCache,
@@ -19,6 +21,7 @@ import {
 } from '../../../shared/types'
 import { normalizeContextWindowTokens } from '../../../shared/modelContext'
 import {
+  createModelInfo,
   normalizeProviderModelCatalog,
   normalizeProvidersModelCatalog
 } from '../../../shared/modelCatalog'
@@ -144,6 +147,14 @@ export interface UseProvidersReturn {
   handleChangeEditingProviderPromptProfile: (profile?: ModelPromptProfile) => void
   handleChangeEditingProviderDefaultReasoningControl: (
     control: ModelReasoningControl | undefined
+  ) => void
+  handleChangeEditingModelAdvancedConfig: (
+    modelId: string,
+    config: {
+      requestBodyOverrides?: Record<string, unknown>
+      reasoningControlOverride?: ModelReasoningControl
+      reasoningResponseFormat?: ModelCompatibilityProfile['reasoningResponseFormat']
+    }
   ) => void
   handleAddManualModel: () => void
   handleFetchModels: () => Promise<void>
@@ -979,6 +990,54 @@ export const useProviders = (): UseProvidersReturn => {
     )
   }
 
+  const handleChangeEditingModelAdvancedConfig: UseProvidersReturn['handleChangeEditingModelAdvancedConfig'] =
+    (modelId, config): void => {
+      setProviders((previous) =>
+        previous.map((provider) => {
+          if (provider.id !== editingProviderId || provider.type !== 'custom') return provider
+
+          const current =
+            provider.models?.[modelId] ||
+            createModelInfo(provider, modelId, modelContextWindows[modelId])
+          const compatibility = { ...(current.compatibility || {}) }
+          if ('reasoningResponseFormat' in config) {
+            if (config.reasoningResponseFormat) {
+              compatibility.reasoningResponseFormat = config.reasoningResponseFormat
+            } else {
+              delete compatibility.reasoningResponseFormat
+            }
+          }
+
+          const nextModel: ModelInfo = { ...current, compatibility }
+          if (Object.keys(compatibility).length === 0) delete nextModel.compatibility
+
+          if ('reasoningControlOverride' in config) {
+            if (config.reasoningControlOverride) {
+              nextModel.reasoningControlOverride = config.reasoningControlOverride
+            } else {
+              delete nextModel.reasoningControlOverride
+            }
+          }
+
+          if ('requestBodyOverrides' in config) {
+            if (
+              config.requestBodyOverrides &&
+              Object.keys(config.requestBodyOverrides).length > 0
+            ) {
+              nextModel.requestBodyOverrides = { ...config.requestBodyOverrides }
+            } else {
+              delete nextModel.requestBodyOverrides
+            }
+          }
+
+          return {
+            ...provider,
+            models: { ...(provider.models || {}), [modelId]: nextModel }
+          }
+        })
+      )
+    }
+
   return {
     apiKey,
     setApiKey,
@@ -1056,6 +1115,7 @@ export const useProviders = (): UseProvidersReturn => {
     handleChangeEditingProviderApiFormat,
     handleChangeEditingProviderPromptProfile,
     handleChangeEditingProviderDefaultReasoningControl,
+    handleChangeEditingModelAdvancedConfig,
     handleAddManualModel,
     handleFetchModels,
     handleTestProviderConnection,

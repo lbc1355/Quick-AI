@@ -18,6 +18,8 @@ import {
   isUnsupportedReasoningParameterError,
   REASONING_UNSUPPORTED_USER_MESSAGE
 } from './reasoningRequestPolicy'
+import { applyModelRequestBodyOverrides } from './requestBodyOverrides'
+import { ClosingThinkTagSplitter } from './closingThinkTagSplitter'
 
 export async function callChatCompletionsModel(
   options: CallModelOptions,
@@ -50,6 +52,13 @@ export async function callChatCompletionsModel(
     body.tools = toolsToDeclare
     body.tool_choice = 'auto'
   }
+
+  body = applyModelRequestBodyOverrides(
+    body,
+    options.modelRuntime?.providerType === 'custom'
+      ? options.modelRuntime.requestBodyOverrides
+      : undefined
+  )
 
   body = applyReasoningRequest({
     body,
@@ -89,11 +98,20 @@ export async function callChatCompletionsModel(
 
     const events = new ModelEventAccumulator(callbacks)
     let inThinkTag = false
+    let sawStructuredReasoning = false
+    const closingThinkSplitter =
+      adapter.compatibility.reasoningResponseFormat === 'closing-think-tag'
+        ? new ClosingThinkTagSplitter()
+        : undefined
     const emit = (event: Exclude<ModelEvent, { type: 'finish' }>): void => {
       if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
         streamingStarted = true
       }
       events.consume(event)
+    }
+    const emitClosingThinkSplit = (split: { reasoning?: string; content?: string }): void => {
+      if (split.reasoning) emit({ type: 'reasoning-delta', delta: split.reasoning })
+      if (split.content && shouldStreamFinal) emit({ type: 'text-delta', delta: split.content })
     }
 
     try {
@@ -119,6 +137,7 @@ export async function callChatCompletionsModel(
               if (!delta) continue
 
               if (delta.reasoning_content) {
+                sawStructuredReasoning = true
                 emit({ type: 'reasoning-delta', delta: delta.reasoning_content })
               }
 
@@ -138,7 +157,9 @@ export async function callChatCompletionsModel(
               if (delta.content) {
                 let contentChunk = delta.content
 
-                if (contentChunk.includes('<think>')) {
+                if (closingThinkSplitter && !sawStructuredReasoning) {
+                  emitClosingThinkSplit(closingThinkSplitter.push(contentChunk))
+                } else if (contentChunk.includes('<think>')) {
                   inThinkTag = true
                   const parts = contentChunk.split('<think>')
                   if (parts[0]) {
@@ -147,7 +168,9 @@ export async function callChatCompletionsModel(
                   contentChunk = parts.slice(1).join('<think>')
                 }
 
-                if (inThinkTag) {
+                if (closingThinkSplitter && !sawStructuredReasoning) {
+                  // The compatibility splitter emitted this chunk above.
+                } else if (inThinkTag) {
                   if (contentChunk.includes('</think>')) {
                     inThinkTag = false
                     const parts = contentChunk.split('</think>')
@@ -172,6 +195,10 @@ export async function callChatCompletionsModel(
       }
     } finally {
       reader.releaseLock()
+    }
+
+    if (closingThinkSplitter && !sawStructuredReasoning) {
+      emitClosingThinkSplit(closingThinkSplitter.finish())
     }
 
     const assistantMessage = events.finalize()

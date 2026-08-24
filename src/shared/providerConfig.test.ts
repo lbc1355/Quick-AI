@@ -100,6 +100,44 @@ describe('provider config boundaries', () => {
     })
   })
 
+  it('round-trips custom per-model request and reasoning metadata', () => {
+    const original = provider({
+      type: 'custom',
+      model: 'wechat-deepseek',
+      modelsList: ['wechat-deepseek'],
+      models: {
+        'wechat-deepseek': {
+          id: 'wechat-deepseek',
+          apiId: 'Deepseek-v4-flash',
+          providerId: 'provider-glm',
+          endpointType: 'openai-compatible',
+          enabled: true,
+          limit: { context: 200000, output: 48000 },
+          reasoningControlOverride: {
+            mode: 'effort',
+            encoding: 'openai-effort',
+            levels: ['high', 'max']
+          },
+          requestBodyOverrides: { thinking: { type: 'enabled' } },
+          compatibility: { reasoningResponseFormat: 'closing-think-tag' }
+        }
+      }
+    })
+
+    const split = splitProviderConfigurations([original])
+    const [restored] = composeProviderConfigurations(split.definitions, split.accounts)
+
+    expect(restored.models?.['wechat-deepseek']).toMatchObject({
+      requestBodyOverrides: { thinking: { type: 'enabled' } },
+      reasoningControlOverride: {
+        mode: 'effort',
+        encoding: 'openai-effort',
+        levels: ['high', 'max']
+      },
+      compatibility: { reasoningResponseFormat: 'closing-think-tag' }
+    })
+  })
+
   it('resolves definition, account, connection, and model in one selection', () => {
     const selection = resolveProviderSelection(provider(), 'glm-4.7')
 
