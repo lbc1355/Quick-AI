@@ -105,8 +105,32 @@ describe('prepareToolCalls', () => {
       permission: 'allow',
       isValid: true,
       isDeadlock: false,
-      classification: 'direct'
+      classification: 'direct',
+      concurrencySafe: true
     })
+  })
+
+  it('uses tool metadata to keep mutating and external calls exclusive', () => {
+    const mutation = plan({
+      toolCalls: [toolCall('file_write', { path: 'src/out.txt', content: 'x' })],
+      permissions: { file_write: 'ask' }
+    })
+    expect(mutation.prepared[0].concurrencySafe).toBe(false)
+
+    const external = tool('external_read')
+    external.source = 'mcp'
+    const externalPlan = plan({
+      toolCalls: [toolCall('external_read', {})],
+      toolRegistry: { get: () => external, list: () => [external] }
+    })
+    expect(externalPlan.prepared[0].concurrencySafe).toBe(false)
+
+    external.isConcurrencySafe = () => true
+    const declaredRead = plan({
+      toolCalls: [toolCall('external_read', {})],
+      toolRegistry: { get: () => external, list: () => [external] }
+    })
+    expect(declaredRead.prepared[0].concurrencySafe).toBe(true)
   })
 
   it('blocks unknown or non-whitelisted tools before execution', () => {

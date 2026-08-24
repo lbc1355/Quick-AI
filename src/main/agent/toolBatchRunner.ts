@@ -26,6 +26,8 @@ export interface RunPreparedToolBatchResult {
   toolResponses: Array<ChatCompletionMessage | undefined>
 }
 
+export const MAX_PARALLEL_SAFE_TOOL_CALLS = 4
+
 const createToolCallEvent = (
   prep: PreparedToolCall,
   state: 'pending' | 'approved' | 'denied',
@@ -46,6 +48,37 @@ const throwIfAborted = (signal: AbortSignal): void => {
   if (signal.aborted) {
     throw new Error('Agent execution aborted by user.')
   }
+}
+
+async function runDirectCallsWithBarriers(
+  calls: PreparedToolCall[],
+  execute: (prep: PreparedToolCall) => Promise<void>
+): Promise<void> {
+  let safeGroup: PreparedToolCall[] = []
+  const flushSafeGroup = async (): Promise<void> => {
+    for (let offset = 0; offset < safeGroup.length; offset += MAX_PARALLEL_SAFE_TOOL_CALLS) {
+      const settled = await Promise.allSettled(
+        safeGroup
+          .slice(offset, offset + MAX_PARALLEL_SAFE_TOOL_CALLS)
+          .map(async (prep) => execute(prep))
+      )
+      const failure = settled.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      )
+      if (failure) throw failure.reason
+    }
+    safeGroup = []
+  }
+
+  for (const prep of [...calls].sort((a, b) => a.index - b.index)) {
+    if (prep.concurrencySafe === true) {
+      safeGroup.push(prep)
+      continue
+    }
+    await flushSafeGroup()
+    await execute(prep)
+  }
+  await flushSafeGroup()
 }
 
 export async function runPreparedToolBatch(
@@ -116,12 +149,11 @@ export async function runPreparedToolBatch(
 
   throwIfAborted(options.signal)
 
-  await Promise.all(
-    nonInteractiveDirectCalls.map(async (prep) => {
-      emitToolCall(prep, 'approved')
-      toolResponses[prep.index] = await options.executeTool(prep, true)
-    })
-  )
+  await runDirectCallsWithBarriers(nonInteractiveDirectCalls, async (prep) => {
+    throwIfAborted(options.signal)
+    emitToolCall(prep, 'approved')
+    toolResponses[prep.index] = await options.executeTool(prep, true)
+  })
 
   await Promise.all(
     options.blockedCalls.map(async (prep) => {

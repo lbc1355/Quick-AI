@@ -71,5 +71,8 @@ describe('normalizeToolDefinition', () => {
     expect(() => normalizeToolDefinition(tool({ source: 'unknown' as never }))).toThrow(
       'invalid source'
     )
+    expect(() => normalizeToolDefinition(tool({ isConcurrencySafe: 'yes' as never }))).toThrow(
+      'isConcurrencySafe must be a function'
+    )
   })
 })

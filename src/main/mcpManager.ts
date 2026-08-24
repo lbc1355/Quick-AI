@@ -474,6 +474,7 @@ class McpManagerImpl {
       category: 'system',
       risk: 'medium',
       source: 'mcp',
+      isConcurrencySafe: () => tool.annotations?.readOnlyHint === true,
       implemented: true,
       discoverable: true,
       parameters: toToolParameters(tool.inputSchema),

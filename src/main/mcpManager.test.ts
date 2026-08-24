@@ -171,6 +171,7 @@ describe('McpManager', () => {
     const toolDef = registry.get('mcp_git_test_tool')
     expect(toolDef?.title).toBe('test_tool')
     expect(toolDef?.risk).toBe('medium')
+    expect(toolDef?.isConcurrencySafe?.({})).toBe(false)
 
     // Test execution mapping
     const executionResult = await toolDef?.execute(
@@ -185,6 +186,39 @@ describe('McpManager', () => {
       signal: expect.any(AbortSignal),
       onprogress: expect.any(Function)
     })
+  })
+
+  it('allows only MCP tools declared read-only to overlap', async () => {
+    mcpMockState.listToolsResults = [
+      {
+        tools: [
+          {
+            name: 'read_tool',
+            description: 'Read data',
+            inputSchema: { type: 'object', properties: {} },
+            annotations: { readOnlyHint: true }
+          },
+          {
+            name: 'write_tool',
+            description: 'Write data',
+            inputSchema: { type: 'object', properties: {} },
+            annotations: { readOnlyHint: false }
+          }
+        ]
+      }
+    ]
+    writeFileSync(
+      configPath,
+      JSON.stringify({ servers: { git: { command: 'node' } } }, null, 2),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const registry = getToolRegistry()
+    expect(registry.get('mcp_git_read_tool')?.isConcurrencySafe?.({})).toBe(true)
+    expect(registry.get('mcp_git_write_tool')?.isConcurrencySafe?.({})).toBe(false)
   })
 
   it('refreshes a server tool set when tools/list_changed is received', async () => {

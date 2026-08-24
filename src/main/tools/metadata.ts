@@ -70,6 +70,12 @@ export function normalizeToolDefinition(definition: ToolDefinition): ToolDefinit
   if (typeof definition.discoverable !== 'boolean') {
     throw new Error(`Tool definition "${name}" discoverable must be a boolean`)
   }
+  if (
+    definition.isConcurrencySafe !== undefined &&
+    typeof definition.isConcurrencySafe !== 'function'
+  ) {
+    throw new Error(`Tool definition "${name}" isConcurrencySafe must be a function`)
+  }
   if (typeof definition.execute !== 'function') {
     throw new Error(`Tool definition "${name}" execute must be a function`)
   }

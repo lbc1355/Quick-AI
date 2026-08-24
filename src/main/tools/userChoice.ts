@@ -16,6 +16,7 @@ export const askUserChoiceTool: ToolDefinition = {
   tags: ['user', 'choice', 'select', 'ask', 'interactive', 'options', '选择', '选项'],
   category: 'system',
   risk: 'low',
+  isConcurrencySafe: () => false,
   implemented: true,
   discoverable: true,
   parameters: {

@@ -70,6 +70,11 @@ export interface ToolDefinition {
   category: 'web' | 'file' | 'shell' | 'memory' | 'system'
   risk: 'low' | 'medium' | 'high'
   source?: 'builtin' | 'mcp' | 'skill' | 'plugin' | 'external'
+  /**
+   * Whether this particular call may overlap other calls in the same model batch.
+   * Omit for the conservative source/risk default; classifiers must be synchronous and total.
+   */
+  isConcurrencySafe?: (args: ToolArgs) => boolean
   implemented: boolean
   discoverable: boolean
   parameters: {

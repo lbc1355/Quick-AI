@@ -31,6 +31,7 @@ export const reminderTools: Record<string, ToolDefinition> = {
     ],
     category: 'system',
     risk: 'low',
+    isConcurrencySafe: () => false,
     implemented: true,
     discoverable: true,
     parameters: {
@@ -90,6 +91,7 @@ export const reminderTools: Record<string, ToolDefinition> = {
     tags: ['reminder', 'timer', 'alarm', 'schedule', 'cancel', '提醒', '定时', '闹钟'],
     category: 'system',
     risk: 'low',
+    isConcurrencySafe: () => false,
     implemented: true,
     discoverable: true,
     parameters: {

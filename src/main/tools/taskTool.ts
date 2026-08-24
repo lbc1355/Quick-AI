@@ -12,6 +12,7 @@ export const taskTool: ToolDefinition = {
   tags: ['task', 'todo', 'plan', 'track', 'progress', '任务', '计划', '追踪'],
   category: 'system',
   risk: 'low',
+  isConcurrencySafe: () => false,
   implemented: true,
   discoverable: true,
   parameters: {

@@ -2,6 +2,7 @@ import { ChatCompletionMessage, ToolArgs } from '../../shared/types'
 import { ToolRegistryView } from '../tools/registryView'
 import { evaluateToolGuard, DEFAULT_CONSTITUTION } from './constitution'
 import { LoopGuard } from './loopGuard'
+import { isToolCallConcurrencySafe } from '../tools/toolConcurrency'
 
 export type ToolPermission = 'allow' | 'ask' | 'deny'
 export type ToolCallClassification = 'ask' | 'direct' | 'blocked'
@@ -22,6 +23,8 @@ export interface PreparedToolCall {
   /** Set when a guardrail escalates/blocks this call; surfaced to the model on block. */
   blockReason?: string
   classification: ToolCallClassification
+  /** Safe calls may overlap only other safe calls; exclusive calls are ordering barriers. */
+  concurrencySafe?: boolean
 }
 
 export interface PreparedToolCallGroups {
@@ -149,6 +152,8 @@ export function prepareToolCalls(input: {
       }
     }
 
+    const concurrencySafe = !!toolDef && isValid && isToolCallConcurrencySafe(toolDef, args)
+
     return {
       index,
       toolCall,
@@ -161,7 +166,8 @@ export function prepareToolCalls(input: {
       isDeadlock,
       loopBlock,
       blockReason,
-      classification
+      classification,
+      concurrencySafe
     }
   })
 

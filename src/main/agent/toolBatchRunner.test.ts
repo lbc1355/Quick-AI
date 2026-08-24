@@ -189,4 +189,130 @@ describe('runPreparedToolBatch', () => {
       events.filter((event) => event.type === 'tool_call').map((event) => event.callId)
     ).toEqual(['choice', 'direct'])
   })
+
+  it('runs safe calls concurrently and treats exclusive calls as ordering barriers', async () => {
+    const safeA = makePrep({ index: 0, callId: 'safe-a', concurrencySafe: true })
+    const safeB = makePrep({ index: 1, callId: 'safe-b', concurrencySafe: true })
+    const exclusive = makePrep({ index: 2, callId: 'exclusive', concurrencySafe: false })
+    const safeC = makePrep({ index: 3, callId: 'safe-c', concurrencySafe: true })
+    const releases = new Map<string, () => void>()
+    const order: string[] = []
+    const executeTool = vi.fn(async (prep: PreparedToolCall) => {
+      order.push(`start:${prep.callId}`)
+      if (prep === safeA || prep === safeB) {
+        await new Promise<void>((resolve) => releases.set(prep.callId, resolve))
+      }
+      order.push(`end:${prep.callId}`)
+      return makeResponse(prep, true)
+    })
+
+    const pending = runPreparedToolBatch({
+      toolCallCount: 4,
+      askCalls: [],
+      directCalls: [safeC, exclusive, safeB, safeA],
+      blockedCalls: [],
+      reqId: 'req-1',
+      step: 1,
+      stepId: 'step-1',
+      signal: new AbortController().signal,
+      emitEvent: vi.fn(),
+      requestPermission: vi.fn(),
+      isToolApproved: () => false,
+      isCommandPrefixApproved: () => false,
+      executeTool
+    })
+
+    await vi.waitFor(() => expect(order).toEqual(['start:safe-a', 'start:safe-b']))
+    releases.get('safe-a')?.()
+    releases.get('safe-b')?.()
+    await pending
+
+    expect(order).toEqual([
+      'start:safe-a',
+      'start:safe-b',
+      'end:safe-a',
+      'end:safe-b',
+      'start:exclusive',
+      'end:exclusive',
+      'start:safe-c',
+      'end:safe-c'
+    ])
+  })
+
+  it('limits a safe group to four active calls', async () => {
+    const calls = Array.from({ length: 5 }, (_, index) =>
+      makePrep({ index, callId: `safe-${index}`, concurrencySafe: true })
+    )
+    const releases = new Map<string, () => void>()
+    let active = 0
+    let maxActive = 0
+    const executeTool = vi.fn(async (prep: PreparedToolCall) => {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise<void>((resolve) => releases.set(prep.callId, resolve))
+      active -= 1
+      return makeResponse(prep, true)
+    })
+
+    const pending = runPreparedToolBatch({
+      toolCallCount: calls.length,
+      askCalls: [],
+      directCalls: calls,
+      blockedCalls: [],
+      reqId: 'req-1',
+      step: 1,
+      stepId: 'step-1',
+      signal: new AbortController().signal,
+      emitEvent: vi.fn(),
+      requestPermission: vi.fn(),
+      isToolApproved: () => false,
+      isCommandPrefixApproved: () => false,
+      executeTool
+    })
+
+    await vi.waitFor(() => expect(executeTool).toHaveBeenCalledTimes(4))
+    expect(maxActive).toBe(4)
+    for (let index = 0; index < 4; index += 1) releases.get(`safe-${index}`)?.()
+    await vi.waitFor(() => expect(executeTool).toHaveBeenCalledTimes(5))
+    releases.get('safe-4')?.()
+    await pending
+    expect(maxActive).toBe(4)
+  })
+
+  it('drains already-started safe calls before surfacing a sibling failure', async () => {
+    const failed = makePrep({ index: 0, callId: 'failed', concurrencySafe: true })
+    const draining = makePrep({ index: 1, callId: 'draining', concurrencySafe: true })
+    let release: (() => void) | undefined
+    let rejected = false
+    const executeTool = vi.fn(async (prep: PreparedToolCall) => {
+      if (prep === failed) throw new Error('boom')
+      await new Promise<void>((resolve) => (release = resolve))
+      return makeResponse(prep, true)
+    })
+
+    const pending = runPreparedToolBatch({
+      toolCallCount: 2,
+      askCalls: [],
+      directCalls: [failed, draining],
+      blockedCalls: [],
+      reqId: 'req-1',
+      step: 1,
+      stepId: 'step-1',
+      signal: new AbortController().signal,
+      emitEvent: vi.fn(),
+      requestPermission: vi.fn(),
+      isToolApproved: () => false,
+      isCommandPrefixApproved: () => false,
+      executeTool
+    }).catch((error: unknown) => {
+      rejected = true
+      throw error
+    })
+
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    await Promise.resolve()
+    expect(rejected).toBe(false)
+    release?.()
+    await expect(pending).rejects.toThrow('boom')
+  })
 })

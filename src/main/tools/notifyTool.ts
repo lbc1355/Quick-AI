@@ -10,6 +10,7 @@ export const notifyTool: ToolDefinition = {
   tags: ['notification', 'alert', 'notify', 'message', '桌面通知'],
   category: 'system',
   risk: 'low',
+  isConcurrencySafe: () => false,
   implemented: true,
   discoverable: true,
   parameters: {
