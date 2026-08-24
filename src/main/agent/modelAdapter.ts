@@ -5,7 +5,8 @@ import {
   ProviderApiFormat,
   ProviderEndpointType,
   ResolvedModelCompatibilityProfile,
-  ResolvedModelFeatureSupport
+  ResolvedModelFeatureSupport,
+  ResolvedProviderStreamPolicy
 } from '../../shared/types'
 import {
   getProviderRuntimeProfile,
@@ -23,6 +24,7 @@ export interface ModelAdapter {
   readonly features: ResolvedModelFeatureSupport
   readonly apiFormats: readonly ProviderApiFormat[]
   readonly compatibility: ResolvedModelCompatibilityProfile
+  readonly streamPolicy: ResolvedProviderStreamPolicy
 
   /** Clean messages before sending. Must not mutate the input array. */
   sanitizeMessages(msgs: ChatCompletionMessage[]): ChatCompletionMessage[]
@@ -133,6 +135,7 @@ function createAdapter(
     features: { ...runtimeProfile.features },
     apiFormats: runtimeProfile.supportedTransports.map(transportIdToApiFormat),
     compatibility,
+    streamPolicy: { ...runtimeProfile.streamPolicy },
     sanitizeMessages: (messages) => applyMessageCompatibility(messages, compatibility),
     sanitizeBody: (body) => applyBodyCompatibility(body, compatibility)
   }

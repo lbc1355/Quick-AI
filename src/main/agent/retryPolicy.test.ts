@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { withRetry, DEFAULT_RETRY_POLICY } from './retryPolicy'
+import { ModelTransportError } from './modelTransportError'
 
 describe('withRetry', () => {
   it('retries a retryable error up to maxRetries with exponential backoff', async () => {
@@ -67,6 +68,29 @@ describe('withRetry', () => {
     await expect(promise).resolves.toBe('ok')
     expect(attempts).toEqual([0])
     expect(errors[0]).toBeInstanceOf(TypeError)
+    vi.useRealTimers()
+  })
+
+  it('uses structured retryability and honors Retry-After metadata', async () => {
+    vi.useFakeTimers()
+    let calls = 0
+    const fn = vi.fn(async () => {
+      calls++
+      if (calls === 1) {
+        throw new ModelTransportError('RATE_LIMITED', 'slow down', {
+          retryable: true,
+          retryAfterMs: 2500
+        })
+      }
+      return 'ok'
+    })
+
+    const promise = withRetry(fn, DEFAULT_RETRY_POLICY)
+    await vi.advanceTimersByTimeAsync(2499)
+    expect(fn).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(promise).resolves.toBe('ok')
+    expect(fn).toHaveBeenCalledTimes(2)
     vi.useRealTimers()
   })
 })

@@ -20,6 +20,8 @@ import {
 } from './reasoningRequestPolicy'
 import { applyModelRequestBodyOverrides } from './requestBodyOverrides'
 import { ClosingThinkTagSplitter } from './closingThinkTagSplitter'
+import { ModelStreamScope } from './modelStreamLifecycle'
+import { createHttpModelTransportError } from './modelTransportError'
 
 export async function callChatCompletionsModel(
   options: CallModelOptions,
@@ -74,49 +76,61 @@ export async function callChatCompletionsModel(
   let streamingStarted = false
 
   const attempt = async (): Promise<ChatCompletionMessage> => {
-    const response = await fetch(target.url, {
-      method: 'POST',
-      headers: target.headers,
-      body: JSON.stringify(body),
-      signal
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      const detail = errorText || response.statusText
-      if (isUnsupportedReasoningParameterError(detail)) {
-        throw new Error(`${REASONING_UNSUPPORTED_USER_MESSAGE} (${response.status}: ${detail})`)
-      }
-      throw new Error(`API Error: ${response.status} - ${detail}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) throw new Error('Failed to get readable stream reader')
-
-    const decoder = new TextDecoder('utf-8')
-    let buffer = ''
-
-    const events = new ModelEventAccumulator(callbacks)
-    let inThinkTag = false
-    let sawStructuredReasoning = false
-    const closingThinkSplitter =
-      adapter.compatibility.reasoningResponseFormat === 'closing-think-tag'
-        ? new ClosingThinkTagSplitter()
-        : undefined
-    const emit = (event: Exclude<ModelEvent, { type: 'finish' }>): void => {
-      if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
-        streamingStarted = true
-      }
-      events.consume(event)
-    }
-    const emitClosingThinkSplit = (split: { reasoning?: string; content?: string }): void => {
-      if (split.reasoning) emit({ type: 'reasoning-delta', delta: split.reasoning })
-      if (split.content && shouldStreamFinal) emit({ type: 'text-delta', delta: split.content })
-    }
+    const streamScope = new ModelStreamScope(adapter.streamPolicy, signal)
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
 
     try {
+      const response = await streamScope.waitFor(
+        () =>
+          fetch(target.url, {
+            method: 'POST',
+            headers: target.headers,
+            body: JSON.stringify(body),
+            signal: streamScope.signal
+          }),
+        'Provider response'
+      )
+
+      if (!response.ok) {
+        const errorText = await streamScope.waitFor(
+          () => response.text(),
+          'Provider error response'
+        )
+        const detail = errorText || response.statusText
+        const message = isUnsupportedReasoningParameterError(detail)
+          ? `${REASONING_UNSUPPORTED_USER_MESSAGE} (${response.status}: ${detail})`
+          : undefined
+        throw createHttpModelTransportError(response, detail, message)
+      }
+
+      reader = response.body?.getReader()
+      if (!reader) throw new Error('Failed to get readable stream reader')
+
+      const decoder = new TextDecoder('utf-8')
+      let buffer = ''
+      let explicitlyCompleted = false
+      let stopReading = false
+
+      const events = new ModelEventAccumulator(callbacks)
+      let inThinkTag = false
+      let sawStructuredReasoning = false
+      const closingThinkSplitter =
+        adapter.compatibility.reasoningResponseFormat === 'closing-think-tag'
+          ? new ClosingThinkTagSplitter()
+          : undefined
+      const emit = (event: Exclude<ModelEvent, { type: 'finish' }>): void => {
+        if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
+          streamingStarted = true
+        }
+        events.consume(event)
+      }
+      const emitClosingThinkSplit = (split: { reasoning?: string; content?: string }): void => {
+        if (split.reasoning) emit({ type: 'reasoning-delta', delta: split.reasoning })
+        if (split.content && shouldStreamFinal) emit({ type: 'text-delta', delta: split.content })
+      }
+
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await streamScope.waitFor(() => reader!.read(), 'Provider stream')
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
@@ -126,7 +140,11 @@ export async function callChatCompletionsModel(
         for (const line of lines) {
           const cleanLine = line.trim()
           if (!cleanLine) continue
-          if (cleanLine === 'data: [DONE]') continue
+          if (cleanLine === 'data: [DONE]') {
+            explicitlyCompleted = true
+            stopReading = true
+            break
+          }
 
           if (cleanLine.startsWith('data: ')) {
             try {
@@ -192,18 +210,39 @@ export async function callChatCompletionsModel(
             }
           }
         }
+        if (stopReading) break
       }
+
+      if (stopReading) {
+        try {
+          await reader.cancel()
+        } catch {
+          // The explicit completion marker is authoritative even if body cancellation races EOF.
+        }
+      }
+
+      streamScope.assertCompleted(explicitlyCompleted, 'Chat Completions')
+
+      if (closingThinkSplitter && !sawStructuredReasoning) {
+        emitClosingThinkSplit(closingThinkSplitter.finish())
+      }
+
+      const assistantMessage = events.finalize()
+      if (events.usage) promptCacheStatsByMessage.set(assistantMessage, events.usage)
+      return assistantMessage
+    } catch (error) {
+      if (reader) {
+        try {
+          await reader.cancel(error)
+        } catch {
+          // The provider may already have closed or aborted the body.
+        }
+      }
+      throw error
     } finally {
-      reader.releaseLock()
+      reader?.releaseLock()
+      streamScope.dispose()
     }
-
-    if (closingThinkSplitter && !sawStructuredReasoning) {
-      emitClosingThinkSplit(closingThinkSplitter.finish())
-    }
-
-    const assistantMessage = events.finalize()
-    if (events.usage) promptCacheStatsByMessage.set(assistantMessage, events.usage)
-    return assistantMessage
   }
 
   // Retry transient failures only while nothing has streamed yet — once the first chunk reaches

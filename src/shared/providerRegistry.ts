@@ -7,9 +7,11 @@ import type {
   ProviderAuthType,
   ProviderEndpointType,
   ProviderModelDiscoveryPolicy,
+  ProviderStreamPolicy,
   ProviderType,
   ResolvedModelCompatibilityProfile,
-  ResolvedModelFeatureSupport
+  ResolvedModelFeatureSupport,
+  ResolvedProviderStreamPolicy
 } from './types'
 import type { ModelReasoningRule } from './reasoningControl'
 
@@ -21,6 +23,7 @@ export interface ProviderRuntimeProfile {
   promptProfile: ModelPromptProfile
   features: ResolvedModelFeatureSupport
   compatibility: ResolvedModelCompatibilityProfile
+  streamPolicy: ResolvedProviderStreamPolicy
   modelCompatibilityRules?: readonly ModelCompatibilityRule[]
   defaultReasoningControl?: ModelReasoningControl
   modelReasoningRules?: readonly ModelReasoningRule[]
@@ -35,10 +38,11 @@ export type { ModelReasoningRule }
 
 type ProviderRuntimeProfileOverrides = Omit<
   Partial<ProviderRuntimeProfile>,
-  'features' | 'compatibility'
+  'features' | 'compatibility' | 'streamPolicy'
 > & {
   features?: Partial<ResolvedModelFeatureSupport>
   compatibility?: ModelCompatibilityProfile
+  streamPolicy?: ProviderStreamPolicy
 }
 
 const OPENAI_COMPATIBLE_FEATURES: ResolvedModelFeatureSupport = {
@@ -66,10 +70,15 @@ const STRICT_OPENAI_COMPATIBILITY: ResolvedModelCompatibilityProfile = {
   stripEmptyToolCalls: true
 }
 
+const DEFAULT_STREAM_POLICY: ResolvedProviderStreamPolicy = {
+  completionMode: 'allow-eof',
+  idleTimeoutMs: 5 * 60 * 1000
+}
+
 export function createProviderRuntimeProfile(
   overrides: ProviderRuntimeProfileOverrides = {}
 ): ProviderRuntimeProfile {
-  const { features, compatibility, ...rest } = overrides
+  const { features, compatibility, streamPolicy, ...rest } = overrides
   return {
     endpointType: 'openai-compatible',
     apiFormat: 'chat-completions',
@@ -78,7 +87,8 @@ export function createProviderRuntimeProfile(
     promptProfile: 'default',
     ...rest,
     features: { ...OPENAI_COMPATIBLE_FEATURES, ...(features || {}) },
-    compatibility: { ...OPENAI_COMPATIBLE_COMPATIBILITY, ...(compatibility || {}) }
+    compatibility: { ...OPENAI_COMPATIBLE_COMPATIBILITY, ...(compatibility || {}) },
+    streamPolicy: { ...DEFAULT_STREAM_POLICY, ...(streamPolicy || {}) }
   }
 }
 
@@ -149,6 +159,7 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
     { apiUrl: 'https://opencode.ai/zen/v1', authType: 'bearer' },
     createProviderRuntimeProfile({
       compatibility: STRICT_OPENAI_COMPATIBILITY,
+      streamPolicy: { completionMode: 'require-explicit' },
       modelCompatibilityRules: [
         {
           includes: ['deepseek'],
@@ -210,6 +221,7 @@ export const PROVIDER_REGISTRATIONS: readonly ProviderRegistration[] = [
     { apiUrl: 'https://api.deepseek.com/v1', authType: 'bearer' },
     createProviderRuntimeProfile({
       compatibility: { preserveToolCallReasoningContent: true },
+      streamPolicy: { completionMode: 'require-explicit' },
       modelReasoningRules: [
         {
           // DeepSeek V4 has two distinct effort levels. Compatibility aliases such as low and
@@ -342,6 +354,12 @@ export function validateProviderRegistrations(
     }
     if (!runtime.features.toolCalls && runtime.features.parallelToolCalls) {
       errors.push(`${definition.type}: parallel tools require tool-call support`)
+    }
+    if (
+      !Number.isFinite(runtime.streamPolicy.idleTimeoutMs) ||
+      runtime.streamPolicy.idleTimeoutMs <= 0
+    ) {
+      errors.push(`${definition.type}: stream idle timeout must be a positive finite number`)
     }
     if (!modelDiscovery.endpointPath.trim()) {
       errors.push(`${definition.type}: model discovery endpoint is empty`)

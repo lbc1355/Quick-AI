@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getProviderRuntimeProfile,
   inferModelPromptProfile,
   resolveModelFeatureSupport,
   resolveModelPromptProfile
@@ -44,5 +45,18 @@ describe('providerProfiles', () => {
       promptCaching: true,
       streamUsage: true
     })
+  })
+
+  it('keeps custom streams EOF-compatible while known DeepSeek routes require completion markers', () => {
+    expect(getProviderRuntimeProfile('custom').streamPolicy).toEqual({
+      completionMode: 'allow-eof',
+      idleTimeoutMs: 300000
+    })
+    expect(getProviderRuntimeProfile('deepseek').streamPolicy.completionMode).toBe(
+      'require-explicit'
+    )
+    expect(getProviderRuntimeProfile('opencode').streamPolicy.completionMode).toBe(
+      'require-explicit'
+    )
   })
 })

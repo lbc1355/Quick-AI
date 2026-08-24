@@ -460,6 +460,23 @@ export interface ResolvedModelFeatureSupport {
   streamUsage: boolean
 }
 
+/** How a provider proves that a streamed response completed successfully. */
+export type ProviderStreamCompletionMode = 'allow-eof' | 'require-explicit'
+
+/**
+ * Provider-owned stream lifecycle policy. This is deliberately separate from message/body
+ * compatibility: it governs transport health rather than the request payload.
+ */
+export interface ProviderStreamPolicy {
+  completionMode?: ProviderStreamCompletionMode
+  idleTimeoutMs?: number
+}
+
+export interface ResolvedProviderStreamPolicy {
+  completionMode: ProviderStreamCompletionMode
+  idleTimeoutMs: number
+}
+
 /**
  * Small, typed request compatibility switches. They may be configured at provider or model
  * level and are resolved before a request reaches a transport driver.

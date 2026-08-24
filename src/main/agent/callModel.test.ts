@@ -148,6 +148,42 @@ describe('callModel retry behavior', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('accepts EOF completion for a custom OpenAI-compatible provider', async () => {
+    fetchMock.mockResolvedValue(okResponse(sseStream([sseLine({ content: 'EOF answer' })])))
+
+    await expect(
+      callModel(
+        {
+          apiUrl: 'https://gateway.example.com/v1',
+          apiKey: 'k',
+          model: 'custom-model',
+          providerType: 'custom'
+        },
+        [{ role: 'user', content: 'hi' }]
+      )
+    ).resolves.toMatchObject({ content: 'EOF answer' })
+  })
+
+  it('rejects a truncated DeepSeek stream that never sends an explicit completion marker', async () => {
+    fetchMock.mockResolvedValue(okResponse(sseStream([sseLine({ content: 'partial' })])))
+
+    await expect(
+      callModel(
+        {
+          apiUrl: 'https://api.deepseek.com/v1',
+          apiKey: 'k',
+          model: 'deepseek-v4-flash',
+          providerType: 'deepseek'
+        },
+        [{ role: 'user', content: 'hi' }]
+      )
+    ).rejects.toMatchObject({
+      code: 'STREAM_PROTOCOL_ERROR',
+      retryable: true
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('does not retry once user-visible output has started streaming', async () => {
     // Reading a real ReadableStream relies on the runtime scheduler; use real timers here.
     // No backoff delay is exercised in this case (a streamed failure is never retried).

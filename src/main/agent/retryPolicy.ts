@@ -1,3 +1,5 @@
+import { isModelTransportError } from './modelTransportError'
+
 export interface RetryPolicy {
   maxRetries: number
   baseDelayMs: number
@@ -20,6 +22,7 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
 }
 
 export function isRetryableError(error: Error, policy: RetryPolicy): boolean {
+  if (isModelTransportError(error)) return error.retryable
   const message = error.message.toLowerCase()
   for (const pattern of policy.retryableErrors) {
     if (message.includes(pattern)) return true
@@ -49,6 +52,11 @@ export async function withRetry<T>(
         !signal?.aborted
       ) {
         const delay = Math.min(policy.baseDelayMs * Math.pow(2, attempt), policy.maxDelayMs)
+        const retryAfterMs = isModelTransportError(lastError) ? lastError.retryAfterMs : undefined
+        const effectiveDelay =
+          retryAfterMs !== undefined
+            ? Math.min(Math.max(delay, retryAfterMs), policy.maxDelayMs)
+            : delay
         await new Promise<void>((resolve, reject) => {
           const onAbort = (): void => {
             clearTimeout(timeoutId)
@@ -61,7 +69,7 @@ export async function withRetry<T>(
           const timeoutId = setTimeout(() => {
             signal?.removeEventListener('abort', onAbort)
             resolve()
-          }, delay)
+          }, effectiveDelay)
           signal?.addEventListener('abort', onAbort)
         })
         continue

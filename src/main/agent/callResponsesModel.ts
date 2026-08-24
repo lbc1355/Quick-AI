@@ -19,6 +19,8 @@ import {
 } from './reasoningRequestPolicy'
 import { chatMessagesToResponsesInput, chatToolsToResponsesTools } from './responsesAdapter'
 import { applyModelRequestBodyOverrides } from './requestBodyOverrides'
+import { ModelStreamScope } from './modelStreamLifecycle'
+import { createHttpModelTransportError } from './modelTransportError'
 
 interface FatalMarkedError extends Error {
   isFatal?: boolean
@@ -73,42 +75,54 @@ export async function callResponsesModel(
   let streamingStarted = false
 
   const attempt = async (): Promise<ChatCompletionMessage> => {
-    const response = await fetch(target.url, {
-      method: 'POST',
-      headers: target.headers,
-      body: JSON.stringify(body),
-      signal
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      const detail = errorText || response.statusText
-      if (isUnsupportedReasoningParameterError(detail)) {
-        throw new Error(`${REASONING_UNSUPPORTED_USER_MESSAGE} (${response.status}: ${detail})`)
-      }
-      throw new Error(`API Error: ${response.status} - ${detail}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) throw new Error('Failed to get readable stream reader')
-
-    const decoder = new TextDecoder('utf-8')
-    let buffer = ''
-
-    const events = new ModelEventAccumulator(callbacks)
-    const itemIdToIndex = new Map<string, number>()
-    const emit = (event: Exclude<ModelEvent, { type: 'finish' }>): void => {
-      if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
-        streamingStarted = true
-      }
-      events.consume(event)
-    }
-
-    let currentEvent = ''
+    const streamScope = new ModelStreamScope(adapter.streamPolicy, signal)
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
 
     try {
+      const response = await streamScope.waitFor(
+        () =>
+          fetch(target.url, {
+            method: 'POST',
+            headers: target.headers,
+            body: JSON.stringify(body),
+            signal: streamScope.signal
+          }),
+        'Provider response'
+      )
+
+      if (!response.ok) {
+        const errorText = await streamScope.waitFor(
+          () => response.text(),
+          'Provider error response'
+        )
+        const detail = errorText || response.statusText
+        const message = isUnsupportedReasoningParameterError(detail)
+          ? `${REASONING_UNSUPPORTED_USER_MESSAGE} (${response.status}: ${detail})`
+          : undefined
+        throw createHttpModelTransportError(response, detail, message)
+      }
+
+      reader = response.body?.getReader()
+      if (!reader) throw new Error('Failed to get readable stream reader')
+
+      const decoder = new TextDecoder('utf-8')
+      let buffer = ''
+      let explicitlyCompleted = false
+      let stopReading = false
+
+      const events = new ModelEventAccumulator(callbacks)
+      const itemIdToIndex = new Map<string, number>()
+      const emit = (event: Exclude<ModelEvent, { type: 'finish' }>): void => {
+        if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
+          streamingStarted = true
+        }
+        events.consume(event)
+      }
+
+      let currentEvent = ''
+
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await streamScope.waitFor(() => reader!.read(), 'Provider stream')
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
@@ -118,7 +132,11 @@ export async function callResponsesModel(
         for (const line of lines) {
           const cleanLine = line.trim()
           if (!cleanLine) continue
-          if (cleanLine === 'data: [DONE]') continue
+          if (cleanLine === 'data: [DONE]') {
+            explicitlyCompleted = true
+            stopReading = true
+            break
+          }
 
           if (cleanLine.startsWith('event: ')) {
             currentEvent = cleanLine.substring(7).trim()
@@ -202,6 +220,7 @@ export async function callResponsesModel(
                   emit({ type: 'tool-call-delta', index: idx, id: callId, name })
                 }
               } else if (type === 'response.completed' || type === 'response.done') {
+                explicitlyCompleted = true
                 const usageStats = extractPromptCacheStats(json.response?.usage)
                 if (usageStats) emit({ type: 'usage', usage: usageStats })
               } else if (type === 'response.failed' || type === 'error') {
@@ -221,14 +240,35 @@ export async function callResponsesModel(
             }
           }
         }
+        if (stopReading) break
       }
-    } finally {
-      reader.releaseLock()
-    }
 
-    const assistantMessage = events.finalize()
-    if (events.usage) promptCacheStatsByMessage.set(assistantMessage, events.usage)
-    return assistantMessage
+      if (stopReading) {
+        try {
+          await reader.cancel()
+        } catch {
+          // The explicit completion marker is authoritative even if body cancellation races EOF.
+        }
+      }
+
+      streamScope.assertCompleted(explicitlyCompleted, 'Responses API')
+
+      const assistantMessage = events.finalize()
+      if (events.usage) promptCacheStatsByMessage.set(assistantMessage, events.usage)
+      return assistantMessage
+    } catch (error) {
+      if (reader) {
+        try {
+          await reader.cancel(error)
+        } catch {
+          // The provider may already have closed or aborted the body.
+        }
+      }
+      throw error
+    } finally {
+      reader?.releaseLock()
+      streamScope.dispose()
+    }
   }
 
   // Retry transient failures only while nothing has streamed yet — once the first chunk reaches
