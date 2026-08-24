@@ -23,6 +23,11 @@ export interface RunForcedFinalTurnOptions {
   usageTracker: Pick<RunUsageTracker, 'recordModelResponse'>
   emitReasoning: (content: string) => void
   emitFinal: (content: string) => void
+  onRequestPrepared?: (request: {
+    beforeMessages: ChatCompletionMessage[]
+    messages: ChatCompletionMessage[]
+  }) => string | undefined
+  onRequestSettled?: (requestId: string, response: ChatCompletionMessage) => void
   dependencies?: RunForcedFinalTurnDependencies
 }
 
@@ -58,6 +63,10 @@ export async function runForcedFinalTurn(
     reserveForResponseRatio: DEFAULT_RESPONSE_RESERVE_RATIO,
     strategy: 'truncate-oldest-tool'
   })
+  const requestId = options.onRequestPrepared?.({
+    beforeMessages: messagesWithPrompt,
+    messages
+  })
 
   let finalEmitted = false
   const { assistantMessage: finalMessage } = await runModelTurn({
@@ -71,6 +80,9 @@ export async function runForcedFinalTurn(
       options.emitFinal(content)
     }
   })
+  if (requestId) {
+    options.onRequestSettled?.(requestId, finalMessage)
+  }
 
   const finalText = getAssistantText(finalMessage.content)
   if (!finalEmitted && finalText) {

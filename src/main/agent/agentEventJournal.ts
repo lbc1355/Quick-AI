@@ -12,8 +12,15 @@ import {
 } from 'fs'
 import { dirname, join } from 'path'
 import { compactAgentEvents } from '../../shared/agentEventCompactor'
-import type { AgentEvent } from '../../shared/types'
+import type { AgentEvent, ChatCompletionMessage } from '../../shared/types'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
+import {
+  ModelRequestJournalRecord,
+  ModelRequestJournalSummary,
+  settleModelRequestRecord,
+  summarizeModelRequestRecord,
+  verifyModelRequestRecord
+} from './modelRequestRecord'
 
 const JOURNAL_VERSION = 1
 const FLUSH_INTERVAL_MS = 150
@@ -24,6 +31,7 @@ const MAX_VALUE_DEPTH = 10
 const MAX_ARRAY_ITEMS = 200
 const MAX_OBJECT_KEYS = 200
 const MAX_STRING_CHARS = 128 * 1024
+const MAX_REQUEST_HISTORY = 100
 const REDACTED_VALUE = '[REDACTED]'
 const INTERRUPTION_ERROR = 'Agent run was interrupted before the application exited.'
 
@@ -47,6 +55,10 @@ export interface AgentEventJournalSnapshot {
   parentRunId?: string
   status: AgentEventJournalStatus
   events: AgentEvent[]
+  /** Exact semantic input plus credential-free provider metadata for the latest call. */
+  latestModelRequest?: ModelRequestJournalRecord
+  /** Bounded fingerprints for earlier requests; only the latest full payload is retained. */
+  modelRequestHistory?: ModelRequestJournalSummary[]
   lastSequence: number
   startedAt: number
   updatedAt: number
@@ -64,6 +76,8 @@ export interface CreateAgentEventJournalInput {
 
 export interface AgentEventJournalWriter {
   append: (event: AgentEvent) => void
+  recordModelRequest: (record: ModelRequestJournalRecord) => void
+  settleModelRequest: (requestId: string, response: ChatCompletionMessage) => void
   flush: () => void
   close: () => void
   getSnapshot: () => AgentEventJournalSnapshot
@@ -341,6 +355,43 @@ class FileAgentEventJournalWriter implements AgentEventJournalWriter {
     }
   }
 
+  private replaceRequestSummary(record: ModelRequestJournalRecord): void {
+    const history = (this.snapshot.modelRequestHistory || []).filter(
+      (entry) => entry.requestId !== record.requestId
+    )
+    this.snapshot.modelRequestHistory = [...history, summarizeModelRequestRecord(record)].slice(
+      -MAX_REQUEST_HISTORY
+    )
+  }
+
+  private persistMetadataChange(): void {
+    if (!this.enabled) return
+    try {
+      writeJournal(this.snapshot)
+    } catch (error) {
+      this.enabled = false
+      console.warn('Failed to persist agent request metadata:', (error as Error).message)
+    }
+  }
+
+  recordModelRequest(record: ModelRequestJournalRecord): void {
+    this.flush()
+    if (!this.enabled) return
+    this.snapshot.latestModelRequest = record
+    this.replaceRequestSummary(record)
+    // This write is the durability boundary: it completes before the provider call starts.
+    this.persistMetadataChange()
+  }
+
+  settleModelRequest(requestId: string, response: ChatCompletionMessage): void {
+    this.flush()
+    if (!this.enabled || this.snapshot.latestModelRequest?.requestId !== requestId) return
+    const settled = settleModelRequestRecord(this.snapshot.latestModelRequest, response)
+    this.snapshot.latestModelRequest = settled
+    this.replaceRequestSummary(settled)
+    this.persistMetadataChange()
+  }
+
   flush(): void {
     if (this.timer) {
       clearTimeout(this.timer)
@@ -373,6 +424,13 @@ class FileAgentEventJournalWriter implements AgentEventJournalWriter {
 export const createAgentEventJournalWriter = (
   input: CreateAgentEventJournalInput
 ): AgentEventJournalWriter => new FileAgentEventJournalWriter(input)
+
+export const getPendingReconstructableModelRequest = (
+  snapshot: AgentEventJournalSnapshot
+): ModelRequestJournalRecord | undefined => {
+  const record = snapshot.latestModelRequest
+  return record?.state === 'prepared' && verifyModelRequestRecord(record) ? record : undefined
+}
 
 const collectJournalFiles = (): string[] => {
   const root = getAgentEventJournalRoot()
@@ -437,7 +495,19 @@ export const copyAgentEventJournalsForRuns = (
   for (const runId of Array.from(new Set(runIds))) {
     const journal = loadAgentEventJournal(sourceSessionId, runId)
     if (!journal) continue
-    writeJournal({ ...journal, sessionId: targetSessionId, updatedAt: Date.now() })
+    writeJournal({
+      ...journal,
+      sessionId: targetSessionId,
+      ...(journal.latestModelRequest
+        ? {
+            latestModelRequest: {
+              ...journal.latestModelRequest,
+              sessionId: targetSessionId
+            }
+          }
+        : {}),
+      updatedAt: Date.now()
+    })
     copied += 1
   }
   return copied

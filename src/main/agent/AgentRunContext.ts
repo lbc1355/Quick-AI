@@ -4,6 +4,7 @@ import { ActionLog } from './actionLog'
 import { splitCommandSegments, analyzeCommand } from './commandSafety'
 import { normalizeComparablePath } from './pathPolicy'
 import { TaskItem } from '../../shared/types'
+import { utf8ByteLength } from './utf8Text'
 
 /** Session-scoped tool/command approvals. A "task" spans many agent runs (one per user
  *  message), each with its own reqId-keyed run context. Persisting approvals here — keyed by
@@ -294,11 +295,11 @@ export class AgentRunContext {
   storeToolOutput(callId: string, text: string): void {
     const previous = this.toolOutputs.get(callId)
     if (previous !== undefined) {
-      this.toolOutputsBytes -= previous.length
+      this.toolOutputsBytes -= utf8ByteLength(previous)
       this.toolOutputs.delete(callId)
     }
     this.toolOutputs.set(callId, text)
-    this.toolOutputsBytes += text.length
+    this.toolOutputsBytes += utf8ByteLength(text)
 
     // Map preserves insertion order, so the first key is the oldest entry.
     while (
@@ -306,7 +307,7 @@ export class AgentRunContext {
       this.toolOutputs.size > 1
     ) {
       const oldest = this.toolOutputs.keys().next().value as string
-      this.toolOutputsBytes -= this.toolOutputs.get(oldest)?.length || 0
+      this.toolOutputsBytes -= utf8ByteLength(this.toolOutputs.get(oldest) || '')
       this.toolOutputs.delete(oldest)
     }
   }

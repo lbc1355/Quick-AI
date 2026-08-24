@@ -21,6 +21,7 @@ import {
   updateBackgroundJob
 } from '../agent/backgroundJobManager'
 import { projectToolOutputHeadTail } from '../agent/toolOutputResource'
+import { sliceUtf8Prefix, sliceUtf8Suffix, utf8ByteLength } from '../agent/utf8Text'
 import { getResourceId, saveResourceChunk } from '../resourceCache'
 import { createToolResult } from './result'
 import { decodeShellOutputForDisplay, getShellFallbackEncoding } from './shellEncoding'
@@ -43,6 +44,8 @@ interface LiveBackgroundShellRun {
   headOutput: string
   outputBaseOffset: number
   totalOutputChars: number
+  totalOutputBytes: number
+  outputBytes: number
   totalOutputLines: number
   fallbackEncoding: string
   persistTimer?: NodeJS.Timeout
@@ -53,11 +56,11 @@ interface LiveBackgroundShellRun {
   resourceError?: string
 }
 
-const BACKGROUND_SHELL_MAX_BUFFER_CHARS = 10 * 1024 * 1024
-const BACKGROUND_SHELL_HEAD_CHARS = 4_000
-const SHELL_RESOURCE_THRESHOLD_CHARS = 16_000
-const SHELL_RESOURCE_CHUNK_CHARS = 16_000
-const COMPLETION_OUTPUT_PREVIEW_CHARS = 8_000
+const BACKGROUND_SHELL_MAX_BUFFER_BYTES = 10 * 1024 * 1024
+const BACKGROUND_SHELL_HEAD_BYTES = 4_000
+const SHELL_RESOURCE_THRESHOLD_BYTES = 16_000
+const SHELL_RESOURCE_CHUNK_BYTES = 16_000
+const COMPLETION_OUTPUT_PREVIEW_BYTES = 8_000
 const OUTPUT_PERSIST_INTERVAL_MS = 250
 const DEFAULT_READ_CHARS = 16_000
 const MAX_READ_CHARS = 64_000
@@ -90,18 +93,20 @@ const shellMetadata = (run: LiveBackgroundShellRun): BackgroundShellJobMetadata 
   ...(run.resource ? { resourceId: run.resource.id } : {}),
   outputBaseOffset: run.outputBaseOffset,
   totalOutputChars: run.totalOutputChars,
+  totalOutputBytes: run.totalOutputBytes,
   totalOutputLines: run.totalOutputChars > 0 ? run.totalOutputLines : 0
 })
 
 const buildLargeOutputProjection = (run: LiveBackgroundShellRun): string => {
   const retained = run.output
-  const preview = projectToolOutputHeadTail(retained, COMPLETION_OUTPUT_PREVIEW_CHARS)
+  const preview = projectToolOutputHeadTail(retained, COMPLETION_OUTPUT_PREVIEW_BYTES)
   const head = run.outputBaseOffset > 0 ? run.headOutput : preview.head
   const resourceId = run.resource?.id
   return [
     'Background shell output exceeded the inline limit.',
     resourceId ? `Resource ID: ${resourceId}` : 'Resource cache write is still pending.',
     `Total chars: ${run.totalOutputChars}`,
+    `Total UTF-8 bytes: ${run.totalOutputBytes}`,
     `Total lines: ${run.totalOutputLines}`,
     run.outputBaseOffset > 0
       ? `Cached rolling window starts at character ${run.outputBaseOffset}.`
@@ -127,7 +132,7 @@ const buildLargeOutputProjection = (run: LiveBackgroundShellRun): string => {
 }
 
 const outputForPersistence = (run: LiveBackgroundShellRun): string =>
-  run.totalOutputChars > SHELL_RESOURCE_THRESHOLD_CHARS
+  run.totalOutputBytes > SHELL_RESOURCE_THRESHOLD_BYTES
     ? buildLargeOutputProjection(run)
     : run.output
 
@@ -166,21 +171,24 @@ const createResourceChunk = (
 })
 
 function queueResourceWrites(run: LiveBackgroundShellRun, force = false): void {
-  if (!force && run.totalOutputChars <= SHELL_RESOURCE_THRESHOLD_CHARS) return
+  if (!force && run.totalOutputBytes <= SHELL_RESOURCE_THRESHOLD_BYTES) return
   if (!run.resourceId) run.resourceId = getResourceId(resourceSource(run))
   const resourceId = run.resourceId
 
-  const targetOffset = force
-    ? run.totalOutputChars
-    : Math.floor(run.totalOutputChars / SHELL_RESOURCE_CHUNK_CHARS) * SHELL_RESOURCE_CHUNK_CHARS
   if (run.resourceWriteOffset < run.outputBaseOffset) {
     run.resourceWriteOffset = run.outputBaseOffset
   }
 
-  while (run.resourceWriteOffset < targetOffset) {
+  while (run.resourceWriteOffset < run.totalOutputChars) {
     const offset = run.resourceWriteOffset
-    const endOffset = Math.min(targetOffset, offset + SHELL_RESOURCE_CHUNK_CHARS)
-    const text = run.output.slice(offset - run.outputBaseOffset, endOffset - run.outputBaseOffset)
+    const chunkWindow = sliceUtf8Prefix(
+      run.output,
+      SHELL_RESOURCE_CHUNK_BYTES,
+      offset - run.outputBaseOffset
+    )
+    const hasMoreBufferedOutput = chunkWindow.endOffset < run.output.length
+    if (!force && chunkWindow.bytes < SHELL_RESOURCE_CHUNK_BYTES && !hasMoreBufferedOutput) break
+    const text = chunkWindow.text
     if (!text) break
     const actualEndOffset = offset + text.length
     const totalCharsAtWrite = run.totalOutputChars
@@ -208,24 +216,29 @@ function queueResourceWrites(run: LiveBackgroundShellRun, force = false): void {
 }
 
 const flushResourceWrites = async (run: LiveBackgroundShellRun): Promise<void> => {
-  if (run.totalOutputChars <= SHELL_RESOURCE_THRESHOLD_CHARS) return
+  if (run.totalOutputBytes <= SHELL_RESOURCE_THRESHOLD_BYTES) return
   queueResourceWrites(run, true)
   await run.resourceWriteChain
 }
 
 const appendBoundedOutput = (run: LiveBackgroundShellRun, text: string): void => {
   if (!text) return
-  if (run.headOutput.length < BACKGROUND_SHELL_HEAD_CHARS) {
-    run.headOutput += text.slice(0, BACKGROUND_SHELL_HEAD_CHARS - run.headOutput.length)
+  const textBytes = utf8ByteLength(text)
+  const headBytes = utf8ByteLength(run.headOutput)
+  if (headBytes < BACKGROUND_SHELL_HEAD_BYTES) {
+    run.headOutput += sliceUtf8Prefix(text, BACKGROUND_SHELL_HEAD_BYTES - headBytes).text
   }
   run.output += text
+  run.outputBytes += textBytes
   run.totalOutputChars += text.length
+  run.totalOutputBytes += textBytes
   run.totalOutputLines += (text.match(/\n/g) || []).length
 
-  if (run.output.length > BACKGROUND_SHELL_MAX_BUFFER_CHARS) {
-    const overflow = run.output.length - BACKGROUND_SHELL_MAX_BUFFER_CHARS
-    run.output = run.output.slice(overflow)
-    run.outputBaseOffset += overflow
+  if (run.outputBytes > BACKGROUND_SHELL_MAX_BUFFER_BYTES) {
+    const retained = sliceUtf8Suffix(run.output, BACKGROUND_SHELL_MAX_BUFFER_BYTES)
+    run.outputBaseOffset += retained.startOffset
+    run.output = retained.text
+    run.outputBytes = retained.bytes
   }
   queueResourceWrites(run)
   schedulePersistRun(run)
@@ -278,6 +291,7 @@ const formatRunHeader = (job: BackgroundJobInfo): string => {
     metadata.cwd ? `Cwd: ${metadata.cwd}` : '',
     `Duration: ${formatDuration(job)}ms`,
     `Output Chars: ${metadata.totalOutputChars || 0}`,
+    `Output UTF-8 Bytes: ${metadata.totalOutputBytes || 0}`,
     `Command: ${metadata.command || job.description || job.title}`,
     job.error ? `Error: ${job.error}` : ''
   ].filter(Boolean)
@@ -420,8 +434,9 @@ const publishCompletion = (
     durationMs: Math.max(0, (run.finishedAt || Date.now()) - run.createdAt),
     ...(run.resource ? { resourceId: run.resource.id, resource: run.resource } : {}),
     totalOutputChars: run.totalOutputChars,
+    totalOutputBytes: run.totalOutputBytes,
     totalOutputLines: run.totalOutputChars > 0 ? run.totalOutputLines : 0,
-    outputTruncated: run.totalOutputChars > SHELL_RESOURCE_THRESHOLD_CHARS
+    outputTruncated: run.totalOutputBytes > SHELL_RESOURCE_THRESHOLD_BYTES
   }
   const timer = setTimeout(() => host?.publishBackgroundShellCompletion?.(completion), 0)
   timer.unref()
@@ -532,6 +547,8 @@ export async function executeBackgroundShellStart(
     headOutput: '',
     outputBaseOffset: 0,
     totalOutputChars: 0,
+    totalOutputBytes: 0,
+    outputBytes: 0,
     totalOutputLines: 1,
     fallbackEncoding: getShellFallbackEncoding(),
     resourceWriteOffset: 0,

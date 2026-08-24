@@ -1,7 +1,8 @@
 import { AgentEvent, SessionResource, SessionResourceChunk } from '../../shared/types'
 import { getResourceId, saveResourceChunk } from '../resourceCache'
+import { sliceUtf8Prefix, sliceUtf8Suffix, utf8ByteLength } from './utf8Text'
 
-export const TOOL_OUTPUT_RESOURCE_CHUNK_CHARS = 16000
+export const TOOL_OUTPUT_RESOURCE_CHUNK_BYTES = 16000
 export type ToolOutputProjectionMode = 'head' | 'head_tail'
 
 export const getToolOutputProjectionMode = (toolName: string): ToolOutputProjectionMode =>
@@ -12,7 +13,7 @@ export interface PersistToolOutputResourceOptions {
   callId: string
   toolName: string
   content: string
-  previewChars: number
+  previewBytes: number
   projectionMode?: ToolOutputProjectionMode
   emitEvent?: (event: AgentEvent) => void
 }
@@ -32,42 +33,42 @@ export interface ToolOutputHeadTailPreview {
   tail: string
   headEndOffset: number
   tailStartOffset: number
-  visibleChars: number
+  visibleBytes: number
   totalLines: number
 }
 
 export function projectToolOutputHeadTail(
   content: string,
-  previewChars: number
+  previewBytes: number
 ): ToolOutputHeadTailPreview {
-  const budget = Math.max(2, Math.floor(previewChars))
-  const headChars = Math.ceil(budget / 2)
-  const tailChars = Math.floor(budget / 2)
-  const headEndOffset = Math.min(content.length, headChars)
-  const tailStartOffset = Math.max(headEndOffset, content.length - tailChars)
+  const budget = Math.max(2, Math.floor(previewBytes))
+  const head = sliceUtf8Prefix(content, Math.ceil(budget / 2))
+  const tail = sliceUtf8Suffix(content, Math.floor(budget / 2))
+  const tailStartOffset = Math.max(head.endOffset, tail.startOffset)
+  const tailText = content.slice(tailStartOffset, tail.endOffset)
   return {
     mode: 'head_tail',
-    head: content.slice(0, headEndOffset),
-    tail: content.slice(tailStartOffset),
-    headEndOffset,
+    head: head.text,
+    tail: tailText,
+    headEndOffset: head.endOffset,
     tailStartOffset,
-    visibleChars: headEndOffset + Math.max(0, content.length - tailStartOffset),
+    visibleBytes: head.bytes + utf8ByteLength(tailText),
     totalLines: content ? content.split(/\r?\n/).length : 0
   }
 }
 
 export function projectToolOutputHead(
   content: string,
-  previewChars: number
+  previewBytes: number
 ): ToolOutputHeadTailPreview {
-  const headEndOffset = Math.min(content.length, Math.max(1, Math.floor(previewChars)))
+  const head = sliceUtf8Prefix(content, Math.max(1, Math.floor(previewBytes)))
   return {
     mode: 'head',
-    head: content.slice(0, headEndOffset),
+    head: head.text,
     tail: '',
-    headEndOffset,
+    headEndOffset: head.endOffset,
     tailStartOffset: content.length,
-    visibleChars: headEndOffset,
+    visibleBytes: head.bytes,
     totalLines: content ? content.split(/\r?\n/).length : 0
   }
 }
@@ -91,6 +92,7 @@ const buildProjectionContent = (options: {
   toolName: string
   resourceId: string
   totalChars: number
+  totalBytes: number
   preview: ToolOutputHeadTailPreview
   nextOffset?: number
 }): string => {
@@ -99,11 +101,12 @@ const buildProjectionContent = (options: {
     `Tool: ${options.toolName}`,
     `Resource ID: ${options.resourceId}`,
     `Total chars: ${options.totalChars}`,
+    `Total UTF-8 bytes: ${options.totalBytes}`,
     `Total lines: ${options.preview.totalLines}`,
-    `Model-visible chars: ${options.preview.visibleChars}`,
-    `Head offset: 0-${options.preview.headEndOffset}`,
+    `Model-visible UTF-8 bytes: ${options.preview.visibleBytes}`,
+    `Head character offset: 0-${options.preview.headEndOffset}`,
     options.preview.mode === 'head_tail'
-      ? `Tail offset: ${options.preview.tailStartOffset}-${options.totalChars}`
+      ? `Tail character offset: ${options.preview.tailStartOffset}-${options.totalChars}`
       : '',
     options.nextOffset !== undefined ? `Next offset: ${options.nextOffset}` : 'End of output.',
     options.nextOffset !== undefined
@@ -128,7 +131,8 @@ export async function persistToolOutputResource(
   options: PersistToolOutputResourceOptions
 ): Promise<ToolOutputResourceProjection | undefined> {
   const totalChars = options.content.length
-  if (totalChars <= options.previewChars) return undefined
+  const totalBytes = utf8ByteLength(options.content)
+  if (totalBytes <= options.previewBytes) return undefined
 
   const source = `tool-output://${options.reqId}/${options.callId}/${options.toolName}`
   const resourceId = getResourceId(source)
@@ -136,18 +140,15 @@ export async function persistToolOutputResource(
   const projectionMode = options.projectionMode || 'head'
   const preview =
     projectionMode === 'head_tail'
-      ? projectToolOutputHeadTail(options.content, options.previewChars)
-      : projectToolOutputHead(options.content, options.previewChars)
+      ? projectToolOutputHeadTail(options.content, options.previewBytes)
+      : projectToolOutputHead(options.content, options.previewBytes)
   const previewEndOffset = preview.headEndOffset
-  const firstEndOffset = Math.min(totalChars, TOOL_OUTPUT_RESOURCE_CHUNK_CHARS)
   let lastResource: SessionResource | undefined
 
   for (let offset = 0; offset < totalChars; ) {
-    const endOffset =
-      offset === 0
-        ? firstEndOffset
-        : Math.min(totalChars, offset + TOOL_OUTPUT_RESOURCE_CHUNK_CHARS)
-    const text = options.content.slice(offset, endOffset)
+    const chunkWindow = sliceUtf8Prefix(options.content, TOOL_OUTPUT_RESOURCE_CHUNK_BYTES, offset)
+    const endOffset = chunkWindow.endOffset
+    const text = chunkWindow.text
     const chunk = createChunk(options.callId, text, offset, endOffset, now)
     lastResource = await saveResourceChunk(
       resourceId,
@@ -180,6 +181,7 @@ export async function persistToolOutputResource(
       toolName: options.toolName,
       resourceId,
       totalChars,
+      totalBytes,
       preview,
       nextOffset
     })

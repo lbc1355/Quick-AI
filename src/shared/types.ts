@@ -1016,6 +1016,7 @@ export interface BackgroundShellJobMetadata extends Record<string, unknown> {
   resourceId?: string
   outputBaseOffset: number
   totalOutputChars: number
+  totalOutputBytes?: number
   totalOutputLines?: number
 }
 
@@ -1035,6 +1036,7 @@ export interface BackgroundShellCompletion {
   resourceId?: string
   resource?: SessionResource
   totalOutputChars?: number
+  totalOutputBytes?: number
   totalOutputLines?: number
   outputTruncated?: boolean
 }

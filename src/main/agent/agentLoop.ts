@@ -46,6 +46,8 @@ import {
   resolveForcedFinalReason,
   toReportedMaxSteps
 } from './agentRunLimits'
+import { createModelRequestContextPolicy, createModelRequestRecord } from './modelRequestRecord'
+import { utf8ByteLength } from './utf8Text'
 
 const sendEvent = (
   mainWindow: BrowserWindow,
@@ -185,6 +187,7 @@ export const runAgentLoop = async (
     toolScope,
     conversationId,
     actionLog,
+    resumeRequestRecord,
     resumeLoadError,
     initialActiveTools
   } = preparedRun
@@ -272,7 +275,7 @@ export const runAgentLoop = async (
       message.role === 'tool' &&
       message.tool_call_id &&
       typeof message.content === 'string' &&
-      message.content.length > initialToolOutputSpilloverThreshold
+      utf8ByteLength(message.content) > initialToolOutputSpilloverThreshold
     ) {
       runCtx.storeToolOutput(message.tool_call_id, message.content)
       runCtx.activateTool('read_tool_output')
@@ -379,6 +382,8 @@ export const runAgentLoop = async (
       if (steeringCount > 0) {
         persistCheckpoint(Math.max(0, step - 1))
       }
+      const reconstructedRequest =
+        step === 1 && steeringCount === 0 ? resumeRequestRecord : undefined
 
       eventStream.emit({
         type: 'agent_progress',
@@ -392,38 +397,47 @@ export const runAgentLoop = async (
       SessionLogger.logStepStart(conversationId, step, reportedMaxSteps)
 
       const toolRegistrySnapshot = materializeToolRegistry(toolRegistry)
-      const toolsToDeclare = toolDeclarationCache.getDeclarations({
-        toolDiscovery,
-        activeTools: runCtx.activeTools,
-        skillTools,
-        permissions,
-        toolRegistry: toolRegistrySnapshot,
-        registryRevision: toolRegistrySnapshot.revision
-      })
+      const toolsToDeclare = reconstructedRequest?.payload
+        ? reconstructedRequest.payload.tools || []
+        : toolDeclarationCache.getDeclarations({
+            toolDiscovery,
+            activeTools: runCtx.activeTools,
+            skillTools,
+            permissions,
+            toolRegistry: toolRegistrySnapshot,
+            registryRevision: toolRegistrySnapshot.revision
+          })
 
       // Phase 1: Context Size Control & Message Trimming
       const contextSize = getEffectiveContextWindowSize(options)
       const toolOutputSpilloverThreshold = getToolOutputSpilloverThreshold(contextSize)
-      const staleToolCompaction = compactStaleToolResultsForContextPressure(messages, {
-        maxTokens: contextSize
-      })
-      if (staleToolCompaction.compactedCount > 0) {
-        messages = staleToolCompaction.messages
-        eventStream.emit({
-          type: 'agent_progress',
-          step,
-          maxSteps: reportedMaxSteps,
-          stepId,
-          activeTools: Array.from(runCtx.activeTools),
-          message: `Compacted ${staleToolCompaction.compactedCount} stale tool results before context trimming`
+      const messagesBeforeContextPolicy = messages
+      let compactedStaleToolResults = 0
+      let compactedStaleToolResultChars = 0
+      if (!reconstructedRequest) {
+        const staleToolCompaction = compactStaleToolResultsForContextPressure(messages, {
+          maxTokens: contextSize
+        })
+        compactedStaleToolResults = staleToolCompaction.compactedCount
+        compactedStaleToolResultChars = staleToolCompaction.savedChars
+        if (staleToolCompaction.compactedCount > 0) {
+          messages = staleToolCompaction.messages
+          eventStream.emit({
+            type: 'agent_progress',
+            step,
+            maxSteps: reportedMaxSteps,
+            stepId,
+            activeTools: Array.from(runCtx.activeTools),
+            message: `Compacted ${staleToolCompaction.compactedCount} stale tool results before context trimming`
+          })
+        }
+        messages = trimMessagesToFit(messages, {
+          maxTokens: contextSize,
+          reserveForResponseRatio: DEFAULT_RESPONSE_RESERVE_RATIO,
+          strategy: 'truncate-oldest-tool',
+          toolOutputSpilloverThreshold
         })
       }
-      messages = trimMessagesToFit(messages, {
-        maxTokens: contextSize,
-        reserveForResponseRatio: DEFAULT_RESPONSE_RESERVE_RATIO,
-        strategy: 'truncate-oldest-tool',
-        toolOutputSpilloverThreshold
-      })
 
       const cacheShape = captureCacheShape({
         messages,
@@ -432,6 +446,43 @@ export const runAgentLoop = async (
         cachePriorityRetainedRuns: options.cachePriorityRetainedRuns
       })
       const requestCacheDiagnostics = previewCacheShapeForSession(conversationId, cacheShape)
+      const modelConfig = {
+        apiUrl: options.apiUrl,
+        apiKey: options.apiKey,
+        providerConnection: options.providerConnection,
+        model: options.model,
+        modelRuntime: options.modelRuntime,
+        reasoningPreference:
+          reconstructedRequest?.effectiveReasoningPreference ?? reasoningPreference.effective
+      }
+      const modelRequestRecord = createModelRequestRecord({
+        runId: reqId,
+        sessionId: conversationId,
+        contextEpoch,
+        step,
+        stepId,
+        modelConfig,
+        messages,
+        tools: toolsToDeclare,
+        requestedReasoningPreference:
+          reconstructedRequest?.requestedReasoningPreference ?? reasoningPreference.requested,
+        effectiveReasoningPreference:
+          reconstructedRequest?.effectiveReasoningPreference ?? reasoningPreference.effective,
+        contextPolicy: createModelRequestContextPolicy({
+          contextWindowTokens: contextSize,
+          contextRetentionMode: options.contextRetentionMode,
+          beforeMessages: messagesBeforeContextPolicy,
+          afterMessages: messages,
+          compactedStaleToolResults,
+          compactedStaleToolResultChars
+        })
+      })
+
+      // Persist the exact semantic request boundary before any provider bytes are sent. The
+      // checkpoint uses the same post-policy messages so a crash cannot resume from an older,
+      // pre-trim context shape.
+      eventJournal.recordModelRequest(modelRequestRecord)
+      persistCheckpoint(Math.max(0, step - 1))
 
       SessionLogger.logModelRequest(conversationId, {
         step,
@@ -463,14 +514,7 @@ export const runAgentLoop = async (
         streamedText: assistantTextBuffer,
         cacheStats
       } = await runModelTurn({
-        modelConfig: {
-          apiUrl: options.apiUrl,
-          apiKey: options.apiKey,
-          providerConnection: options.providerConnection,
-          model: options.model,
-          modelRuntime: options.modelRuntime,
-          reasoningPreference: reasoningPreference.effective
-        },
+        modelConfig,
         messages,
         toolsToDeclare,
         signal,
@@ -503,6 +547,8 @@ export const runAgentLoop = async (
           return { ...stats, cacheDiagnostics: diagnostics }
         }
       })
+
+      eventJournal.settleModelRequest(modelRequestRecord.requestId, assistantMessage)
 
       reasoningLineProgress('', true)
 
@@ -589,19 +635,22 @@ export const runAgentLoop = async (
     // best-effort final answer and preserve the actual terminal reason.
     options.setSteeringAcceptance?.(false)
     const forcedFinalReason = resolveForcedFinalReason(maxSteps, haltRequested)
+    const forcedFinalStep = Math.max(1, runCtx.currentStep + 1)
+    const forcedFinalStepId = `${reqId}:step:${forcedFinalStep}:forced-final`
+    const forcedFinalModelConfig = {
+      apiUrl: options.apiUrl,
+      apiKey: options.apiKey,
+      providerConnection: options.providerConnection,
+      model: options.model,
+      modelRuntime: options.modelRuntime,
+      // Compaction / forced-final answers stay on auto to avoid expensive max effort.
+      reasoningPreference: 'auto' as const
+    }
     const forcedFinalTurn = await runForcedFinalTurn({
       messages,
       reason: forcedFinalReason,
       signal,
-      modelConfig: {
-        apiUrl: options.apiUrl,
-        apiKey: options.apiKey,
-        providerConnection: options.providerConnection,
-        model: options.model,
-        modelRuntime: options.modelRuntime,
-        // Compaction / forced-final answers stay on auto to avoid expensive max effort.
-        reasoningPreference: 'auto'
-      },
+      modelConfig: forcedFinalModelConfig,
       contextSize: getEffectiveContextWindowSize(options),
       usageTracker,
       emitReasoning: (content) => {
@@ -609,6 +658,34 @@ export const runAgentLoop = async (
       },
       emitFinal: (content) => {
         eventStream.emit({ type: 'final', content })
+      },
+      onRequestPrepared: (request) => {
+        messages = request.messages
+        const record = createModelRequestRecord({
+          runId: reqId,
+          sessionId: conversationId,
+          contextEpoch,
+          step: forcedFinalStep,
+          stepId: forcedFinalStepId,
+          modelConfig: forcedFinalModelConfig,
+          messages: request.messages,
+          requestedReasoningPreference: 'auto',
+          effectiveReasoningPreference: 'auto',
+          contextPolicy: createModelRequestContextPolicy({
+            contextWindowTokens: getEffectiveContextWindowSize(options),
+            contextRetentionMode: options.contextRetentionMode,
+            beforeMessages: request.beforeMessages,
+            afterMessages: request.messages,
+            compactedStaleToolResults: 0,
+            compactedStaleToolResultChars: 0
+          })
+        })
+        eventJournal.recordModelRequest(record)
+        persistCheckpoint(runCtx.currentStep)
+        return record.requestId
+      },
+      onRequestSettled: (requestId, response) => {
+        eventJournal.settleModelRequest(requestId, response)
       }
     })
     messages = forcedFinalTurn.messages

@@ -122,4 +122,28 @@ describe('recordToolAction', () => {
       'resource_extra_12345'
     ])
   })
+
+  it('uses UTF-8 bytes for the output-store threshold while preserving character size metadata', () => {
+    const actionLog = new ActionLog()
+
+    recordToolAction({
+      actionLog,
+      conversationId: 'session-utf8',
+      reqId: 'run-utf8',
+      turnIndex: 1,
+      callId: 'call-utf8',
+      toolName: 'shell',
+      args: {},
+      permission: 'allow',
+      status: 'success',
+      resultContent: '中文',
+      outputSpilloverThreshold: 4,
+      startedAt: Date.now()
+    })
+
+    expect(actionLog.get('call-utf8')).toMatchObject({
+      resultSize: 2,
+      resultInOutputStore: true
+    })
+  })
 })

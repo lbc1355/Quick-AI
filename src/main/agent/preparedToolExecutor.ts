@@ -17,6 +17,7 @@ import {
   executeRuntimeToolCall
 } from './toolRuntime'
 import { getToolOutputProjectionMode, persistToolOutputResource } from './toolOutputResource'
+import { utf8ByteLength } from './utf8Text'
 
 const TOOL_OUTPUT_RESOURCE_SPILLOVER_EXCLUDED_TOOLS = new Set([
   'fetch_url',
@@ -211,7 +212,7 @@ export async function executePreparedToolCall(
   if (
     runtimeResult.status === 'success' &&
     shouldPersistToolOutputResource(toolName) &&
-    runtimeResult.executionResult.resultForModel.length > options.outputSpilloverThreshold
+    utf8ByteLength(runtimeResult.executionResult.resultForModel) > options.outputSpilloverThreshold
   ) {
     try {
       toolOutputResource = await persistToolOutputResource({
@@ -219,7 +220,7 @@ export async function executePreparedToolCall(
         callId,
         toolName,
         content: runtimeResult.executionResult.resultForModel,
-        previewChars: options.outputSpilloverThreshold,
+        previewBytes: options.outputSpilloverThreshold,
         projectionMode: getToolOutputProjectionMode(toolName),
         emitEvent: options.emitEvent
       })

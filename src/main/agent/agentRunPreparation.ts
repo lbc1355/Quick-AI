@@ -21,6 +21,14 @@ import {
   RunCheckpoint,
   loadRunCheckpoint as defaultLoadRunCheckpoint
 } from './runCheckpoint'
+import {
+  getPendingReconstructableModelRequest,
+  loadAgentEventJournal as defaultLoadAgentEventJournal
+} from './agentEventJournal'
+import {
+  isModelRequestTargetCompatible,
+  type ModelRequestJournalRecord
+} from './modelRequestRecord'
 
 export interface AgentSteeringPrompt {
   admissionId: string
@@ -70,6 +78,7 @@ export type AgentToolDiscovery = 'static' | 'dynamic'
 export interface PrepareAgentRunDependencies {
   createActionLog?: (conversationId: string) => ActionLog
   loadRunCheckpoint?: typeof defaultLoadRunCheckpoint
+  loadAgentEventJournal?: typeof defaultLoadAgentEventJournal
   buildSkillMessages?: typeof defaultBuildSkillMessages
   prepareChatAgentMessages?: typeof defaultPrepareChatAgentMessages
   cloneMessagesForCheckpoint?: typeof defaultCloneMessagesForCheckpoint
@@ -96,6 +105,7 @@ export interface PreparedAgentRun {
   resumeSourceSessionId: string
   actionLog: ActionLog
   resumeCheckpoint?: RunCheckpoint
+  resumeRequestRecord?: ModelRequestJournalRecord
   resumeLoadError?: string
   messages: ChatCompletionMessage[]
   initialActiveTools: string[]
@@ -128,6 +138,7 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
     dependencies.createActionLog ||
     ((conversationId: string): ActionLog => new ActionLog(getActionLogPath(conversationId)))
   const loadRunCheckpoint = dependencies.loadRunCheckpoint || defaultLoadRunCheckpoint
+  const loadAgentEventJournal = dependencies.loadAgentEventJournal || defaultLoadAgentEventJournal
   const buildSkillMessages = dependencies.buildSkillMessages || defaultBuildSkillMessages
   const prepareChatAgentMessages =
     dependencies.prepareChatAgentMessages || defaultPrepareChatAgentMessages
@@ -158,15 +169,41 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
   const resumeCheckpoint = options.resumeFromRunId
     ? loadRunCheckpoint(resumeSourceSessionId, options.resumeFromRunId)
     : undefined
+  const resumeJournal = options.resumeFromRunId
+    ? loadAgentEventJournal(resumeSourceSessionId, options.resumeFromRunId)
+    : undefined
+  const pendingResumeRequest = resumeJournal
+    ? getPendingReconstructableModelRequest(resumeJournal)
+    : undefined
+  const resumeRequestRecord =
+    pendingResumeRequest &&
+    isModelRequestTargetCompatible(pendingResumeRequest, {
+      apiUrl: options.apiUrl,
+      apiKey: options.apiKey,
+      providerConnection: options.providerConnection,
+      model: options.model,
+      modelRuntime: options.modelRuntime,
+      reasoningPreference: options.reasoningPreference
+    })
+      ? pendingResumeRequest
+      : undefined
 
   const resumeLoadError =
-    options.resumeFromRunId && !resumeCheckpoint
-      ? `No resumable checkpoint found for run ${options.resumeFromRunId}. Regenerate the message if you want to start over.`
+    options.resumeFromRunId && !resumeCheckpoint && !resumeRequestRecord
+      ? pendingResumeRequest
+        ? `The pending request for run ${options.resumeFromRunId} targets a different provider or model. Restore the original model selection or regenerate the message.`
+        : `No resumable checkpoint found for run ${options.resumeFromRunId}. Regenerate the message if you want to start over.`
       : undefined
 
   let messages: ChatCompletionMessage[] = []
   if (resumeLoadError) {
     messages = []
+  } else if (resumeRequestRecord?.payload) {
+    // A prepared request is written synchronously before provider dispatch. Prefer its exact
+    // post-policy messages when a crash landed between that write and the next checkpoint.
+    messages = JSON.parse(
+      JSON.stringify(resumeRequestRecord.payload.messages)
+    ) as ChatCompletionMessage[]
   } else if (resumeCheckpoint) {
     messages = cloneMessagesForCheckpoint(resumeCheckpoint.messages)
   } else if (isSkill) {
@@ -209,6 +246,12 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
   if (resumeCheckpoint) {
     appendUnique(initialActiveTools, resumeCheckpoint.activeTools)
   }
+  if (resumeRequestRecord?.payload?.tools) {
+    appendUnique(
+      initialActiveTools,
+      resumeRequestRecord.payload.tools.map((tool) => tool.function.name)
+    )
+  }
   if (toolDiscovery === 'dynamic') {
     appendUnique(
       initialActiveTools,
@@ -229,6 +272,7 @@ export function prepareAgentRun(input: PrepareAgentRunInput): PreparedAgentRun {
     resumeSourceSessionId,
     actionLog,
     resumeCheckpoint,
+    resumeRequestRecord,
     resumeLoadError,
     messages,
     initialActiveTools,

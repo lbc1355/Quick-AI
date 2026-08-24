@@ -23,6 +23,14 @@ describe('runForcedFinalTurn', () => {
     })
     const emitFinal = vi.fn()
     const emitReasoning = vi.fn()
+    const lifecycleOrder: string[] = []
+    const onRequestPrepared = vi.fn(() => {
+      lifecycleOrder.push('prepared')
+      return 'request-1'
+    })
+    const onRequestSettled = vi.fn(() => {
+      lifecycleOrder.push('settled')
+    })
 
     const result = await runForcedFinalTurn({
       messages,
@@ -37,9 +45,14 @@ describe('runForcedFinalTurn', () => {
       usageTracker,
       emitReasoning,
       emitFinal,
+      onRequestPrepared,
+      onRequestSettled,
       dependencies: {
         trimMessagesToFit,
-        runModelTurn
+        runModelTurn: vi.fn(async (options) => {
+          lifecycleOrder.push('provider')
+          return runModelTurn(options)
+        })
       }
     })
 
@@ -67,6 +80,17 @@ describe('runForcedFinalTurn', () => {
     )
     expect(emitFinal).toHaveBeenNthCalledWith(1, 'Final ')
     expect(emitFinal).toHaveBeenNthCalledWith(2, 'answer.')
+    expect(onRequestPrepared).toHaveBeenCalledWith({
+      beforeMessages: expect.arrayContaining([
+        expect.objectContaining({ role: 'user', content: expect.stringContaining('maximum') })
+      ]),
+      messages: trimmedMessages
+    })
+    expect(onRequestSettled).toHaveBeenCalledWith('request-1', {
+      role: 'assistant',
+      content: 'Final answer.'
+    })
+    expect(lifecycleOrder).toEqual(['prepared', 'provider', 'settled'])
     expect(result.messages).toBe(trimmedMessages)
     expect(result.finalMessage).toEqual({ role: 'assistant', content: 'Final answer.' })
   })

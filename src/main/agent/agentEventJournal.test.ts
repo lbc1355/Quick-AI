@@ -7,9 +7,11 @@ import {
   deleteAgentEventJournal,
   deleteAgentEventJournals,
   getAgentEventJournalDir,
+  getPendingReconstructableModelRequest,
   loadAgentEventJournal,
   recoverInterruptedAgentEventJournals
 } from './agentEventJournal'
+import { createModelRequestRecord } from './modelRequestRecord'
 
 const testDir = join(__dirname, '../../../temp-agent-event-journal-test')
 
@@ -104,6 +106,51 @@ describe('agentEventJournal', () => {
         expect.objectContaining({ type: 'agent_end', status: 'completed' })
       ]
     })
+  })
+
+  it('persists the latest request before dispatch and marks it settled after response', () => {
+    const writer = createAgentEventJournalWriter({ sessionId: 'session-1', runId: 'run-request' })
+    const request = createModelRequestRecord({
+      runId: 'run-request',
+      sessionId: 'session-1',
+      contextEpoch: 2,
+      step: 1,
+      stepId: 'run-request:step:1',
+      modelConfig: {
+        apiUrl: 'https://api.example.com/v1',
+        apiKey: 'must-not-be-persisted',
+        model: 'test-model'
+      },
+      messages: [{ role: 'user', content: 'hello' }],
+      requestedReasoningPreference: 'auto',
+      effectiveReasoningPreference: 'auto',
+      contextPolicy: {
+        contextWindowTokens: 8000,
+        beforeMessageCount: 1,
+        afterMessageCount: 1,
+        beforeEstimatedTokens: 2,
+        afterEstimatedTokens: 2,
+        compactedStaleToolResults: 0,
+        compactedStaleToolResultChars: 0
+      }
+    })
+
+    writer.recordModelRequest(request)
+    const prepared = loadAgentEventJournal('session-1', 'run-request')!
+    expect(getPendingReconstructableModelRequest(prepared)?.requestId).toBe(request.requestId)
+    expect(JSON.stringify(prepared)).not.toContain('must-not-be-persisted')
+
+    writer.settleModelRequest(request.requestId, { role: 'assistant', content: 'done' })
+    const settled = loadAgentEventJournal('session-1', 'run-request')!
+    expect(settled.latestModelRequest).toMatchObject({
+      requestId: request.requestId,
+      state: 'settled',
+      responseHash: expect.stringMatching(/^[a-f0-9]{64}$/)
+    })
+    expect(settled.modelRequestHistory).toEqual([
+      expect.objectContaining({ requestId: request.requestId, state: 'settled' })
+    ])
+    expect(getPendingReconstructableModelRequest(settled)).toBeUndefined()
   })
 
   it('bounds oversized event payloads before writing them', () => {

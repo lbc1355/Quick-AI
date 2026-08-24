@@ -84,7 +84,11 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
 
 vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => {
   return {
-    StdioClientTransport: class {}
+    StdioClientTransport: class {
+      async close(): Promise<void> {
+        return Promise.resolve(undefined)
+      }
+    }
   }
 })
 
@@ -108,6 +112,7 @@ describe('McpManager', () => {
 
   afterEach(async () => {
     await McpManager.shutdown()
+    vi.restoreAllMocks()
     if (existsSync(configPath)) {
       unlinkSync(configPath)
     }
@@ -695,7 +700,7 @@ describe('McpManager', () => {
   it('marks a server failed and unregisters its tools when the connection closes unexpectedly', async () => {
     writeFileSync(
       configPath,
-      JSON.stringify({ servers: { git: { command: 'node' } } }, null, 2),
+      JSON.stringify({ servers: { git: { command: 'node', reconnect: false } } }, null, 2),
       'utf-8'
     )
 
@@ -717,5 +722,168 @@ describe('McpManager', () => {
     expect(status?.error).toContain('closed')
     expect(registry.has('mcp_git_test_tool')).toBe(false)
     expect(McpManager.getServerInstructions()).toEqual([])
+  })
+
+  it('reconnects after an unexpected close and ignores late callbacks from the old generation', async () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          reconnect: { max_attempts: 2, initial_delay: 5, max_delay: 5 },
+          servers: { git: { command: 'node' } }
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
+    const connectSpy = vi.spyOn(Client.prototype, 'connect')
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const oldClient = (McpManager as any).clients.get('git')
+    oldClient.onclose()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const currentClient = (McpManager as any).clients.get('git')
+    expect(currentClient).toBeDefined()
+    expect(currentClient).not.toBe(oldClient)
+    expect(connectSpy).toHaveBeenCalledTimes(2)
+    expect(McpManager.getStatuses().find((status) => status.name === 'git')?.status).toBe(
+      'connected'
+    )
+    expect(getToolRegistry().has('mcp_git_test_tool')).toBe(true)
+
+    // A delayed close event from generation 1 must not tear down generation 2.
+    oldClient.onclose()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect((McpManager as any).clients.get('git')).toBe(currentClient)
+    expect(McpManager.getStatuses().find((status) => status.name === 'git')?.status).toBe(
+      'connected'
+    )
+  })
+
+  it('bounds automatic reconnect attempts and settles on a failed status', async () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          reconnect: { max_attempts: 2, initial_delay: 5, max_delay: 5 },
+          servers: { git: { command: 'node' } }
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const client = (McpManager as any).clients.get('git')
+    const reconnectSpy = vi
+      .spyOn(Client.prototype, 'connect')
+      .mockRejectedValue(new Error('server remains unavailable'))
+
+    client.onclose()
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    const status = McpManager.getStatuses().find((entry) => entry.name === 'git')
+    expect(reconnectSpy).toHaveBeenCalledTimes(2)
+    expect(status).toMatchObject({
+      status: 'failed',
+      tools: [],
+      error: expect.stringContaining('exhausted after 2 attempts')
+    })
+    expect(getToolRegistry().has('mcp_git_test_tool')).toBe(false)
+  })
+
+  it('keeps the reconnect budget across briefly successful crash-loop generations', async () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          reconnect: { max_attempts: 1, initial_delay: 5, max_delay: 200 },
+          servers: { git: { command: 'node' } }
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    const firstClient = (McpManager as any).clients.get('git')
+    const reconnectSpy = vi.spyOn(Client.prototype, 'connect')
+
+    firstClient.onclose()
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    const secondClient = (McpManager as any).clients.get('git')
+    expect(secondClient).toBeDefined()
+    expect(secondClient).not.toBe(firstClient)
+
+    // The short-lived successful generation does not reset the outage budget.
+    secondClient.onclose()
+    await new Promise((resolve) => setTimeout(resolve, 40))
+
+    expect(reconnectSpy).toHaveBeenCalledTimes(1)
+    expect(McpManager.getStatuses().find((status) => status.name === 'git')).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('exhausted after 1 attempts')
+    })
+    expect((McpManager as any).clients.get('git')).toBeUndefined()
+  })
+
+  it('does not publish tools when the transport closes during initialization', async () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({ servers: { git: { command: 'node', reconnect: false } } }, null, 2),
+      'utf-8'
+    )
+    vi.spyOn(Client.prototype, 'connect').mockImplementationOnce(async function (this: {
+      onclose?: () => void
+    }) {
+      this.onclose?.()
+    })
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(McpManager.getStatuses().find((status) => status.name === 'git')).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('closed during initialization'),
+      tools: []
+    })
+    expect(getToolRegistry().has('mcp_git_test_tool')).toBe(false)
+  })
+
+  it('cancels a scheduled reconnect when a manual server reload supersedes it', async () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          reconnect: { max_attempts: 2, initial_delay: 60, max_delay: 60 },
+          servers: { git: { command: 'node' } }
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const oldClient = (McpManager as any).clients.get('git')
+    const connectSpy = vi.spyOn(Client.prototype, 'connect')
+
+    oldClient.onclose()
+    await McpManager.reloadServer('git')
+    await new Promise((resolve) => setTimeout(resolve, 90))
+
+    expect(connectSpy).toHaveBeenCalledTimes(1)
+    expect(McpManager.getStatuses().find((status) => status.name === 'git')?.status).toBe(
+      'connected'
+    )
   })
 })

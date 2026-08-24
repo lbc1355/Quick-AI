@@ -1,9 +1,11 @@
 import { ChatCompletionMessage } from '../../shared/types'
 import { estimateMessagesTokens } from './tokenEstimator'
+import { sliceUtf8Prefix, utf8ByteLength } from './utf8Text'
 
 export const STALE_TOOL_RESULT_COMPACT_MARKER =
   'Historical tool result compacted for cache-priority context.'
 export const STALE_TOOL_RESULT_COMPACT_THRESHOLD_CHARS = 4000
+export const STALE_TOOL_RESULT_COMPACT_THRESHOLD_BYTES = STALE_TOOL_RESULT_COMPACT_THRESHOLD_CHARS
 const DEFAULT_PREVIEW_CHARS = 360
 const DEFAULT_REOPEN_CHARS = 8000
 
@@ -18,7 +20,11 @@ interface ResourceReference {
 }
 
 export interface CompactStaleToolResultsOptions {
+  thresholdBytes?: number
+  previewBytes?: number
+  /** @deprecated Use thresholdBytes. */
   thresholdChars?: number
+  /** @deprecated Use previewBytes. */
   previewChars?: number
 }
 
@@ -68,10 +74,10 @@ const modelPreviewSource = (content: string): string => {
   return content.trim()
 }
 
-const previewText = (content: string, previewChars: number): string => {
+const previewText = (content: string, previewBytes: number): string => {
   const source = modelPreviewSource(content)
-  if (source.length <= previewChars) return source
-  return `${source.slice(0, previewChars)}...`
+  if (utf8ByteLength(source) <= previewBytes) return source
+  return `${sliceUtf8Prefix(source, previewBytes).text}...`
 }
 
 const reopenOffset = (ref: ResourceReference): number =>
@@ -95,20 +101,25 @@ export function compactStaleToolResultMessage(
   if (message.role !== 'tool' || typeof message.content !== 'string') return message
   if (isCompactedStaleToolResultContent(message.content)) return message
 
-  const threshold = options.thresholdChars ?? STALE_TOOL_RESULT_COMPACT_THRESHOLD_CHARS
-  if (message.content.length <= threshold) return message
+  const threshold =
+    options.thresholdBytes ?? options.thresholdChars ?? STALE_TOOL_RESULT_COMPACT_THRESHOLD_BYTES
+  if (utf8ByteLength(message.content) <= threshold) return message
 
   const ref = parseResourceReference(message.content)
   if (!ref) return message
 
   const offset = reopenOffset(ref)
   const maxChars = reopenMaxChars(ref)
-  const preview = previewText(message.content, options.previewChars ?? DEFAULT_PREVIEW_CHARS)
+  const preview = previewText(
+    message.content,
+    options.previewBytes ?? options.previewChars ?? DEFAULT_PREVIEW_CHARS
+  )
   const lines = [
     STALE_TOOL_RESULT_COMPACT_MARKER,
     `Tool: ${message.name || 'unknown'}`,
     message.tool_call_id ? `Tool call ID: ${message.tool_call_id}` : '',
     `Original chars: ${message.content.length}`,
+    `Original UTF-8 bytes: ${utf8ByteLength(message.content)}`,
     `Resource ID: ${ref.resourceId}`,
     ref.returnedOffset ? `Original returned offset: ${ref.returnedOffset}` : '',
     ref.nextOffset !== undefined ? `Original next offset: ${ref.nextOffset}` : '',

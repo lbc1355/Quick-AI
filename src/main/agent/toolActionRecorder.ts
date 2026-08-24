@@ -3,6 +3,7 @@ import { ActionLog, ActionRecord } from './actionLog'
 import { appendRunAction, updateRunManifest } from './runManifest'
 import { SessionLogger } from './sessionLogger'
 import { buildSideEffectEntry, extractResourceIds } from './sideEffects'
+import { utf8ByteLength } from './utf8Text'
 
 export interface RecordToolActionOptions {
   actionLog: ActionLog
@@ -40,7 +41,7 @@ export function recordToolAction(options: RecordToolActionOptions): RecordToolAc
     resultStatus: options.status,
     resultSummary: options.resultContent.slice(0, 500),
     resultSize: options.resultContent.length,
-    resultInOutputStore: options.resultContent.length > options.outputSpilloverThreshold,
+    resultInOutputStore: utf8ByteLength(options.resultContent) > options.outputSpilloverThreshold,
     permission: options.permission,
     durationMs
   }

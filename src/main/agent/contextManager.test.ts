@@ -179,4 +179,30 @@ describe('trimMessagesToFit', () => {
     expect(content).toContain('truncated')
     expect(content).not.toContain('read_tool_output')
   })
+
+  it('uses UTF-8 bytes when deciding whether a truncated tool output has a pointer', () => {
+    const multibyte = '中'.repeat(2000)
+    const messages: ChatCompletionMessage[] = [
+      { role: 'system', content: 'sys' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          { id: 'utf8-call', type: 'function', function: { name: 'shell', arguments: '{}' } }
+        ]
+      },
+      { role: 'tool', tool_call_id: 'utf8-call', name: 'shell', content: multibyte },
+      { role: 'user', content: 'q1' },
+      { role: 'user', content: 'q2' },
+      { role: 'user', content: 'q3' },
+      { role: 'user', content: 'q4' }
+    ]
+
+    const result = trimMessagesToFit(messages, { maxTokens: 350, reserveForResponse: 1 })
+    const content = result.find((message) => message.tool_call_id === 'utf8-call')
+      ?.content as string
+
+    expect(content).toContain('6000-byte UTF-8 output')
+    expect(content).toContain('read_tool_output(output_id="utf8-call")')
+  })
 })

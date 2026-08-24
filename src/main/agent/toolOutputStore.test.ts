@@ -34,6 +34,16 @@ describe('AgentRunContext tool-output store', () => {
     expect(run.getToolOutput('b')).toBeDefined()
     expect(run.getToolOutput('c')).toBeDefined()
   })
+
+  it('counts multibyte output against the byte cap', () => {
+    const run = newRun('tos-req')
+    const almostThreeMB = '中'.repeat(900_000)
+    run.storeToolOutput('a', almostThreeMB)
+    run.storeToolOutput('b', almostThreeMB)
+
+    expect(run.getToolOutput('a')).toBeUndefined()
+    expect(run.getToolOutput('b')).toBeDefined()
+  })
 })
 
 describe('read_tool_output tool', () => {

@@ -424,6 +424,15 @@ describe('runAgentLoop', () => {
     // 3rd step: callCount 3 (returns tool)
     // 4th step: final summarized call (tools are undefined, returns final answer)
     expect(callCount).toBe(4)
+    const journal = loadAgentEventJournal('test-req-5', 'test-req-5')
+    expect(journal?.latestModelRequest).toMatchObject({
+      state: 'settled',
+      step: 4,
+      stepId: 'test-req-5:step:4:forced-final',
+      reconstructable: true
+    })
+    expect(journal?.latestModelRequest?.payload?.tools).toBeUndefined()
+    expect(journal?.modelRequestHistory).toHaveLength(4)
   })
 
   it('does not inject prior action history into ordinary follow-up turns', async () => {
@@ -533,6 +542,18 @@ describe('runAgentLoop', () => {
       sessionId: 'checkpoint-session'
     })
 
+    const interruptedJournal = loadAgentEventJournal('checkpoint-session', 'checkpoint-run-1')
+    expect(interruptedJournal?.latestModelRequest).toMatchObject({
+      state: 'prepared',
+      reconstructable: true
+    })
+    expect(
+      interruptedJournal?.latestModelRequest?.payload?.messages.some(
+        (message) => message.role === 'tool' && message.tool_call_id === 'tc-checkpoint-read'
+      )
+    ).toBe(true)
+    const interruptedTools = interruptedJournal?.latestModelRequest?.payload?.tools
+
     let sawCheckpoint = false
     vi.mocked(callModel).mockImplementation(async (_options, messages) => {
       const joined = messages
@@ -564,6 +585,13 @@ describe('runAgentLoop', () => {
     })
 
     expect(sawCheckpoint).toBe(true)
+    const resumedJournal = loadAgentEventJournal('checkpoint-session', 'checkpoint-run-2')
+    expect(resumedJournal?.latestModelRequest?.state).toBe('settled')
+    expect(resumedJournal?.latestModelRequest?.payload?.tools).toEqual(interruptedTools)
+    expect(resumedJournal?.latestModelRequest?.contextPolicy).toMatchObject({
+      compactedStaleToolResults: 0,
+      compactedStaleToolResultChars: 0
+    })
   })
 
   it('records interrupted shell execution as ambiguous instead of safe-to-repeat error', async () => {

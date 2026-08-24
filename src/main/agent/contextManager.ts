@@ -1,6 +1,7 @@
 import { ChatCompletionMessage } from '../../shared/types'
 import { DEFAULT_CONTEXT_SIZE, normalizeContextWindowTokens } from '../../shared/modelContext'
 import { estimateMessagesTokens, estimateTokens } from './tokenEstimator'
+import { utf8ByteLength } from './utf8Text'
 export {
   getContextWindowInfo,
   DEFAULT_CONTEXT_SIZE,
@@ -18,7 +19,7 @@ export interface ContextManagerOptions {
 }
 
 /**
- * Tool outputs at least this large are preserved in the run's tool-output store when produced,
+ * Tool outputs at least this many UTF-8 bytes are preserved in the run's output store,
  * so that if the context manager later truncates them it can leave a retrievable pointer
  * (read_tool_output) instead of silently discarding the content. Shared with the agent loop.
  */
@@ -104,8 +105,8 @@ export function trimMessagesToFit(
         // If the full output was preserved in the run's tool-output store, leave a pointer the
         // model can follow instead of silently dropping the tail.
         const pointer =
-          msg.tool_call_id && original.length > spilloverThreshold
-            ? ` The full ${original.length}-character output can be retrieved with read_tool_output(output_id="${msg.tool_call_id}").`
+          msg.tool_call_id && utf8ByteLength(original) > spilloverThreshold
+            ? ` The full ${utf8ByteLength(original)}-byte UTF-8 output can be retrieved with read_tool_output(output_id="${msg.tool_call_id}").`
             : ''
         const truncated =
           original.slice(0, 300) +

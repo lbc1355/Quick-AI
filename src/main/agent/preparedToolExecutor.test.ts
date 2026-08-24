@@ -322,10 +322,43 @@ describe('executePreparedToolCall', () => {
         callId: 'call-large-cache',
         toolName: 'shell',
         content: fullOutput,
-        previewChars: 10,
+        previewBytes: 10,
         projectionMode: 'head_tail'
       })
     )
     expect(outputEvents).toEqual([])
+  })
+
+  it('spills multibyte tool output according to UTF-8 bytes', async () => {
+    const fullOutput = '中文'
+    const tool = makeTool(
+      vi.fn(async () => ({
+        resultForModel: fullOutput,
+        resultForUi: { title: 'UTF-8 Tool' }
+      }))
+    )
+    vi.mocked(persistToolOutputResource).mockResolvedValue(undefined)
+
+    const result = await executePreparedToolCall({
+      prep: makePrep(),
+      tool,
+      isApproved: true,
+      reqId: 'req-utf8',
+      step: 1,
+      maxSteps: 8,
+      stepId: 'step-1',
+      signal: new AbortController().signal,
+      retryPolicy,
+      isSideEffecting: false,
+      loopGuard: new LoopGuard(),
+      outputSpilloverThreshold: 4,
+      activeTools: ['test_tool'],
+      fetchUrlBudget: { count: 0, max: 3 }
+    })
+
+    expect(persistToolOutputResource).toHaveBeenCalledWith(
+      expect.objectContaining({ content: fullOutput, previewBytes: 4 })
+    )
+    expect(result.outputStore).toMatchObject({ content: fullOutput })
   })
 })

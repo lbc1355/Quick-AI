@@ -13,6 +13,7 @@ import {
   resolveToolTimeoutMs,
   runWithToolExecutionLifecycle
 } from './toolExecutionLifecycle'
+import { utf8ByteLength } from './utf8Text'
 
 export type ToolRuntimeFailureStatus = 'error' | 'timeout' | 'cancelled' | 'ambiguous'
 
@@ -274,7 +275,7 @@ export function applyRuntimeToolCallResult(
         }
       : resultForUi
     const outputStore =
-      resultForModel.length > options.outputSpilloverThreshold
+      utf8ByteLength(resultForModel) > options.outputSpilloverThreshold
         ? {
             callId,
             content: resultForModel,

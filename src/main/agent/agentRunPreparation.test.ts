@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { ChatCompletionMessage } from '../../shared/types'
 import { ActionLog } from './actionLog'
 import { prepareAgentRun } from './agentRunPreparation'
+import {
+  createModelRequestContextPolicy,
+  createModelRequestRecord,
+  type ModelRequestJournalRecord
+} from './modelRequestRecord'
 import { RunCheckpoint } from './runCheckpoint'
 
 vi.mock('electron', () => ({
@@ -12,6 +17,45 @@ vi.mock('electron', () => ({
 }))
 
 const createActionLog = vi.fn(() => new ActionLog())
+
+const createPendingRequest = (): ModelRequestJournalRecord =>
+  createModelRequestRecord({
+    runId: 'old-run',
+    sessionId: 'source-session',
+    contextEpoch: 2,
+    step: 5,
+    stepId: 'old-run:step:5',
+    modelConfig: {
+      apiUrl: 'https://api.example.com',
+      apiKey: 'secret',
+      model: 'model'
+    },
+    messages: [
+      { role: 'user', content: 'original request' },
+      { role: 'assistant', content: 'I will inspect the file.' },
+      { role: 'tool', tool_call_id: 'call-1', content: 'latest durable tool result' }
+    ],
+    tools: [
+      {
+        type: 'function',
+        function: {
+          name: 'file_edit',
+          description: 'Edit a file',
+          parameters: { type: 'object', properties: {} }
+        }
+      }
+    ],
+    requestedReasoningPreference: 'auto',
+    effectiveReasoningPreference: 'auto',
+    contextPolicy: createModelRequestContextPolicy({
+      contextWindowTokens: 32_000,
+      beforeMessages: [{ role: 'user', content: 'original request' }],
+      afterMessages: [{ role: 'user', content: 'original request' }],
+      compactedStaleToolResults: 0,
+      compactedStaleToolResultChars: 0
+    }),
+    capturedAt: 10
+  })
 
 describe('prepareAgentRun', () => {
   it('prepares a dynamic free-chat run with directory and resource tools active', () => {
@@ -179,6 +223,155 @@ describe('prepareAgentRun', () => {
     expect(result.messages).toEqual([{ role: 'user', content: 'original request' }])
     expect(result.initialActiveTools).toEqual(['search_tools', 'file_read'])
     expect(result.ambiguousActions).toEqual(checkpoint.ambiguousActions)
+  })
+
+  it('prefers a verified pending request over an older checkpoint when resuming', () => {
+    const checkpoint: RunCheckpoint = {
+      version: 1,
+      sessionId: 'source-session',
+      reqId: 'old-run',
+      updatedAt: 1,
+      step: 4,
+      messages: [{ role: 'user', content: 'older checkpoint' }],
+      activeTools: ['file_read'],
+      ambiguousActions: []
+    }
+    const pendingRequest = createPendingRequest()
+
+    const result = prepareAgentRun({
+      reqId: 'req-resume',
+      options: {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'key',
+        model: 'model',
+        sessionId: 'target-session',
+        resumeSourceSessionId: 'source-session',
+        resumeFromRunId: 'old-run'
+      },
+      dependencies: {
+        createActionLog,
+        loadRunCheckpoint: () => checkpoint,
+        loadAgentEventJournal: () => ({
+          version: 1,
+          runId: 'old-run',
+          sessionId: 'source-session',
+          status: 'interrupted',
+          events: [],
+          latestModelRequest: pendingRequest,
+          lastSequence: 0,
+          startedAt: 1,
+          updatedAt: 2
+        }),
+        searchToolDefinitions: () => []
+      }
+    })
+
+    expect(result.resumeRequestRecord).toBe(pendingRequest)
+    expect(result.messages).toEqual(pendingRequest.payload?.messages)
+    expect(result.messages).not.toBe(pendingRequest.payload?.messages)
+    expect(result.initialActiveTools).toEqual(['search_tools', 'file_read', 'file_edit'])
+  })
+
+  it('resumes from a verified pending request even when no checkpoint was written', () => {
+    const pendingRequest = createPendingRequest()
+
+    const result = prepareAgentRun({
+      reqId: 'req-resume',
+      options: {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'key',
+        model: 'model',
+        resumeFromRunId: 'old-run'
+      },
+      dependencies: {
+        createActionLog,
+        loadRunCheckpoint: () => undefined,
+        loadAgentEventJournal: () => ({
+          version: 1,
+          runId: 'old-run',
+          sessionId: 'source-session',
+          status: 'interrupted',
+          events: [],
+          latestModelRequest: pendingRequest,
+          lastSequence: 0,
+          startedAt: 1,
+          updatedAt: 2
+        }),
+        searchToolDefinitions: () => []
+      }
+    })
+
+    expect(result.resumeCheckpoint).toBeUndefined()
+    expect(result.resumeLoadError).toBeUndefined()
+    expect(result.messages).toEqual(pendingRequest.payload?.messages)
+  })
+
+  it('ignores a tampered pending request instead of replaying it', () => {
+    const tamperedRequest = createPendingRequest()
+    tamperedRequest.payload!.messages[0].content = 'tampered'
+
+    const result = prepareAgentRun({
+      reqId: 'req-resume',
+      options: {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'key',
+        model: 'model',
+        resumeFromRunId: 'old-run'
+      },
+      dependencies: {
+        createActionLog,
+        loadRunCheckpoint: () => undefined,
+        loadAgentEventJournal: () => ({
+          version: 1,
+          runId: 'old-run',
+          sessionId: 'source-session',
+          status: 'interrupted',
+          events: [],
+          latestModelRequest: tamperedRequest,
+          lastSequence: 0,
+          startedAt: 1,
+          updatedAt: 2
+        }),
+        searchToolDefinitions: () => []
+      }
+    })
+
+    expect(result.resumeRequestRecord).toBeUndefined()
+    expect(result.messages).toEqual([])
+    expect(result.resumeLoadError).toContain('No resumable checkpoint found')
+  })
+
+  it('refuses exact reconstruction when the selected model no longer matches', () => {
+    const pendingRequest = createPendingRequest()
+
+    const result = prepareAgentRun({
+      reqId: 'req-resume',
+      options: {
+        apiUrl: 'https://api.example.com',
+        apiKey: 'key',
+        model: 'different-model',
+        resumeFromRunId: 'old-run'
+      },
+      dependencies: {
+        createActionLog,
+        loadRunCheckpoint: () => undefined,
+        loadAgentEventJournal: () => ({
+          version: 1,
+          runId: 'old-run',
+          sessionId: 'source-session',
+          status: 'interrupted',
+          events: [],
+          latestModelRequest: pendingRequest,
+          lastSequence: 0,
+          startedAt: 1,
+          updatedAt: 2
+        }),
+        searchToolDefinitions: () => []
+      }
+    })
+
+    expect(result.resumeRequestRecord).toBeUndefined()
+    expect(result.resumeLoadError).toContain('different provider or model')
   })
 
   it('returns a resume load error when the requested checkpoint is missing', () => {
