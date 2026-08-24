@@ -106,6 +106,12 @@ export const ToolRegistry = createRegistryProxy(registry)
 /** Register an external tool at runtime (e.g. from an MCP server). */
 export const registerToolDefinition = (def: ToolDefinition): void => registry.register(def)
 
+/** Atomically replace a runtime owner's previous definitions with its next generation. */
+export const replaceToolDefinitions = (
+  previousNames: Iterable<string>,
+  definitions: ToolDefinition[]
+): void => registry.replaceOwned(previousNames, definitions)
+
 /** Unregister a tool. Returns true when the tool existed and was removed. */
 export const unregisterToolDefinition = (name: string): boolean => registry.unregister(name)
 

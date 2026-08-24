@@ -10,7 +10,7 @@ import {
   ToolListChangedNotificationSchema
 } from '@modelcontextprotocol/sdk/types.js'
 import { getQuickAiRoot } from './paths'
-import { registerToolDefinition, unregisterToolDefinition } from './toolRegistry'
+import { replaceToolDefinitions, unregisterToolDefinition } from './toolRegistry'
 import { ToolDefinition } from './tools/types'
 import { createMcpToolResult } from './tools/mcpResult'
 import { logger } from './logger'
@@ -167,6 +167,55 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMsg: string
   })
 }
 
+const MCP_GENERATION_CLOSE_TIMEOUT_MS = 5_000
+
+interface McpConnectionCloseSignal {
+  promise: Promise<void>
+  isClosed: () => boolean
+  resolve: () => void
+}
+
+const createConnectionCloseSignal = (): McpConnectionCloseSignal => {
+  let closed = false
+  let resolvePromise!: () => void
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve
+  })
+  return {
+    promise,
+    isClosed: () => closed,
+    resolve: () => {
+      if (closed) return
+      closed = true
+      resolvePromise()
+    }
+  }
+}
+
+const waitForConnectionClose = (
+  signal: McpConnectionCloseSignal,
+  timeoutMs = MCP_GENERATION_CLOSE_TIMEOUT_MS
+): Promise<boolean> => {
+  if (signal.isClosed()) return Promise.resolve(true)
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs)
+    timer.unref?.()
+    void signal.promise.then(() => {
+      clearTimeout(timer)
+      resolve(true)
+    })
+  })
+}
+
+class McpGenerationCloseError extends Error {
+  constructor(serverName: string) {
+    super(
+      `MCP server "${serverName}" did not confirm shutdown within ${MCP_GENERATION_CLOSE_TIMEOUT_MS}ms; reconnect stopped to avoid overlapping server processes.`
+    )
+    this.name = 'McpGenerationCloseError'
+  }
+}
+
 /**
  * Kill a stdio server's process tree so no orphaned children survive a reload/shutdown.
  * Windows: `taskkill /T /F` kills the whole tree in one call.
@@ -218,6 +267,10 @@ class McpManagerImpl {
   private configPath: string = ''
   private clients = new Map<string, Client>()
   private transports = new Map<string, StdioClientTransport>()
+  private connectionCloseSignals = new Map<
+    string,
+    { client: Client; signal: McpConnectionCloseSignal }
+  >()
   private statuses = new Map<string, McpServerStatus>()
   private registeredToolNames = new Set<string>()
   private registeredToolNamesByServer = new Map<string, Set<string>>()
@@ -270,26 +323,41 @@ class McpManagerImpl {
     this.registeredToolNamesByServer.delete(name)
   }
 
-  private async closeConnection(client?: Client, transport?: StdioClientTransport): Promise<void> {
-    if (client) {
-      const pid = getTransportPid(client)
-      if (pid !== undefined) {
-        await killProcessTree(pid)
+  private async closeConnection(
+    client?: Client,
+    transport?: StdioClientTransport,
+    closeSignal?: McpConnectionCloseSignal
+  ): Promise<boolean> {
+    const closeOperation = (async () => {
+      if (client) {
+        const pid = getTransportPid(client)
+        if (pid !== undefined) await killProcessTree(pid)
+        try {
+          await client.close()
+        } catch (err) {
+          logger.warn('MCP', `Error closing client: ${(err as Error).message}`)
+        }
       }
-      try {
-        await client.close()
-      } catch (err) {
-        logger.warn('MCP', `Error closing client: ${(err as Error).message}`)
-      }
-    }
 
-    if (transport) {
-      try {
-        await transport.close()
-      } catch (err) {
-        logger.warn('MCP', `Error closing transport: ${(err as Error).message}`)
+      if (transport) {
+        try {
+          await transport.close()
+        } catch (err) {
+          logger.warn('MCP', `Error closing transport: ${(err as Error).message}`)
+        }
       }
-    }
+    })()
+
+    const closeOperationBounded = withTimeout(
+      closeOperation,
+      MCP_GENERATION_CLOSE_TIMEOUT_MS,
+      `MCP connection cleanup timed out after ${MCP_GENERATION_CLOSE_TIMEOUT_MS}ms`
+    ).catch((error) => {
+      logger.warn('MCP', (error as Error).message)
+    })
+    const closeObserved = closeSignal ? waitForConnectionClose(closeSignal) : Promise.resolve(true)
+    const [, observed] = await Promise.all([closeOperationBounded, closeObserved])
+    return observed
   }
 
   private async cleanupServer(name: string, expectedGeneration?: number): Promise<void> {
@@ -300,11 +368,16 @@ class McpManagerImpl {
 
     const client = this.clients.get(name)
     const transport = this.transports.get(name)
+    const closeSignalRecord = this.connectionCloseSignals.get(name)
+    const closeSignal =
+      client && closeSignalRecord?.client === client ? closeSignalRecord.signal : undefined
     this.clients.delete(name)
     this.transports.delete(name)
+    this.connectionCloseSignals.delete(name)
     this.toolRefreshes.delete(name)
     this.instructionsByServer.delete(name)
-    await this.closeConnection(client, transport)
+    const closed = await this.closeConnection(client, transport, closeSignal)
+    if (client && !closed) throw new McpGenerationCloseError(name)
   }
 
   init(): void {
@@ -450,7 +523,7 @@ class McpManagerImpl {
   async reload(): Promise<void> {
     const reloadGeneration = ++this.reloadOperationGeneration
     logger.info('MCP', 'Reloading MCP servers...')
-    await this.shutdownConnections()
+    await this.shutdownConnections(true)
     if (this.reloadOperationGeneration !== reloadGeneration) return
 
     let config: McpConfig
@@ -487,15 +560,11 @@ class McpManagerImpl {
         status: 'connecting',
         tools: []
       })
+      const timeouts = resolveServerTimeouts(config.timeouts, srvConfig)
+      const reconnect = resolveReconnectPolicy(config.reconnect, srvConfig.reconnect)
 
       try {
-        await this.connectServer(
-          name,
-          srvConfig,
-          resolveServerTimeouts(config.timeouts, srvConfig),
-          resolveReconnectPolicy(config.reconnect, srvConfig.reconnect),
-          generation
-        )
+        await this.connectServer(name, srvConfig, timeouts, reconnect, generation)
       } catch (err) {
         if (
           this.reloadOperationGeneration !== reloadGeneration ||
@@ -503,14 +572,16 @@ class McpManagerImpl {
         ) {
           return
         }
-        const errorMsg = (err as Error).message || String(err)
-        this.statuses.set(name, {
+        this.handleConnectionFailure(
           name,
-          status: 'failed',
-          error: errorMsg,
-          tools: []
-        })
-        logger.error('MCP', `Failed to start server "${name}": ${errorMsg}`)
+          srvConfig,
+          timeouts,
+          reconnect,
+          generation,
+          1,
+          err,
+          'Initial connection'
+        )
       }
     })
 
@@ -577,15 +648,11 @@ class McpManagerImpl {
       status: 'connecting',
       tools: []
     })
+    const timeouts = resolveServerTimeouts(config.timeouts, srvConfig)
+    const reconnect = resolveReconnectPolicy(config.reconnect, srvConfig.reconnect)
 
     try {
-      await this.connectServer(
-        name,
-        srvConfig,
-        resolveServerTimeouts(config.timeouts, srvConfig),
-        resolveReconnectPolicy(config.reconnect, srvConfig.reconnect),
-        generation
-      )
+      await this.connectServer(name, srvConfig, timeouts, reconnect, generation)
     } catch (err) {
       if (!this.isCurrentGeneration(name, generation)) {
         return {
@@ -595,16 +662,17 @@ class McpManagerImpl {
           tools: []
         }
       }
-      const errorMsg = (err as Error).message || String(err)
-      const status: McpServerStatus = {
+      this.handleConnectionFailure(
         name,
-        status: 'failed',
-        error: errorMsg,
-        tools: []
-      }
-      this.statuses.set(name, status)
-      logger.error('MCP', `Failed to reload server "${name}": ${errorMsg}`)
-      return status
+        srvConfig,
+        timeouts,
+        reconnect,
+        generation,
+        1,
+        err,
+        'Manual connection'
+      )
+      return this.statuses.get(name) || { name, status: 'failed', tools: [] }
     }
 
     const status = this.statuses.get(name)
@@ -711,15 +779,9 @@ class McpManagerImpl {
     }
 
     const previousNames = this.registeredToolNamesByServer.get(serverName) || new Set<string>()
-    for (const definition of definitions) {
-      registerToolDefinition(definition)
-      this.registeredToolNames.add(definition.name)
-    }
-    for (const previousName of previousNames) {
-      if (nextNames.has(previousName)) continue
-      unregisterToolDefinition(previousName)
-      this.registeredToolNames.delete(previousName)
-    }
+    replaceToolDefinitions(previousNames, definitions)
+    for (const previousName of previousNames) this.registeredToolNames.delete(previousName)
+    for (const definition of definitions) this.registeredToolNames.add(definition.name)
 
     this.registeredToolNamesByServer.set(serverName, nextNames)
     this.statuses.set(serverName, {
@@ -770,6 +832,35 @@ class McpManagerImpl {
     })
   }
 
+  private handleConnectionFailure(
+    name: string,
+    srvConfig: McpServerConfig,
+    timeouts: NonNullable<McpConfig['timeouts']>,
+    reconnect: ResolvedMcpReconnectPolicy,
+    generation: number,
+    nextAttempt: number,
+    error: unknown,
+    phase: string
+  ): void {
+    if (!this.isCurrentGeneration(name, generation)) return
+    const message = error instanceof Error ? error.message : String(error)
+    if (error instanceof McpGenerationCloseError) {
+      this.statuses.set(name, { name, status: 'failed', error: message, tools: [] })
+      logger.error('MCP', `${phase} for "${name}" stopped: ${message}`)
+      return
+    }
+    logger.warn('MCP', `${phase} for "${name}" failed: ${message}`)
+    this.scheduleServerReconnect(
+      name,
+      srvConfig,
+      timeouts,
+      reconnect,
+      generation,
+      nextAttempt,
+      message
+    )
+  }
+
   private scheduleServerReconnect(
     name: string,
     srvConfig: McpServerConfig,
@@ -811,20 +902,15 @@ class McpManagerImpl {
       const nextGeneration = this.beginServerGeneration(name)
       this.statuses.set(name, { name, status: 'connecting', tools: [] })
       this.connectServer(name, srvConfig, timeouts, reconnect, nextGeneration).catch((err) => {
-        if (!this.isCurrentGeneration(name, nextGeneration)) return
-        const errorMessage = (err as Error).message || String(err)
-        logger.warn(
-          'MCP',
-          `Reconnect ${attempt}/${reconnect.maxAttempts} failed for "${name}": ${errorMessage}`
-        )
-        this.scheduleServerReconnect(
+        this.handleConnectionFailure(
           name,
           srvConfig,
           timeouts,
           reconnect,
           nextGeneration,
           attempt + 1,
-          errorMessage
+          err,
+          `Reconnect ${attempt}/${reconnect.maxAttempts}`
         )
       })
     }, delay)
@@ -871,9 +957,11 @@ class McpManagerImpl {
         capabilities: {}
       }
     )
+    const closeSignal = createConnectionCloseSignal()
 
     this.transports.set(name, transport)
     this.clients.set(name, client)
+    this.connectionCloseSignals.set(name, { client, signal: closeSignal })
 
     const connectTimeout = timeouts.connect_timeout || 10000
     let tools: McpToolInfo[] = []
@@ -928,6 +1016,7 @@ class McpManagerImpl {
     // updates its catalog during initialization cannot leave a false connected state or a
     // permanently stale tool list.
     client.onclose = () => {
+      closeSignal.resolve()
       closeObserved = true
       if (connectionSettled) handleUnexpectedClose()
     }
@@ -995,13 +1084,15 @@ class McpManagerImpl {
       if (this.isCurrentGeneration(name, generation) && this.clients.get(name) === client) {
         await this.cleanupServer(name, generation)
       } else {
-        await this.closeConnection(client, transport)
+        const closed = await this.closeConnection(client, transport, closeSignal)
+        if (!closed) throw new McpGenerationCloseError(name)
       }
       throw err
     }
 
     if (!this.isCurrentGeneration(name, generation) || this.clients.get(name) !== client) {
-      await this.closeConnection(client, transport)
+      const closed = await this.closeConnection(client, transport, closeSignal)
+      if (!closed) throw new McpGenerationCloseError(name)
       return
     }
 
@@ -1026,7 +1117,8 @@ class McpManagerImpl {
       if (this.isCurrentGeneration(name, generation) && this.clients.get(name) === client) {
         await this.cleanupServer(name, generation)
       } else {
-        await this.closeConnection(client, transport)
+        const closed = await this.closeConnection(client, transport, closeSignal)
+        if (!closed) throw new McpGenerationCloseError(name)
       }
       throw err
     }
@@ -1044,7 +1136,7 @@ class McpManagerImpl {
     )
   }
 
-  private async shutdownConnections(): Promise<void> {
+  private async shutdownConnections(failOnIncompleteClose = false): Promise<void> {
     logger.info('MCP', 'Shutting down all MCP server connections...')
 
     // Supersede every in-flight connect, refresh, close handler, and reconnect timer before
@@ -1069,17 +1161,34 @@ class McpManagerImpl {
     const connections = Array.from(this.clients.entries()).map(([name, client]) => ({
       name,
       client,
-      transport: this.transports.get(name)
+      transport: this.transports.get(name),
+      closeSignal:
+        this.connectionCloseSignals.get(name)?.client === client
+          ? this.connectionCloseSignals.get(name)?.signal
+          : undefined
     }))
     this.clients.clear()
     this.transports.clear()
+    this.connectionCloseSignals.clear()
     this.toolRefreshes.clear()
+    const incomplete: string[] = []
     for (const connection of connections) {
-      await this.closeConnection(connection.client, connection.transport)
+      if (
+        !(await this.closeConnection(
+          connection.client,
+          connection.transport,
+          connection.closeSignal
+        ))
+      ) {
+        incomplete.push(connection.name)
+      }
     }
     this.statuses.clear()
     this.instructionsByServer.clear()
     this.reconnectStates.clear()
+    if (failOnIncompleteClose && incomplete.length > 0) {
+      throw new McpGenerationCloseError(incomplete.join(', '))
+    }
   }
 
   async shutdown(): Promise<void> {

@@ -22,6 +22,47 @@ export class ToolRegistryImpl {
     this.revision += 1
   }
 
+  /**
+   * Atomically replace one owner's tool set. Every next definition is normalized and checked
+   * before the live Map is swapped, so a malformed generation leaves the previous generation
+   * untouched. Existing names retain their insertion positions to keep prompt declaration order
+   * stable across no-op refreshes; genuinely new names are appended in caller order.
+   */
+  replaceOwned(previousNames: Iterable<string>, definitions: ToolDefinition[]): void {
+    const normalized = definitions.map((definition) => normalizeToolDefinition(definition))
+    const nextByName = new Map<string, ToolDefinition>()
+    for (const definition of normalized) {
+      if (nextByName.has(definition.name)) {
+        throw new Error(`Duplicate tool definition in replacement generation: ${definition.name}`)
+      }
+      nextByName.set(definition.name, definition)
+    }
+
+    const previous = new Set(previousNames)
+    for (const definition of normalized) {
+      if (this.tools.has(definition.name) && !previous.has(definition.name)) {
+        throw new Error(`Tool replacement would overwrite an unowned tool: ${definition.name}`)
+      }
+    }
+
+    const nextTools = new Map<string, ToolDefinition>()
+    for (const [name, definition] of this.tools) {
+      if (!previous.has(name)) {
+        nextTools.set(name, definition)
+        continue
+      }
+      const replacement = nextByName.get(name)
+      if (replacement) {
+        nextTools.set(name, replacement)
+        nextByName.delete(name)
+      }
+    }
+    for (const [name, definition] of nextByName) nextTools.set(name, definition)
+
+    this.tools = nextTools
+    this.revision += 1
+  }
+
   /** Remove a tool. Returns true when the tool existed and was removed. */
   unregister(name: string): boolean {
     const deleted = this.tools.delete(name)

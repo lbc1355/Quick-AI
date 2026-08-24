@@ -40,6 +40,7 @@ vi.mock('./paths', () => ({
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
   return {
     Client: class {
+      onclose?: () => void
       async connect(): Promise<void> {
         return Promise.resolve(undefined)
       }
@@ -76,6 +77,7 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
         return Promise.resolve(mcpMockState.callToolResult)
       }
       async close(): Promise<void> {
+        this.onclose?.()
         return Promise.resolve(undefined)
       }
     }
@@ -264,6 +266,43 @@ describe('McpManager', () => {
         parameters: { type: 'object', properties: {}, required: undefined }
       }
     ])
+  })
+
+  it('keeps the previous tool generation when a refreshed catalog is invalid', async () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({ servers: { git: { command: 'node' } } }, null, 2),
+      'utf-8'
+    )
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const registry = getToolRegistry()
+    const previousStatus = McpManager.getStatuses().find((status) => status.name === 'git')
+    expect(registry.has('mcp_git_test_tool')).toBe(true)
+    mcpMockState.listToolsResults = [
+      {
+        tools: [
+          {
+            name: 'duplicate_tool',
+            description: 'First duplicate',
+            inputSchema: { type: 'object', properties: {} }
+          },
+          {
+            name: 'duplicate_tool',
+            description: 'Second duplicate',
+            inputSchema: { type: 'object', properties: {} }
+          }
+        ]
+      }
+    ]
+
+    await mcpMockState.toolListChangedHandler?.()
+
+    expect(registry.has('mcp_git_test_tool')).toBe(true)
+    expect(registry.has('mcp_git_duplicate_tool')).toBe(false)
+    expect(McpManager.getStatuses().find((status) => status.name === 'git')).toEqual(previousStatus)
   })
 
   it('registers tools in stable sorted order so prompt bytes do not change across refreshes', async () => {
@@ -528,7 +567,8 @@ describe('McpManager', () => {
       servers: {
         git: {
           command: 'node',
-          args: ['git-server.js']
+          args: ['git-server.js'],
+          reconnect: false
         }
       }
     }
@@ -762,6 +802,68 @@ describe('McpManager', () => {
     expect(McpManager.getStatuses().find((status) => status.name === 'git')?.status).toBe(
       'connected'
     )
+  })
+
+  it('retries an initial connection failure without requiring a manual reload', async () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          reconnect: { max_attempts: 2, initial_delay: 5, max_delay: 5 },
+          servers: { git: { command: 'node' } }
+        },
+        null,
+        2
+      ),
+      'utf-8'
+    )
+    const connectSpy = vi
+      .spyOn(Client.prototype, 'connect')
+      .mockRejectedValueOnce(new Error('server unavailable during startup'))
+      .mockResolvedValue(undefined)
+
+    McpManager.init()
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    expect(connectSpy).toHaveBeenCalledTimes(2)
+    expect(McpManager.getStatuses().find((status) => status.name === 'git')?.status).toBe(
+      'connected'
+    )
+    expect(getToolRegistry().has('mcp_git_test_tool')).toBe(true)
+  })
+
+  it('does not start a replacement generation until the failed client confirms shutdown', async () => {
+    vi.useFakeTimers()
+    try {
+      writeFileSync(
+        configPath,
+        JSON.stringify(
+          {
+            reconnect: { max_attempts: 2, initial_delay: 5, max_delay: 5 },
+            servers: { git: { command: 'node' } }
+          },
+          null,
+          2
+        ),
+        'utf-8'
+      )
+      const connectSpy = vi
+        .spyOn(Client.prototype, 'connect')
+        .mockRejectedValue(new Error('server failed during startup'))
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue(undefined)
+
+      McpManager.init()
+      await vi.advanceTimersByTimeAsync(5_100)
+
+      expect(connectSpy).toHaveBeenCalledTimes(1)
+      expect(McpManager.getStatuses().find((status) => status.name === 'git')).toMatchObject({
+        status: 'failed',
+        tools: [],
+        error: expect.stringContaining('reconnect stopped to avoid overlapping server processes')
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('bounds automatic reconnect attempts and settles on a failed status', async () => {

@@ -4,6 +4,7 @@ import {
   getToolRegistryAdmin,
   getToolRegistryView,
   registerToolDefinition,
+  replaceToolDefinitions,
   unregisterToolDefinition
 } from './toolRegistry'
 import { ToolDefinition } from './tools/types'
@@ -34,7 +35,9 @@ const testTool: ToolDefinition = {
 
 describe('toolRegistry public APIs', () => {
   afterEach(() => {
-    unregisterToolDefinition(testToolName)
+    for (const name of getToolRegistryAdmin().toolNames()) {
+      if (name.startsWith(testToolName)) unregisterToolDefinition(name)
+    }
   })
 
   it('exposes registered tools through the read-only view and admin registry', () => {
@@ -77,5 +80,65 @@ describe('toolRegistry public APIs', () => {
       status: 'current',
       tool: { title: 'Replacement Tool' }
     })
+  })
+
+  it('replaces an owned tool generation atomically and preserves stable name positions', () => {
+    const secondName = `${testToolName}_second`
+    const unrelatedName = `${testToolName}_unrelated`
+    registerToolDefinition(testTool)
+    registerToolDefinition({ ...testTool, name: secondName, title: 'Second Tool' })
+    registerToolDefinition({ ...testTool, name: unrelatedName, title: 'Unrelated Tool' })
+
+    replaceToolDefinitions(
+      [testToolName, secondName],
+      [
+        { ...testTool, name: testToolName, title: 'Replacement Tool' },
+        { ...testTool, name: `${testToolName}_fresh`, title: 'Fresh Tool' }
+      ]
+    )
+
+    const names = getToolRegistryAdmin()
+      .toolNames()
+      .filter((name) => name.startsWith(testToolName))
+    expect(names).toEqual([testToolName, unrelatedName, `${testToolName}_fresh`])
+    expect(getToolRegistryAdmin().get(testToolName)?.title).toBe('Replacement Tool')
+    expect(getToolRegistryAdmin().has(secondName)).toBe(false)
+    expect(getToolRegistryAdmin().get(unrelatedName)?.title).toBe('Unrelated Tool')
+  })
+
+  it('keeps the previous generation when any replacement definition is invalid', () => {
+    registerToolDefinition(testTool)
+    const before = getToolRegistryAdmin().materialize()
+
+    expect(() =>
+      replaceToolDefinitions(
+        [testToolName],
+        [
+          { ...testTool, title: 'Would Replace' },
+          { ...testTool, name: `${testToolName}_invalid`, title: '' }
+        ]
+      )
+    ).toThrow('title cannot be empty')
+
+    expect(getToolRegistryAdmin().get(testToolName)?.title).toBe('Registry View Test Tool')
+    expect(getToolRegistryAdmin().materialize().revision).toBe(before.revision)
+  })
+
+  it('refuses to overwrite a tool outside the replaced owner set', () => {
+    const unrelatedName = `${testToolName}_unrelated`
+    registerToolDefinition(testTool)
+    registerToolDefinition({ ...testTool, name: unrelatedName, title: 'Unrelated Tool' })
+    const before = getToolRegistryAdmin().materialize()
+
+    expect(() =>
+      replaceToolDefinitions(
+        [testToolName],
+        [{ ...testTool, name: unrelatedName, title: 'Owner Collision' }]
+      )
+    ).toThrow('would overwrite an unowned tool')
+
+    expect(getToolRegistryAdmin().get(testToolName)?.title).toBe('Registry View Test Tool')
+    expect(getToolRegistryAdmin().get(unrelatedName)?.title).toBe('Unrelated Tool')
+    expect(getToolRegistryAdmin().materialize().revision).toBe(before.revision)
   })
 })
