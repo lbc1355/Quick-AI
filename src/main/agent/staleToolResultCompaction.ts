@@ -1,6 +1,6 @@
 import { ChatCompletionMessage } from '../../shared/types'
 import { estimateMessagesTokens } from './tokenEstimator'
-import { sliceUtf8Prefix, utf8ByteLength } from './utf8Text'
+import { sliceUtf8Prefix, sliceUtf8Suffix, utf8ByteLength } from './utf8Text'
 
 export const STALE_TOOL_RESULT_COMPACT_MARKER =
   'Historical tool result compacted for cache-priority context.'
@@ -77,6 +77,13 @@ const modelPreviewSource = (content: string): string => {
 const previewText = (content: string, previewBytes: number): string => {
   const source = modelPreviewSource(content)
   if (utf8ByteLength(source) <= previewBytes) return source
+  if (source.includes('\nTail preview:\n')) {
+    const omission = '\n...\n'
+    const available = Math.max(2, previewBytes - utf8ByteLength(omission))
+    const head = sliceUtf8Prefix(source, Math.ceil(available / 2))
+    const tail = sliceUtf8Suffix(source, Math.floor(available / 2))
+    return `${head.text}${omission}${tail.text}`
+  }
   return `${sliceUtf8Prefix(source, previewBytes).text}...`
 }
 
@@ -136,7 +143,7 @@ export function compactStaleToolResultMessage(
   }
 }
 
-export const STALE_TOOL_RESULT_COMPACT_TRIGGER_RATIO = 0.85
+export const STALE_TOOL_RESULT_COMPACT_TRIGGER_RATIO = 0.8
 const DEFAULT_PROTECTED_TAIL_MESSAGES = 8
 
 export interface CompactStaleToolResultsForContextPressureOptions extends CompactStaleToolResultsOptions {

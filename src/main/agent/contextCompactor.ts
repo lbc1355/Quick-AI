@@ -59,6 +59,15 @@ const stringifyFiles = (message: Message): string => {
     .join('\n\n')
 }
 
+const buildCompactionMessageContent = (message: Message): string =>
+  [
+    message.content ? truncateText(message.content, MAX_MESSAGE_CHARS) : '',
+    stringifyFiles(message),
+    stringifyAgentEvents(message)
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+
 export function buildCompactionTranscript(messages: Message[]): string {
   const blocks: string[] = []
   let totalChars = 0
@@ -68,9 +77,6 @@ export function buildCompactionTranscript(messages: Message[]): string {
     const parts = [
       `<message index="${index + 1}" role="${message.role}">`,
       message.content ? truncateText(message.content, MAX_MESSAGE_CHARS) : '',
-      message.reasoning_content
-        ? `reasoning_summary:\n${truncateText(message.reasoning_content, 2000)}`
-        : '',
       stringifyFiles(message),
       stringifyAgentEvents(message),
       message.tokenSpeed !== undefined ? `token_speed: ${message.tokenSpeed} token/s` : '',
@@ -132,17 +138,7 @@ export async function compactContextWithModel(
 
   oldMessages.forEach((msg) => {
     if (msg.isRuntimeError) return
-    let content = msg.content
-    if (msg.files && msg.files.length > 0) {
-      const textParts = [msg.content]
-      msg.files.forEach((f) => {
-        if (f.type !== 'image') {
-          textParts.push(`\n[参考文件: ${f.name}]\n${f.content}`)
-        }
-      })
-      content = textParts.join('\n')
-    }
-    messages.push({ role: msg.role, content })
+    messages.push({ role: msg.role, content: buildCompactionMessageContent(msg) })
   })
 
   messages.push({

@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { Message } from '../../../../shared/types'
 import {
   applyCompactionResult,
+  assessContextCompactionPressure,
   canCompactMessages,
   createCompactionSummaryMessage,
   formatCompactionSummaryMessage,
-  MANUAL_COMPACTION_KEEP_RECENT_MESSAGES
+  getMessagesForCompaction,
+  MANUAL_COMPACTION_KEEP_RECENT_MESSAGES,
+  selectAutoCompactionKeepRecentMessages
 } from './contextCompaction'
 
 const messages = (count: number): Message[] =>
@@ -23,6 +26,108 @@ describe('canCompactMessages', () => {
 
   it('allows compaction once there is at least one message to summarise', () => {
     expect(canCompactMessages(messages(MANUAL_COMPACTION_KEEP_RECENT_MESSAGES + 2))).toBe(true)
+  })
+
+  it('counts only the effective context after the latest checkpoint', () => {
+    const history = messages(20)
+    history[14] = { ...history[14], isCompactionSummary: true }
+
+    expect(getMessagesForCompaction(history).map((message) => message.id)).toEqual(
+      history.slice(14).map((message) => message.id)
+    )
+    expect(canCompactMessages(history)).toBe(false)
+  })
+})
+
+describe('assessContextCompactionPressure', () => {
+  it('triggers when the durable conversation request crosses the threshold', () => {
+    const history = messages(10)
+
+    expect(
+      assessContextCompactionPressure({
+        messages: history,
+        requestMessages: [{ role: 'user', content: 'x'.repeat(3400) }],
+        contextWindowTokens: 1000
+      })
+    ).toEqual({
+      shouldCompact: true,
+      measuredTokens: 854,
+      triggerTokens: 800
+    })
+  })
+
+  it('does not treat provider usage from tool replay as durable conversation pressure', () => {
+    const history = messages(10)
+    history[history.length - 2] = {
+      ...history[history.length - 2],
+      role: 'assistant',
+      cacheStats: { promptTokens: 900, cacheHitTokens: 0, cacheMissTokens: 900, hitRate: 0 }
+    }
+
+    expect(
+      assessContextCompactionPressure({
+        messages: history,
+        requestMessages: [{ role: 'user', content: 'small request' }],
+        contextWindowTokens: 1000
+      }).shouldCompact
+    ).toBe(false)
+  })
+
+  it('does not compact below pressure or when the effective tail is too short', () => {
+    const history = messages(10)
+    expect(
+      assessContextCompactionPressure({
+        messages: history,
+        requestMessages: [{ role: 'user', content: 'small request' }],
+        contextWindowTokens: 1000
+      }).shouldCompact
+    ).toBe(false)
+
+    history[3] = { ...history[3], isCompactionSummary: true }
+    expect(
+      assessContextCompactionPressure({
+        messages: history,
+        requestMessages: [{ role: 'user', content: 'x'.repeat(3400) }],
+        contextWindowTokens: 1000
+      }).shouldCompact
+    ).toBe(false)
+  })
+})
+
+describe('selectAutoCompactionKeepRecentMessages', () => {
+  it('retains a recent token budget instead of a fixed number of messages', () => {
+    const history = messages(10).map((message) => ({
+      ...message,
+      content: 'x'.repeat(400)
+    }))
+
+    expect(
+      selectAutoCompactionKeepRecentMessages({
+        messages: history,
+        contextWindowTokens: 1000
+      })
+    ).toBe(2)
+  })
+
+  it('refuses to manufacture a compactable range when the entire tail is below retention', () => {
+    expect(
+      selectAutoCompactionKeepRecentMessages({
+        messages: messages(8),
+        contextWindowTokens: 100_000
+      })
+    ).toBe(8)
+  })
+
+  it('prices only the effective history after the latest checkpoint', () => {
+    const history = messages(12)
+    history[7] = { ...history[7], isCompactionSummary: true }
+
+    expect(
+      selectAutoCompactionKeepRecentMessages({
+        messages: history,
+        contextWindowTokens: 100_000
+      })
+    ).toBe(5)
   })
 })
 
@@ -100,5 +205,32 @@ describe('applyCompactionResult', () => {
     )
     expect(summary.isCompactionSummary).toBe(true)
     expect(summary.tokenSpeed).toBe(7)
+  })
+
+  it('places a later checkpoint inside the current context instead of recompacting hidden history', () => {
+    const history = messages(12)
+    history[4] = { ...history[4], isCompactionSummary: true }
+
+    const result = applyCompactionResult({
+      messages: history,
+      result: { summary: 'next', compactedCount: 2, keptCount: 6 },
+      now: 2000
+    })
+
+    expect(result.map((message) => message.id)).toEqual([
+      'm0',
+      'm1',
+      'm2',
+      'm3',
+      'm4',
+      'm5',
+      'compact-2000',
+      'm6',
+      'm7',
+      'm8',
+      'm9',
+      'm10',
+      'm11'
+    ])
   })
 })

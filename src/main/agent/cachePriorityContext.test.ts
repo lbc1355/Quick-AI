@@ -355,4 +355,31 @@ describe('cache-priority native tool context', () => {
 
     expect(compactStaleToolResultMessage(message)).toBe(message)
   })
+
+  it('keeps both shell head and tail when compacting a cached terminal projection', () => {
+    const message: ChatCompletionMessage = {
+      role: 'tool',
+      tool_call_id: 'shell-1',
+      name: 'shell',
+      content: [
+        'Resource ID: abcdef1234567890abcdef1234567890',
+        '',
+        'Head preview:',
+        `HEAD-${'a'.repeat(200)}`,
+        'Tail preview:',
+        `${'z'.repeat(200)}-TAIL`
+      ].join('\n')
+    }
+
+    const compacted = compactStaleToolResultMessage(message, {
+      thresholdBytes: 100,
+      previewBytes: 80
+    })
+    const content = String(compacted.content)
+
+    expect(content).toContain('HEAD-')
+    expect(content).toContain('-TAIL')
+    expect(content).toContain('\n...\n')
+    expect(content).toContain('read_cached_resource')
+  })
 })

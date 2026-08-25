@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { Message } from '../../shared/types'
+import { ChatCompletionMessage, Message } from '../../shared/types'
 import { buildCompactionTranscript, compactContextWithModel } from './contextCompactor'
 
 const msg = (id: string, role: Message['role'], content: string): Message => ({
@@ -66,6 +66,46 @@ describe('contextCompactor', () => {
     expect(transcript).toContain('important note')
     expect(transcript).toContain('agent_events: 1')
     expect(transcript).toContain('file_read')
+  })
+
+  it('feeds bounded attachment and tool hints to the summarizer without private reasoning', async () => {
+    const callModel = vi.fn(async (_options: unknown, _messages: ChatCompletionMessage[]) => ({
+      role: 'assistant' as const,
+      content: 'summary'
+    }))
+    const history: Message[] = [
+      msg('u1', 'user', 'request'),
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'done',
+        reasoning_content: 'private chain of thought',
+        files: [{ name: 'notes.txt', type: 'text', content: 'x'.repeat(3000) }],
+        agentEvents: [{ type: 'tool_done', toolName: 'file_read' } as never]
+      },
+      ...Array.from({ length: 6 }, (_, index) =>
+        msg(`tail-${index}`, index % 2 === 0 ? 'user' : 'assistant', `tail ${index}`)
+      )
+    ]
+
+    await compactContextWithModel(
+      {
+        sessionId: 'session-hints',
+        apiUrl: 'https://api.example.com/v1',
+        apiKey: 'key',
+        model: 'model-a',
+        messages: history,
+        keepRecentMessages: 6
+      },
+      { callModel }
+    )
+
+    const sentMessages = callModel.mock.calls[0][1]
+    const assistant = sentMessages.find((message) => message.role === 'assistant')
+    expect(assistant?.content).toContain('attachment: notes.txt')
+    expect(assistant?.content).toContain('file_read')
+    expect(assistant?.content).toContain('[... truncated')
+    expect(assistant?.content).not.toContain('private chain of thought')
   })
 
   it('rejects sessions with too little old context to compact', async () => {

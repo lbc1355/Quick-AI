@@ -18,6 +18,7 @@ import {
 } from '../../../shared/types'
 import { startStreamingRun as startChatStreamingRun } from './chatStreaming'
 import { getSessionContextEpoch } from '../../../shared/contextEpoch'
+import { getContextWindowInfo } from '../../../shared/modelContext'
 
 // Extracted pure helper functions
 import { buildApiMessages } from '../features/chat/apiMessageBuilder'
@@ -37,8 +38,11 @@ import {
 } from '../features/chat/chatMessageFactory'
 import {
   applyCompactionResult,
+  assessContextCompactionPressure,
   canCompactMessages,
-  MANUAL_COMPACTION_KEEP_RECENT_MESSAGES
+  getMessagesForCompaction,
+  MANUAL_COMPACTION_KEEP_RECENT_MESSAGES,
+  selectAutoCompactionKeepRecentMessages
 } from '../features/chat/contextCompaction'
 import {
   createMessagePairIds,
@@ -151,7 +155,7 @@ export interface UseChatCompletionReturn {
   handleResumeAgentRun: (msgIdx: number) => Promise<void>
   showHelpMessage: () => Promise<void>
   handleCompactCurrentSession: () => Promise<boolean>
-  /** Active /compact progress (session id + start time) so the UI can show a live dock. */
+  /** Active manual or pressure compaction so the UI can show one session-scoped live dock. */
   compaction: { sessionId: string; startedAt: number } | null
   cancelCompaction: () => void
   handleAbortGeneration: () => void
@@ -214,7 +218,7 @@ export const useChatCompletion = ({
     () => new Set()
   )
   const [activeRequestIds, setActiveRequestIds] = useState<ReadonlySet<string>>(() => new Set())
-  /** Live /compact progress keyed by session — several sessions can compact concurrently, and
+  /** Live compaction progress keyed by session — several sessions can compact concurrently, and
    *  each dock/cancel must be scoped to its own session. */
   const [compactionBySession, setCompactionBySession] = useState<Record<string, number>>({})
   const cancellingQueuedPromptIdsRef = useRef<Set<string>>(new Set())
@@ -507,7 +511,7 @@ export const useChatCompletion = ({
         providerConnection: requestConfig.providerConnection,
         model: requestConfig.selectedModel,
         modelRuntime: requestConfig.modelRuntimeConfig,
-        messages: currentSession.messages,
+        messages: getMessagesForCompaction(currentSession.messages),
         keepRecentMessages: MANUAL_COMPACTION_KEEP_RECENT_MESSAGES,
         systemPrompt: requestConfig.systemPrompt
       })
@@ -568,6 +572,99 @@ export const useChatCompletion = ({
         return next
       })
       finishSessionGeneration(currentSession.id, null)
+    }
+  }
+
+  /**
+   * Compact an idle session before dispatch only when its effective request has crossed the
+   * pressure threshold. A failed pressure compaction is advisory: the normal main-process
+   * pruning and coherent trimming path still gets a chance to serve the request.
+   */
+  const compactSessionForPressure = async (input: {
+    sessions: Session[]
+    session: Session
+    requestConfig: ChatRequestConfig
+  }): Promise<{ sessions: Session[]; session: Session } | null> => {
+    // Advancing the context epoch invalidates durable prompt admissions. Never let an automatic
+    // maintenance pass silently cancel user messages that are still waiting in the queue.
+    if (getMessagesForCompaction(input.session.messages).some((message) => message.queuedPrompt)) {
+      return { sessions: input.sessions, session: input.session }
+    }
+    const contextWindow = getContextWindowInfo(
+      input.requestConfig.selectedModel,
+      input.requestConfig.contextWindowTokens
+    ).tokens
+    const keepRecentMessages = selectAutoCompactionKeepRecentMessages({
+      messages: input.session.messages,
+      contextWindowTokens: contextWindow
+    })
+    const pressure = assessContextCompactionPressure({
+      messages: input.session.messages,
+      requestMessages: buildApiMessages(input.requestConfig.systemPrompt, input.session.messages),
+      contextWindowTokens: contextWindow,
+      keepRecentMessages
+    })
+    if (!pressure.shouldCompact) return { sessions: input.sessions, session: input.session }
+
+    const baselineEpoch = getSessionContextEpoch(input.session)
+    const visibleSessions = replaceSessionInSnapshot(input.sessions, input.session)
+    sessionsRef.current = visibleSessions
+    setSessions(visibleSessions)
+    beginSessionGeneration(input.session.id, null, null)
+    setCompactionBySession((prev) => ({ ...prev, [input.session.id]: Date.now() }))
+
+    try {
+      // Paint and persist the user's optimistic message before the auxiliary model call. A long
+      // compaction must not make a just-sent message appear to have been ignored.
+      await waitForRendererPaint()
+      await persistSessionsSnapshot(visibleSessions)
+      const result = await window.api.compactContext({
+        sessionId: input.session.id,
+        apiUrl: input.requestConfig.apiUrl,
+        apiKey: input.requestConfig.apiKey,
+        providerConnection: input.requestConfig.providerConnection,
+        model: input.requestConfig.selectedModel,
+        modelRuntime: input.requestConfig.modelRuntimeConfig,
+        messages: getMessagesForCompaction(input.session.messages),
+        keepRecentMessages,
+        systemPrompt: input.requestConfig.systemPrompt
+      })
+
+      const latest = sessionsRef.current.find((session) => session.id === input.session.id)
+      if (!latest || getSessionContextEpoch(latest) !== baselineEpoch) return null
+
+      const nextContextEpoch = baselineEpoch + 1
+      const mergedSession: Session = {
+        ...latest,
+        messages: applyCompactionResult({ messages: latest.messages, result, now: Date.now() }),
+        contextEpoch: nextContextEpoch,
+        lastActiveTime: Date.now()
+      }
+      window.api.advanceSessionContext(mergedSession.id, nextContextEpoch)
+      const updatedSessions = replaceSessionInSnapshot(sessionsRef.current, mergedSession)
+      sessionsRef.current = updatedSessions
+      setSessions(updatedSessions)
+      await persistSessionsSnapshot(updatedSessions)
+      console.info(
+        `Automatic context compaction summarized ${result.compactedCount} messages at ${pressure.measuredTokens}/${contextWindow} durable conversation tokens.`
+      )
+      return { sessions: updatedSessions, session: mergedSession }
+    } catch (error) {
+      const aborted =
+        error instanceof Error && (error.name === 'AbortError' || /abort/i.test(error.message))
+      if (aborted) return null
+      console.warn('Automatic context compaction failed; continuing with bounded trimming:', error)
+      const fallbackSessions = cloneSessionInSnapshot(sessionsRef.current, input.session.id)
+      const fallbackSession = fallbackSessions.find((session) => session.id === input.session.id)
+      return fallbackSession ? { sessions: fallbackSessions, session: fallbackSession } : null
+    } finally {
+      setCompactionBySession((prev) => {
+        if (prev[input.session.id] === undefined) return prev
+        const next = { ...prev }
+        delete next[input.session.id]
+        return next
+      })
+      finishSessionGeneration(input.session.id, null)
     }
   }
 
@@ -692,8 +789,18 @@ export const useChatCompletion = ({
       targetSession.title = deriveSessionTitle(promptToSend, '聊天对话')
     }
 
-    const reqId = createRunId()
+    if (!customMsgId && !branchOf) {
+      const pressureCompaction = await compactSessionForPressure({
+        sessions: currentSessions,
+        session: targetSession,
+        requestConfig
+      })
+      if (!pressureCompaction) return false
+      currentSessions = pressureCompaction.sessions
+      targetSession = pressureCompaction.session
+    }
 
+    const reqId = createRunId()
     const assistantMsgId = (Date.now() + 1).toString()
     targetSession.messages.push(
       createAssistantPlaceholder({
