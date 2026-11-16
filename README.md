@@ -1,5 +1,7 @@
 # QuickAI 🚀
 
+> **项目说明**：这是一个用于学习和练习 Harness/Agent 设计与实现的项目，整体仍比较粗糙。GitHub 上已经有许多类似产品；QuickAI 并不试图重复它们，而是用于承载和实践我对 Harness/Agent 的一些尚不成熟的想法，其中部分已经在项目中得到实现。
+
 > 一个基于 **Electron + React + TypeScript** 的 Spotlight 风格桌面 AI 智能体助手。支持多模型服务商、Git 版本化长期记忆、步骤级任务追踪，以及强大的分支会话派生与在线中断恢复。
 
 ---
