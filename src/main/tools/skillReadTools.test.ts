@@ -31,6 +31,7 @@ describe('skill read tools', () => {
 
     expect(result.resultForModel).toContain('Loaded QuickAI Skill')
     expect(result.resultForModel).toContain('Rich Skill')
+    expect(result.resultForModel).toContain('Follow the rich workflow.')
     expect(result.resultForModel).toContain('Packaged Auxiliary Files:')
     expect(result.resultForModel).toContain('Path: references/notes.md')
     expect(result.resultForModel).toContain('read_skill_resource')
@@ -39,7 +40,8 @@ describe('skill read tools', () => {
   })
 
   it('reads resource content with clamped paging metadata', async () => {
-    const content = '0123456789'.repeat(120)
+    const windowContent = '0123456789'.repeat(100)
+    const content = 'A'.repeat(100) + windowContent + 'B'.repeat(100)
     const tools = createSkillReadTools({
       loadSkills: () => [
         makeSkill({
@@ -53,10 +55,17 @@ describe('skill read tools', () => {
       executionContext
     )
 
-    expect(result.resultForModel).toContain('Skill Resource: skill-rich')
-    expect(result.resultForModel).toContain('Path: references/notes.md')
-    expect(result.resultForModel).toContain('Chars: 100-1100 of 1200')
-    expect(result.resultForModel).toContain('More available: call again with offset=1100.')
+    expect(result.resultForModel).toBe(
+      [
+        'Skill Resource: skill-rich',
+        'Path: references/notes.md',
+        'Chars: 100-1100 of 1200',
+        'More available: call again with offset=1100.',
+        '',
+        'Content:',
+        windowContent
+      ].join('\n')
+    )
     expect(result.resultForUi.summary).toBe('skill-rich chars 100-1100')
   })
 

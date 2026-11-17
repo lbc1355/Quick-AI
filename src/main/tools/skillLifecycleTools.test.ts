@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { existsSync, promises as fs } from 'fs'
 import { join } from 'path'
 import { getSkillRoot, getWorkspaceRoot } from '../paths'
-import { loadSkillsFromFolders } from '../skillManager'
-import { createSkillLifecycleTools } from './skillLifecycleTools'
+import { systemTools } from './system'
 
 const testDir = join(__dirname, '../../../temp-skill-lifecycle-tools-test')
 
@@ -37,9 +36,7 @@ describe('skill lifecycle tools', () => {
   })
 
   it('creates and removes a folder skill', async () => {
-    const tools = createSkillLifecycleTools({ loadSkills: loadSkillsFromFolders })
-
-    const createResult = await tools.create_skill.execute(
+    const createResult = await systemTools.create_skill.execute(
       {
         name: 'Lifecycle Skill',
         trigger: 'lifecycle-skill',
@@ -55,7 +52,7 @@ describe('skill lifecycle tools', () => {
       'Follow lifecycle workflow.'
     )
 
-    const removeResult = await tools.remove_skill.execute(
+    const removeResult = await systemTools.remove_skill.execute(
       { name: '@lifecycle-skill' },
       executionContext
     )
@@ -74,13 +71,30 @@ describe('skill lifecycle tools', () => {
     )
     await fs.writeFile(join(sourceDir, 'references', 'notes.md'), 'Installed reference', 'utf-8')
 
-    const tools = createSkillLifecycleTools({ loadSkills: loadSkillsFromFolders })
-    const installResult = await tools.install_skill.execute({ path: sourceDir }, executionContext)
+    const installResult = await systemTools.install_skill.execute(
+      { path: sourceDir },
+      executionContext
+    )
 
     const installedDir = join(getSkillRoot(), 'skill-installed-lifecycle')
     expect(installResult.resultForModel).toContain('Installed QuickAI skill')
     expect(await fs.readFile(join(installedDir, 'references', 'notes.md'), 'utf-8')).toBe(
       'Installed reference'
     )
+
+    const loadResult = await systemTools.load_skill.execute(
+      { name: '@installed-lifecycle' },
+      executionContext
+    )
+    expect(loadResult.resultForModel).toContain('Run installed lifecycle.')
+    expect(loadResult.resultForModel).toContain('Path: references/notes.md')
+    expect(loadResult.resultForModel).not.toContain('Installed reference')
+
+    const resourceResult = await systemTools.read_skill_resource.execute(
+      { name: '@installed-lifecycle', path: 'references/notes.md' },
+      executionContext
+    )
+    expect(resourceResult.resultForModel).toContain('Installed reference')
+    expect(resourceResult.resultForUi.title).toBe('Skill Resource: references/notes.md')
   })
 })

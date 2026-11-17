@@ -6,7 +6,7 @@ import { join } from 'path'
 import { promises as fs, existsSync } from 'fs'
 import { createRun, destroyRun } from '../agent/AgentRunContext'
 import { ActionLog } from '../agent/actionLog'
-import { getSkillRoot, getWorkspaceRoot } from '../paths'
+import { getSkillRoot } from '../paths'
 import { ToolExecutionContext } from './types'
 
 const testDir = join(__dirname, '../../../temp-system-tools-test')
@@ -31,16 +31,9 @@ describe('systemTools.list_skills', () => {
     }
   })
 
-  it('lists skills correctly when directory is populated', async () => {
+  it('lists an empty skill directory and discovers a skill added to it', async () => {
     const skillRoot = join(testDir, 'skill')
     await fs.mkdir(skillRoot, { recursive: true })
-
-    // Create a flat md skill
-    await fs.writeFile(
-      join(skillRoot, 'test-skill.md'),
-      '---\nname: Test Skill\ntrigger: test\n---\nPrompt instructions',
-      'utf-8'
-    )
 
     const listSkillsTool = systemTools.list_skills
     expect(listSkillsTool).toBeDefined()
@@ -50,6 +43,16 @@ describe('systemTools.list_skills', () => {
       signal: new AbortController().signal,
       host: undefined
     }
+
+    const emptyResult = await listSkillsTool.execute({}, executionContext)
+    expect(emptyResult.resultForModel).toBe('No custom skills installed.')
+    expect(emptyResult.resultForUi.summary).toBe('0 skills installed')
+
+    await fs.writeFile(
+      join(skillRoot, 'test-skill.md'),
+      '---\nname: Test Skill\ntrigger: test\n---\nPrompt instructions',
+      'utf-8'
+    )
 
     const result = await listSkillsTool.execute({}, executionContext)
     expect(result.resultForModel).toContain('Test Skill')
@@ -81,65 +84,6 @@ describe('systemTools.list_skills', () => {
     expect(result.resultForModel).toContain('Prompt instructions')
     expect(result.resultForModel).toContain('File Path:')
     expect(result.resultForUi.title).toBe('Skill Details: Test Skill')
-  })
-
-  it('loads skill instructions and resource list by @trigger', async () => {
-    const skillRoot = join(testDir, 'skill')
-    const skillDir = join(skillRoot, 'rich-skill')
-    await fs.mkdir(skillDir, { recursive: true })
-
-    await fs.writeFile(
-      join(skillDir, 'SKILL.md'),
-      '---\nname: Rich Skill\ntrigger: rich\ndescription: Use rich workflow\n---\nFollow the rich workflow.',
-      'utf-8'
-    )
-    await fs.mkdir(join(skillDir, 'references'), { recursive: true })
-    await fs.writeFile(join(skillDir, 'references', 'notes.md'), 'Reference details', 'utf-8')
-
-    const loadSkillTool = systemTools.load_skill
-    const executionContext = {
-      reqId: 'test-req',
-      signal: new AbortController().signal,
-      host: undefined
-    }
-
-    const result = await loadSkillTool.execute({ name: '@rich' }, executionContext)
-    expect(result.resultForModel).toContain('Loaded QuickAI Skill')
-    expect(result.resultForModel).toContain('Rich Skill')
-    expect(result.resultForModel).toContain('Follow the rich workflow.')
-    expect(result.resultForModel).toContain('Packaged Auxiliary Files:')
-    expect(result.resultForModel).toContain('Path: references/notes.md')
-    expect(result.resultForModel).toContain('read_skill_resource')
-    expect(result.resultForModel).not.toContain('Reference details')
-    expect(result.resultForUi.title).toBe('Load Skill: Rich Skill')
-  })
-
-  it('reads an auxiliary skill resource on demand', async () => {
-    const skillRoot = join(testDir, 'skill')
-    const skillDir = join(skillRoot, 'rich-skill')
-    await fs.mkdir(join(skillDir, 'references'), { recursive: true })
-
-    await fs.writeFile(
-      join(skillDir, 'SKILL.md'),
-      '---\nname: Rich Skill\ntrigger: rich\ndescription: Use rich workflow\n---\nFollow the rich workflow.',
-      'utf-8'
-    )
-    await fs.writeFile(join(skillDir, 'references', 'notes.md'), 'Reference details', 'utf-8')
-
-    const executionContext = {
-      reqId: 'test-req',
-      signal: new AbortController().signal,
-      host: undefined
-    }
-
-    const result = await systemTools.read_skill_resource.execute(
-      { name: '@rich', path: 'references/notes.md' },
-      executionContext
-    )
-    expect(result.resultForModel).toContain('Skill Resource: skill-rich')
-    expect(result.resultForModel).toContain('Path: references/notes.md')
-    expect(result.resultForModel).toContain('Reference details')
-    expect(result.resultForUi.title).toBe('Skill Resource: references/notes.md')
   })
 
   it('creates, validates, and loads a folder skill', async () => {
@@ -178,71 +122,6 @@ describe('systemTools.list_skills', () => {
     )
     expect(loadResult.resultForModel).toContain('Loaded QuickAI Skill')
     expect(loadResult.resultForModel).toContain('Follow the example workflow.')
-  })
-
-  it('installs a folder skill and preserves auxiliary resources', async () => {
-    const sourceDir = join(getWorkspaceRoot(), 'install-source-skill')
-    await fs.mkdir(join(sourceDir, 'references'), { recursive: true })
-    await fs.writeFile(
-      join(sourceDir, 'SKILL.md'),
-      '---\nname: Installed Skill\ntrigger: installed\ndescription: Use installed skill.\n---\nRun installed workflow.',
-      'utf-8'
-    )
-    await fs.writeFile(join(sourceDir, 'references', 'notes.md'), 'Installed reference', 'utf-8')
-
-    const executionContext = {
-      reqId: 'test-req',
-      signal: new AbortController().signal,
-      host: undefined
-    }
-
-    const installResult = await systemTools.install_skill.execute(
-      { path: sourceDir },
-      executionContext
-    )
-    expect(installResult.resultForModel).toContain('Installed QuickAI skill')
-
-    const installedDir = join(getSkillRoot(), 'skill-installed')
-    expect(await fs.readFile(join(installedDir, 'references', 'notes.md'), 'utf-8')).toBe(
-      'Installed reference'
-    )
-
-    const loadResult = await systemTools.load_skill.execute(
-      { name: '@installed' },
-      executionContext
-    )
-    expect(loadResult.resultForModel).toContain('Path: references/notes.md')
-
-    const resourceResult = await systemTools.read_skill_resource.execute(
-      { name: '@installed', path: 'references/notes.md' },
-      executionContext
-    )
-    expect(resourceResult.resultForModel).toContain('Installed reference')
-  })
-
-  it('removes a folder skill', async () => {
-    const executionContext = {
-      reqId: 'test-req',
-      signal: new AbortController().signal,
-      host: undefined
-    }
-    await systemTools.create_skill.execute(
-      {
-        name: 'Remove Me',
-        trigger: 'remove-me',
-        description: 'Use for remove tests.',
-        instructions: 'Remove this workflow.'
-      },
-      executionContext
-    )
-
-    const skillDir = join(getSkillRoot(), 'skill-remove-me')
-    const removeResult = await systemTools.remove_skill.execute(
-      { name: '@remove-me' },
-      executionContext
-    )
-    expect(removeResult.resultForModel).toContain('Removed QuickAI skill')
-    await expect(fs.stat(skillDir)).rejects.toThrow()
   })
 
   it('removes a flat markdown skill without deleting the skill root', async () => {
@@ -317,19 +196,6 @@ describe('systemTools.list_skills', () => {
         executionContext
       )
     ).rejects.toThrow('Skill already installed')
-  })
-
-  it('returns appropriate message when no skills exist', async () => {
-    const listSkillsTool = systemTools.list_skills
-    const executionContext = {
-      reqId: 'test-req',
-      signal: new AbortController().signal,
-      host: undefined
-    }
-
-    const result = await listSkillsTool.execute({}, executionContext)
-    expect(result.resultForModel).toContain('No custom skills installed.')
-    expect(result.resultForUi.summary).toContain('0 skills installed')
   })
 })
 

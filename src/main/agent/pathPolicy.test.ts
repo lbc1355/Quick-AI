@@ -41,8 +41,10 @@ describe('isSensitiveFileName', () => {
   it('blocks dotenv, private keys, and cert material', () => {
     expect(isSensitiveFileName('.env')).toBe(true)
     expect(isSensitiveFileName('config/.env.local')).toBe(true)
+    expect(isSensitiveFileName('.env.production')).toBe(true)
     expect(isSensitiveFileName('id_rsa')).toBe(true)
     expect(isSensitiveFileName('sub/id_ed25519')).toBe(true)
+    expect(isSensitiveFileName('C:\\project\\sub\\sensitive.key')).toBe(true)
     expect(isSensitiveFileName('cert.pem')).toBe(true)
     expect(isSensitiveFileName('client.pfx')).toBe(true)
   })
@@ -58,8 +60,8 @@ describe('isSensitiveFileName', () => {
   })
 
   it('blocks files under well-known secret directories', () => {
-    expect(isSensitiveFileName('C:/Users/me/.ssh/config')).toBe(true)
-    expect(isSensitiveFileName('C:/Users/me/.aws/credentials')).toBe(true)
+    expect(isSensitiveFileName('C:\\project\\.ssh\\config')).toBe(true)
+    expect(isSensitiveFileName('C:\\project\\.aws\\credentials')).toBe(true)
     expect(isSensitiveFileName('/home/me/.kube/config')).toBe(true)
     expect(isSensitiveFileName('/home/me/.docker/config.json')).toBe(true)
     expect(isSensitiveFileName('/home/me/.config/git/credentials')).toBe(true)
@@ -67,7 +69,7 @@ describe('isSensitiveFileName', () => {
 
   it('allows ordinary files, even inside a same-named sibling dir', () => {
     expect(isSensitiveFileName('a.txt')).toBe(false)
-    expect(isSensitiveFileName('src/c.ts')).toBe(false)
+    expect(isSensitiveFileName('C:\\project\\src\\c.ts')).toBe(false)
     expect(isSensitiveFileName('package.json')).toBe(false)
     expect(isSensitiveFileName('settings.json')).toBe(false)
     expect(isSensitiveFileName('config.json')).toBe(false)
