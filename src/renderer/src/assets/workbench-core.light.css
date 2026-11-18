@@ -1,26 +1,6 @@
-/*
- * workbench-core 的浅色镜像，第一轮设计（冷灰调）。
- * 与之同选择器、被 workbench-skin.light.css 整块覆盖的规则已删除，剩下的都是仍然生效的。
- */
+/* workbench-core 的浅色补充规则。 */
 .app-container.theme-light .header-command-separator {
   color: #aeb7c3;
-}
-
-.app-container.theme-light .logo-text,
-.app-container.theme-light .conversation-title-line h1,
-.app-container.theme-light .sidebar-title,
-.app-container.theme-light .session-title {
-  color: #111827;
-}
-
-.app-container.theme-light .model-name,
-.app-container.theme-light .conversation-title-meta,
-.app-container.theme-light .sidebar-subtitle,
-.app-container.theme-light .session-meta,
-.app-container.theme-light .sidebar-section-header,
-.app-container.theme-light .message-branch-note,
-.app-container.theme-light .message-branch-children {
-  color: #5f6c7b;
 }
 
 .app-container.theme-light .window-control-group {
@@ -32,10 +12,7 @@
 }
 
 .app-container.theme-light .session-switch-card {
-  border-color: #d9dee7;
-  background: rgba(255, 255, 255, 0.94);
   color: #44403c;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
 }
 
 .app-container.theme-light .session-switch-spinner {
@@ -44,10 +21,7 @@
 }
 
 .app-container.theme-light .scroll-to-bottom-btn {
-  border-color: #d9dee7;
-  background: var(--color-panel);
   color: #526071;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1);
 }
 
 .app-container.theme-light .scroll-to-bottom-btn:hover {
@@ -57,10 +31,7 @@
 }
 
 .app-container.theme-light .sticky-user-message {
-  border-color: #d9dee7;
-  background: rgba(255, 255, 255, 0.96);
   color: #243042;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1);
 }
 
 .app-container.theme-light .sticky-user-message:hover {
@@ -82,19 +53,6 @@
   color: #1f2937;
 }
 
-.app-container.theme-light .message-minimap-item.user::before {
-  background: #7a8797;
-}
-
-.app-container.theme-light .message-minimap-item.assistant::before {
-  background: #9f988d;
-}
-
-.app-container.theme-light .project-row,
-.app-container.theme-light .new-conversation-row {
-  color: #344054;
-}
-
 .app-container.theme-light .sidebar-mini-action {
   color: #647184;
 }
@@ -102,16 +60,6 @@
 .app-container.theme-light .sidebar-mini-action:hover {
   background: #e9edf3;
   color: #111827;
-}
-
-.app-container.theme-light .project-menu-btn {
-  color: #85827a;
-}
-
-.app-container.theme-light .project-menu-btn:hover,
-.app-container.theme-light .project-menu-btn:focus-visible {
-  background: #eeeeea;
-  color: var(--color-text-title);
 }
 
 .app-container.theme-light .project-delete-btn {
@@ -132,11 +80,7 @@
   color: #647184;
 }
 
-.app-container.theme-light .sidebar-model-card,
-.app-container.theme-light .input-container,
-.app-container.theme-light .skills-menu,
-.app-container.theme-light .message-branch-link,
-.app-container.theme-light .tool-detail-modal {
+.app-container.theme-light .message-branch-link {
   border-color: #d9dee7;
   background: var(--color-panel);
 }
@@ -179,25 +123,8 @@
   color: #6b7788;
 }
 
-.app-container.theme-light .sidebar-model-text strong,
-.app-container.theme-light .message-bubble.assistant .message-text,
-.app-container.theme-light .subagent-route-panel .message-text,
-.app-container.theme-light .agent-step-progress-message {
+.app-container.theme-light .sidebar-model-text strong {
   color: #243042;
-}
-
-.app-container.theme-light .system-progress-label {
-  border-color: #d9dee7;
-  background: #f4f6f9;
-  color: #6b7788;
-}
-
-.app-container.theme-light .agent-step-reasoning {
-  color: #5f6c7b;
-}
-
-.app-container.theme-light .agent-step-reasoning summary {
-  color: #5f6c7b;
 }
 
 .app-container.theme-light .conversation-title-dot {
@@ -223,15 +150,6 @@
 
 .app-container.theme-light .context-progress-ring::after {
   background: var(--color-panel);
-}
-
-.app-container.theme-light .message-text :not(pre) > code,
-.app-container.theme-light .agent-tool-chip,
-.app-container.theme-light .tool-detail-name,
-.app-container.theme-light .tool-detail-result-item-source {
-  border-color: #d9dee7;
-  background: #eef2f7;
-  color: #24415f;
 }
 
 .app-container.theme-light .agent-event-final-text,
@@ -264,14 +182,6 @@
   color: #9f2d2d;
 }
 
-.app-container.theme-light .agent-tool-verb {
-  color: #5f6c7b;
-}
-
-.app-container.theme-light .agent-tool-line-range {
-  color: #6b7280;
-}
-
 .app-container.theme-light .agent-tool-diff-added {
   color: #059669;
 }
@@ -280,20 +190,13 @@
   color: var(--color-danger);
 }
 
-.app-container.theme-light .agent-tool-group-caret,
-.app-container.theme-light .agent-tool-group-more {
-  color: #7a8594;
-}
-
 .app-container.theme-light .run-mode-btn,
 .app-container.theme-light .run-mode-btn.chat,
 .app-container.theme-light .run-mode-btn.agent,
 .app-container.theme-light .run-mode-btn .sparkle-icon,
 .app-container.theme-light .run-mode-btn.agent .sparkle-icon,
-.app-container.theme-light .reasoning-level-trigger,
-.app-container.theme-light .input-action-btn.send {
+.app-container.theme-light .reasoning-level-trigger {
   background: transparent;
-  color: #5f6c7b;
 }
 
 .app-container.theme-light .skills-trigger,

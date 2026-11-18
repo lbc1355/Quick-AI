@@ -283,8 +283,7 @@
 .app-container.theme-light .run-mode-btn:hover,
 .app-container.theme-light .reasoning-level-trigger:hover,
 .app-container.theme-light .reasoning-level-trigger.open,
-.app-container.theme-light .reasoning-level-trigger:focus-visible,
-.app-container.theme-light .input-action-btn.send:hover {
+.app-container.theme-light .reasoning-level-trigger:focus-visible {
   background: #eeeeea;
   color: var(--color-text-title);
 }
