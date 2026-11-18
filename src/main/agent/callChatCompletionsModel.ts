@@ -22,6 +22,8 @@ import { applyModelRequestBodyOverrides } from './requestBodyOverrides'
 import { ClosingThinkTagSplitter } from './closingThinkTagSplitter'
 import { ModelStreamScope } from './modelStreamLifecycle'
 import { createHttpModelTransportError } from './modelTransportError'
+import { serializeModelRequest } from './serializeModelRequest'
+import { createModelTimingReporter } from './modelTiming'
 
 export async function callChatCompletionsModel(
   options: CallModelOptions,
@@ -30,6 +32,7 @@ export async function callChatCompletionsModel(
   signal?: AbortSignal,
   callbacks?: CallModelCallbacks
 ): Promise<ChatCompletionMessage> {
+  const timings = createModelTimingReporter(callbacks?.onTiming)
   const adapter = resolveModelAdapter(options)
   const features = resolveModelFeatures(options, adapter)
   const transportId = resolveTransportId(options)
@@ -71,6 +74,7 @@ export async function callChatCompletionsModel(
   }).body
 
   body = adapter.sanitizeBody(body)
+  const serializedBody = serializeModelRequest(body)
 
   const shouldStreamFinal = true
   let streamingStarted = false
@@ -78,6 +82,7 @@ export async function callChatCompletionsModel(
   const attempt = async (): Promise<ChatCompletionMessage> => {
     const streamScope = new ModelStreamScope(adapter.streamPolicy, signal)
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+    const timing = timings.startAttempt()
 
     try {
       const response = await streamScope.waitFor(
@@ -85,12 +90,13 @@ export async function callChatCompletionsModel(
           fetch(target.url, {
             method: 'POST',
             headers: target.headers,
-            body: JSON.stringify(body),
+            body: serializedBody,
             signal: streamScope.signal
           }),
         'Provider response'
       )
 
+      timing.headers(response.status)
       if (!response.ok) {
         const errorText = await streamScope.waitFor(
           () => response.text(),
@@ -119,6 +125,9 @@ export async function callChatCompletionsModel(
           ? new ClosingThinkTagSplitter()
           : undefined
       const emit = (event: Exclude<ModelEvent, { type: 'finish' }>): void => {
+        if (event.type === 'text-delta' && event.delta) timing.output('text')
+        if (event.type === 'reasoning-delta' && event.delta) timing.output('reasoning')
+        if (event.type === 'tool-call-delta') timing.output('tool-call')
         if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
           streamingStarted = true
         }
@@ -132,6 +141,7 @@ export async function callChatCompletionsModel(
       while (true) {
         const { done, value } = await streamScope.waitFor(() => reader!.read(), 'Provider stream')
         if (done) break
+        if (value?.byteLength) timing.bodyChunk()
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -229,8 +239,10 @@ export async function callChatCompletionsModel(
 
       const assistantMessage = events.finalize()
       if (events.usage) promptCacheStatsByMessage.set(assistantMessage, events.usage)
+      timing.complete('success')
       return assistantMessage
     } catch (error) {
+      timing.complete('error')
       if (reader) {
         try {
           await reader.cancel(error)

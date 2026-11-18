@@ -38,4 +38,19 @@ describe('UTF-8 text budgets', () => {
       bytes: 1
     })
   })
+
+  it('aligns explicit offsets that fall inside a surrogate pair', () => {
+    expect(sliceUtf8Prefix('a🌟b', 10, 2)).toEqual({
+      text: 'b',
+      startOffset: 3,
+      endOffset: 4,
+      bytes: 1
+    })
+    expect(sliceUtf8Suffix('a🌟b', 10, 2)).toEqual({
+      text: 'a',
+      startOffset: 0,
+      endOffset: 1,
+      bytes: 1
+    })
+  })
 })

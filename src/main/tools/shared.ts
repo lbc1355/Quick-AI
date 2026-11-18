@@ -1,5 +1,6 @@
 import { fetchUrl, renderWithLineNumbers, type FetchUrlResult } from '../webTools'
 import { SessionResource } from '../../shared/types'
+import { sliceUnicode } from '../../shared/unicodeText'
 import { ToolExecutionContext, ToolExecutionResult } from './types'
 import { saveResourceChunk, getResourceId } from '../resourceCache'
 import { createToolResult } from './result'
@@ -67,7 +68,7 @@ export function buildFetchUrlModelResult(options: FetchUrlModelResultOptions): s
 
   while (low <= high) {
     const mid = Math.floor((low + high) / 2)
-    const visibleText = options.result.text.slice(0, mid)
+    const visibleText = sliceUnicode(options.result.text, 0, mid)
     const visibleEndOffset = options.result.offset + visibleText.length
     const body = buildFetchUrlBody(options, visibleText, visibleEndOffset)
     if (body.length <= FETCH_URL_MODEL_RESULT_MAX_CHARS) {
@@ -78,11 +79,8 @@ export function buildFetchUrlModelResult(options: FetchUrlModelResultOptions): s
     }
   }
 
-  return buildFetchUrlBody(
-    options,
-    options.result.text.slice(0, best),
-    options.result.offset + best
-  )
+  const visibleText = sliceUnicode(options.result.text, 0, best)
+  return buildFetchUrlBody(options, visibleText, options.result.offset + visibleText.length)
 }
 
 export async function fetchCacheAndFormat(

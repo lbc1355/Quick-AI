@@ -428,23 +428,6 @@ ${'A'.repeat(2200)}`
     expect(result.resultForModel).not.toContain('node_modules/pkg/ignored.ts')
   })
 
-  it('returns a short diff after file_edit succeeds', async () => {
-    const filePath = join(testDir, 'workspace', 'src', 'edit.ts')
-    await fs.writeFile(filePath, ['one', 'two', 'three'].join('\n'), 'utf-8')
-
-    await fileTools.file_read.execute({ path: 'src/edit.ts', root: 'workspace' }, executionContext)
-    const result = await fileTools.file_edit.execute(
-      { path: 'src/edit.ts', root: 'workspace', old_string: 'two', new_string: 'TWO' },
-      executionContext
-    )
-
-    expect(result.resultForModel).toContain('Successfully edited src/edit.ts')
-    expect(result.resultForModel).toContain('Diff:')
-    expect(result.resultForModel).toContain('- two')
-    expect(result.resultForModel).toContain('+ TWO')
-    await expect(fs.readFile(filePath, 'utf-8')).resolves.toContain('TWO')
-  })
-
   it('adds location details when file_edit cannot find old_string', async () => {
     await fs.writeFile(
       join(testDir, 'workspace', 'src', 'missing.ts'),

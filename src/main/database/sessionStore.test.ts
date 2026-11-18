@@ -1,6 +1,8 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import Database from 'better-sqlite3'
 import { join } from 'path'
-import { promises as fs, existsSync } from 'fs'
+import { promises as fs } from 'fs'
+import { tmpdir } from 'os'
 import { Session } from '../../shared/types'
 import { describeWithSqlite } from '../testSupport/nativeSqlite'
 import {
@@ -11,7 +13,7 @@ import {
 import { closeDb, loadSessions, saveSessions } from '../database'
 import { getDb } from './connection'
 
-const testDir = join(__dirname, '../../../temp-session-store-test')
+let testDir: string
 
 vi.mock('electron', () => ({
   app: {
@@ -102,13 +104,12 @@ describe('planSessionPersist / computeSessionHash', () => {
 describeWithSqlite('saveSessions incremental persistence', () => {
   beforeEach(async () => {
     closeDb()
-    if (existsSync(testDir)) await fs.rm(testDir, { recursive: true, force: true })
-    await fs.mkdir(testDir, { recursive: true })
+    testDir = await fs.mkdtemp(join(tmpdir(), 'qa-sessions-'))
   })
 
   afterEach(async () => {
     closeDb()
-    if (existsSync(testDir)) await fs.rm(testDir, { recursive: true, force: true })
+    if (testDir) await fs.rm(testDir, { recursive: true, force: true })
   })
 
   it('round-trips a multi-session snapshot', () => {
@@ -124,6 +125,44 @@ describeWithSqlite('saveSessions incremental persistence', () => {
     expect(loaded.find((s) => s.id === 'a')?.titleManuallyEdited).toBe(true)
     expect(loaded.find((s) => s.id === 'b')?.contextEpoch).toBe(0)
     expect(loaded.find((s) => s.id === 'b')?.titleManuallyEdited).toBeUndefined()
+  })
+
+  it('persists changes to message visibility flags across database reopen', () => {
+    const session = makeSession('visibility')
+    saveSessions([session])
+    const internal = { ...session.messages[0], isSynthetic: true, isInternal: true }
+    saveSessions([{ ...session, messages: [internal] }])
+
+    closeDb()
+    expect(loadSessions()[0].messages).toMatchObject([internal])
+  })
+
+  it('recovers the hidden background prompt from a database saved without visibility flags', () => {
+    const legacy = new Database(join(testDir, 'quickai.db'))
+    try {
+      legacy.exec(
+        `
+        CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, lastActiveTime INTEGER);
+        CREATE TABLE messages (
+          id TEXT PRIMARY KEY, sessionId TEXT, role TEXT, content TEXT,
+          reasoning_content TEXT, agentRunId TEXT, agentEvents TEXT, createdAt INTEGER
+        );
+        INSERT INTO sessions VALUES ('old-session', 'Old Session', 1);
+        INSERT INTO messages (id, sessionId, role, content, createdAt) VALUES
+          ('background-result-source-job-1', 'old-session', 'user', 'Background result', 1),
+          ('background-result-assistant-job-1', 'old-session', 'assistant', 'Task finished', 2),
+          ('typed-message', 'old-session', 'user', 'Background result', 3);
+        `
+      )
+    } finally {
+      legacy.close()
+    }
+
+    expect(loadSessions()[0].messages).toMatchObject([
+      { content: 'Background result', isSynthetic: true, isInternal: true },
+      { content: 'Task finished', isInternal: undefined },
+      { id: 'typed-message', isInternal: undefined }
+    ])
   })
 
   it('round-trips per-session reasoning preferences independently', () => {

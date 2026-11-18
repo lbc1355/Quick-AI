@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { toWellFormedText } from '../../shared/unicodeText'
 import {
   buildToolResultUiDetails,
   createRawToolResult,
@@ -43,6 +44,15 @@ describe('tool result helpers', () => {
     expect(details).toContain('abc')
     expect(details).toContain('call-2')
     expect(details.length).toBeGreaterThan(3)
+  })
+
+  it('does not split emoji in tool summaries or details previews', () => {
+    const result = createToolResult({
+      resultForModel: `${'x'.repeat(218)}🌟end`,
+      detailsLimit: 219
+    })
+    expect(result.resultForUi.summary).toBe(`${'x'.repeat(218)}…`)
+    expect(result.resultForUi.details).toBe(toWellFormedText(result.resultForUi.details!))
   })
 
   it('creates model and UI results from mixed raw tool output', () => {

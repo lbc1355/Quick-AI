@@ -621,13 +621,13 @@ Agent 执行引擎基于 ReAct 循环，解耦为了高度模块化的管线处�
 当 Agent 被触发时，它将依次流经以下由 [src/main/agent/](file:///d:/Git/Quick%20Ai/src/main/agent) 驱动的处理阶段：
 
 1.  **准备阶段（Run Preparation）**：
-    由 `agentRunPreparation.ts` 校验最大步数上限、装载 Resume 切片、注入分支提示；`agentRunLifecycle.ts` 创建运行上下文并登记运行清单；`runUsageTracker.ts` 开启本次运行的 Token 及调用计数统计；`beginAgentFileSnapshot()` 记录工作区基线快照。
+    由 `agentRunPreparation.ts` 校验最大步数上限、装载 Resume 切片、注入分支提示；`agentRunLifecycle.ts` 创建运行上下文并登记运行清单；`runUsageTracker.ts` 开启本次运行的 Token 及调用计数统计。工作区基线快照延迟至首个工具回合之前建立，不阻塞首轮模型调用。
 2.  **大模型思考规划驱动（Model Turn Runner）**：
     由 `modelTurnRunner.ts` 发起流式 LLM 调用，经 `modelTransport.ts` 路由给对应协议实现，由流式解析器实时输出推理内容与工具调用规划（Tool Calls）。调用前会先做上下文裁剪（`staleToolResultCompaction` → `trimMessagesToFit`）并采集提示缓存形状（`cacheShapeDiagnostics`）。
 3.  **安全审查与授权（Permission Guard）**：
     提取规划中的工具参数，交由 `constitution.ts`、`commandSafety.ts` 和 `pathPolicy.ts` 进行路径逃逸和高危 Shell 命令分析，必要时通过 `permissionManager.ts` 抛出 IPC 挂起 Promise，等待前端操作审批。
 4.  **工具批量执行器（Tool Turn Runner）**：
-    由 `toolTurnRunner.ts` 进行工具调度。当有多项无依赖的工具调用时，由 `toolBatchRunner.ts` 开启并发执行，通过 `preparedToolExecutor.ts` 分发具体的本地原子工具（`*Tool.ts`）并回收结果。
+    首个工具回合先等待 `beginAgentFileSnapshot()` 建立回滚基线，并再次检查取消状态；随后由 `toolTurnRunner.ts` 进行工具调度。当有多项无依赖的工具调用时，由 `toolBatchRunner.ts` 开启并发执行，通过 `preparedToolExecutor.ts` 分发具体的本地原子工具（`*Tool.ts`）并回收结果。
 5.  **步骤落地与清洗管道（Step Processor & Applicator）**：
     - `toolStepProcessor.ts`：将执行结果与原始调用请求封装为完整的步骤块。
     - `toolStepApplicator.ts`：处理可能发生的文件系统与变量状态变更应用。
@@ -738,9 +738,9 @@ Agent 拥有写文件与执行 Shell 的能力，因此"撤销这次运行改了
 ### 10.1 快照机制
 
 - 快照引用写在 `refs/quickai/**` 命名空间下（`SNAPSHOT_REF_ROOT`），**不产生提交、不污染用户分支、不进入 `git log`**。
-- `beginAgentFileSnapshot()` 在运行开始时记录基线；`finish()` 在运行结束时比对并产出 `AgentFileChange[]`（新增/修改/删除），作为 `file_changes` 事件发给 UI。
+- `beginAgentFileSnapshot()` 在首个工具回合执行前记录基线；`finish()` 在运行结束时使用最新检查点产出 `AgentFileChange[]`（新增/修改/删除），作为 `file_changes` 事件发给 UI。纯文本轮次不启动 Git 快照，日志记录 `file_snapshot_skipped`，原因是 `no_tool_calls`。
 - 单文件超过 `MAX_SNAPSHOT_FILE_BYTES`（2 MB）不纳入快照；Git 输出上限 16 MB；差异预览截断在 20 万字符。
-- 项目未启用 Git 时快照能力自动降级关闭，不影响 Agent 正常执行。
+- 项目未启用 Git 时也可使用独立快照仓库；Git 不可用或捕获失败时快照能力降级关闭，不影响 Agent 正常执行。
 
 ### 10.2 两级回滚
 

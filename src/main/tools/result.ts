@@ -1,4 +1,5 @@
 import { ToolResultUi } from '../../shared/types'
+import { sliceUnicode } from '../../shared/unicodeText'
 import { ToolExecutionResult, ToolModelAttachment } from './types'
 import { safeJsonStringify } from './jsonSafe'
 
@@ -56,7 +57,7 @@ export const formatRawToolOutput = (rawOutput: unknown): string => {
 export const summarizeToolResult = (text: string, maxLength = 220): string => {
   const clean = compact(text)
   if (clean.length <= maxLength) return clean
-  return `${clean.slice(0, Math.max(0, maxLength - 1))}…`
+  return `${sliceUnicode(clean, 0, Math.max(0, maxLength - 1))}…`
 }
 
 export const buildToolResultUiDetails = (
@@ -70,7 +71,7 @@ export const buildToolResultUiDetails = (
     ? `完整输出 ID: ${options.callId}。需要完整内容时，可以让 agent 读取完整工具输出。`
     : '需要完整内容时，可以让 agent 读取完整工具输出。'
 
-  return `${details.slice(0, limit)}
+  return `${sliceUnicode(details, 0, limit)}
 
 [界面预览已在 ${limit} 字符处截断。${suffix}]`
 }

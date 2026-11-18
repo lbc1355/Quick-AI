@@ -31,7 +31,7 @@ import { createAgentEventStream } from './agentEventStream'
 import { createAgentEventJournalWriter } from './agentEventJournal'
 import { compactStaleToolResultsForContextPressure } from './staleToolResultCompaction'
 import { normalizeContextEpoch } from '../../shared/contextEpoch'
-import { beginAgentFileSnapshot } from './agentFileSnapshot'
+import { beginAgentFileSnapshot, type AgentFileSnapshotHandle } from './agentFileSnapshot'
 import { deliverBackgroundSubagentResult } from './backgroundSubagentDelivery'
 import { deliverBackgroundShellResult } from './backgroundShellDelivery'
 import {
@@ -48,6 +48,7 @@ import {
 } from './agentRunLimits'
 import { createModelRequestContextPolicy, createModelRequestRecord } from './modelRequestRecord'
 import { utf8ByteLength } from './utf8Text'
+import { createRunTimingLogger } from './runTiming'
 
 const sendEvent = (
   mainWindow: BrowserWindow,
@@ -178,7 +179,11 @@ export const runAgentLoop = async (
   options: AgentRunOptions,
   permissions?: { [toolName: string]: 'allow' | 'ask' | 'deny' }
 ): Promise<void> => {
+  const timings = createRunTimingLogger(options.sessionId || reqId, reqId, options.startupTiming)
+  const prepareStarted = performance.now()
   const preparedRun = prepareAgentRun({ reqId, options, permissions })
+  timings.record('agent_prepare', performance.now() - prepareStarted)
+  const setupStarted = performance.now()
   const {
     isSkill,
     toolDiscovery,
@@ -245,11 +250,25 @@ export const runAgentLoop = async (
     runId: reqId,
     assistantMessageId: options.assistantMessageId
   })
-  const fileSnapshotHandle = await beginAgentFileSnapshot({
-    sessionId: conversationId,
-    runId: reqId,
-    projectRoot: options.projectRoot
-  })
+  timings.record('agent_setup', performance.now() - setupStarted)
+  // Model planning cannot change the workspace. Defer the baseline until the first tool turn,
+  // so background snapshot maintenance never holds a text-only answer behind the Git queue.
+  let fileSnapshotHandle: AgentFileSnapshotHandle | undefined
+  let fileSnapshotInitialized = false
+  const ensureFileSnapshot = async (): Promise<void> => {
+    if (fileSnapshotInitialized) return
+    fileSnapshotInitialized = true
+    const snapshotStarted = performance.now()
+    fileSnapshotHandle = await beginAgentFileSnapshot({
+      sessionId: conversationId,
+      runId: reqId,
+      projectRoot: options.projectRoot,
+      onTiming: timings.record
+    })
+    timings.record('file_snapshot', performance.now() - snapshotStarted, {
+      available: Boolean(fileSnapshotHandle)
+    })
+  }
   let fileSnapshotFinalized = false
   let fileSnapshotNeedsCheckpoint = false
   const checkpointFileSnapshot = async (): Promise<void> => {
@@ -259,6 +278,10 @@ export const runAgentLoop = async (
   const finalizeFileSnapshot = async (): Promise<void> => {
     if (fileSnapshotFinalized) return
     fileSnapshotFinalized = true
+    if (!fileSnapshotInitialized) {
+      timings.record('file_snapshot_skipped', 0, { reason: 'no_tool_calls' })
+      return
+    }
     const snapshot = await fileSnapshotHandle?.finish({
       captureLatest: fileSnapshotNeedsCheckpoint
     })
@@ -396,6 +419,7 @@ export const runAgentLoop = async (
 
       SessionLogger.logStepStart(conversationId, step, reportedMaxSteps)
 
+      const requestPrepareStarted = performance.now()
       const toolRegistrySnapshot = materializeToolRegistry(toolRegistry)
       const toolsToDeclare = reconstructedRequest?.payload
         ? reconstructedRequest.payload.tools || []
@@ -509,6 +533,7 @@ export const runAgentLoop = async (
       const reasoningLineProgress = createStreamLineProgressTracker((lineCount) => {
         emitModelOutputProgress(formatStreamLineProgressMessage('思考', lineCount))
       })
+      timings.record('request_prepare', performance.now() - requestPrepareStarted, { step })
       const {
         assistantMessage,
         streamedText: assistantTextBuffer,
@@ -519,6 +544,7 @@ export const runAgentLoop = async (
         toolsToDeclare,
         signal,
         usageTracker,
+        onTiming: timings.model(step),
         onReasoning: (content) => {
           eventStream.emit({ type: 'reasoning', content, step, stepId })
           reasoningLineProgress(content)
@@ -556,6 +582,8 @@ export const runAgentLoop = async (
       SessionLogger.logModelResponse(conversationId, assistantMessage, cacheStats)
 
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        await ensureFileSnapshot()
+        if (signal.aborted) throw new Error('Agent execution aborted by user.')
         const toolBatchMayModifyFiles = assistantMessage.tool_calls.some((call) =>
           SIDE_EFFECTING_TOOLS.has(call.function.name)
         )
@@ -647,6 +675,7 @@ export const runAgentLoop = async (
       reasoningPreference: 'auto' as const
     }
     const forcedFinalTurn = await runForcedFinalTurn({
+      onTiming: timings.model(forcedFinalStep),
       messages,
       reason: forcedFinalReason,
       signal,

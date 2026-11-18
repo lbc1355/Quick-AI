@@ -8,6 +8,7 @@ import { RunUsageTracker } from './runUsageTracker'
 import { runModelTurn as defaultRunModelTurn } from './modelTurnRunner'
 import { getMessageText as getAssistantText } from './messageText'
 import type { ForcedFinalReason } from './agentRunLimits'
+import type { ModelTimingEvent } from '../../shared/runTiming'
 
 export interface RunForcedFinalTurnDependencies {
   trimMessagesToFit?: typeof defaultTrimMessagesToFit
@@ -15,6 +16,7 @@ export interface RunForcedFinalTurnDependencies {
 }
 
 export interface RunForcedFinalTurnOptions {
+  onTiming?: (event: ModelTimingEvent) => void
   messages: ChatCompletionMessage[]
   reason: ForcedFinalReason
   signal: AbortSignal
@@ -74,6 +76,7 @@ export async function runForcedFinalTurn(
     messages,
     signal: options.signal,
     usageTracker: options.usageTracker,
+    ...(options.onTiming ? { onTiming: options.onTiming } : {}),
     onReasoning: options.emitReasoning,
     onContentChunk: (content) => {
       finalEmitted = true

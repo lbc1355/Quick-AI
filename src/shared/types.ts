@@ -1,4 +1,5 @@
 import { RuntimeErrorPayload } from './runtimeErrors'
+import type { RendererStartupTiming } from './runTiming'
 
 export interface ToolResultUi {
   title?: string
@@ -843,6 +844,7 @@ export interface AutocompleteItem {
 }
 
 export interface AgentSkillRunOptions {
+  startupTiming?: RendererStartupTiming
   apiUrl: string
   apiKey: string
   providerConnection?: ResolvedProviderConnection
@@ -1089,6 +1091,7 @@ export interface BackgroundShellResultNotification extends BackgroundShellComple
 }
 
 export interface ChatRunOptions {
+  startupTiming?: RendererStartupTiming
   apiUrl: string
   apiKey: string
   providerConnection?: ResolvedProviderConnection

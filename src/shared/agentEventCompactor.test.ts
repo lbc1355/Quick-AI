@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import { AgentEvent } from './types'
 import { compactAgentEvents } from './agentEventCompactor'
-import { isRuntimeErrorAssistantMessage } from './agentEventReducer'
 
 describe('compactAgentEvents', () => {
   it('coalesces realtime text, reasoning, final, and tool output deltas', () => {
@@ -143,24 +142,5 @@ describe('compactAgentEvents', () => {
     ]
 
     expect(compactAgentEvents(events)).toEqual(events)
-  })
-})
-
-describe('runtime error prefixes', () => {
-  it('recognizes historical and current chat runtime error prefixes', () => {
-    expect(
-      isRuntimeErrorAssistantMessage({
-        id: 'legacy',
-        role: 'assistant',
-        content: '\u26a0\ufe0f \u51fa\u9519\u4e86\uff1anetwork failed'
-      })
-    ).toBe(true)
-    expect(
-      isRuntimeErrorAssistantMessage({
-        id: 'current',
-        role: 'assistant',
-        content: '\u51fa\u9519\u4e86\uff1anetwork failed'
-      })
-    ).toBe(true)
   })
 })

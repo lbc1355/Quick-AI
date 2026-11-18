@@ -4,6 +4,7 @@ import type {
   BackgroundJobReportDisposition,
   SessionPromptAdmission
 } from '../../shared/types'
+import { BACKGROUND_RESULT_SOURCE_PREFIX } from '../../shared/backgroundResultSource'
 import { admitSessionPrompt, markSessionPromptRunning } from '../database/sessionPromptStore'
 import { globalSessionCoordinator } from '../sessionCoordinator'
 import { getBackgroundJob, markBackgroundJobReported } from './backgroundJobManager'
@@ -55,7 +56,7 @@ const promptIds = (
   jobId: string
 ): { admissionId: string; sourceMessageId: string; assistantMessageId: string } => ({
   admissionId: `background-result-admission-${jobId}`,
-  sourceMessageId: `background-result-source-${jobId}`,
+  sourceMessageId: `${BACKGROUND_RESULT_SOURCE_PREFIX}${jobId}`,
   assistantMessageId: `background-result-assistant-${jobId}`
 })
 

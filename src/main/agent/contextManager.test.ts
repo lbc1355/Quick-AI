@@ -6,6 +6,7 @@ import {
   trimMessagesToFit
 } from './contextManager'
 import { ChatCompletionMessage } from '../../shared/types'
+import { toWellFormedText } from '../../shared/unicodeText'
 
 describe('getContextWindowSize', () => {
   it('uses the explicit table for known models', () => {
@@ -127,7 +128,7 @@ describe('trimMessagesToFit', () => {
   })
 
   it('leaves a read_tool_output pointer when truncating a large tool message', () => {
-    const big = 'z'.repeat(6000)
+    const big = `${'z'.repeat(299)}🌟${'z'.repeat(5700)}`
     const messages: ChatCompletionMessage[] = [
       { role: 'system', content: 'sys' },
       {
@@ -153,6 +154,7 @@ describe('trimMessagesToFit', () => {
     const content = toolMsg!.content as string
     expect(content.length).toBeLessThan(big.length)
     expect(content).toContain('read_tool_output(output_id="big-call")')
+    expect(content).toBe(toWellFormedText(content))
   })
 
   it('omits the pointer for tool messages below the spillover threshold', () => {

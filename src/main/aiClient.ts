@@ -16,6 +16,8 @@ import { injectMemoryContext } from './agent/memoryPrompts'
 import { estimateTokens } from './agent/tokenEstimator'
 import { normalizeContextEpoch } from '../shared/contextEpoch'
 import { buildProviderRequestHeaders } from './agent/modelRequestTarget'
+import { createRunTimingLogger } from './agent/runTiming'
+import type { RendererStartupTiming } from '../shared/runTiming'
 import {
   getProviderModelDiscoveryPolicy,
   buildReasoningDiscoveryContext,
@@ -59,10 +61,12 @@ export async function handleChatCompletion(
     contextEpoch?: number
     reasoningPreference?: ReasoningPreference
     onResponseSettled?: () => void
+    startupTiming?: RendererStartupTiming
   }
 ): Promise<void> {
   const { apiUrl, apiKey, providerConnection, model, modelRuntime, messages } = options
   const contextEpoch = normalizeContextEpoch(options.contextEpoch)
+  const timings = createRunTimingLogger(options.sessionId || reqId, reqId, options.startupTiming)
   const controller = new AbortController()
   activeChatSessions.set(reqId, controller)
   let responseSettled = false
@@ -73,8 +77,10 @@ export async function handleChatCompletion(
   }
 
   try {
+    const prepareStarted = performance.now()
     const memoryPrompt = loadMemoryContextPrompt()
     const messagesWithMemory = injectMemoryContext(messages, memoryPrompt)
+    timings.record('chat_prepare', performance.now() - prepareStarted)
 
     // Plain chat is a single model call with no tools. Reuse the agent's SSE parser
     // (callModel) as the single source of truth — it also splits local <think> tags
@@ -93,6 +99,7 @@ export async function handleChatCompletion(
       undefined,
       controller.signal,
       {
+        onTiming: timings.model(1),
         onReasoning: (reasoningContent) => {
           mainWindow.webContents.send('chat-chunk', { reqId, contextEpoch, reasoningContent })
         },

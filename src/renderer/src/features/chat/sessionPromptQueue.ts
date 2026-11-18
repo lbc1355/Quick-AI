@@ -8,7 +8,7 @@ import type {
   SessionPromptAdmission
 } from '../../../../shared/types'
 import { applyAgentEventToMessage } from '../../../../shared/agentEventReducer'
-import { BACKGROUND_RESULT_SOURCE_PREFIX } from './messageVisibility'
+import { BACKGROUND_RESULT_SOURCE_PREFIX } from '../../../../shared/backgroundResultSource'
 
 const promptText = (admission: SessionPromptAdmission): string => {
   const message = admission.messages.findLast((item) => item.role === 'user')

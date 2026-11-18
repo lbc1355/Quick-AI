@@ -1,4 +1,5 @@
 import { ToolArgs } from '../../shared/types'
+import { sliceUnicode } from '../../shared/unicodeText'
 import { readResourceChunkWindow, readResourceFullText } from '../resourceCache'
 import { formatResourceOffsets, formatResourceRanges } from './resourceFormat'
 import { createResourceToolResult } from './resourceResult'
@@ -43,15 +44,17 @@ export const projectCachedResourceReadWindow = (
 ): CachedResourceReadWindow => {
   const requestedOffset = chunk.requestedOffset
   const startsInsideChunk = requestedOffset >= chunk.offset && requestedOffset < chunk.endOffset
-  const startOffset = maxChars !== undefined && startsInsideChunk ? requestedOffset : chunk.offset
-  const startIndex = Math.max(0, startOffset - chunk.offset)
-  let text = chunk.text.slice(startIndex)
+  const requestedStart =
+    maxChars !== undefined && startsInsideChunk ? requestedOffset : chunk.offset
+  const startIndex = Math.max(0, requestedStart - chunk.offset)
+  let text = sliceUnicode(chunk.text, startIndex)
+  const startOffset = chunk.offset + chunk.text.length - text.length
   let endOffset = startOffset + text.length
   let nextOffset: number | undefined
   const warnings = chunk.warning ? [chunk.warning] : []
 
   if (maxChars !== undefined && text.length > maxChars) {
-    text = text.slice(0, maxChars)
+    text = sliceUnicode(text, 0, maxChars)
     endOffset = startOffset + text.length
     nextOffset = endOffset
     warnings.push(
@@ -105,7 +108,7 @@ export const projectCachedResourceLineWindow = (
     const separatorChars = output.length > 0 ? 1 : 0
     if (outputChars + separatorChars + formatted.length > maxChars) {
       if (output.length === 0) {
-        output.push(formatted.slice(0, maxChars))
+        output.push(sliceUnicode(formatted, 0, maxChars))
         lineEnd = lineNumber
       }
       warnings.push(`Output was limited to ${maxChars} characters.`)

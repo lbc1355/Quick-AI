@@ -106,6 +106,12 @@ describe('buildChatRunOptions', () => {
     expect(options).not.toHaveProperty('promptAdmissionId')
     expect(options).not.toHaveProperty('resumeFromRunId')
     expect(options).not.toHaveProperty('resumeSourceSessionId')
+    expect(options).not.toHaveProperty('startupTiming')
+  })
+
+  it('carries numeric renderer startup measurements across IPC', () => {
+    const startupTiming = { startedAt: 100, persistedAt: 200, paintWaitMs: 16, persistenceMs: 84 }
+    expect(buildChatRunOptions({ ...base, startupTiming }).startupTiming).toEqual(startupTiming)
   })
 
   it('expands a resume request into both checkpoint fields', () => {

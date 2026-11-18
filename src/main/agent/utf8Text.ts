@@ -21,7 +21,14 @@ const codePointWidthAt = (text: string, offset: number): { units: number; bytes:
 /** Take a prefix by UTF-8 bytes while returning UTF-16 offsets used by resource-cache reads. */
 export function sliceUtf8Prefix(text: string, maxBytes: number, startOffset = 0): Utf8Slice {
   const budget = Math.max(0, Math.floor(maxBytes))
-  const start = Math.max(0, Math.min(text.length, Math.floor(startOffset)))
+  let start = Math.max(0, Math.min(text.length, Math.floor(startOffset)))
+  if (start > 0 && start < text.length) {
+    const current = text.charCodeAt(start)
+    const previous = text.charCodeAt(start - 1)
+    if (current >= 0xdc00 && current <= 0xdfff && previous >= 0xd800 && previous <= 0xdbff) {
+      start += 1
+    }
+  }
   let endOffset = start
   let bytes = 0
 
@@ -47,7 +54,14 @@ export function sliceUtf8Suffix(
   endOffset = text.length
 ): Utf8Slice {
   const budget = Math.max(0, Math.floor(maxBytes))
-  const end = Math.max(0, Math.min(text.length, Math.floor(endOffset)))
+  let end = Math.max(0, Math.min(text.length, Math.floor(endOffset)))
+  if (end > 0 && end < text.length) {
+    const previous = text.charCodeAt(end - 1)
+    const current = text.charCodeAt(end)
+    if (previous >= 0xd800 && previous <= 0xdbff && current >= 0xdc00 && current <= 0xdfff) {
+      end -= 1
+    }
+  }
   let startOffset = end
   let bytes = 0
 

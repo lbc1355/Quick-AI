@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { existsSync } from 'fs'
-import { mkdir, readFile, readdir, realpath, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import {
   applySessionFileTransition,
@@ -13,8 +14,8 @@ import {
 } from './agentFileSnapshot'
 import { createRunManifest, loadRunManifest } from './runManifest'
 
-const testRoot = join(__dirname, '../../../temp-agent-file-snapshot-test')
-const projectRoot = join(testRoot, 'project')
+let testRoot: string
+let projectRoot: string
 
 vi.mock('electron', () => ({
   app: {
@@ -43,13 +44,15 @@ const listSnapshotRefs = (repositoryDir: string): string[] =>
 
 describe('agentFileSnapshot', () => {
   beforeEach(async () => {
-    await rm(testRoot, { recursive: true, force: true })
-    await mkdir(projectRoot, { recursive: true })
+    // Leave room for the repository hash and Git's internal paths on Windows.
+    testRoot = await mkdtemp(join(tmpdir(), 'qa-snap-'))
+    projectRoot = join(testRoot, 'project')
+    await mkdir(projectRoot)
     await writeFile(join(projectRoot, '.gitignore'), 'ignored.txt\n', 'utf8')
   })
 
   afterEach(async () => {
-    await rm(testRoot, { recursive: true, force: true })
+    if (testRoot) await rm(testRoot, { recursive: true, force: true })
   })
 
   it('captures and restores modified, added, and deleted project files', async () => {
@@ -58,12 +61,19 @@ describe('agentFileSnapshot', () => {
     await writeFile(join(projectRoot, 'ignored.txt'), 'secret before\n', 'utf8')
     createManifest('run-1')
 
+    const onTiming = vi.fn()
     const handle = await beginAgentFileSnapshot({
       sessionId: 'session-1',
       runId: 'run-1',
-      projectRoot
+      projectRoot,
+      onTiming
     })
     expect(handle).toBeDefined()
+    expect(onTiming.mock.calls.map(([phase]) => phase)).toEqual([
+      'snapshot_queue',
+      'snapshot_capture'
+    ])
+    expect(onTiming.mock.calls.every(([, elapsed]) => elapsed >= 0)).toBe(true)
 
     await writeFile(join(projectRoot, 'modified.txt'), 'after\n', 'utf8')
     await writeFile(join(projectRoot, 'added.txt'), 'new file\n', 'utf8')
@@ -280,6 +290,21 @@ describe('agentFileSnapshot', () => {
     expect(refs.filter((ref) => ref.includes('/runs/'))).toHaveLength(2)
     expect(refs).not.toContain('refs/quickai/runs/orphan/end')
     expect(refs).not.toContain('refs/quickai/pending/1-orphan')
+
+    // Repair a missing protection ref while leaving the other, already-correct ref intact.
+    const startRef = refs.find((ref) => ref.endsWith('/start'))!
+    execFileSync('git', [`--git-dir=${repositoryDir}`, 'update-ref', '-d', startRef], {
+      windowsHide: true
+    })
+    const repaired = await runAgentFileSnapshotMaintenance({ restorePoints: [] })
+    expect(repaired).toMatchObject({ protectedRefs: 2, deletedRefs: 0, errors: 0 })
+    expect(listSnapshotRefs(repositoryDir).sort()).toEqual(refs.sort())
+    expect(
+      execFileSync('git', [`--git-dir=${repositoryDir}`, 'rev-parse', startRef], {
+        encoding: 'utf8',
+        windowsHide: true
+      }).trim()
+    ).toBe(snapshot!.startTree)
   }, 20_000)
 
   it('blocks later edits unless the user explicitly forces the restore', async () => {

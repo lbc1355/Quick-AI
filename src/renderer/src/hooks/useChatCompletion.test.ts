@@ -3,10 +3,7 @@ import {
   createForkedSession,
   forkResourcesForRuns,
   getRunIdsThroughMessage,
-  isRuntimeErrorAssistantMessage,
-  mergeResourceUpdate,
-  prepareMessageForInlineResume,
-  touchSessionInSnapshot
+  mergeResourceUpdate
 } from './useChatCompletion'
 import { Message, Session, SessionResource } from '../../../shared/types'
 
@@ -61,71 +58,6 @@ describe('mergeResourceUpdate', () => {
     expect(out.fetchedRanges).toEqual([{ start: 0, end: 200 }])
     expect(out.nextOffset).toBe(200)
     expect(out.runIds).toEqual(['runA', 'runB'])
-  })
-})
-
-describe('isRuntimeErrorAssistantMessage', () => {
-  it('recognizes explicitly-marked runtime errors', () => {
-    const msg: Message = {
-      id: 'm1',
-      role: 'assistant',
-      content: 'temporary provider error',
-      isRuntimeError: true
-    }
-
-    expect(isRuntimeErrorAssistantMessage(msg)).toBe(true)
-  })
-
-  it('recognizes older API error messages by prefix', () => {
-    const msg: Message = {
-      id: 'm1',
-      role: 'assistant',
-      content: 'Agent resume failed: API Error: 429 - insufficient quota'
-    }
-
-    expect(isRuntimeErrorAssistantMessage(msg)).toBe(true)
-  })
-
-  it('does not hide normal assistant content', () => {
-    const msg: Message = {
-      id: 'm1',
-      role: 'assistant',
-      content: 'Here is the result of the task.'
-    }
-
-    expect(isRuntimeErrorAssistantMessage(msg)).toBe(false)
-  })
-})
-
-describe('prepareMessageForInlineResume', () => {
-  it('reuses the failed assistant message while preserving the run chain', () => {
-    const msg: Message = {
-      id: 'a1',
-      role: 'assistant',
-      content: 'Agent resume failed: API unavailable',
-      reasoning_content: 'old reasoning',
-      agentRunId: 'run-1',
-      agentEvents: [
-        { type: 'agent_start', skillName: 'General Agent' },
-        { type: 'tool_call', callId: 'call-1', toolName: 'file_read', args: {} },
-        { type: 'agent_end', status: 'failed', error: 'API unavailable' },
-        { type: 'final', content: 'Agent resume failed: API unavailable' }
-      ],
-      isRuntimeError: true
-    }
-
-    const prepared = prepareMessageForInlineResume(msg, 'run-2')
-
-    expect(prepared.id).toBe('a1')
-    expect(prepared.agentRunId).toBe('run-2')
-    expect(prepared.agentRunIds).toEqual(['run-1', 'run-2'])
-    expect(prepared.content).toBe('')
-    expect(prepared.reasoning_content).toBe('')
-    expect(prepared.isRuntimeError).toBeUndefined()
-    expect(prepared.agentEvents).toEqual([
-      { type: 'agent_start', skillName: 'General Agent' },
-      { type: 'tool_call', callId: 'call-1', toolName: 'file_read', args: {} }
-    ])
   })
 })
 
@@ -209,34 +141,5 @@ describe('branch fork helpers', () => {
       'u2-fork-branch'
     ])
     expect(forked.resources?.map((r) => r.id)).toEqual(['old'])
-  })
-})
-
-describe('touchSessionInSnapshot', () => {
-  it('updates one session timestamp without dropping branch metadata from other sessions', () => {
-    const sessions: Session[] = [
-      {
-        id: 'source',
-        title: 'Source',
-        messages: [],
-        lastActiveTime: 1
-      },
-      {
-        id: 'branch',
-        title: 'Branch',
-        messages: [],
-        lastActiveTime: 2,
-        branchOf: { sessionId: 'source', messageId: 'm1', runId: 'run-1' }
-      }
-    ]
-
-    const touched = touchSessionInSnapshot(sessions, 'source', 10)
-
-    expect(touched.find((session) => session.id === 'source')?.lastActiveTime).toBe(10)
-    expect(touched.find((session) => session.id === 'branch')?.branchOf).toEqual({
-      sessionId: 'source',
-      messageId: 'm1',
-      runId: 'run-1'
-    })
   })
 })

@@ -6,6 +6,7 @@ import {
   ToolCallStreamProgress
 } from './callModel'
 import { RunUsageTracker } from './runUsageTracker'
+import type { ModelTimingEvent } from '../../shared/runTiming'
 
 export interface RunModelTurnOptions {
   modelConfig: CallModelOptions
@@ -16,6 +17,7 @@ export interface RunModelTurnOptions {
   onReasoning: (content: string) => void
   onContentChunk: (content: string) => void
   onToolCallProgress?: (progress: ToolCallStreamProgress) => void
+  onTiming?: (event: ModelTimingEvent) => void
   callModel?: typeof callModel
   getPromptCacheStats?: (message: ChatCompletionMessage) => PromptCacheStats | undefined
   decorateCacheStats?: (stats: PromptCacheStats | undefined) => PromptCacheStats | undefined
@@ -46,7 +48,8 @@ export async function runModelTurn(options: RunModelTurnOptions): Promise<RunMod
         streamedText += content
         options.onContentChunk(content)
       },
-      onToolCallProgress: options.onToolCallProgress
+      onToolCallProgress: options.onToolCallProgress,
+      ...(options.onTiming ? { onTiming: options.onTiming } : {})
     }
   )
 

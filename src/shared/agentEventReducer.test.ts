@@ -234,21 +234,38 @@ describe('applyAgentEventToMessage', () => {
 })
 
 describe('isRuntimeErrorAssistantMessage', () => {
-  it('recognizes chat runtime error prefixes', () => {
-    expect(
-      isRuntimeErrorAssistantMessage({
-        id: 'm1',
-        role: 'assistant',
-        content: '\u51fa\u9519\u4e86\uff1a\u7f51\u7edc\u8fde\u63a5\u5931\u8d25'
-      })
-    ).toBe(true)
-    expect(
-      isRuntimeErrorAssistantMessage({
-        id: 'm2',
-        role: 'assistant',
-        content: '\u26a0\ufe0f \u51fa\u9519\u4e86\uff1a\u7f51\u7edc\u8fde\u63a5\u5931\u8d25'
-      })
-    ).toBe(true)
+  it('recognizes current and legacy runtime error prefixes', () => {
+    for (const content of [
+      '\u51fa\u9519\u4e86\uff1a\u7f51\u7edc\u8fde\u63a5\u5931\u8d25',
+      '\u26a0\ufe0f \u51fa\u9519\u4e86\uff1a\u7f51\u7edc\u8fde\u63a5\u5931\u8d25',
+      'Agent resume failed: API Error: 429 - insufficient quota'
+    ]) {
+      expect(
+        isRuntimeErrorAssistantMessage({ id: 'm1', role: 'assistant', content }),
+        content
+      ).toBe(true)
+    }
+  })
+
+  it('recognizes explicitly-marked runtime errors', () => {
+    const msg: Message = {
+      id: 'm1',
+      role: 'assistant',
+      content: 'temporary provider error',
+      isRuntimeError: true
+    }
+
+    expect(isRuntimeErrorAssistantMessage(msg)).toBe(true)
+  })
+
+  it('does not hide normal assistant content', () => {
+    const msg: Message = {
+      id: 'm1',
+      role: 'assistant',
+      content: 'Here is the result of the task.'
+    }
+
+    expect(isRuntimeErrorAssistantMessage(msg)).toBe(false)
   })
 })
 
@@ -258,6 +275,7 @@ describe('prepareMessageForInlineResume', () => {
       id: 'm1',
       role: 'assistant',
       content: 'Agent resume failed: API unavailable',
+      reasoning_content: 'old reasoning',
       agentRunId: 'run-1',
       isRuntimeError: true,
       agentEvents: [
@@ -270,6 +288,10 @@ describe('prepareMessageForInlineResume', () => {
 
     const prepared = prepareMessageForInlineResume(message, 'run-2')
 
+    expect(prepared.id).toBe('m1')
+    expect(prepared.content).toBe('')
+    expect(prepared.reasoning_content).toBe('')
+    expect(prepared.isRuntimeError).toBeUndefined()
     expect(prepared.agentRunId).toBe('run-2')
     expect(prepared.agentRunIds).toEqual(['run-1', 'run-2'])
     expect(prepared.agentEvents).toEqual([

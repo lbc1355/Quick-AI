@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ChatCompletionMessage, Message } from '../../shared/types'
 import { buildCompactionTranscript, compactContextWithModel } from './contextCompactor'
+import { toWellFormedText } from '../../shared/unicodeText'
 
 const msg = (id: string, role: Message['role'], content: string): Message => ({
   id,
@@ -74,13 +75,15 @@ describe('contextCompactor', () => {
       content: 'summary'
     }))
     const history: Message[] = [
-      msg('u1', 'user', 'request'),
+      msg('u1', 'user', `${'x'.repeat(11919)}🌟${'y'.repeat(100)}`),
       {
         id: 'a1',
         role: 'assistant',
         content: 'done',
         reasoning_content: 'private chain of thought',
-        files: [{ name: 'notes.txt', type: 'text', content: 'x'.repeat(3000) }],
+        files: [
+          { name: 'notes.txt', type: 'text', content: `${'x'.repeat(1519)}🌟${'y'.repeat(100)}` }
+        ],
         agentEvents: [{ type: 'tool_done', toolName: 'file_read' } as never]
       },
       ...Array.from({ length: 6 }, (_, index) =>
@@ -106,6 +109,9 @@ describe('contextCompactor', () => {
     expect(assistant?.content).toContain('file_read')
     expect(assistant?.content).toContain('[... truncated')
     expect(assistant?.content).not.toContain('private chain of thought')
+    for (const message of sentMessages) {
+      expect(message.content).toBe(toWellFormedText(String(message.content)))
+    }
   })
 
   it('rejects sessions with too little old context to compact', async () => {

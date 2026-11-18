@@ -436,8 +436,28 @@ const captureTreeUnlocked = async (
   return { location, tree }
 }
 
-const captureTree = (projectRoot: string): Promise<{ location: SnapshotLocation; tree: string }> =>
-  serializeSnapshotOperation(() => captureTreeUnlocked(projectRoot))
+const captureTree = (
+  projectRoot: string,
+  onTiming?: (phase: string, durationMs: number) => void
+): Promise<{ location: SnapshotLocation; tree: string }> => {
+  const queuedAt = performance.now()
+  const report = (phase: string, durationMs: number): void => {
+    try {
+      onTiming?.(phase, durationMs)
+    } catch {
+      // A diagnostics observer must not disable file rollback.
+    }
+  }
+  return serializeSnapshotOperation(async () => {
+    report('snapshot_queue', performance.now() - queuedAt)
+    const captureStarted = performance.now()
+    try {
+      return await captureTreeUnlocked(projectRoot)
+    } finally {
+      report('snapshot_capture', performance.now() - captureStarted)
+    }
+  })
+}
 
 const protectRunSnapshot = async (
   location: SnapshotLocation,
@@ -1166,14 +1186,22 @@ const addDesiredSnapshotRef = (
   desired.set(key, refs)
 }
 
-const listManagedSnapshotRefs = async (repositoryDir: string): Promise<string[]> => {
+const listManagedSnapshotRefs = async (repositoryDir: string): Promise<Map<string, string>> => {
   const output = await runGit([
     `--git-dir=${repositoryDir}`,
     'for-each-ref',
-    '--format=%(refname)',
+    '--format=%(refname)%09%(objectname)',
     SNAPSHOT_REF_ROOT
   ])
-  return output.split(/\r?\n/).filter(Boolean)
+  return new Map(
+    output
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const [ref, tree] = line.split('\t')
+        return [ref, tree]
+      })
+  )
 }
 
 const pendingRefCreatedAt = (ref: string): number | undefined => {
@@ -1252,9 +1280,12 @@ export const runAgentFileSnapshotMaintenance = async (
         ).trim()
         if (valid !== 'true') throw new Error('Snapshot repository is not bare')
 
+        const managedRefs = await listManagedSnapshotRefs(repositoryDir)
         for (const [ref, tree] of protectedRefs) {
           try {
-            await setSnapshotRef(location, ref, tree)
+            // Most runs already protected their trees when finishing. Avoid starting a Git
+            // process for every unchanged ref while foreground snapshots share this queue.
+            if (managedRefs.get(ref) !== tree) await setSnapshotRef(location, ref, tree)
             result.protectedRefs += 1
           } catch (error) {
             result.errors += 1
@@ -1262,7 +1293,7 @@ export const runAgentFileSnapshotMaintenance = async (
           }
         }
 
-        for (const ref of await listManagedSnapshotRefs(repositoryDir)) {
+        for (const ref of managedRefs.keys()) {
           if (protectedRefs.has(ref)) continue
           if (!restoreInventoryAvailable && ref.startsWith(`${SNAPSHOT_REF_ROOT}/restores/`)) {
             continue
@@ -1296,9 +1327,10 @@ export const beginAgentFileSnapshot = async (input: {
   sessionId: string
   runId: string
   projectRoot?: string
+  onTiming?: (phase: string, durationMs: number) => void
 }): Promise<AgentFileSnapshotHandle | undefined> => {
   try {
-    const start = await captureTree(input.projectRoot || getWorkspaceRoot())
+    const start = await captureTree(input.projectRoot || getWorkspaceRoot(), input.onTiming)
     const pendingRef = await createPendingSnapshotRef(
       start.location,
       input.sessionId,

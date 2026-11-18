@@ -21,6 +21,8 @@ import { chatMessagesToResponsesInput, chatToolsToResponsesTools } from './respo
 import { applyModelRequestBodyOverrides } from './requestBodyOverrides'
 import { ModelStreamScope } from './modelStreamLifecycle'
 import { createHttpModelTransportError } from './modelTransportError'
+import { serializeModelRequest } from './serializeModelRequest'
+import { createModelTimingReporter } from './modelTiming'
 
 interface FatalMarkedError extends Error {
   isFatal?: boolean
@@ -33,6 +35,7 @@ export async function callResponsesModel(
   signal?: AbortSignal,
   callbacks?: CallModelCallbacks
 ): Promise<ChatCompletionMessage> {
+  const timings = createModelTimingReporter(callbacks?.onTiming)
   const adapter = resolveModelAdapter(options)
   const target = buildOpenAICompatibleRequestTarget(resolveModelConnection(options), 'responses')
 
@@ -71,12 +74,14 @@ export async function callResponsesModel(
   }).body
 
   body = adapter.sanitizeBody(body)
+  const serializedBody = serializeModelRequest(body)
 
   let streamingStarted = false
 
   const attempt = async (): Promise<ChatCompletionMessage> => {
     const streamScope = new ModelStreamScope(adapter.streamPolicy, signal)
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+    const timing = timings.startAttempt()
 
     try {
       const response = await streamScope.waitFor(
@@ -84,12 +89,13 @@ export async function callResponsesModel(
           fetch(target.url, {
             method: 'POST',
             headers: target.headers,
-            body: JSON.stringify(body),
+            body: serializedBody,
             signal: streamScope.signal
           }),
         'Provider response'
       )
 
+      timing.headers(response.status)
       if (!response.ok) {
         const errorText = await streamScope.waitFor(
           () => response.text(),
@@ -113,6 +119,9 @@ export async function callResponsesModel(
       const events = new ModelEventAccumulator(callbacks)
       const itemIdToIndex = new Map<string, number>()
       const emit = (event: Exclude<ModelEvent, { type: 'finish' }>): void => {
+        if (event.type === 'text-delta' && event.delta) timing.output('text')
+        if (event.type === 'reasoning-delta' && event.delta) timing.output('reasoning')
+        if (event.type === 'tool-call-delta') timing.output('tool-call')
         if (event.type === 'text-delta' || event.type === 'reasoning-delta') {
           streamingStarted = true
         }
@@ -124,6 +133,7 @@ export async function callResponsesModel(
       while (true) {
         const { done, value } = await streamScope.waitFor(() => reader!.read(), 'Provider stream')
         if (done) break
+        if (value?.byteLength) timing.bodyChunk()
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -255,8 +265,10 @@ export async function callResponsesModel(
 
       const assistantMessage = events.finalize()
       if (events.usage) promptCacheStatsByMessage.set(assistantMessage, events.usage)
+      timing.complete('success')
       return assistantMessage
     } catch (error) {
+      timing.complete('error')
       if (reader) {
         try {
           await reader.cancel(error)

@@ -89,14 +89,25 @@ describe('cloneSessionInSnapshot', () => {
 })
 
 describe('touchSessionInSnapshot', () => {
-  it('stamps only the target session', () => {
+  it('stamps only the target session and preserves other sessions branch metadata', () => {
     const sessions: Session[] = [
-      { id: 's1', title: 'a', messages: [], lastActiveTime: 1 },
+      {
+        id: 's1',
+        title: 'a',
+        messages: [],
+        lastActiveTime: 1,
+        branchOf: { sessionId: 'source', messageId: 'm1', runId: 'run-1' }
+      },
       { id: 's2', title: 'b', messages: [], lastActiveTime: 1 }
     ]
     const touched = touchSessionInSnapshot(sessions, 's2', 99)
     expect(touched[0].lastActiveTime).toBe(1)
     expect(touched[1].lastActiveTime).toBe(99)
+    expect(touched[0].branchOf).toEqual({
+      sessionId: 'source',
+      messageId: 'm1',
+      runId: 'run-1'
+    })
   })
 })
 

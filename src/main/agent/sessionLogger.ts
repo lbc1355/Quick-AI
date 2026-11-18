@@ -11,6 +11,7 @@ import {
 } from '../../shared/types'
 import { estimateMessagesTokens, estimateTokens } from '../../shared/tokenEstimator'
 import { formatTimestamp } from '../logger'
+import type { RunTimingEntry } from '../../shared/runTiming'
 
 export interface SessionLoggerStartOptions {
   model: string
@@ -143,6 +144,21 @@ const buildUsagePayload = (stats: PromptCacheStats | undefined): UsagePayload | 
 }
 
 export class SessionLogger {
+  static logTiming(sessionId: string, entry: RunTimingEntry): void {
+    this.appendJsonl(sessionId, { ...this.eventBase(sessionId, 'run_timing'), ...entry })
+    const details = entry.model
+      ? `attempt=${entry.model.attempt}, attempt elapsed=${entry.model.attemptElapsedMs.toFixed(1)}ms, call elapsed=${entry.model.callElapsedMs.toFixed(1)}ms${entry.model.outcome ? `, ${entry.model.outcome}` : ''}${entry.model.outputKind ? `, ${entry.model.outputKind}` : ''}${entry.model.status !== undefined ? `, HTTP ${entry.model.status}` : ''}`
+      : entry.details
+        ? Object.entries(entry.details)
+            .map(([key, value]) => `${key}=${value}`)
+            .join(', ')
+        : ''
+    this.append(
+      sessionId,
+      `- [Timing] run=\`${entry.runId}\`${entry.step !== undefined ? ` step=${entry.step}` : ''} **${entry.phase}**${entry.durationMs !== undefined ? ` ${entry.durationMs.toFixed(1)}ms` : ''} · since ${entry.origin} start ${entry.elapsedMs.toFixed(1)}ms${details ? ` · ${details}` : ''}`
+    )
+  }
+
   private static getSessionLogPath(sessionId: string): string {
     const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_')
     return join(getLogsRoot(), `session-${safeId}.md`)

@@ -43,7 +43,9 @@ const validStore = (): StorageSchema => ({
       id: 'session-2',
       title: 'Second Session',
       lastActiveTime: 2000,
-      messages: [{ id: 'msg-2-1', role: 'user', content: 'again' }]
+      messages: [
+        { id: 'msg-2-1', role: 'user', content: 'again', isSynthetic: true, isInternal: true }
+      ]
     }
   ],
   skills: [],
@@ -91,13 +93,22 @@ describeWithSqlite('migrateFromJson', () => {
     ])
 
     const messages = db
-      .prepare('SELECT id, role, content FROM messages ORDER BY createdAt ASC')
+      .prepare(
+        'SELECT id, role, content, isSynthetic, isInternal FROM messages ORDER BY createdAt ASC'
+      )
       .all()
     expect(messages).toHaveLength(4)
     expect(messages[0]).toMatchObject({
       id: 'msg-00000000-0000-0000-0000-000000000001',
       role: 'user',
       content: 'hello'
+    })
+    expect(messages).toContainEqual({
+      id: 'msg-2-1',
+      role: 'user',
+      content: 'again',
+      isSynthetic: 1,
+      isInternal: 1
     })
 
     const files = db.prepare('SELECT messageId, name, content, type FROM message_files').all()

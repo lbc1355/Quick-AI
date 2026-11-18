@@ -77,8 +77,8 @@ function migrateStore(database: Database.Database, storePath: string): void {
         'INSERT OR REPLACE INTO sessions (id, title, lastActiveTime) VALUES (?, ?, ?)'
       )
       const insertMessage = database.prepare(
-        `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, tokenSpeed, cacheStats, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, isSynthetic, isInternal, tokenSpeed, cacheStats, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       const insertFile = database.prepare(
         'INSERT INTO message_files (messageId, name, content, type) VALUES (?, ?, ?, ?)'
@@ -110,6 +110,8 @@ function migrateStore(database: Database.Database, storePath: string): void {
               msg.agentRunId || null,
               JSON.stringify(msg.agentRunIds || (msg.agentRunId ? [msg.agentRunId] : [])),
               msg.agentEvents ? JSON.stringify(msg.agentEvents) : null,
+              msg.isSynthetic === true ? 1 : 0,
+              msg.isInternal === true ? 1 : 0,
               msg.tokenSpeed || null,
               msg.cacheStats ? JSON.stringify(msg.cacheStats) : null,
               createdAt

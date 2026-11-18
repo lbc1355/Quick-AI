@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import { Message, Session, SessionRevertState } from '../../shared/types'
+import { isBackgroundResultSourceMessage } from '../../shared/backgroundResultSource'
 import { compactAgentEvents } from '../../shared/agentEventCompactor'
 import { loadSessionAgentEventJournals } from '../agent/agentEventJournal'
 import { mergeAgentEventJournalsIntoSessions } from '../agent/agentEventRecovery'
@@ -45,12 +46,12 @@ export function loadSessions(): Session[] {
   // cost grew with total message count; this keeps it to a constant number of round-trips.
   const allMsgRows = database
     .prepare(
-      'SELECT id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, cacheStats, errorPayload, createdAt FROM messages ORDER BY createdAt ASC'
+      'SELECT id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, isSynthetic, isInternal, tokenSpeed, cacheStats, errorPayload, createdAt FROM messages ORDER BY createdAt ASC'
     )
     .all() as Array<{
     id: string
     sessionId: string
-    role: string
+    role: Message['role']
     content: string
     reasoning_content: string | null
     agentRunId: string | null
@@ -58,6 +59,8 @@ export function loadSessions(): Session[] {
     agentEvents: string | null
     forkedFrom: string | null
     isBranchFork: number | null
+    isSynthetic: number
+    isInternal: number
     tokenSpeed: number | null
     cacheStats: string | null
     errorPayload: string | null
@@ -112,9 +115,11 @@ export function loadSessions(): Session[] {
       }
     }
 
+    // Older rows lost both flags, but the generated user prompt still has its reserved ID.
+    const backgroundSource = isBackgroundResultSourceMessage(m)
     const message: Message = {
       id: m.id,
-      role: m.role as Message['role'],
+      role: m.role,
       content: m.content,
       reasoning_content: m.reasoning_content || undefined,
       agentRunId: m.agentRunId || undefined,
@@ -122,6 +127,8 @@ export function loadSessions(): Session[] {
       agentEvents,
       forkedFrom,
       isBranchFork: m.isBranchFork === 1 || (m.isBranchFork == null && !!forkedFrom) || undefined,
+      isSynthetic: m.isSynthetic === 1 || backgroundSource || undefined,
+      isInternal: m.isInternal === 1 || backgroundSource || undefined,
       files: fileRows && fileRows.length > 0 ? fileRows : undefined,
       tokenSpeed: m.tokenSpeed || undefined,
       cacheStats,
@@ -262,6 +269,9 @@ export function computeSessionHash(session: Session): string {
       agentEvents: serializeAgentEvents(m.agentEvents),
       forkedFrom: m.forkedFrom ?? null,
       isBranchFork: m.isBranchFork ? 1 : 0,
+      // Omitting flags at their defaults keeps existing hashes for unchanged ordinary messages.
+      isSynthetic: m.isSynthetic === true || undefined,
+      isInternal: m.isInternal === true || undefined,
       tokenSpeed: m.tokenSpeed || null,
       cacheStats: m.cacheStats ?? null,
       errorPayload: m.errorPayload ? JSON.stringify(m.errorPayload) : null,
@@ -324,8 +334,8 @@ export function saveSessions(sessions: Session[]): void {
   const deleteSession = database.prepare('DELETE FROM sessions WHERE id = ?')
   const deleteMessages = database.prepare('DELETE FROM messages WHERE sessionId = ?')
   const insertMessage = database.prepare(
-    `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, tokenSpeed, cacheStats, errorPayload, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR REPLACE INTO messages (id, sessionId, role, content, reasoning_content, agentRunId, agentRunIds, agentEvents, forkedFrom, isBranchFork, isSynthetic, isInternal, tokenSpeed, cacheStats, errorPayload, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
   const insertFile = database.prepare(
     'INSERT INTO message_files (messageId, name, content, type) VALUES (?, ?, ?, ?)'
@@ -376,6 +386,8 @@ export function saveSessions(sessions: Session[]): void {
             serializeAgentEvents(msg.agentEvents),
             msg.forkedFrom ? JSON.stringify(msg.forkedFrom) : null,
             msg.isBranchFork ? 1 : 0,
+            msg.isSynthetic === true ? 1 : 0,
+            msg.isInternal === true ? 1 : 0,
             msg.tokenSpeed || null,
             msg.cacheStats ? JSON.stringify(msg.cacheStats) : null,
             msg.errorPayload ? JSON.stringify(msg.errorPayload) : null,

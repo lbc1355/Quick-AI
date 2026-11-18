@@ -6,6 +6,7 @@ import {
 } from '../../shared/types'
 import { callModel } from './callModel'
 import { estimateTokens } from './tokenEstimator'
+import { sliceUnicode } from '../../shared/unicodeText'
 
 export const DEFAULT_COMPACTION_KEEP_RECENT_MESSAGES = 6
 
@@ -17,7 +18,7 @@ const normalizeText = (value: string): string => value.replace(/\r\n/g, '\n').tr
 const truncateText = (value: string, maxChars: number): string => {
   const text = normalizeText(value)
   if (text.length <= maxChars) return text
-  return `${text.slice(0, Math.max(0, maxChars - 80)).trimEnd()}\n[... truncated ${text.length - maxChars} chars ...]`
+  return `${sliceUnicode(text, 0, Math.max(0, maxChars - 80)).trimEnd()}\n[... truncated ${text.length - maxChars} chars ...]`
 }
 
 const stringifyAgentEvents = (message: Message): string => {

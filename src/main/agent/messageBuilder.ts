@@ -10,6 +10,7 @@ import { loadSkillsFromFolders } from '../skillManager'
 import { McpManager } from '../mcpManager'
 import { buildDateContext } from '../../shared/promptDate'
 import { buildModelPromptProfile } from './modelPromptProfile'
+import { sliceUnicode } from '../../shared/unicodeText'
 
 export const TOOL_DIRECTORY_BUDGET = 2000 // max chars injected into system prompt
 export const SKILL_DIRECTORY_BUDGET = 6000 // max chars injected into system prompt
@@ -36,7 +37,7 @@ export function buildToolDirectorySummary(
   let chars = lines[0].length + 1
 
   for (const t of summaries) {
-    const desc = t.description.split('\n')[0].replace(/\s+/g, ' ').trim().slice(0, 120)
+    const desc = sliceUnicode(t.description.split('\n')[0].replace(/\s+/g, ' ').trim(), 0, 120)
     const line = `- ${t.name}: ${desc}`
     if (chars + line.length + 1 > TOOL_DIRECTORY_BUDGET) {
       const omitted = summaries.length - lines.length
@@ -232,7 +233,7 @@ function buildSkillPackageFilesPrompt(skill: AgentSkillRunOptions['skill']): str
     const limit = Math.min(MAX_SKILL_PACKAGE_FILE_CHARS, remaining)
     const content =
       file.content.length > limit
-        ? `${file.content.slice(0, Math.max(0, limit - 34))}\n[File truncated for context size]`
+        ? `${sliceUnicode(file.content, 0, Math.max(0, limit - 34))}\n[File truncated for context size]`
         : file.content
 
     blocks.push(`Path: ${file.path}\n\n${content}`)

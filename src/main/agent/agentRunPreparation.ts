@@ -29,6 +29,7 @@ import {
   isModelRequestTargetCompatible,
   type ModelRequestJournalRecord
 } from './modelRequestRecord'
+import type { RendererStartupTiming } from '../../shared/runTiming'
 
 export interface AgentSteeringPrompt {
   admissionId: string
@@ -42,6 +43,7 @@ export interface AgentSteeringControls {
 }
 
 export interface AgentRunOptions extends AgentSteeringControls {
+  startupTiming?: RendererStartupTiming
   /** Signals that model/tool output is settled and only durable run finalization remains. */
   onResponseSettled?: () => void
   apiUrl: string

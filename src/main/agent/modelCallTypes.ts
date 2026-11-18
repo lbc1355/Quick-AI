@@ -9,6 +9,7 @@ import type {
   ResolvedProviderConnection
 } from '../../shared/types'
 import type { ModelEvent } from './modelEvents'
+import type { ModelTimingEvent } from '../../shared/runTiming'
 
 export interface CallModelOptions {
   /** Legacy connection fields; new callers should pass providerConnection. */
@@ -41,6 +42,8 @@ export interface CallModelCallbacks {
   onToolCallProgress?: (progress: ToolCallStreamProgress) => void
   /** Canonical event stream shared by every model transport. */
   onEvent?: (event: ModelEvent) => void
+  /** Local diagnostics only; never serialized into provider requests. */
+  onTiming?: (event: ModelTimingEvent) => void
 }
 
 export type ModelTransportExecutor = (

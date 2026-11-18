@@ -13,6 +13,7 @@ import type {
 } from '../../../../shared/types'
 import { getCachePriorityRetainedRuns } from './resourceCacheCoordinator'
 import { getProjectRunContext } from './sessionMutationService'
+import type { RendererStartupTiming } from '../../../../shared/runTiming'
 
 /**
  * The provider/model configuration a run is dispatched with.
@@ -86,6 +87,7 @@ const buildSharedRunFields = (input: {
 }
 
 export interface ChatRunRequestInput {
+  startupTiming?: RendererStartupTiming
   config: ChatRequestConfig
   session: Session
   /** Messages already converted for the API by `buildApiMessages`. */
@@ -107,6 +109,7 @@ export interface ChatRunRequestInput {
 
 export const buildChatRunOptions = (input: ChatRunRequestInput): ChatRunOptions => ({
   ...buildSharedRunFields(input),
+  ...(input.startupTiming ? { startupTiming: input.startupTiming } : {}),
   messages: input.messages,
   runMode: input.runMode,
   sessionId: input.session.id,
@@ -125,6 +128,7 @@ export const buildChatRunOptions = (input: ChatRunRequestInput): ChatRunOptions 
 })
 
 export interface AgentSkillRunRequestInput {
+  startupTiming?: RendererStartupTiming
   config: ChatRequestConfig
   session: Session
   historyForCachePriority: Message[]
@@ -140,6 +144,7 @@ export const buildAgentSkillRunOptions = (
   input: AgentSkillRunRequestInput
 ): AgentSkillRunOptions => ({
   ...buildSharedRunFields(input),
+  ...(input.startupTiming ? { startupTiming: input.startupTiming } : {}),
   systemPrompt: input.config.systemPrompt,
   skill: input.skill,
   userInput: input.userInput,

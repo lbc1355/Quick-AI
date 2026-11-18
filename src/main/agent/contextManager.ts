@@ -2,6 +2,7 @@ import { ChatCompletionMessage } from '../../shared/types'
 import { DEFAULT_CONTEXT_SIZE, normalizeContextWindowTokens } from '../../shared/modelContext'
 import { estimateMessagesTokens, estimateTokens } from './tokenEstimator'
 import { utf8ByteLength } from './utf8Text'
+import { sliceUnicode } from '../../shared/unicodeText'
 export {
   getContextWindowInfo,
   DEFAULT_CONTEXT_SIZE,
@@ -109,7 +110,7 @@ export function trimMessagesToFit(
             ? ` The full ${utf8ByteLength(original)}-byte UTF-8 output can be retrieved with read_tool_output(output_id="${msg.tool_call_id}").`
             : ''
         const truncated =
-          original.slice(0, 300) +
+          sliceUnicode(original, 0, 300) +
           `\n\n[... content truncated to fit the context window.${pointer} ...]`
         const saved = estimateTokens(original) - estimateTokens(truncated)
         result[i] = { ...msg, content: truncated }

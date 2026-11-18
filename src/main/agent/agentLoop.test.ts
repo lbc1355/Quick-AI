@@ -1,7 +1,7 @@
 import { vi, describe, it, expect, beforeEach, afterEach, Mock } from 'vitest'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs'
 import { runAgentLoop } from './agentLoop'
 import { callModel } from './callModel'
 import { ToolRegistry } from '../toolRegistry'
@@ -11,11 +11,15 @@ import { abortRun } from './AgentRunContext'
 import { ActionLog, getActionLogPath } from './actionLog'
 import { loadRunManifest } from './runManifest'
 import { loadAgentEventJournal } from './agentEventJournal'
+import { SessionLogger } from './sessionLogger'
+import * as agentFileSnapshots from './agentFileSnapshot'
+
+let testHome: string
 
 vi.mock('electron', () => ({
   BrowserWindow: {},
   app: {
-    getPath: () => join(tmpdir(), 'quickai-agentloop-test')
+    getPath: () => testHome
   }
 }))
 
@@ -35,24 +39,10 @@ describe('runAgentLoop', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    // Clear any persisted action logs so each test starts with an empty history (otherwise
-    // a prior run's log would auto-activate the list_past_actions/get_past_action tools).
-    rmSync(join(tmpdir(), 'quickai-agentloop-test', 'action_logs'), {
-      recursive: true,
-      force: true
-    })
-    rmSync(join(tmpdir(), 'quickai-agentloop-test', 'run_checkpoints'), {
-      recursive: true,
-      force: true
-    })
-    rmSync(join(tmpdir(), 'quickai-agentloop-test', 'run_manifests'), {
-      recursive: true,
-      force: true
-    })
-    rmSync(join(tmpdir(), 'quickai-agentloop-test', 'agent_event_journals'), {
-      recursive: true,
-      force: true
-    })
+    vi.mocked(callModel).mockReset()
+    testHome = mkdtempSync(join(tmpdir(), 'quickai-agentloop-'))
+    // The file_changes integration case opts into real Git. Other cases exercise orchestration.
+    vi.spyOn(agentFileSnapshots, 'beginAgentFileSnapshot').mockResolvedValue(undefined)
     sendMock = vi.fn()
     mockWindow = {
       webContents: {
@@ -77,6 +67,7 @@ describe('runAgentLoop', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    if (testHome) rmSync(testHome, { recursive: true, force: true })
   })
 
   it('directory tools are declared up front and an unknown tool is blocked', async () => {
@@ -1118,6 +1109,8 @@ describe('runAgentLoop', () => {
   })
 
   it('emits agent_progress and agent_end completed events on normal run', async () => {
+    const timingLog = vi.spyOn(SessionLogger, 'logTiming')
+    const snapshotStart = vi.mocked(agentFileSnapshots.beginAgentFileSnapshot)
     vi.mocked(callModel).mockResolvedValue({
       role: 'assistant',
       content: 'Final Answer'
@@ -1167,11 +1160,79 @@ describe('runAgentLoop', () => {
         expect.objectContaining({ type: 'agent_end', status: 'completed' })
       ]
     })
+    const phases = timingLog.mock.calls.map(([, entry]) => entry.phase)
+    expect(phases).toContain('agent_prepare')
+    expect(snapshotStart).not.toHaveBeenCalled()
+    expect(phases).toContain('file_snapshot_skipped')
+    expect(phases).toContain('request_prepare')
+    expect(
+      timingLog.mock.calls.every(([, entry]) => entry.runId === 'test-req-progress-completed')
+    ).toBe(true)
   })
 
+  it.each([false, true])(
+    'starts the model before snapshot preparation and protects tool execution (cancelled=%s)',
+    async (cancelled) => {
+      const handle = {
+        checkpoint: vi.fn().mockResolvedValue(true),
+        finish: vi.fn().mockResolvedValue(undefined)
+      }
+      let releaseSnapshot!: (value: typeof handle) => void
+      const snapshotStart = vi.mocked(agentFileSnapshots.beginAgentFileSnapshot).mockReturnValue(
+        new Promise((resolve) => {
+          releaseSnapshot = resolve
+        })
+      )
+      const write = vi.spyOn(ToolRegistry.file_write, 'execute').mockResolvedValue({
+        resultForModel: 'Written.',
+        resultForUi: { title: 'Written' }
+      })
+      vi.spyOn(globalPermissionManager, 'requestPermission').mockResolvedValue(true)
+      vi.mocked(callModel)
+        .mockResolvedValueOnce({
+          role: 'assistant',
+          content: '',
+          tool_calls: [
+            {
+              id: 'deferred-write',
+              type: 'function',
+              function: {
+                name: 'file_write',
+                arguments: JSON.stringify({ path: 'deferred.txt', content: 'test' })
+              }
+            }
+          ]
+        })
+        .mockResolvedValue({ role: 'assistant', content: 'Done.' })
+      const reqId = `deferred-snapshot-${cancelled}`
+      const running = runAgentLoop(
+        mockWindow,
+        reqId,
+        {
+          apiUrl: 'https://api.example.com',
+          apiKey: 'test-key',
+          model: 'deepseek-chat',
+          messages: [{ role: 'user', content: 'Write a file' }]
+        },
+        { file_write: 'allow' }
+      )
+      try {
+        await vi.waitFor(() => expect(snapshotStart).toHaveBeenCalledOnce())
+        expect(callModel).toHaveBeenCalledOnce()
+        expect(write).not.toHaveBeenCalled()
+      } finally {
+        if (cancelled) abortRun(reqId)
+        releaseSnapshot(handle)
+        await running
+      }
+      expect(write).toHaveBeenCalledTimes(cancelled ? 0 : 1)
+      expect(handle.finish).toHaveBeenCalledOnce()
+    }
+  )
+
   it('binds project file changes to the run and emits a file_changes event', async () => {
-    const projectRoot = join(tmpdir(), 'quickai-agentloop-snapshot-project')
-    rmSync(projectRoot, { recursive: true, force: true })
+    vi.mocked(agentFileSnapshots.beginAgentFileSnapshot).mockRestore()
+    const projectRoot = join(testHome, 'project')
     mkdirSync(projectRoot, { recursive: true })
     writeFileSync(join(projectRoot, 'existing.txt'), 'unchanged\n', 'utf8')
     vi.spyOn(globalPermissionManager, 'requestPermission').mockResolvedValue(true)
@@ -1233,8 +1294,6 @@ describe('runAgentLoop', () => {
       projectRoot: realpathSync.native(projectRoot),
       files: [{ path: 'created.txt', kind: 'added' }]
     })
-
-    rmSync(projectRoot, { recursive: true, force: true })
   }, 15_000)
 
   it('emits one agent_step for a model turn with multiple tool calls', async () => {

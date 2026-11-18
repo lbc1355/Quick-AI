@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.{test,spec}.ts'],
+    maxWorkers: 2,
     env: {
       QUICKAI_WORKSPACE_ROOT: join(tmpdir(), 'quickai-vitest-workspace')
     },

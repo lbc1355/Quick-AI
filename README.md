@@ -27,6 +27,8 @@
 
 欲了解详细的主进程设计、数据流向、SQLite 表结构、IPC 通道结构以及安全宪法设计，请阅读项目完整的 **[ARCHITECTURE.md (技术架构文档)](ARCHITECTURE.md)**。
 
+项目中已修复问题的原因、处理方式和验证记录，见 [Bug 复盘笔记](docs/bug-retrospective.md)。
+
 ---
 
 ## 🚀 快速开始
@@ -48,11 +50,20 @@ $ npm run dev
 
 ### 3. 运行单元与集成测试
 
-项目使用 Vitest 运行自动化测试：
+测试使用 Vitest，由启动脚本自动通过 Electron 自带的 Node 运行，以匹配 SQLite 原生模块；每轮使用独立的临时数据目录，默认最多两个 worker：
 
 ```bash
 $ npm run test
 ```
+
+日常开发可以只运行相关文件，或进入监听模式：
+
+```bash
+$ npm test -- src/main/tools/fileMutationTools.test.ts
+$ npm run test:watch
+```
+
+GitHub Actions 的 [CI 工作流](.github/workflows/ci.yml) 会在推送到 `main` / `master`、创建或更新 Pull Request 时自动运行，也可以在 Actions 页面手动触发。CI 在 Windows 上依次执行 `npm ci`、代码与 CSS 令牌检查、TypeScript 检查及生产构建、全量测试。全量测试使用合成数据和模拟服务商，不需要配置 API Key；真实模型与桌面交互仍需单独验收。
 
 ### 4. 应用构建打包
 
@@ -67,6 +78,12 @@ $ npm run build:mac
 
 # Linux 平台打包
 $ npm run build:linux
+```
+
+Windows 免安装包生成后，可检查实际归档是否只包含运行时文件，以及应用入口和 SQLite 原生模块是否完整：
+
+```bash
+$ npm run check:package
 ```
 
 ---

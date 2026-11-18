@@ -1,6 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { ToolRegistry, getWorkspaceRoot } from './toolRegistry'
-import { decodeShellOutputForDisplay } from './tools/shell'
 import { clearBackgroundShellProcessesForTests } from './tools/backgroundShell'
 import { getBackgroundJob } from './agent/backgroundJobManager'
 
@@ -10,11 +9,6 @@ describe('Shell Tool Execution', () => {
     `"${process.execPath}" -e ${JSON.stringify(script)}`
   afterEach(async () => {
     await clearBackgroundShellProcessesForTests()
-  })
-
-  it('decodes legacy Windows code page output for display', () => {
-    const gbkBytes = Buffer.from([0xd6, 0xd0, 0xce, 0xc4])
-    expect(decodeShellOutputForDisplay(gbkBytes, 'gbk')).toBe('中文')
   })
 
   it('runs a simple command and captures stdout', async () => {

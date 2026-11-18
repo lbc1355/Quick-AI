@@ -1,4 +1,5 @@
 import { Skill } from '../../shared/types'
+import { sliceUnicode } from '../../shared/unicodeText'
 import { getSkillDisplayName, getSkillShortDescription, getSkillTriggers } from './skillMetadata'
 import { normalizeSkillResourcePath } from './skillResourcePath'
 
@@ -28,7 +29,7 @@ function formatSkillPackageFiles(skill: Skill, includeContent: boolean): string[
     const limit = Math.min(MAX_SKILL_PACKAGE_FILE_CHARS, remaining)
     const content =
       file.content.length > limit
-        ? `${file.content.slice(0, Math.max(0, limit - 34))}\n[File truncated for context size]`
+        ? `${sliceUnicode(file.content, 0, Math.max(0, limit - 34))}\n[File truncated for context size]`
         : file.content
 
     lines.push(`Path: ${file.path} (${file.size} bytes)`)

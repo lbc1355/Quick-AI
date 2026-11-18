@@ -93,6 +93,8 @@ export function createSchema(database: Database.Database): void {
       agentEvents       TEXT,
       forkedFrom        TEXT,
       isBranchFork      INTEGER NOT NULL DEFAULT 0,
+      isSynthetic       INTEGER NOT NULL DEFAULT 0,
+      isInternal        INTEGER NOT NULL DEFAULT 0,
       tokenSpeed        REAL,
       cacheStats        TEXT,
       errorPayload      TEXT,
@@ -225,6 +227,8 @@ export function createSchema(database: Database.Database): void {
   ensureColumn(database, 'projects', 'kind', "TEXT NOT NULL DEFAULT 'filesystem'")
   ensureColumn(database, 'messages', 'forkedFrom', 'TEXT')
   ensureColumn(database, 'messages', 'isBranchFork', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn(database, 'messages', 'isSynthetic', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn(database, 'messages', 'isInternal', 'INTEGER NOT NULL DEFAULT 0')
   ensureColumn(database, 'messages', 'agentRunIds', "TEXT DEFAULT '[]'")
   ensureColumn(database, 'messages', 'tokenSpeed', 'REAL')
   ensureColumn(database, 'messages', 'cacheStats', 'TEXT')

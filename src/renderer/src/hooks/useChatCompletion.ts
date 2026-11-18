@@ -19,6 +19,7 @@ import {
 import { startStreamingRun as startChatStreamingRun } from './chatStreaming'
 import { getSessionContextEpoch } from '../../../shared/contextEpoch'
 import { getContextWindowInfo } from '../../../shared/modelContext'
+import type { RendererStartupTiming } from '../../../shared/runTiming'
 
 // Extracted pure helper functions
 import { buildApiMessages } from '../features/chat/apiMessageBuilder'
@@ -50,6 +51,8 @@ import {
   deriveSessionTitle,
   shouldAutoDeriveSessionTitle
 } from '../features/chat/runIdentity'
+import { createSessionPersistenceQueue } from '../features/chat/sessionPersistenceQueue'
+import { createQueuedPromptRunner } from '../features/chat/queuedPromptRunner'
 import {
   cloneSessionsDeep,
   cloneSessionInSnapshot,
@@ -76,8 +79,6 @@ import {
   applyBackgroundSubagentNotification,
   applySteeredAdmission,
   markQueuedPromptInSessions,
-  materializeBackgroundPrompt,
-  prepareClaimedPromptRun,
   removeQueuedPromptFromSessions,
   withoutQueuedPrompt
 } from '../features/chat/sessionPromptQueue'
@@ -225,7 +226,7 @@ export const useChatCompletion = ({
   const [cancellingQueuedPromptIds, setCancellingQueuedPromptIds] = useState<ReadonlySet<string>>(
     () => new Set()
   )
-  const queueDrainInProgressRef = useRef<Set<string>>(new Set())
+  const [queuedPromptRunner] = useState(createQueuedPromptRunner)
   const drainQueuedPromptRef = useRef<(sessionId: string) => Promise<void>>(async () => undefined)
   const admitPromptRef = useRef<
     (prompt: string, mode: SessionPromptAdmissionMode) => Promise<boolean>
@@ -271,7 +272,7 @@ export const useChatCompletion = ({
     activeGenerationsRef.current.has(sessionId)
 
   const isSessionBusy = (sessionId: string): boolean =>
-    isSessionRunActive(sessionId) || queueDrainInProgressRef.current.has(sessionId)
+    isSessionRunActive(sessionId) || queuedPromptRunner.isDraining(sessionId)
 
   const isGenerating = generatingSessionIds.size > 0
   const activeGeneration = activeGenerationsRef.current.get(activeSessionId)
@@ -371,17 +372,11 @@ export const useChatCompletion = ({
     })
   }
 
-  const sessionPersistenceQueueRef = useRef<Promise<void>>(Promise.resolve())
-  const persistSessionsSnapshot = async (snapshot: Session[]): Promise<void> => {
-    const stableSnapshot = cloneSessionsDeep(snapshot)
-    const write = sessionPersistenceQueueRef.current
-      .catch(() => undefined)
-      .then(async () => {
-        await window.api.storeSet('sessions', stableSnapshot)
-      })
-    sessionPersistenceQueueRef.current = write.catch(() => undefined)
-    await write
-  }
+  const [persistSessionsSnapshot] = useState(() =>
+    createSessionPersistenceQueue(async (snapshot) => {
+      await window.api.storeSet('sessions', snapshot)
+    }, cloneSessionsDeep)
+  )
 
   const persistSessionsSnapshotSoon = (snapshot: Session[]): void => {
     void persistSessionsSnapshot(snapshot).catch((err) => {
@@ -392,13 +387,23 @@ export const useChatCompletion = ({
   const persistBeforeStreaming = async (
     snapshot: Session[],
     sessionId: string,
-    requestId: string
-  ): Promise<void> => {
+    requestId: string,
+    startedAt = Date.now()
+  ): Promise<RendererStartupTiming> => {
     try {
       // Let React commit and paint the optimistic user/assistant message pair before cloning and
       // serializing the full durable snapshot. This is most visible on a brand-new conversation.
+      const paintStart = performance.now()
       await waitForRendererPaint()
+      const paintWaitMs = performance.now() - paintStart
+      const persistStart = performance.now()
       await persistSessionsSnapshot(snapshot)
+      return {
+        startedAt,
+        persistedAt: Date.now(),
+        paintWaitMs,
+        persistenceMs: performance.now() - persistStart
+      }
     } catch (error) {
       finishSessionGeneration(sessionId, requestId)
       throw error
@@ -709,6 +714,7 @@ export const useChatCompletion = ({
 
     if (!ensureApiKey(requestConfig, '请先在设置中填写 DeepSeek API Key！')) return false
 
+    const sendStartedAt = Date.now()
     setInputVal('')
 
     let currentSessions = cloneSessionInSnapshot(sessionsRef.current, activeSessionId)
@@ -815,7 +821,12 @@ export const useChatCompletion = ({
     beginSessionGeneration(targetSession.id, reqId, assistantMsgId)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
-    await persistBeforeStreaming(currentSessions, targetSession.id, reqId)
+    const startupTiming = await persistBeforeStreaming(
+      currentSessions,
+      targetSession.id,
+      reqId,
+      sendStartedAt
+    )
 
     const historyForRun = targetSession.messages.slice(0, -1)
     const apiMessages = buildApiMessages(requestConfig.systemPrompt, historyForRun)
@@ -840,6 +851,7 @@ export const useChatCompletion = ({
         window.api.startChatCompletion(
           reqId,
           buildChatRunOptions({
+            startupTiming,
             config: requestConfig,
             session: targetSession,
             messages: apiMessages,
@@ -1016,108 +1028,63 @@ export const useChatCompletion = ({
     }
   }
 
-  const drainNextQueuedPrompt = async (sessionId: string): Promise<void> => {
-    if (!sessionId || isSessionBusy(sessionId)) return
+  drainQueuedPromptRef.current = async (sessionId): Promise<void> => {
     const requestConfig = latestRequestConfigRef.current
     if (needsApiKeyBeforeRun(requestConfig)) return
 
-    queueDrainInProgressRef.current.add(sessionId)
-    let claimedAdmissionId: string | undefined
-    let registeredReqId: string | undefined
-    let launched = false
-    try {
-      const sessionAtClaim = sessionsRef.current.find((session) => session.id === sessionId)
-      if (!sessionAtClaim) return
-      const contextEpoch = getSessionContextEpoch(sessionAtClaim)
-      const admission = await window.api.claimNextSessionPrompt(sessionId, contextEpoch)
-      if (!admission) return
-      claimedAdmissionId = admission.id
-      if (isSessionRunActive(sessionId)) {
-        await window.api.requeueSessionPrompt(admission.id)
-        claimedAdmissionId = undefined
-        return
-      }
-
-      let sourceSession = sessionsRef.current.find((session) => session.id === sessionId)
-      if (
-        !sourceSession ||
-        !admission.assistantMessageId ||
-        admission.contextEpoch !== getSessionContextEpoch(sourceSession)
-      ) {
-        // The admission was already claimed (running); cancelClaimedSessionPrompt is the only
-        // cancel that terminates a running inbox entry.
-        await window.api.cancelClaimedSessionPrompt(admission.id)
-        claimedAdmissionId = undefined
-        return
-      }
-
-      sourceSession = materializeBackgroundPrompt(sourceSession, admission)
-
-      const reqId = createRunId('queued-run-')
-      const prepared = prepareClaimedPromptRun(
-        sourceSession,
-        admission.sourceMessageId,
-        admission.assistantMessageId,
+    await queuedPromptRunner.drainNext(sessionId, {
+      inbox: window.api,
+      getSession: (id) => sessionsRef.current.find((session) => session.id === id),
+      updateSession: (session) => {
+        const nextSessions = replaceSessionInSnapshot(sessionsRef.current, session)
+        sessionsRef.current = nextSessions
+        setSessions(nextSessions)
+        return nextSessions
+      },
+      isRunActive: isSessionRunActive,
+      beginRun: beginSessionGeneration,
+      finishRun: finishSessionGeneration,
+      persistSessions: persistSessionsSnapshot,
+      launchRun: ({
         reqId,
-        admission.runMode
-      )
-      if (!prepared) {
-        await window.api.cancelClaimedSessionPrompt(admission.id)
-        claimedAdmissionId = undefined
-        return
-      }
-
-      const nextSessions = replaceSessionInSnapshot(sessionsRef.current, prepared.session)
-      sessionsRef.current = nextSessions
-      setSessions(nextSessions)
-      registeredReqId = reqId
-      beginSessionGeneration(sessionId, reqId, prepared.assistantMessageId)
-      await persistSessionsSnapshot(nextSessions)
-
-      const apiMessages = buildApiMessages(
-        requestConfig.systemPrompt,
-        prepared.messagesBeforeAssistant
-      )
-      startStreamingRun(
-        reqId,
-        sessionId,
-        prepared.assistantMessageId,
         contextEpoch,
-        () =>
-          window.api.startChatCompletion(
-            reqId,
-            buildChatRunOptions({
-              config: requestConfig,
-              session: prepared.session,
-              messages: apiMessages,
-              historyForCachePriority: prepared.messagesBeforeAssistant,
-              runMode: admission.runMode,
-              contextEpoch,
-              sourceMessageId: admission.sourceMessageId,
-              assistantMessageId: prepared.assistantMessageId,
-              promptAdmissionId: admission.id,
-              reasoningPreference:
-                admission.effectiveReasoningPreference ||
-                admission.requestedReasoningPreference ||
-                resolveReasoningPreferenceRef.current(prepared.session)
-            })
-          ),
-        (message) => `队列消息执行失败：${message || '网络连接失败'}`
-      )
-      launched = true
-    } catch (error) {
-      console.warn('Failed to drain queued prompt:', error)
-      if (claimedAdmissionId && !launched) {
-        await window.api.requeueSessionPrompt(claimedAdmissionId).catch(console.warn)
+        assistantMessageId,
+        session,
+        messagesBeforeAssistant,
+        admission,
+        startupTiming
+      }) => {
+        const apiMessages = buildApiMessages(requestConfig.systemPrompt, messagesBeforeAssistant)
+        startStreamingRun(
+          reqId,
+          sessionId,
+          assistantMessageId,
+          contextEpoch,
+          () =>
+            window.api.startChatCompletion(
+              reqId,
+              buildChatRunOptions({
+                config: requestConfig,
+                session,
+                messages: apiMessages,
+                historyForCachePriority: messagesBeforeAssistant,
+                runMode: admission.runMode,
+                contextEpoch,
+                sourceMessageId: admission.sourceMessageId,
+                assistantMessageId,
+                promptAdmissionId: admission.id,
+                startupTiming,
+                reasoningPreference:
+                  admission.effectiveReasoningPreference ||
+                  admission.requestedReasoningPreference ||
+                  resolveReasoningPreferenceRef.current(session)
+              })
+            ),
+          (message) => `队列消息执行失败：${message || '网络连接失败'}`
+        )
       }
-      if (!launched && registeredReqId) {
-        finishSessionGeneration(sessionId, registeredReqId)
-      }
-    } finally {
-      queueDrainInProgressRef.current.delete(sessionId)
-    }
+    })
   }
-  drainQueuedPromptRef.current = drainNextQueuedPrompt
 
   flushBackgroundSubagentEventsRef.current = (): void => {
     const notifications = backgroundSubagentEventQueueRef.current
@@ -1246,6 +1213,7 @@ export const useChatCompletion = ({
     if (isSessionBusy(activeSessionId)) return
     if (!ensureApiKey(requestConfig, 'Please set the DeepSeek API Key in Settings first.')) return
 
+    const sendStartedAt = Date.now()
     setInputVal('')
 
     let currentSessions = cloneSessionsDeep(sessionsRef.current)
@@ -1285,7 +1253,12 @@ export const useChatCompletion = ({
     beginSessionGeneration(currentSession.id, reqId, assistantMsgId)
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
-    await persistBeforeStreaming(currentSessions, currentSession.id, reqId)
+    const startupTiming = await persistBeforeStreaming(
+      currentSessions,
+      currentSession.id,
+      reqId,
+      sendStartedAt
+    )
 
     const contextEpoch = getSessionContextEpoch(currentSession)
     window.api.advanceSessionContext(currentSession.id, contextEpoch)
@@ -1299,6 +1272,7 @@ export const useChatCompletion = ({
         window.api.startAgentSkill(
           reqId,
           buildAgentSkillRunOptions({
+            startupTiming,
             config: requestConfig,
             session: currentSession,
             historyForCachePriority: currentSession.messages.slice(0, -1),
@@ -1410,7 +1384,7 @@ export const useChatCompletion = ({
 
     setSessions([...currentSessions])
     sessionsRef.current = currentSessions
-    await persistBeforeStreaming(currentSessions, targetSession.id, reqId)
+    const startupTiming = await persistBeforeStreaming(currentSessions, targetSession.id, reqId)
 
     startStreamingRun(
       reqId,
@@ -1421,6 +1395,7 @@ export const useChatCompletion = ({
         window.api.startChatCompletion(
           reqId,
           buildChatRunOptions({
+            startupTiming,
             config: requestConfig,
             session: targetSession,
             // Resume replays the persisted checkpoint, so no new turn is sent.

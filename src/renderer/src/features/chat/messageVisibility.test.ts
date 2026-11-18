@@ -11,20 +11,23 @@ describe('chat message visibility', () => {
       isSynthetic: true,
       isInternal: true
     }
-    const visible: Message = { id: 'assistant-1', role: 'assistant', content: 'Handled result' }
+    const visible: Message = {
+      id: 'background-result-assistant-job-1',
+      role: 'assistant',
+      content: 'Handled result'
+    }
     const history = [internal, visible]
 
     expect(getVisibleChatMessages(history)).toEqual([visible])
     expect(history).toHaveLength(2)
   })
 
-  it('also hides background result prompts saved before the internal flag existed', () => {
+  it('hides older background result prompts saved without visibility flags', () => {
     expect(
       isInternalChatMessage({
         id: 'background-result-source-legacy-job',
         role: 'user',
-        content: 'legacy result',
-        isSynthetic: true
+        content: 'legacy result'
       })
     ).toBe(true)
   })

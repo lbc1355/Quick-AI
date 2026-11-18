@@ -66,9 +66,21 @@ const api = {
   setWindowPinned: (pinned: boolean): void => ipcRenderer.send('set-window-pinned', pinned),
   reSummonWindow: (): void => ipcRenderer.send('re-summon-window'),
   startChatCompletion: (reqId: string, options: ChatRunOptions): void =>
-    ipcRenderer.send('start-chat-completion', reqId, options),
+    ipcRenderer.send(
+      'start-chat-completion',
+      reqId,
+      options.startupTiming
+        ? { ...options, startupTiming: { ...options.startupTiming, dispatchedAt: Date.now() } }
+        : options
+    ),
   startAgentSkill: (reqId: string, options: AgentSkillRunOptions): void =>
-    ipcRenderer.send('start-agent-skill', reqId, options),
+    ipcRenderer.send(
+      'start-agent-skill',
+      reqId,
+      options.startupTiming
+        ? { ...options, startupTiming: { ...options.startupTiming, dispatchedAt: Date.now() } }
+        : options
+    ),
   respondToolPermission: (
     reqId: string,
     callId: string,

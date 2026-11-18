@@ -17,6 +17,28 @@ afterEach(() => {
 })
 
 describe('SessionLogger', () => {
+  it('writes correlated timing diagnostics to JSONL and readable Markdown', () => {
+    SessionLogger.logTiming('timing-session', {
+      runId: 'run-1',
+      phase: 'file_snapshot',
+      origin: 'renderer',
+      durationMs: 1250,
+      elapsedMs: 1500,
+      details: { available: true }
+    })
+    const jsonl = readFileSync(join(home, 'logs', 'session-timing-session.jsonl'), 'utf8')
+    expect(JSON.parse(jsonl)).toMatchObject({
+      type: 'run_timing',
+      sessionId: 'timing-session',
+      runId: 'run-1',
+      phase: 'file_snapshot',
+      durationMs: 1250
+    })
+    const markdown = readFileSync(join(home, 'logs', 'session-timing-session.md'), 'utf8')
+    expect(markdown).toContain('**file_snapshot** 1250.0ms')
+    expect(markdown).toContain('since renderer start 1500.0ms')
+  })
+
   it('writes session trace logs in Markdown format', () => {
     const sessionId = 'test-session-123'
     const runId = 'run-abc'
